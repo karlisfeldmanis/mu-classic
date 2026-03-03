@@ -41,13 +41,13 @@ static const SkillDef g_skillDefs[] = {
     {2, 12, 40, 0, true},       // Meteorite (single target ranged)
     {3, 15, 30, 0, true},       // Lightning (single target)
     {4, 3, 22, 0, true},        // Fire Ball (basic ranged)
-    {5, 50, 50, 200, true},     // Flame (AoE)
+    {5, 50, 50, 0, true},       // Flame (single target)
     {6, 30, 0, 0, true},        // Teleport (no damage, utility)
     {7, 38, 35, 0, true},       // Ice (single target)
     {8, 60, 55, 200, true},     // Twister (AoE)
-    {9, 90, 80, 250, true},     // Evil Spirit (AoE)
+    {9, 90, 80, 400, true},     // Evil Spirit (AoE, Main 5.2 range)
     {10, 160, 100, 300, true},   // Hellfire (large AoE)
-    {12, 140, 90, 0, true},     // Aqua Beam (beam, single target)
+    {12, 140, 90, 90, true},    // Aqua Beam (beam, line AoE — width matches visible beam)
     {13, 90, 120, 150, true},   // Cometfall (AoE sky-strike)
     {14, 200, 150, 400, true},  // Inferno (ring of explosions AoE)
 };
@@ -391,8 +391,87 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   SkillLog("[SkillAttack] Resource deducted: %d -> %d\n", currentResource,
            isDK ? session.ag : session.mana);
 
+  // Teleport (skill 6) — no damage, just utility
+  if (skillDef->skillId == 6) {
+    CharacterHandler::SendCharStats(session);
+    printf("[Combat] fd=%d used Teleport (mana cost=%d)\n",
+           session.GetFd(), skillDef->resourceCost);
+    return;
+  }
+
   // Find target monster
   auto *mon = world.FindMonster(atk->monsterIndex);
+
+  // Ground-target AoE (monsterIndex=0xFFFF)
+  if (!mon && skillDef->aoeRange > 0) {
+    float px = session.worldX, pz = session.worldZ;
+    float tx = (atk->targetX != 0) ? atk->targetX : px;
+    float tz = (atk->targetZ != 0) ? atk->targetZ : pz;
+    float r2 = skillDef->aoeRange * skillDef->aoeRange;
+    int aoeHits = 0;
+
+    // Evil Spirit / Hellfire are caster-centered AoE (radiate from caster, not click)
+    if (skillDef->skillId == 9 || skillDef->skillId == 10 || skillDef->skillId == 14) {
+      tx = px;
+      tz = pz;
+    }
+
+    // Twister/Flash: check monsters along the LINE from caster toward target direction
+    // Twister travels 472 units, Flash beam extends 1000 units (20 segments × 50)
+    bool isLinePath = (skillDef->skillId == 8 || skillDef->skillId == 12) && (tx != px || tz != pz);
+    float ldx = tx - px, ldz = tz - pz;
+    float lenSq = ldx * ldx + ldz * ldz;
+    if (isLinePath && lenSq > 0.01f) {
+      float len = sqrtf(lenSq);
+      float travelDist = (skillDef->skillId == 12) ? 1000.0f : 472.0f;
+      if (len < travelDist) {
+        ldx = ldx / len * travelDist;
+        ldz = ldz / len * travelDist;
+        tx = px + ldx;
+        tz = pz + ldz;
+        lenSq = ldx * ldx + ldz * ldz;
+      }
+    }
+
+    for (auto &other : world.GetMonsterInstancesMut()) {
+      if (other.aiState == MonsterInstance::AIState::DYING ||
+          other.aiState == MonsterInstance::AIState::DEAD)
+        continue;
+
+      bool inRange = false;
+      if (isLinePath && lenSq > 0.01f) {
+        // Distance from monster to line segment (caster → target)
+        float mx = other.worldX - px, mz = other.worldZ - pz;
+        float t = (mx * ldx + mz * ldz) / lenSq;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        float nx = px + ldx * t - other.worldX;
+        float nz = pz + ldz * t - other.worldZ;
+        inRange = (nx * nx + nz * nz <= r2);
+      } else {
+        // Circle check at target position (other AoE skills)
+        float dx = other.worldX - tx;
+        float dz = other.worldZ - tz;
+        inRange = (dx * dx + dz * dz <= r2);
+      }
+
+      if (inRange) {
+        ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
+                             server, skillDef->isMagic);
+        if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0) {
+          other.stormTime = 10;
+          printf("[Storm] Ground AoE: stunned mon %d HP=%d at (%.0f,%.0f) skill=%d\n",
+                 other.index, other.hp, other.worldX, other.worldZ, skillDef->skillId);
+        }
+        aoeHits++;
+      }
+    }
+    CharacterHandler::SendCharStats(session);
+    printf("[Skill] fd=%d ground-cast AoE skill %d player(%.0f,%.0f) target(%.0f,%.0f) hit %d\n",
+           session.GetFd(), skillDef->skillId, px, pz, tx, tz, aoeHits);
+    return;
+  }
+
   if (!mon || mon->aiState == MonsterInstance::AIState::DYING ||
       mon->aiState == MonsterInstance::AIState::DEAD) {
     SkillLog("[SkillAttack] FAIL: monster %d not found or dead\n",
@@ -403,17 +482,16 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   SkillLog("[SkillAttack] SUCCESS: applying damage bonus=%d to mon %d\n",
            skillDef->damageBonus, atk->monsterIndex);
 
-  // Teleport (skill 6) — no damage, just utility (TODO: implement teleport movement)
-  if (skillDef->skillId == 6) {
-    CharacterHandler::SendCharStats(session);
-    printf("[Combat] fd=%d used Teleport (mana cost=%d)\n",
-           session.GetFd(), skillDef->resourceCost);
-    return;
-  }
-
   // Apply damage with skill bonus to primary target
   ApplyDamageToMonster(session, mon, skillDef->damageBonus, world, server,
                        skillDef->isMagic);
+
+  // Main 5.2: Twister/Evil Spirit applies StormTime=10 AI stun (only if alive)
+  if ((skillDef->skillId == 8 || skillDef->skillId == 9) && mon->hp > 0) {
+    mon->stormTime = 10;
+    printf("[Storm] Stunned primary target mon %d HP=%d at (%.0f,%.0f) skill=%d\n",
+           mon->index, mon->hp, mon->worldX, mon->worldZ, skillDef->skillId);
+  }
 
   // Poison (skill 1): apply DoT debuff — OpenMU PoisonMagicEffect
   // Duration 10s, tick every 3s, tick damage = 30% of initial hit
@@ -448,6 +526,12 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
       if (dx * dx + dz * dz <= r2) {
         ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
                              server, skillDef->isMagic);
+        // Main 5.2: Twister/Evil Spirit stuns AoE targets too (only if alive)
+        if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0) {
+          other.stormTime = 10;
+          printf("[Storm] AoE stunned mon %d HP=%d at (%.0f,%.0f) skill=%d\n",
+                 other.index, other.hp, other.worldX, other.worldZ, skillDef->skillId);
+        }
         aoeHits++;
       }
     }
@@ -460,6 +544,75 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
          "(+%d AoE)\n",
          session.GetFd(), atk->skillId, skillDef->resourceCost, skillDef->damageBonus,
          atk->monsterIndex, aoeHits);
+}
+
+void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
+                    GameWorld &world) {
+  if (packet.size() < sizeof(PMSG_SKILL_TELEPORT_RECV))
+    return;
+  const auto *tp =
+      reinterpret_cast<const PMSG_SKILL_TELEPORT_RECV *>(packet.data());
+
+  // Validate skill 6 (Teleport) is learned
+  bool hasSkill = false;
+  for (auto s : session.learnedSkills) {
+    if (s == 6) {
+      hasSkill = true;
+      break;
+    }
+  }
+  if (!hasSkill) {
+    printf("[Teleport] fd=%d hasn't learned Teleport\n", session.GetFd());
+    return;
+  }
+
+  // Look up teleport skill def for mana cost
+  const SkillDef *skillDef = FindSkillDef(6);
+  if (!skillDef)
+    return;
+
+  // Check mana (DW uses mana, not AG)
+  CharacterClass charCls = static_cast<CharacterClass>(session.classCode);
+  bool isDK = (charCls == CharacterClass::CLASS_DK);
+  int currentResource = isDK ? session.ag : session.mana;
+  if (currentResource < skillDef->resourceCost) {
+    printf("[Teleport] fd=%d not enough mana (%d/%d)\n", session.GetFd(),
+           currentResource, skillDef->resourceCost);
+    CharacterHandler::SendCharStats(session);
+    return;
+  }
+
+  // Block teleport from safe zone
+  if (world.IsSafeZone(session.worldX, session.worldZ)) {
+    printf("[Teleport] fd=%d blocked — in safe zone\n", session.GetFd());
+    return;
+  }
+
+  // Validate target position is walkable
+  uint8_t gx = tp->targetGridX;
+  uint8_t gy = tp->targetGridY;
+  if (!world.IsWalkableGrid(gx, gy)) {
+    printf("[Teleport] fd=%d target (%d,%d) not walkable\n", session.GetFd(),
+           gx, gy);
+    return;
+  }
+
+  // Deduct mana
+  if (isDK) {
+    session.ag -= skillDef->resourceCost;
+  } else {
+    session.mana -= skillDef->resourceCost;
+  }
+
+  // Update session position (grid -> world coords)
+  session.worldX = (float)gy * 100.0f;
+  session.worldZ = (float)gx * 100.0f;
+
+  printf("[Teleport] fd=%d teleported to grid (%d,%d) world (%.0f,%.0f)\n",
+         session.GetFd(), gx, gy, session.worldX, session.worldZ);
+
+  // Send updated stats (mana deducted)
+  CharacterHandler::SendCharStats(session);
 }
 
 } // namespace CombatHandler

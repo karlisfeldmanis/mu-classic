@@ -65,6 +65,19 @@ std::vector<std::vector<uint8_t>> Session::ReadPackets() {
 
 void Session::Send(const void *data, size_t len) {
     const auto *bytes = static_cast<const uint8_t *>(data);
+    // Try to send immediately for lower latency
+    if (m_sendBuf.empty()) {
+        ssize_t n = send(m_fd, bytes, len, 0);
+        if (n > 0) {
+            if ((size_t)n < len)
+                m_sendBuf.insert(m_sendBuf.end(), bytes + n, bytes + len);
+            return;
+        }
+        if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            m_alive = false;
+            return;
+        }
+    }
     m_sendBuf.insert(m_sendBuf.end(), bytes, bytes + len);
 }
 

@@ -1,5 +1,6 @@
 #include "PacketHandler.hpp"
 #include "PacketDefs.hpp"
+#include "Server.hpp"
 #include "handlers/CharacterSelectHandler.hpp"
 #include "handlers/ShopHandler.hpp"
 #include <cstdio>
@@ -38,8 +39,12 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       WorldHandler::HandleLogin(session, packet, db);
     break;
   case Opcode::CHARSELECT:
-    if (subcode == Opcode::SUB_CHARLIST)
+    if (subcode == Opcode::SUB_CHARLIST) {
+      // Save current character before returning to char select
+      if (session.characterId > 0 && session.inWorld)
+        server.SaveSession(session);
       CharacterSelectHandler::SendCharList(session, db);
+    }
     else if (subcode == Opcode::SUB_CHARCREATE)
       CharacterSelectHandler::HandleCharCreate(session, packet, db);
     else if (subcode == Opcode::SUB_CHARDELETE)
@@ -74,6 +79,9 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
     break;
   case Opcode::SKILL_USE:
     CombatHandler::HandleSkillAttack(session, packet, world, server);
+    break;
+  case Opcode::SKILL_TELEPORT:
+    CombatHandler::HandleTeleport(session, packet, world);
     break;
 
   // Inventory

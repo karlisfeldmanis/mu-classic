@@ -1,4 +1,5 @@
 #include "MonsterManager.hpp"
+#include "SoundManager.hpp"
 #include "TextureLoader.hpp"
 #include "ViewerCommon.hpp"
 #include "imgui.h"
@@ -727,6 +728,46 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
       mon.bobTimer += dt * 3.75f;
       mon.position.y += (-std::abs(std::sin(mon.bobTimer)) * 30.0f + 30.0f);
     }
+
+    // Random ambient monster sounds (Main 5.2: rand_fps_check(512) ~5s avg)
+    // Only play within audible range (Main 5.2: ~600 units)
+    {
+      float dx = mon.position.x - m_playerPos.x;
+      float dz = mon.position.z - m_playerPos.z;
+      float distSq = dx * dx + dz * dz;
+      if (distSq < 600.0f * 600.0f && rand() % (int)(512.0f / (dt * 25.0f + 0.01f)) == 0) {
+      float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
+      switch (mon.monsterType) {
+      case 0: // Bull Fighter
+        SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz);
+        break;
+      case 1: // Hound
+        SoundManager::Play3D(SOUND_MONSTER_HOUND1 + rand() % 2, px, py, pz);
+        break;
+      case 2: // Budge Dragon
+        SoundManager::Play3D(SOUND_MONSTER_BUDGE1, px, py, pz);
+        break;
+      case 3: // Spider
+        SoundManager::Play3D(SOUND_MONSTER_SPIDER1, px, py, pz);
+        break;
+      case 4: // Elite Bull Fighter (Wizard sounds in Main 5.2)
+        SoundManager::Play3D(SOUND_MONSTER_WIZARD1 + rand() % 2, px, py, pz);
+        break;
+      case 6: // Lich (Larva sounds in Main 5.2)
+        SoundManager::Play3D(SOUND_MONSTER_LARVA1 + rand() % 2, px, py, pz);
+        break;
+      case 7: // Giant
+        SoundManager::Play3D(SOUND_MONSTER_GIANT1 + rand() % 2, px, py, pz);
+        break;
+      case 14: // Skeleton Warrior — Main 5.2: SOUND_BONE1 idle (rand()%16==0)
+      case 15: // Skeleton Archer
+      case 16: // Skeleton Captain
+        SoundManager::Play3D(SOUND_BONE1, px, py, pz);
+        break;
+      default: break;
+      }
+    }}
+
     mon.stateTimer -= dt;
     break;
   }
@@ -938,7 +979,24 @@ void MonsterManager::Update(float deltaTime) {
       setAction(mon, ACTION_DIE);
     }
 
-    updateStateMachine(mon, deltaTime);
+    // Main 5.2: PushingCharacter — StormTime spin (Twister stun)
+    // Monster is stunned during spin: skip state machine, apply smooth rotation
+    if (mon.stormTime > 0) {
+      // Smooth rotation: current tick rate = stormTime * 10 degrees per 0.04s
+      // = stormTime * 250 degrees/second, applied every frame
+      float degPerSec = (float)(mon.stormTime) * 250.0f;
+      mon.facing += degPerSec * (3.14159f / 180.0f) * deltaTime;
+
+      // Decrement stormTime at tick boundaries
+      mon.stormTickTimer += deltaTime;
+      while (mon.stormTickTimer >= 0.04f && mon.stormTime > 0) {
+        mon.stormTickTimer -= 0.04f;
+        mon.stormTime--;
+      }
+    } else {
+      updateStateMachine(mon, deltaTime);
+    }
+
     idx++;
   }
 
@@ -1742,6 +1800,7 @@ MonsterInfo MonsterManager::GetMonsterInfo(int index) const {
   info.bodyOffset = mdl.bodyOffset;
   info.name = mon.name;
   info.type = mon.monsterType;
+  info.serverIndex = mon.serverIndex;
   info.level = mdl.level;
   info.hp = mon.hp;
   info.maxHp = mon.maxHp;
@@ -1765,6 +1824,20 @@ int MonsterManager::FindByServerIndex(uint16_t serverIndex) const {
   return -1;
 }
 
+void MonsterManager::ApplyStormTime(uint16_t serverIndex, int ticks) {
+  int idx = FindByServerIndex(serverIndex);
+  if (idx < 0)
+    return;
+  auto &mon = m_monsters[idx];
+  if (mon.state == MonsterState::DYING || mon.state == MonsterState::DEAD)
+    return;
+  // Only apply if not already spinning (don't reset mid-spin)
+  if (mon.stormTime <= 0) {
+    mon.stormTime = ticks;
+    mon.stormTickTimer = 0.0f;
+  }
+}
+
 void MonsterManager::SetMonsterHP(int index, int hp, int maxHp) {
   if (index < 0 || index >= (int)m_monsters.size())
     return;
@@ -1786,6 +1859,44 @@ void MonsterManager::SetMonsterDying(int index) {
     mon.state = MonsterState::DYING;
     mon.stateTimer = 0.0f;
     setAction(mon, ACTION_DIE);
+
+    // Monster death sounds (Main 5.2: PlayMonsterSound) — distance gated
+    {
+      float dx = mon.position.x - m_playerPos.x;
+      float dz = mon.position.z - m_playerPos.z;
+      if (dx * dx + dz * dz < 600.0f * 600.0f) {
+      float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
+      switch (mon.monsterType) {
+      case 0: // Bull Fighter
+        SoundManager::Play3D(SOUND_MONSTER_BULLDIE, px, py, pz);
+        break;
+      case 1: // Hound
+        SoundManager::Play3D(SOUND_MONSTER_HOUNDDIE, px, py, pz);
+        break;
+      case 2: // Budge Dragon
+        SoundManager::Play3D(SOUND_MONSTER_BUDGEDIE, px, py, pz);
+        break;
+      case 3: // Spider (all states use mSpider1.wav)
+        SoundManager::Play3D(SOUND_MONSTER_SPIDER1, px, py, pz);
+        break;
+      case 4: // Elite Bull Fighter (Wizard sounds)
+        SoundManager::Play3D(SOUND_MONSTER_WIZARDDIE, px, py, pz);
+        break;
+      case 6: // Lich — death uses mLarva2
+        SoundManager::Play3D(SOUND_MONSTER_LARVA2, px, py, pz);
+        break;
+      case 7: // Giant
+        SoundManager::Play3D(SOUND_MONSTER_GIANTDIE, px, py, pz);
+        break;
+      case 14: // Skeleton Warrior — Main 5.2: SOUND_BONE2 on death
+      case 15: // Skeleton Archer
+      case 16: // Skeleton Captain
+        SoundManager::Play3D(SOUND_BONE2, px, py, pz);
+        break;
+      default: break;
+      }
+      }
+    }
 
     // Spawn death debris (Main 5.2 ZzzCharacter.cpp:1386, 1401, 1412)
     if (mon.monsterType == 14 || mon.monsterType == 15 ||
@@ -1815,6 +1926,8 @@ void MonsterManager::TriggerAttackAnimation(int index) {
   auto &mon = m_monsters[index];
   if (mon.state == MonsterState::DYING || mon.state == MonsterState::DEAD)
     return;
+  if (mon.stormTime > 0)
+    return; // Don't attack while spinning from Twister stun
   // Server-authoritative: attack packet means monster is ready to attack
   // (server APPROACHING delay ensures client walk anim finished)
   mon.serverChasing = true;
@@ -1833,6 +1946,44 @@ void MonsterManager::TriggerAttackAnimation(int index) {
   mon.stateTimer =
       (numKeys > 1 && speed > 0.0f) ? (float)numKeys / speed : 1.0f;
   setAction(mon, atk);
+
+  // Monster attack sounds (Main 5.2: PlayMonsterSound) — distance gated
+  {
+    float dx = mon.position.x - m_playerPos.x;
+    float dz = mon.position.z - m_playerPos.z;
+    if (dx * dx + dz * dz < 600.0f * 600.0f) {
+    float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
+    switch (mon.monsterType) {
+    case 0: // Bull Fighter
+      SoundManager::Play3D(SOUND_MONSTER_BULLATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 1: // Hound
+      SoundManager::Play3D(SOUND_MONSTER_HOUNDATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 2: // Budge Dragon
+      SoundManager::Play3D(SOUND_MONSTER_BUDGEATTACK1, px, py, pz);
+      break;
+    case 3: // Spider (all states use mSpider1.wav in Main 5.2)
+      SoundManager::Play3D(SOUND_MONSTER_SPIDER1, px, py, pz);
+      break;
+    case 4: // Elite Bull Fighter (Wizard sounds)
+      SoundManager::Play3D(SOUND_MONSTER_WIZARDATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 6: // Lich — attack reuses idle sounds (mLarva1/2)
+      SoundManager::Play3D(SOUND_MONSTER_LARVA1 + rand() % 2, px, py, pz);
+      break;
+    case 7: // Giant
+      SoundManager::Play3D(SOUND_MONSTER_GIANTATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 14: // Skeleton Warrior — Main 5.2: SOUND_BONE1 on attack
+    case 15: // Skeleton Archer
+    case 16: // Skeleton Captain
+      SoundManager::Play3D(SOUND_BONE1, px, py, pz);
+      break;
+    default: break;
+    }
+    }
+  }
 
   // Trigger Lich VFX (Monster Type 6) — Main 5.2: two BITMAP_JOINT_THUNDER
   // ribbons (thick scale=50 + thin scale=10) from weapon bone to target

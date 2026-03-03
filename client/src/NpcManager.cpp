@@ -1,5 +1,6 @@
 #include "NpcManager.hpp"
 #include "HeroCharacter.hpp" // For PointLight struct
+#include "SoundManager.hpp"
 #include "TextureLoader.hpp"
 #include "VFXManager.hpp"
 #include "ViewerCommon.hpp"
@@ -428,6 +429,7 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       numKeys = mdl.skeleton->Actions[npc.action].NumAnimationKeys;
       lockPos = mdl.skeleton->Actions[npc.action].LockPositions;
     }
+    float prevAnimFrame = npc.animFrame;
     if (numKeys > 1) {
       // Guard uses same Player.bmd as character — exact same walk animation speed
       static constexpr float CHAR_ANIM_SPEED = 8.25f;
@@ -451,6 +453,18 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
           }
           npc.animFrame = 0.0f;
         }
+      }
+    }
+
+    // NPC proximity sounds (Main 5.2: ZzzCharacter.cpp:5906-5926)
+    // Only blacksmith has an audible sound in Lorencia (hammer strike)
+    if (npc.npcType == 251 && npc.action == 0) {
+      float dx = npc.position.x - camPos.x;
+      float dz = npc.position.z - camPos.z;
+      if (dx * dx + dz * dz < 400.0f * 400.0f) {
+        if (prevAnimFrame < 5.0f && npc.animFrame >= 5.0f)
+          SoundManager::Play3D(SOUND_NPC_BLACKSMITH, npc.position.x,
+                               npc.position.y, npc.position.z);
       }
     }
 

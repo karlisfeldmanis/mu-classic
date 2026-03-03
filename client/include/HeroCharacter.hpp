@@ -80,6 +80,7 @@ struct DamageResult {
 
 enum class AttackState { NONE, APPROACHING, SWINGING, COOLDOWN };
 enum class HeroState { ALIVE, HIT_STUN, DYING, DEAD, RESPAWNING };
+enum class HellfirePhase { NONE, BEGIN, START, BLAST };
 
 class HeroCharacter {
 public:
@@ -109,6 +110,8 @@ public:
   void AttackMonster(int monsterIndex, const glm::vec3 &monsterPos);
   void SkillAttackMonster(int monsterIndex, const glm::vec3 &monsterPos,
                           uint8_t skillId);
+  void CastSelfAoE(uint8_t skillId, const glm::vec3 &targetPos); // AoE toward target
+  void TeleportTo(const glm::vec3 &target);
   void UpdateAttack(float deltaTime);
   bool CheckAttackHit();
   void CancelAttack();
@@ -122,6 +125,9 @@ public:
   float GetGlobalCooldownMax() const { return m_globalAttackCooldownMax; }
   static int GetSkillAction(uint8_t skillId);
   void SetVFXManager(class VFXManager *vfx) { m_vfxManager = vfx; }
+  const std::vector<BoneWorldMatrix> &GetCachedBones() const {
+    return m_cachedBones;
+  }
 
   // HP and damage
   void TakeDamage(int damage);
@@ -189,6 +195,24 @@ public:
   int GetPendingPickup() const { return m_pendingPickupIndex; }
   void ClearPendingPickup() { m_pendingPickupIndex = -1; }
 
+  // Flash delayed damage packet — store on cast, send when beam spawns at frame 7.0
+  void SetPendingAquaPacket(uint16_t target, uint8_t skill, float x, float z) {
+    m_aquaPacketReady = false;
+    m_aquaPacketTarget = target;
+    m_aquaPacketSkill = skill;
+    m_aquaPacketX = x;
+    m_aquaPacketZ = z;
+  }
+  bool PopPendingAquaPacket(uint16_t &target, uint8_t &skill, float &x, float &z) {
+    if (!m_aquaPacketReady) return false;
+    target = m_aquaPacketTarget;
+    skill = m_aquaPacketSkill;
+    x = m_aquaPacketX;
+    z = m_aquaPacketZ;
+    m_aquaPacketReady = false;
+    return true;
+  }
+
   // Equipment stat bonuses (weapon adds damage, armor/shield adds defense)
   void SetWeaponBonus(int dmin, int dmax);
   void SetDefenseBonus(int def);
@@ -232,6 +256,7 @@ private:
   float m_animFrame = 0.0f;
   static constexpr float ANIM_SPEED = 8.25f;
   int m_rootBone = -1;
+  bool m_foot[2] = {false, false}; // Main 5.2: c->Foot[0/1] for walk sound
 
   // Blending state
   int m_priorAction = -1;
@@ -283,15 +308,18 @@ private:
   static constexpr int ACTION_SKILL_FURY = 66;       // Rageful Blow
   static constexpr int ACTION_SKILL_DEATH_STAB = 71; // Death Stab
 
-  // DW Magic skill actions (_enum.h)
+  // DW Magic skill actions (_enum.h, Main 5.2)
+  // Counted from PLAYER_SET=0, verified: PLAYER_ATTACK_SKILL_SWORD1=60 anchor
   static constexpr int ACTION_SKILL_HAND1 = 146;    // Energy Ball
   static constexpr int ACTION_SKILL_HAND2 = 147;    // Generic hand cast
-  static constexpr int ACTION_SKILL_WEAPON1 = 148;  // Staff cast 1
-  static constexpr int ACTION_SKILL_WEAPON2 = 149;  // Staff cast 2
+  static constexpr int ACTION_SKILL_WEAPON1 = 148;   // Staff cast 1
+  static constexpr int ACTION_SKILL_WEAPON2 = 149;   // Staff cast 2
   static constexpr int ACTION_SKILL_TELEPORT = 151;  // Teleport
   static constexpr int ACTION_SKILL_FLASH = 152;     // Aqua Beam
   static constexpr int ACTION_SKILL_INFERNO = 153;   // Inferno / Evil Spirit
   static constexpr int ACTION_SKILL_HELL = 154;      // Hell Fire
+  static constexpr int ACTION_SKILL_HELL_BEGIN = 72;  // Hell Fire (cast begin)
+  static constexpr int ACTION_SKILL_HELL_START = 73;  // Hell Fire (charge hold)
 
   // Hit/death actions (CharViewer: Shock=230, Die1=231, Die2=232)
   static constexpr int ACTION_SHOCK = 230;
@@ -362,6 +390,19 @@ private:
   float m_globalAttackCooldownMax = 0.0f; // GCD total (for UI progress)
   uint8_t m_activeSkillId = 0;     // Non-zero when using a skill attack
   float m_slowAnimDuration = 0.0f; // >0 = stretch heal anim to this duration
+  HellfirePhase m_hellfirePhase = HellfirePhase::NONE; // Multi-phase Hellfire animation
+
+  // Main 5.2: Flash (Aqua Beam) delayed beam spawn — beam at frame 7.0, gathering before
+  bool m_pendingAquaBeam = false;   // True during wind-up before beam spawns
+  bool m_aquaBeamSpawned = false;   // Set true once beam is fired
+  float m_aquaGatherTimer = 0.0f;   // Tick accumulator for gathering particle spawns
+
+  // Delayed skill packet for Flash — damage sent when beam spawns, not on click
+  bool m_aquaPacketReady = false;    // True when beam spawns → main loop sends packet
+  uint16_t m_aquaPacketTarget = 0;
+  uint8_t  m_aquaPacketSkill = 0;
+  float    m_aquaPacketX = 0.0f;
+  float    m_aquaPacketZ = 0.0f;
   static constexpr float MELEE_ATTACK_RANGE = 150.0f;
   static constexpr float BOW_ATTACK_RANGE = 500.0f;
   static constexpr float MAGIC_ATTACK_RANGE = 500.0f;
@@ -413,6 +454,10 @@ private:
   std::vector<ShadowMesh> m_weaponShadowMeshes;
   std::vector<BoneWorldMatrix> m_weaponLocalBones; // Cached static bind-pose
   std::string m_dataPath; // Cached for late weapon loading
+
+  // Weapon glow (Main 5.2: ItemLight / BlendMesh system)
+  int m_weaponBlendMesh = -1;  // Mesh index to render additively (-1 = none)
+  int m_shieldBlendMesh = -1;  // Shield glow mesh index (-1 = none)
 
   // Shield (attached item model — left hand)
   WeaponEquipInfo m_shieldInfo;

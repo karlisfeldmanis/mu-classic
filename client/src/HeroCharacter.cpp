@@ -1,4 +1,6 @@
 #include "HeroCharacter.hpp"
+#include "ItemModelManager.hpp"
+#include "SoundManager.hpp"
 #include "TextureLoader.hpp"
 #include "VFXManager.hpp"
 #include <algorithm>
@@ -38,13 +40,16 @@ void HeroCharacter::RecalcStats() {
   if (m_maxHp < 1)
     m_maxHp = 1;
 
-  // DK uses AG (Ability Gauge): ENE*1.0 + VIT*0.3 + DEX*0.2 + STR*0.15
-  // Other classes use Mana: 20 + (Level-1)*0.5 + (Energy-10)*1
-  if (m_class == 16) { // CLASS_DK
+  // AG/Mana per class (OpenMU formulas, matching server StatCalculator)
+  if (m_class == 16) { // CLASS_DK — AG
     m_maxMana = (int)(m_energy * 1.0f + m_vitality * 0.3f + m_dexterity * 0.2f +
                       m_strength * 0.15f);
-  } else {
-    m_maxMana = (int)(20 + (m_level - 1) * 0.5f + (m_energy - 10) * 1);
+  } else if (m_class == 0) { // CLASS_DW
+    m_maxMana = 60 + (m_level - 1) * 2 + (m_energy - 30) * 2;
+  } else if (m_class == 32) { // CLASS_ELF
+    m_maxMana = (int)(30 + (m_level - 1) * 1.5f + (m_energy - 15) * 1.5f);
+  } else if (m_class == 48) { // CLASS_MG
+    m_maxMana = 60 + (m_level - 1) * 1 + (m_energy - 26) * 2;
   }
   if (m_maxMana < 1)
     m_maxMana = 1;
@@ -497,7 +502,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       clampAnim = true;
     // Scale attack animations faster with agility (OpenMU: DEX/15 for DK)
     bool isAttacking = (m_action >= 38 && m_action <= 51) ||
-                       (m_action >= 60 && m_action <= 71);
+                       (m_action >= 60 && m_action <= 71) ||
+                       (m_action >= 146 && m_action <= 154);
     float speed;
     if (isHealAnim)
       speed = (float)numKeys / m_slowAnimDuration; // Stretch to fit duration
@@ -505,6 +511,11 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       speed = ANIM_SPEED * attackSpeedMultiplier();
     else
       speed = ANIM_SPEED;
+    // Main 5.2: Flash animation slowdown during gathering phase (frames 1.0-3.0)
+    // PlaySpeed /= 2 creates dramatic wind-up before beam release
+    if (m_activeSkillId == 12 && m_animFrame >= 1.0f && m_animFrame < 3.0f)
+      speed *= 0.5f;
+
     m_animFrame += speed * deltaTime;
     if (clampAnim) {
       if (m_animFrame >= (float)(numKeys - 1))
@@ -513,6 +524,49 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       int wrapKeys = lockPos ? (numKeys - 1) : numKeys;
       if (m_animFrame >= (float)wrapKeys)
         m_animFrame = std::fmod(m_animFrame, (float)wrapKeys);
+    }
+
+    // Main 5.2: footstep sounds at animation frames 1.5 and 4.5 during walk
+    // City (safe zone) uses soil footsteps, fields use grass
+    // Slight pitch variation (0.9-1.1) so steps don't sound identical
+    if (m_moving) {
+      int walkSound = m_inSafeZone ? SOUND_WALK_SOIL : SOUND_WALK_GRASS;
+      if (m_animFrame >= 1.5f && !m_foot[0]) {
+        m_foot[0] = true;
+        SoundManager::PlayPitched(walkSound, 0.9f, 1.1f);
+      }
+      if (m_animFrame >= 4.5f && !m_foot[1]) {
+        m_foot[1] = true;
+        SoundManager::PlayPitched(walkSound, 0.9f, 1.1f);
+      }
+      // Reset feet on animation wrap
+      if (m_animFrame < 1.0f) {
+        m_foot[0] = false;
+        m_foot[1] = false;
+      }
+    } else {
+      m_foot[0] = false;
+      m_foot[1] = false;
+    }
+  }
+
+  // Main 5.2: Flash (Aqua Beam) — gathering during wind-up, beam at frame 7.0
+  if (m_pendingAquaBeam && m_activeSkillId == 12 && m_vfxManager) {
+    // Gathering particles during frames 1.2-3.0 (BITMAP_GATHERING SubType 2)
+    if (m_animFrame >= 1.2f && m_animFrame < 3.0f) {
+      m_aquaGatherTimer += deltaTime;
+      while (m_aquaGatherTimer >= 0.04f) {
+        m_aquaGatherTimer -= 0.04f;
+        glm::vec3 handPos = m_pos + glm::vec3(0.0f, 120.0f, 0.0f);
+        m_vfxManager->SpawnAquaGathering(handPos);
+      }
+    }
+    // Main 5.2: visual beam triggers at frames 7.0-8.0 (hands fully extended)
+    if (m_animFrame >= 7.0f && !m_aquaBeamSpawned) {
+      m_aquaBeamSpawned = true;
+      m_vfxManager->SpawnAquaBeam(m_pos, m_facing);
+      m_pendingAquaBeam = false;
+      m_aquaPacketReady = true; // Signal main loop to send damage packet now
     }
   }
 
@@ -779,7 +833,20 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
       glBindTexture(GL_TEXTURE_2D, mb.texture);
       glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+
+      // Main 5.2: ItemLight — glow mesh renders additively with pulsing brightness
+      if (m_weaponBlendMesh >= 0 && mi == m_weaponBlendMesh) {
+        float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+        m_shader->setFloat("blendMeshLight", pulseLight);
+        glBlendFunc(GL_ONE, GL_ONE); // Additive
+        glDepthMask(GL_FALSE);
+        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        glDepthMask(GL_TRUE);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        m_shader->setFloat("blendMeshLight", 1.0f);
+      } else {
+        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      }
     }
   }
 
@@ -1256,6 +1323,10 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
   m_weaponBmd = std::move(bmd);
   m_weaponLocalBones = ComputeBoneMatrices(m_weaponBmd.get());
 
+  // Main 5.2: ItemLight — per-weapon BlendMesh glow assignment
+  m_weaponBlendMesh = ItemModelManager::GetItemBlendMesh(
+      weapon.category, weapon.itemIndex);
+
   auto &catRender = GetWeaponCategoryRender(weapon.category);
   std::cout << "[Hero] Loaded weapon " << weapon.modelFile << ": "
             << m_weaponBmd->Meshes.size() << " meshes, "
@@ -1523,6 +1594,14 @@ void HeroCharacter::AttackMonster(int monsterIndex,
     // Weapon-type-specific attack animation (Main 5.2 SwordCount cycle)
     int act = nextAttackAction();
     SetAction(act);
+    // Main 5.2: weapon-type-specific swing sound (ZzzCharacter.cpp:1190-1204)
+    // Spears (cat 3) → eSwingLightSword; all other melee → random eSwingWeapon1/2
+    if (HasWeapon()) {
+      if (m_weaponInfo.category == 3)
+        SoundManager::Play(SOUND_SWING_LIGHT);
+      else
+        SoundManager::Play(SOUND_SWING1 + rand() % 2);
+    }
 
     // Set GCD = full attack cycle (animation + cooldown)
     int nk = (act >= 0 && act < (int)m_skeleton->Actions.size())
@@ -1564,12 +1643,27 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
       m_attackAnimTimer = 0.0f;
       m_attackHitRegistered = false;
 
-      // Face the target
+      // Face the target — snap for directional VFX (Aqua Beam)
       m_targetFacing = atan2f(dir.z, -dir.x);
+      m_facing = m_targetFacing;
 
       // Skill or weapon-type-specific attack animation
       if (m_activeSkillId > 0) {
         SetAction(GetSkillAction(m_activeSkillId));
+        // Play skill sound on approach-to-swing transition (same as in-range path)
+        switch (m_activeSkillId) {
+        case 19: SoundManager::Play(SOUND_KNIGHT_SKILL1); break;
+        case 20: SoundManager::Play(SOUND_KNIGHT_SKILL2); break;
+        case 21: SoundManager::Play(SOUND_KNIGHT_SKILL3); break;
+        case 22: SoundManager::Play(SOUND_KNIGHT_SKILL4); break;
+        case 23: SoundManager::Play(SOUND_KNIGHT_SKILL4); break;
+        case 42: SoundManager::Play(SOUND_RAGE_BLOW1); break;
+        case 43: SoundManager::Play(SOUND_KNIGHT_SKILL2); break;
+        default:
+          if (HasWeapon())
+            SoundManager::Play(SOUND_SWING1 + rand() % 2);
+          break;
+        }
         if (m_vfxManager) {
           m_vfxManager->SpawnSkillCast(m_activeSkillId, m_pos, m_facing);
           // Spell VFX dispatch (same as SkillAttackMonster in-range path)
@@ -1582,10 +1676,8 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
           case 1: // Poison — Main 5.2: MODEL_POISON cloud + 10 smoke at target
             m_vfxManager->SpawnPoisonCloud(m_attackTargetPos);
             break;
-          case 7: // Ice
-            m_vfxManager->SpawnBurst(
-                ParticleType::SPELL_ICE,
-                m_attackTargetPos + glm::vec3(0, 50, 0), 8);
+          case 7: // Ice — MODEL_ICE crystal + 5x MODEL_ICE_SMALL debris
+            m_vfxManager->SpawnIceStrike(m_attackTargetPos);
             break;
           case 2: // Meteorite — fireball falls from sky
             m_vfxManager->SpawnMeteorStrike(m_attackTargetPos);
@@ -1603,10 +1695,34 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
           case 13: // Cometfall: AT_SKILL_BLAST — sky-strike at target
             m_vfxManager->SpawnLightningStrike(m_attackTargetPos);
             break;
+          case 5: // Flame — persistent ground fire at target
+            m_vfxManager->SpawnFlameGround(m_attackTargetPos);
+            break;
+          case 8: // Twister — tornado travels toward target
+            m_vfxManager->SpawnTwisterStorm(m_pos, m_attackTargetPos - m_pos);
+            break;
+          case 9: // Evil Spirit — 4-directional beams from caster
+            m_vfxManager->SpawnEvilSpirit(m_pos, m_facing);
+            break;
+          case 10: // Hellfire — ground fire ring (beams at blast phase)
+            m_vfxManager->SpawnHellfire(m_pos);
+            break;
+          case 12: // Aqua Beam — delayed: beam spawns at anim frame 5.5
+            m_pendingAquaBeam = true;
+            m_aquaBeamSpawned = false;
+            m_aquaGatherTimer = 0.0f;
+            break;
           }
         }
       } else {
         SetAction(nextAttackAction());
+        // Normal attack swing sound on approach arrival
+        if (HasWeapon()) {
+          if (m_weaponInfo.category == 3)
+            SoundManager::Play(SOUND_SWING_LIGHT);
+          else
+            SoundManager::Play(SOUND_SWING1 + rand() % 2);
+        }
       }
     } else if (!m_moving) {
       // Stopped moving but not in range (blocked) — cancel
@@ -1625,13 +1741,30 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
     float animDuration = (numKeys > 1) ? (float)numKeys / atkAnimSpeed : 0.5f;
     m_attackAnimTimer += deltaTime;
 
-    if (m_attackAnimTimer >= animDuration) {
+    // Flash uses m_animFrame for swing-done check (animation slowdown desyncs timer)
+    bool swingDone = (m_activeSkillId == 12)
+        ? (m_animFrame >= (float)(numKeys - 1))
+        : (m_attackAnimTimer >= animDuration);
+
+    if (swingDone) {
       // Swing finished — go to cooldown (also scaled by attack speed)
       m_attackState = AttackState::COOLDOWN;
       // Spells have shorter cooldown (0.2s base) for smoother casting flow
       float baseCooldown =
           (m_activeSkillId > 0) ? 0.2f : ATTACK_COOLDOWN_TIME;
       m_attackCooldown = baseCooldown / attackSpeedMultiplier();
+
+      // If beam never spawned (animation too short), force spawn now
+      if (m_pendingAquaBeam && !m_aquaBeamSpawned && m_vfxManager) {
+        m_aquaBeamSpawned = true;
+        m_vfxManager->SpawnAquaBeam(m_pos, m_facing);
+        m_pendingAquaBeam = false;
+      }
+
+      // Kill beam VFX when animation ends — beam syncs with hands
+      if (m_activeSkillId == 12 && m_vfxManager) {
+        m_vfxManager->KillAquaBeams();
+      }
 
       // Return to combat idle (weapon stance or unarmed)
       SetAction(m_weaponBmd ? weaponIdleAction() : ACTION_STOP_MALE);
@@ -1690,7 +1823,9 @@ void HeroCharacter::CancelAttack() {
   m_activeSkillId = 0;
   m_swordSwingCount = 0;
   m_moving = false; // Stop any approach movement
-
+  m_pendingAquaBeam = false; // Clear pending beam on cancel
+  m_aquaBeamSpawned = false;
+  m_aquaPacketReady = false; // Don't send damage if cancelled
   // Return to appropriate idle
   if (!m_inSafeZone && m_weaponBmd) {
     SetAction(weaponIdleAction());
@@ -1722,29 +1857,38 @@ int HeroCharacter::GetSkillAction(uint8_t skillId) {
   case 17:
     return ACTION_SKILL_HAND1; // Energy Ball
   case 4:
-    return ACTION_SKILL_WEAPON1; // Fire Ball
+    // Fire Ball — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 1:
-    return ACTION_SKILL_WEAPON2; // Poison
+    // Poison — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 3:
-    return ACTION_SKILL_WEAPON1; // Lightning
+    // Lightning — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 2:
-    return ACTION_SKILL_WEAPON2; // Meteorite
+    // Meteorite — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 7:
-    return ACTION_SKILL_WEAPON1; // Ice
+    // Ice — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 5:
-    return ACTION_SKILL_INFERNO; // Flame (AoE fire)
+    // Flame — Main 5.2: SetPlayerMagic() randomly picks HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 8:
-    return ACTION_SKILL_WEAPON2; // Twister
+    // Twister — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 6:
     return ACTION_SKILL_TELEPORT; // Teleport
   case 9:
-    return ACTION_SKILL_INFERNO; // Evil Spirit
+    // Evil Spirit — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 12:
     return ACTION_SKILL_FLASH; // Aqua Beam
   case 10:
     return ACTION_SKILL_HELL; // Hellfire
   case 13:
-    return ACTION_SKILL_WEAPON2; // Cometfall (AT_SKILL_BLAST sky-strike)
+    // Cometfall — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 14:
     return ACTION_SKILL_INFERNO; // Inferno (self-centered AoE)
   default:
@@ -1757,8 +1901,13 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
                                        uint8_t skillId) {
   if (IsDead())
     return;
-  if (m_globalAttackCooldown > 0.0f)
-    return; // Still on cooldown from cancelled attack
+  // Allow spell to interrupt normal melee attacks
+  if (m_globalAttackCooldown > 0.0f) {
+    if (m_activeSkillId > 0)
+      return; // Block if GCD from a previous skill cast
+    m_globalAttackCooldown = 0.0f; // Reset melee GCD
+    CancelAttack();
+  }
 
   // Already swinging same target with same skill — just update position
   if (monsterIndex == m_attackTargetMonster && m_activeSkillId == skillId &&
@@ -1787,13 +1936,32 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
     m_attackHitRegistered = false;
     m_moving = false;
     m_targetFacing = atan2f(dir.z, -dir.x);
+    m_facing = m_targetFacing; // Snap facing for directional VFX (Aqua Beam)
+
     SetAction(skillAction);
+    // Skill-specific sounds (Main 5.2: PlaySkillSound)
+    switch (skillId) {
+    case 19: SoundManager::Play(SOUND_KNIGHT_SKILL1); break; // Falling Slash
+    case 20: SoundManager::Play(SOUND_KNIGHT_SKILL2); break; // Lunge
+    case 21: SoundManager::Play(SOUND_KNIGHT_SKILL3); break; // Uppercut
+    case 22: SoundManager::Play(SOUND_KNIGHT_SKILL4); break; // Cyclone
+    case 23: SoundManager::Play(SOUND_KNIGHT_SKILL4); break; // Slash (same as Cyclone)
+    case 42: SoundManager::Play(SOUND_RAGE_BLOW1); break;    // Rageful Blow
+    case 43: SoundManager::Play(SOUND_KNIGHT_SKILL2); break; // Death Stab (same as Lunge)
+    default:
+      if (HasWeapon())
+        SoundManager::Play(SOUND_SWING1 + rand() % 2);
+      break;
+    }
 
     // Set GCD = full attack cycle (animation + cooldown)
     int nk = (skillAction >= 0 && skillAction < (int)m_skeleton->Actions.size())
                  ? m_skeleton->Actions[skillAction].NumAnimationKeys : 1;
     float spd = ANIM_SPEED * attackSpeedMultiplier();
     float animDur = (nk > 1) ? (float)nk / spd : 0.5f;
+    // Flash: animation slowdown during frames 1.0-3.0 adds ~2 frames at half speed
+    if (skillId == 12)
+      animDur += 2.0f / spd;
     float cd = 0.2f / attackSpeedMultiplier(); // Spell cooldown = 0.2s base
     m_globalAttackCooldown = animDur + cd;
     m_globalAttackCooldownMax = m_globalAttackCooldown;
@@ -1809,8 +1977,8 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
       case 1: // Poison — Main 5.2: MODEL_POISON cloud + 10 smoke at target
         m_vfxManager->SpawnPoisonCloud(monsterPos);
         break;
-      case 7: // Ice: MODEL_ICE at target (instant freeze)
-        m_vfxManager->SpawnBurst(ParticleType::SPELL_ICE, monsterPos + glm::vec3(0, 50, 0), 8);
+      case 7: // Ice — MODEL_ICE crystal + 5x MODEL_ICE_SMALL debris
+        m_vfxManager->SpawnIceStrike(monsterPos);
         break;
       case 2: // Meteorite — fireball falls from sky
         m_vfxManager->SpawnMeteorStrike(monsterPos);
@@ -1828,6 +1996,26 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
       case 13: // Cometfall: AT_SKILL_BLAST — sky-strike at target
         m_vfxManager->SpawnLightningStrike(monsterPos);
         break;
+      case 5: // Flame — persistent ground fire at target
+        m_vfxManager->SpawnFlameGround(monsterPos);
+        break;
+      case 8: // Twister — tornado travels toward target
+        m_vfxManager->SpawnTwisterStorm(m_pos, monsterPos - m_pos);
+        break;
+      case 9: // Evil Spirit — 4-directional beams from caster
+        m_vfxManager->SpawnEvilSpirit(m_pos, m_facing);
+        break;
+      case 10: // Hellfire — ground fire ring (beams at blast phase)
+        m_vfxManager->SpawnHellfire(m_pos);
+        break;
+      case 12: // Aqua Beam — delayed: beam spawns at anim frame 5.5
+        m_pendingAquaBeam = true;
+        m_aquaBeamSpawned = false;
+        m_aquaGatherTimer = 0.0f;
+        break;
+      case 14: // Inferno — ring of fire explosions around caster
+        m_vfxManager->SpawnInferno(m_pos);
+        break;
       }
     }
     std::cout << "[Skill] Started SWINGING with action " << skillAction
@@ -1837,6 +2025,109 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
     MoveTo(monsterPos);
     std::cout << "[Skill] APPROACHING target (too far)" << std::endl;
   }
+}
+
+void HeroCharacter::CastSelfAoE(uint8_t skillId, const glm::vec3 &targetPos) {
+  if (IsDead())
+    return;
+  // Allow spell to interrupt normal melee attacks (reset GCD from auto-attack)
+  if (m_globalAttackCooldown > 0.0f && m_activeSkillId > 0)
+    return; // Only block if GCD is from a previous SKILL cast
+  // Cancel any in-progress attack and reset melee GCD
+  m_globalAttackCooldown = 0.0f;
+  CancelAttack();
+  m_moving = false;
+  m_activeSkillId = skillId;
+  m_attackTargetMonster = -1; // No specific target
+
+  // Face toward target — snap immediately for directional spells (Aqua Beam)
+  glm::vec3 dir = targetPos - m_pos;
+  dir.y = 0.0f;
+  if (glm::length(dir) > 0.01f) {
+    m_targetFacing = atan2f(dir.z, -dir.x);
+    m_facing = m_targetFacing;
+  }
+
+  int skillAction = GetSkillAction(skillId);
+
+  // Play cast animation
+  m_attackState = AttackState::SWINGING;
+  m_attackAnimTimer = 0.0f;
+  m_attackHitRegistered = true; // No hit to register (AoE handled by server)
+  SetAction(skillAction);
+
+  // Skill-specific sounds (Main 5.2: AttackStage)
+  switch (skillId) {
+  case 41: SoundManager::Play(SOUND_KNIGHT_SKILL4); break; // Twisting Slash
+  case 42: SoundManager::Play(SOUND_RAGE_BLOW1); break;    // Rageful Blow
+  default: break; // DW spells have no swing/cast sound
+  }
+
+  // Set GCD
+  int nk = (skillAction >= 0 && skillAction < (int)m_skeleton->Actions.size())
+               ? m_skeleton->Actions[skillAction].NumAnimationKeys : 1;
+  float spd = ANIM_SPEED * attackSpeedMultiplier();
+  float animDur = (nk > 1) ? (float)nk / spd : 0.5f;
+  // Flash: animation slowdown during frames 1.0-3.0 adds ~2 frames at half speed
+  if (skillId == 12)
+    animDur += 2.0f / spd;
+  float cd = 0.2f / attackSpeedMultiplier();
+  m_globalAttackCooldown = animDur + cd;
+  m_globalAttackCooldownMax = m_globalAttackCooldown;
+
+  // Spawn VFX — tornado travels from caster toward target
+  if (m_vfxManager) {
+    m_vfxManager->SpawnSkillCast(skillId, m_pos, m_facing);
+    switch (skillId) {
+    case 8: // Twister — tornado travels toward click direction
+      m_vfxManager->SpawnTwisterStorm(m_pos, targetPos - m_pos);
+      break;
+    case 9: // Evil Spirit — 4-directional beams from caster
+      m_vfxManager->SpawnEvilSpirit(m_pos, m_facing);
+      break;
+    case 10: // Hellfire — ground fire ring (beams spawned at blast phase)
+      m_vfxManager->SpawnHellfire(m_pos);
+      break;
+    case 12: // Aqua Beam — delayed: beam spawns at anim frame 5.5
+      m_pendingAquaBeam = true;
+      m_aquaBeamSpawned = false;
+      m_aquaGatherTimer = 0.0f;
+      break;
+    case 14: // Inferno — ring of fire explosions around caster
+      m_vfxManager->SpawnInferno(m_pos);
+      break;
+    }
+  }
+
+  std::cout << "[Skill] CastSelfAoE: skillId=" << (int)skillId
+            << " action=" << skillAction << std::endl;
+}
+
+void HeroCharacter::TeleportTo(const glm::vec3 &target) {
+  if (IsDead())
+    return;
+  if (m_globalAttackCooldown > 0.0f)
+    return;
+
+  // Cancel any in-progress attack/movement
+  CancelAttack();
+  m_moving = false;
+
+  // VFX: white rising sparks at origin and destination (Main 5.2)
+  if (m_vfxManager) {
+    m_vfxManager->SpawnSkillCast(6, m_pos, m_facing);
+    m_vfxManager->SpawnSkillImpact(6, target);
+  }
+
+  // No animation change — instant teleport, keep current pose
+  // Fixed 1.5s GCD to prevent spam
+  m_globalAttackCooldown = 1.5f;
+  m_globalAttackCooldownMax = m_globalAttackCooldown;
+
+  // Instantly move to target position
+  m_pos = target;
+  m_target = target;
+  SnapToTerrain();
 }
 
 void HeroCharacter::ApplyHitReaction() {
@@ -1873,6 +2164,7 @@ void HeroCharacter::ForceDie() {
   CancelAttack();
   m_moving = false;
   SetAction(ACTION_DIE1);
+  SoundManager::Play(SOUND_MALE_DIE);
   std::cout << "[Hero] Dying (Forced) — action=" << ACTION_DIE1
             << " numActions="
             << (m_skeleton ? (int)m_skeleton->Actions.size() : 0) << std::endl;
@@ -1986,21 +2278,29 @@ void HeroCharacter::SetAction(int newAction) {
   // Cross-fade blending for smooth transitions:
   // - Fist attack transitions
   // - Walk -> idle (stopping)
-  // - Attack -> combat idle (weapon attacks finishing)
+  // - Attack/skill -> combat idle (weapon attacks / spells finishing)
+  // - Idle -> skill (entering spell cast animation)
   bool involvesFists =
       (m_action == ACTION_ATTACK_FIST || newAction == ACTION_ATTACK_FIST);
 
   // Detect walk actions (15-23) and stop/idle actions (0-10)
   bool isWalkingAction = (m_action >= 15 && m_action <= 23);
-  bool isStopAction = (newAction >= 0 && newAction <= 10);
-  bool isStopping = (isWalkingAction && isStopAction);
+  bool isNewStop = (newAction >= 0 && newAction <= 10);
+  bool isStopping = (isWalkingAction && isNewStop);
 
-  // Attack/skill -> combat idle blend (all weapon types + skill actions)
+  // Attack/skill -> idle blend (weapon attacks 38-51, DK skills 60-74, magic 146-154)
   bool isAttackAction =
-      (m_action >= 38 && m_action <= 51) || (m_action >= 60 && m_action <= 71);
-  bool isAttackToIdle = (isAttackAction && isStopAction);
+      (m_action >= 38 && m_action <= 51) || (m_action >= 60 && m_action <= 74) ||
+      (m_action >= 146 && m_action <= 154);
+  bool isAttackToIdle = (isAttackAction && isNewStop);
 
-  if (involvesFists || isStopping || isAttackToIdle) {
+  // Idle -> skill/attack blend (smooth entry into spell cast animations)
+  bool isCurrentStop = (m_action >= 0 && m_action <= 10);
+  bool isNewSkill = (newAction >= 60 && newAction <= 74) ||
+                    (newAction >= 146 && newAction <= 154);
+  bool isIdleToSkill = (isCurrentStop && isNewSkill);
+
+  if (involvesFists || isStopping || isAttackToIdle || isIdleToSkill) {
     m_priorAction = m_action;
     m_priorAnimFrame = m_animFrame;
     m_isBlending = true;

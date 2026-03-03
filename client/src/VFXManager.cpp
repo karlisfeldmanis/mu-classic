@@ -16,6 +16,18 @@ void VFXManager::Init(const std::string &effectDataPath) {
   m_sparkTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Spark01.OZJ");
 
+  // Main 5.2: BITMAP_SPARK+1 — Aqua Beam laser segments (Spark03.OZJ)
+  m_spark3Texture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/Spark03.OZJ");
+  if (m_spark3Texture == 0)
+    std::cerr << "[VFX] Failed to load Spark03.OZJ" << std::endl;
+
+  // Aqua Beam outer glow layer
+  m_flareBlueTexture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/flareBlue.OZJ");
+  if (m_flareBlueTexture == 0)
+    m_flareBlueTexture = m_spark3Texture; // Fallback
+
   // Main 5.2: BITMAP_FLASH — bright additive impact flare
   m_flareTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/flare01.OZJ");
@@ -51,6 +63,45 @@ void VFXManager::Init(const std::string &effectDataPath) {
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Flare.OZJ");
   if (m_bitmapFlareTexture == 0)
     m_bitmapFlareTexture = m_flareTexture; // Fallback to flare01.OZJ
+
+  // Main 5.2: BITMAP_FLAME — Flame spell ground fire particles
+  m_flameTexture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/Flame01.OZJ");
+  if (m_flameTexture == 0) {
+    std::cerr << "[VFX] Failed to load Flame01.OZJ — using Fire01 fallback"
+              << std::endl;
+    m_flameTexture = m_fireTexture;
+  }
+
+  // Main 5.2: BITMAP_EXPLOTION — animated 4x4 explosion sprite sheet
+  m_explosionTexture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/Explotion01.OZJ");
+  if (m_explosionTexture == 0)
+    m_explosionTexture = m_flareTexture; // Fallback
+
+  // Main 5.2: Inferno-specific fire texture
+  m_infernoFireTexture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/inferno.OZJ");
+  if (m_infernoFireTexture == 0)
+    m_infernoFireTexture = m_fireTexture; // Fallback
+
+  // Main 5.2: BITMAP_JOINT_SPIRIT — Evil Spirit beam texture
+  m_jointSpiritTexture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/JointSpirit01.OZJ");
+  if (m_jointSpiritTexture == 0)
+    std::cerr << "[VFX] Failed to load JointSpirit01.OZJ" << std::endl;
+
+  // Main 5.2: Circle01.bmd texture (Hellfire ground circle — star/pentagram pattern)
+  m_hellfireCircleTex =
+      TextureLoader::LoadOZJ(effectDataPath + "/Skill/magic_a01.OZJ");
+  if (m_hellfireCircleTex == 0)
+    std::cerr << "[VFX] Failed to load Skill/magic_a01.OZJ" << std::endl;
+
+  // Main 5.2: Circle02.bmd texture (Hellfire light circle overlay)
+  m_hellfireLightTex =
+      TextureLoader::LoadOZJ(effectDataPath + "/Skill/magic_a02.OZJ");
+  if (m_hellfireLightTex == 0)
+    std::cerr << "[VFX] Failed to load Skill/magic_a02.OZJ" << std::endl;
 
   if (m_bloodTexture == 0)
     std::cerr << "[VFX] Failed to load blood texture" << std::endl;
@@ -129,6 +180,96 @@ void VFXManager::Init(const std::string &effectDataPath) {
                           false);
     }
     std::cout << "[VFX] Poison01.bmd loaded: " << m_poisonMeshes.size()
+              << " meshes" << std::endl;
+  }
+
+  // Load Ice crystal model (Main 5.2: MODEL_ICE = Data/Skill/Ice01.bmd)
+  m_iceBmd = BMDParser::Parse(skillPath + "Ice01.bmd");
+  if (m_iceBmd) {
+    auto bones = ComputeBoneMatrices(m_iceBmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_iceBmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_iceMeshes, dummyAABB, false);
+    }
+    std::cout << "[VFX] Ice01.bmd loaded: " << m_iceMeshes.size()
+              << " meshes" << std::endl;
+  }
+
+  // Load Ice shard model (Main 5.2: MODEL_ICE_SMALL = Data/Skill/Ice02.bmd)
+  m_iceSmallBmd = BMDParser::Parse(skillPath + "Ice02.bmd");
+  if (m_iceSmallBmd) {
+    auto bones = ComputeBoneMatrices(m_iceSmallBmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_iceSmallBmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_iceSmallMeshes, dummyAABB,
+                          false);
+    }
+    std::cout << "[VFX] Ice02.bmd loaded: " << m_iceSmallMeshes.size()
+              << " meshes" << std::endl;
+  }
+
+  // Load Storm tornado model (Main 5.2: MODEL_STORM = Data/Skill/Storm01.bmd)
+  m_stormBmd = BMDParser::Parse(skillPath + "Storm01.bmd");
+  if (m_stormBmd) {
+    auto bones = ComputeBoneMatrices(m_stormBmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_stormBmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_stormMeshes, dummyAABB,
+                          false);
+    }
+    std::cout << "[VFX] Storm01.bmd loaded: " << m_stormMeshes.size()
+              << " meshes" << std::endl;
+  }
+
+  // Load Hellfire ground circle models (Main 5.2: MODEL_CIRCLE = Circle01.bmd)
+  m_circleBmd = BMDParser::Parse(skillPath + "Circle01.bmd");
+  if (m_circleBmd) {
+    auto bones = ComputeBoneMatrices(m_circleBmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_circleBmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_circleMeshes, dummyAABB,
+                          false);
+    }
+    std::cout << "[VFX] Circle01.bmd loaded: " << m_circleMeshes.size()
+              << " meshes" << std::endl;
+  }
+
+  // Load Hellfire circle light model (Main 5.2: MODEL_CIRCLE_LIGHT = Circle02.bmd)
+  m_circleLightBmd = BMDParser::Parse(skillPath + "Circle02.bmd");
+  if (m_circleLightBmd) {
+    auto bones = ComputeBoneMatrices(m_circleLightBmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_circleLightBmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_circleLightMeshes,
+                          dummyAABB, false);
+    }
+    std::cout << "[VFX] Circle02.bmd loaded: " << m_circleLightMeshes.size()
+              << " meshes" << std::endl;
+  }
+
+  // Load Inferno ring model (Main 5.2: MODEL_SKILL_INFERNO = Data/Skill/Inferno01.bmd)
+  m_infernoBmd = BMDParser::Parse(skillPath + "Inferno01.bmd");
+  if (m_infernoBmd) {
+    auto bones = ComputeBoneMatrices(m_infernoBmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_infernoBmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_infernoMeshes,
+                          dummyAABB, false);
+    }
+    std::cout << "[VFX] Inferno01.bmd loaded: " << m_infernoMeshes.size()
+              << " meshes" << std::endl;
+  }
+
+  // Load Evil Spirit beam head flash (Main 5.2: MODEL_LASER = Data/Skill/Laser01.bmd)
+  m_laserBmd = BMDParser::Parse(skillPath + "Laser01.bmd");
+  if (m_laserBmd) {
+    auto bones = ComputeBoneMatrices(m_laserBmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_laserBmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_laserMeshes,
+                          dummyAABB, false);
+    }
+    std::cout << "[VFX] Laser01.bmd loaded: " << m_laserMeshes.size()
               << " meshes" << std::endl;
   }
 
@@ -409,6 +550,25 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       p.alpha = 1.0f;
       break;
     }
+    case ParticleType::SPELL_FLAME: {
+      // Main 5.2: BITMAP_FLAME — 20 tick lifetime (0.8s), white light (texture handles color)
+      // Velocity[2] = (rand()%128+128)*0.15 = 19.2-38.4 upward per tick
+      // Scale = Scale*(rand()%64+64)*0.01 = 64-128% random
+      float offX = (float)(rand() % 50) - 25.0f;
+      float offZ = (float)(rand() % 50) - 25.0f;
+      float upSpeed = (float)(rand() % 128 + 128) * 0.15f * 25.0f; // Convert per-tick to per-sec
+      p.velocity = glm::vec3(offX * 0.3f, upSpeed, offZ * 0.3f);
+      p.scale = 30.0f * (float)(rand() % 64 + 64) * 0.01f; // 19.2-38.4
+      p.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+      p.frame = -1.0f; // Full texture UV
+      p.maxLifetime = 0.8f; // 20 ticks @ 25fps
+      // Main 5.2: Light is white — let Flame01.OZJ texture provide orange color
+      float lum = (float)(rand() % 4 + 8) * 0.1f; // 0.8-1.1 flicker
+      p.color = glm::vec3(lum, lum, lum);
+      p.alpha = 1.0f;
+      p.position += glm::vec3(offX, 0.0f, offZ);
+      break;
+    }
     case ParticleType::SPELL_ICE: {
       // Cyan-white ice shards — fast outward, slight rise, quick fade
       float speed = 100.0f + (float)(rand() % 80);
@@ -485,17 +645,16 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       break;
     }
     case ParticleType::SPELL_TELEPORT: {
-      // Bright white flash ring — evenly spaced around character, rising
-      float ringAngle =
-          (float)i / (float)std::max(count, 1) * 6.2832f;
-      float speed = 100.0f + (float)(rand() % 40);
-      p.velocity =
-          glm::vec3(std::cos(ringAngle) * speed,
-                    120.0f + (float)(rand() % 60),
-                    std::sin(ringAngle) * speed);
-      p.scale = 30.0f + (float)(rand() % 20);
-      p.maxLifetime = 0.5f + (float)(rand() % 20) / 100.0f;
-      p.color = glm::vec3(1.0f, 1.0f, 1.0f); // Bright white
+      // Vertical rising spark column — blue energy
+      p.position.y += (float)(rand() % 80); // Vertical spread (column)
+      float drift = 15.0f + (float)(rand() % 10);
+      p.velocity = glm::vec3(
+          std::cos(angle) * drift,
+          80.0f + (float)(rand() % 40), // Strong upward rise
+          std::sin(angle) * drift);
+      p.scale = i == 0 ? 40.0f : (20.0f + (float)(rand() % 15));
+      p.maxLifetime = 0.5f;
+      p.color = glm::vec3(0.3f, 0.5f, 1.0f); // Blue energy
       p.alpha = 1.0f;
       break;
     }
@@ -509,6 +668,44 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       p.color = glm::vec3(0.4f, 0.6f, 1.0f); // Blue
       p.alpha = 1.0f;
       p.frame = -1.0f; // Full texture UV
+      break;
+    }
+    case ParticleType::INFERNO_SPARK: {
+      // Main 5.2: BITMAP_SPARK SubType 2 — 2x scale, 3x velocity, long-lived
+      // Lifetime 24-39 ticks (0.96-1.56s), gravity 6-21, bounce on terrain
+      float speed = 240.0f + (float)(rand() % 360); // 3x base velocity
+      p.velocity =
+          glm::vec3(std::cos(angle) * speed, 300.0f + (float)(rand() % 300),
+                    std::sin(angle) * speed);
+      p.scale = 25.0f + (float)(rand() % 20); // 2x HIT_SPARK scale (25-45)
+      p.maxLifetime = 0.96f + (float)(rand() % 60) / 100.0f; // 0.96-1.56s
+      p.color = glm::vec3(1.0f, 0.95f, 0.85f); // Warm white (blends into fire)
+      p.alpha = 1.0f;
+      break;
+    }
+    case ParticleType::INFERNO_EXPLOSION: {
+      // Main 5.2: BITMAP_EXPLOTION — 4x4 animated explosion sprite sheet
+      // Lifetime 20 ticks (0.8s), large scale, stationary
+      p.velocity = glm::vec3(0.0f, 30.0f, 0.0f); // Slight upward drift
+      p.scale = 120.0f + (float)(rand() % 60); // Large explosion flash (120-180)
+      p.maxLifetime = 0.8f; // 20 ticks
+      p.color = glm::vec3(1.0f, 0.9f, 0.7f); // Warm white-orange
+      p.alpha = 1.0f;
+      p.frame = 100.0f; // Start at cell 0 of 4x4 grid (100+ encoding in shader)
+      break;
+    }
+    case ParticleType::INFERNO_FIRE: {
+      // Dedicated Inferno fire — uses inferno.OZJ texture, rising column
+      float offX = (float)(rand() % 60) - 30.0f;
+      float offZ = (float)(rand() % 60) - 30.0f;
+      float upSpeed = (float)(rand() % 100 + 150) * 1.0f; // 150-250 up
+      p.velocity = glm::vec3(offX * 0.4f, upSpeed, offZ * 0.4f);
+      p.scale = 40.0f + (float)(rand() % 30); // 40-70 (large fire)
+      p.maxLifetime = 0.6f + (float)(rand() % 30) / 100.0f; // 0.6-0.9s
+      p.color = glm::vec3(1.0f, 0.8f, 0.5f); // Warm fire tint
+      p.alpha = 1.0f;
+      p.frame = -1.0f; // Full texture
+      p.position += glm::vec3(offX, 0.0f, offZ);
       break;
     }
     }
@@ -562,35 +759,34 @@ void VFXManager::SpawnSkillCast(uint8_t skillId, const glm::vec3 &heroPos,
     SpawnBurst(ParticleType::SPELL_METEOR, castPos + glm::vec3(0, 100, 0), 15);
     SpawnBurst(ParticleType::FLARE, castPos, 2);
     break;
-  case 7: // Ice
-    SpawnBurst(ParticleType::SPELL_ICE, castPos, 15);
+  case 7: // Ice — Main 5.2: no billboard particles on cast, just flare
     SpawnBurst(ParticleType::FLARE, castPos, 1);
     break;
-  case 5: // Flame (AoE)
-    SpawnBurst(ParticleType::SPELL_FIRE, heroPos + glm::vec3(0, 30, 0), 25);
-    SpawnBurst(ParticleType::FLARE, castPos, 3);
-    break;
-  case 8: // Twister (AoE)
-    SpawnBurst(ParticleType::SPELL_DARK, heroPos + glm::vec3(0, 30, 0), 20);
+  case 5: // Flame — lighter caster-side glow, main fire at target
+    SpawnBurst(ParticleType::SPELL_FLAME, castPos, 8);
     SpawnBurst(ParticleType::FLARE, castPos, 2);
     break;
-  case 6: // Teleport
-    SpawnBurst(ParticleType::SPELL_TELEPORT, heroPos, 25);
-    SpawnBurst(ParticleType::FLARE, castPos, 4);
+  case 8: // Twister — Main 5.2: cast-side sparkle only
+    SpawnBurst(ParticleType::FLARE, castPos, 2);
     break;
-  case 9: // Evil Spirit (AoE)
-    SpawnBurst(ParticleType::SPELL_DARK, castPos, 25);
-    SpawnBurst(ParticleType::SPELL_ENERGY, castPos, 10);
-    SpawnBurst(ParticleType::FLARE, castPos, 3);
+  case 6: // Teleport — Main 5.2: BITMAP_SPARK+1 white rising column at feet
+    SpawnBurst(ParticleType::SPELL_TELEPORT, heroPos, 18);
+    break;
+  case 9: // Evil Spirit — beams spawned separately, just a small cast flash
+    SpawnBurst(ParticleType::SPELL_DARK, castPos, 10);
+    SpawnBurst(ParticleType::FLARE, castPos, 2);
     break;
   case 12: // Aqua Beam
     SpawnBurst(ParticleType::SPELL_WATER, castPos, 20);
     SpawnBurst(ParticleType::FLARE, castPos, 3);
     break;
-  case 10: // Hellfire (large AoE)
-    SpawnBurst(ParticleType::SPELL_FIRE, heroPos + glm::vec3(0, 20, 0), 30);
-    SpawnBurst(ParticleType::SPELL_METEOR, heroPos + glm::vec3(0, 80, 0), 15);
-    SpawnBurst(ParticleType::FLARE, castPos, 5);
+  case 10: // Hellfire — cast flash (main VFX from SpawnHellfire)
+    SpawnBurst(ParticleType::SPELL_FIRE, castPos, 15);
+    SpawnBurst(ParticleType::FLARE, castPos, 3);
+    break;
+  case 13: // Cometfall — no cast-side particles (Main 5.2: none for Blast)
+    break;
+  case 14: // Inferno — no cast-side particles (Main 5.2: ring IS the effect)
     break;
   }
 }
@@ -629,9 +825,8 @@ void VFXManager::SpawnSkillImpact(uint8_t skillId,
     SpawnBurst(ParticleType::SPELL_ENERGY, hitPos, 15);
     SpawnBurst(ParticleType::FLARE, hitPos, 2);
     break;
-  case 4: // Fire Ball
-    SpawnBurst(ParticleType::SPELL_FIRE, hitPos, 18);
-    SpawnBurst(ParticleType::FLARE, hitPos, 3);
+  case 4: // Fire Ball — Main 5.2: impact handled by projectile collision
+    SpawnBurst(ParticleType::FLARE, hitPos, 2);
     break;
   case 1: // Poison — cloud already spawned at cast time, skip duplicate
     break;
@@ -642,22 +837,23 @@ void VFXManager::SpawnSkillImpact(uint8_t skillId,
   case 2: // Meteorite — falling fireball (impact particles handled by bolt system)
     SpawnMeteorStrike(hitPos);
     break;
-  case 7: // Ice
-    SpawnBurst(ParticleType::SPELL_ICE, hitPos, 20);
+  case 7: // Ice — Main 5.2: MODEL_ICE crystal + 5x MODEL_ICE_SMALL debris
+    SpawnIceStrike(hitPos);
+    SpawnBurst(ParticleType::FLARE, hitPos, 1);
+    break;
+  case 5: // Flame — persistent ground fire at target
+    SpawnFlameGround(monsterPos);
+    break;
+  case 8: // Twister — Main 5.2: tornado spawned at caster, just hit sparks here
+    SpawnBurst(ParticleType::HIT_SPARK, hitPos, 8);
+    SpawnBurst(ParticleType::SPELL_DARK, hitPos, 5);
+    break;
+  case 9: // Evil Spirit — hit sparks + dark energy
+    SpawnBurst(ParticleType::SPELL_DARK, hitPos, 10);
     SpawnBurst(ParticleType::FLARE, hitPos, 2);
     break;
-  case 5: // Flame (AoE)
-    SpawnBurst(ParticleType::SPELL_FIRE, hitPos, 25);
-    SpawnBurst(ParticleType::FLARE, hitPos, 4);
-    break;
-  case 8: // Twister (AoE)
-    SpawnBurst(ParticleType::SPELL_DARK, hitPos, 20);
-    SpawnBurst(ParticleType::HIT_SPARK, hitPos, 10);
-    break;
-  case 9: // Evil Spirit (AoE)
-    SpawnBurst(ParticleType::SPELL_DARK, hitPos, 25);
-    SpawnBurst(ParticleType::SPELL_ENERGY, hitPos, 12);
-    SpawnBurst(ParticleType::FLARE, hitPos, 4);
+  case 6: // Teleport — Main 5.2: white rising sparks at destination (feet level)
+    SpawnBurst(ParticleType::SPELL_TELEPORT, monsterPos, 18);
     break;
   case 12: // Aqua Beam
     SpawnBurst(ParticleType::SPELL_WATER, hitPos, 25);
@@ -674,25 +870,27 @@ void VFXManager::SpawnSkillImpact(uint8_t skillId,
 void VFXManager::SpawnSpellProjectile(uint8_t skillId, const glm::vec3 &start,
                                       const glm::vec3 &target) {
   SpellProjectile proj;
-  // Main 5.2: Position[2] += 100 — start 100 units above caster
-  proj.position = start + glm::vec3(0, 100, 0);
-  proj.target = target + glm::vec3(0, 50, 0); // Aim at chest height
+  // Same chest-height offset for both start and target → level flight on flat terrain
+  static constexpr float CHEST_HEIGHT = 80.0f;
+  proj.position = start + glm::vec3(0, CHEST_HEIGHT, 0);
+  proj.target = target + glm::vec3(0, CHEST_HEIGHT, 0);
 
+  // Purely horizontal direction — Main 5.2: Direction {0,-50,0} rotated by yaw only
   glm::vec3 delta = proj.target - proj.position;
+  delta.y = 0.0f; // Horizontal flight
   float dist = glm::length(delta);
   if (dist < 1.0f)
     return;
 
   proj.direction = delta / dist;
-  // Main 5.2: Direction=(0,-60,0) = 60 units/frame × 25fps = 1500 units/sec
-  proj.speed = 1500.0f;
+  // Main 5.2: Direction=(0,-50,0) = 50 units/frame × 25fps = 1250 units/sec
+  proj.speed = 1250.0f;
   proj.rotation = 0.0f;
-  proj.rotSpeed = 500.0f * 3.14159f / 180.0f; // 20 deg/tick visual spin
-  // Heading angles for 3D model orientation
-  proj.yaw = std::atan2(proj.direction.x, proj.direction.z);
-  proj.pitch = std::asin(glm::clamp(-proj.direction.y, -1.0f, 1.0f));
-  // Main 5.2: LifeTime=20 ticks (0.8s), distance-based for variable range
-  proj.maxLifetime = std::min(1.2f, dist / proj.speed + 0.05f);
+  proj.rotSpeed = 0.0f;
+  proj.yaw = std::atan2(delta.x, delta.z);
+  proj.pitch = 0.0f;
+  // Main 5.2: Fire Ball LifeTime=60 ticks (2.4s), distance-based for variable range
+  proj.maxLifetime = std::min(2.4f, dist / proj.speed + 0.1f);
   proj.lifetime = proj.maxLifetime;
   proj.trailTimer = 0.0f;
   proj.alpha = 1.0f;
@@ -715,12 +913,9 @@ void VFXManager::SpawnSpellProjectile(uint8_t skillId, const glm::vec3 &start,
     float rB = 0.10f + (float)(rand() % 10) * 0.01f;  // 0.10-0.19
     proj.color = glm::vec3(1.0f, rG, rB);
     proj.trailType = ParticleType::SPELL_FIRE;
-    // Random spin speed & direction (Main 5.2: 20 deg/tick base)
-    float spinSign = (rand() % 2 == 0) ? 1.0f : -1.0f;
-    float spinVar = 400.0f + (float)(rand() % 200); // 400-600 deg/sec
-    proj.rotSpeed = spinSign * spinVar * 3.14159f / 180.0f;
-    // Random initial rotation so they start at different angles
-    proj.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+    // Main 5.2: Fire Ball faces target, no visual spin
+    proj.rotSpeed = 0.0f;
+    proj.rotation = 0.0f;
     break;
   }
   default:
@@ -764,21 +959,17 @@ void VFXManager::SpawnLightningStrike(const glm::vec3 &targetPos) {
   for (int i = 0; i < 2; ++i) {
     LightningBolt bolt;
     // Main 5.2: Position += (rand%100+200, rand%100-50, rand%500+300)
-    // Map: Main5.2 X→our X, Main5.2 Y→our Z, Main5.2 Z→our Y
-    float scatterX = (float)(rand() % 100 + 200); // +200 to +300 (asymmetric)
+    // Asymmetric X offset so bolts come from the side matching diagonal fall
+    float scatterX = (float)(rand() % 100 + 200); // +200 to +300
     float scatterZ = (float)(rand() % 100 - 50);  // -50 to +50
     float height = (float)(rand() % 500 + 300);   // +300 to +800 above target
     bolt.position = targetPos + glm::vec3(scatterX, height, scatterZ);
 
-    // Main 5.2: Direction=(0,0,-50-rand%50), Angle=(0,20,0)
-    // MoveParticle rotates Direction by 20° Y before applying.
-    // In our Y-up coords: downward Z in Main5.2 = downward Y for us.
-    // Rotate (0, -V, 0) by 20° around Y-axis:
-    //   X' = -V * sin(20°), Y' = -V * cos(20°), Z' = 0
+    // Main 5.2: Direction=(0,0,-50-rand%50), Angle=(0,20,0) — 20deg diagonal fall
     float fallSpeed = (50.0f + (float)(rand() % 50)) * 25.0f; // 1250-2500 units/sec
-    float angle20 = glm::radians(20.0f);
-    bolt.velocity = glm::vec3(-fallSpeed * std::sin(angle20), // Slight horizontal drift
-                              -fallSpeed * std::cos(angle20), // Main downward component
+    float angleRad = glm::radians(20.0f);
+    bolt.velocity = glm::vec3(-fallSpeed * std::sin(angleRad),
+                              -fallSpeed * std::cos(angleRad),
                               0.0f);
 
     // Main 5.2: Scale = (rand()%8+10)*0.1f = 1.0-1.8
@@ -830,9 +1021,9 @@ void VFXManager::updateLightningBolts(float dt) {
     }
     b.lifetime -= dt;
     b.position += b.velocity * dt;
-    b.rotation += 5.0f * dt; // Lightning spins
+    // Main 5.2: Angle fixed at (0,20,0), no rotation during flight
 
-    // BITMAP_JOINT_ENERGY trail — update at tick rate (~25fps)
+    // BITMAP_JOINT_ENERGY trail + scatter particles — update at tick rate (~25fps)
     b.trailTimer += dt;
     if (b.trailTimer >= 0.04f) {
       b.trailTimer -= 0.04f;
@@ -850,21 +1041,21 @@ void VFXManager::updateLightningBolts(float dt) {
                          : 0.0f;
     if (b.position.y <= groundH || b.lifetime <= 0.0f) {
       b.position.y = groundH;
-      b.velocity = glm::vec3(0.0f); // Main 5.2: Vector(0,0,0,Direction)
+      b.velocity = glm::vec3(0.0f);
       b.impacted = true;
       b.impactTimer = 0.0f;
+      // Main 5.2: particles at Position[2]+80 (80 above ground)
       glm::vec3 impactAbove = b.position + glm::vec3(0, 80, 0);
-      // Main 5.2 impact: 6x stone debris + BITMAP_SHINY+4 + BITMAP_EXPLOTION
-      SpawnBurst(ParticleType::SPELL_LIGHTNING, impactAbove, 20);
-      SpawnBurst(ParticleType::FLARE, impactAbove, 5);
-      SpawnBurst(ParticleType::HIT_SPARK, b.position + glm::vec3(0, 30, 0), 8);
+      // Subtle impact: small debris + single flash
+      SpawnBurst(ParticleType::HIT_SPARK, b.position + glm::vec3(0, 20, 0), 3);
+      SpawnBurst(ParticleType::FLARE, impactAbove, 1);
     }
   }
-  // Remove expired bolts (impacted + aftermath faded)
+  // Remove expired bolts (impacted + trail fully faded)
   m_lightningBolts.erase(
       std::remove_if(m_lightningBolts.begin(), m_lightningBolts.end(),
                      [](const LightningBolt &b) {
-                       return b.impacted && b.impactTimer > 0.5f;
+                       return b.impacted && b.impactTimer > 0.8f;
                      }),
       m_lightningBolts.end());
 }
@@ -971,6 +1162,209 @@ void VFXManager::renderMeteorBolts(const glm::mat4 &view,
   glEnable(GL_CULL_FACE);
 }
 
+// ============================================================
+// Ice Spell (AT_SKILL_ICE, skill 7) — Main 5.2 MODEL_ICE + MODEL_ICE_SMALL
+// ============================================================
+
+void VFXManager::SpawnIceStrike(const glm::vec3 &targetPos) {
+  // Main 5.2: 1x MODEL_ICE crystal at target
+  // LifeTime=50 but ~25 ticks visible (5 growth + 20 fade)
+  IceCrystal crystal;
+  crystal.position = targetPos;
+  crystal.scale = 0.8f;       // Main 5.2: Scale = 0.8
+  crystal.alpha = 1.0f;
+  crystal.maxLifetime = 1.0f; // ~25 ticks at 25fps (5 growth + 20 fade)
+  crystal.lifetime = crystal.maxLifetime;
+  crystal.fadePhase = false;
+  crystal.smokeTimer = 0.0f;
+  m_iceCrystals.push_back(crystal);
+
+  // Main 5.2 spawns 5x MODEL_ICE_SMALL debris shards here
+  // Disabled for now — focus on the ice crystal block only
+}
+
+void VFXManager::updateIceCrystals(float dt) {
+  for (auto &c : m_iceCrystals) {
+    c.lifetime -= dt;
+
+    // Main 5.2: AnimationFrame >= 5 triggers fade phase (5 ticks = 0.2s)
+    float elapsed = c.maxLifetime - c.lifetime;
+    if (!c.fadePhase && elapsed >= 0.2f) {
+      c.fadePhase = true;
+    }
+
+    if (c.fadePhase) {
+      // Main 5.2: Alpha -= 0.05 per tick (25fps) → 1.25 per second
+      c.alpha -= 1.25f * dt;
+
+      // Subtle smoke wisps during crystal fade (~3 per second)
+      c.smokeTimer += dt;
+      if (c.smokeTimer >= 0.33f) {
+        c.smokeTimer -= 0.33f;
+        glm::vec3 smokePos = c.position + glm::vec3(
+            (float)(rand() % 40 - 20), (float)(rand() % 60 + 20),
+            (float)(rand() % 40 - 20));
+        SpawnBurst(ParticleType::SMOKE, smokePos, 1);
+      }
+    }
+  }
+  m_iceCrystals.erase(
+      std::remove_if(m_iceCrystals.begin(), m_iceCrystals.end(),
+                     [](const IceCrystal &c) { return c.alpha <= 0.0f; }),
+      m_iceCrystals.end());
+}
+
+void VFXManager::updateIceShards(float dt) {
+  for (auto &s : m_iceShards) {
+    s.lifetime -= dt;
+
+    // Main 5.2: Position += Direction, Direction *= 0.9 (decay per tick)
+    s.position += s.velocity * dt;
+    s.velocity *= (1.0f - 2.5f * dt); // ~0.9 per tick at 25fps
+
+    // Main 5.2: Gravity -= 3 per tick, Position[2] += Gravity
+    // Gravity stored as per-second units (initial 200-575 upward)
+    s.gravity -= 75.0f * dt; // 3/tick * 25tps = 75/sec
+    s.position.y += s.gravity * dt;
+
+    // Main 5.2: Tumble rotation (Angle[0] -= Scale * 32 in air)
+    s.angleX -= s.scale * 800.0f * dt; // 32 * 25fps
+
+    // Terrain collision — bounce
+    float groundH = m_getTerrainHeight
+                         ? m_getTerrainHeight(s.position.x, s.position.z)
+                         : 0.0f;
+    if (s.position.y < groundH) {
+      s.position.y = groundH;
+      // Main 5.2: Gravity = -Gravity * 0.5 (bounce at 50% restitution)
+      s.gravity = -s.gravity * 0.5f;
+      // Main 5.2: LifeTime -= 4
+      s.lifetime -= 4.0f / 25.0f; // 4 ticks = 0.16s
+      // Main 5.2: Angle[0] -= Scale * 128 (faster tumble on bounce)
+      s.angleX -= s.scale * 128.0f;
+    }
+
+    // Main 5.2: ~10% chance per tick to spawn BITMAP_SMOKE (white)
+    s.smokeTimer += dt;
+    if (s.smokeTimer >= 0.4f) { // ~every 10 ticks
+      s.smokeTimer -= 0.4f;
+      SpawnBurst(ParticleType::SMOKE, s.position, 1);
+    }
+  }
+  m_iceShards.erase(
+      std::remove_if(m_iceShards.begin(), m_iceShards.end(),
+                     [](const IceShard &s) { return s.lifetime <= 0.0f; }),
+      m_iceShards.end());
+}
+
+void VFXManager::renderIceCrystals(const glm::mat4 &view,
+                                    const glm::mat4 &projection) {
+  if (m_iceCrystals.empty() || m_iceMeshes.empty() || !m_modelShader)
+    return;
+
+  glm::mat4 invView = glm::inverse(view);
+
+  glEnable(GL_BLEND);
+  glDisable(GL_CULL_FACE);
+
+  m_modelShader->use();
+  m_modelShader->setMat4("view", view);
+  m_modelShader->setMat4("projection", projection);
+  m_modelShader->setFloat("luminosity", 1.0f);
+  m_modelShader->setFloat("blendMeshLight", 1.0f);
+  m_modelShader->setInt("numPointLights", 0);
+  m_modelShader->setBool("useFog", false);
+  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
+  m_modelShader->setFloat("outlineOffset", 0.0f);
+  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
+  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
+  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
+
+  // Main 5.2: BlendMesh=0 — mesh 0 renders additive
+  glBlendFunc(GL_ONE, GL_ONE);
+  glDepthMask(GL_FALSE);
+
+  for (const auto &c : m_iceCrystals) {
+    m_modelShader->setFloat("objectAlpha", c.alpha);
+
+    // Standard BMD orientation
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), c.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::scale(model, glm::vec3(c.scale));
+    m_modelShader->setMat4("model", model);
+
+    for (const auto &mb : m_iceMeshes) {
+      if (mb.indexCount == 0 || mb.hidden)
+        continue;
+      glBindTexture(GL_TEXTURE_2D, mb.texture);
+      glBindVertexArray(mb.vao);
+      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    }
+  }
+
+  glDepthMask(GL_TRUE);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glBindVertexArray(0);
+  glEnable(GL_CULL_FACE);
+}
+
+void VFXManager::renderIceShards(const glm::mat4 &view,
+                                  const glm::mat4 &projection) {
+  if (m_iceShards.empty() || m_iceSmallMeshes.empty() || !m_modelShader)
+    return;
+
+  glm::mat4 invView = glm::inverse(view);
+
+  glEnable(GL_BLEND);
+  glDisable(GL_CULL_FACE);
+
+  m_modelShader->use();
+  m_modelShader->setMat4("view", view);
+  m_modelShader->setMat4("projection", projection);
+  m_modelShader->setFloat("luminosity", 1.0f);
+  m_modelShader->setFloat("blendMeshLight", 1.0f);
+  m_modelShader->setInt("numPointLights", 0);
+  m_modelShader->setBool("useFog", false);
+  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
+  m_modelShader->setFloat("outlineOffset", 0.0f);
+  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
+  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
+  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
+
+  // Solid ice debris — normal alpha blending so they look like ice pieces, not glow
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDepthMask(GL_TRUE);
+
+  for (const auto &s : m_iceShards) {
+    float alpha = std::min(1.0f, s.lifetime * 2.0f); // Fade near end
+    m_modelShader->setFloat("objectAlpha", alpha);
+
+    // Position + tumble rotation
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), s.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, s.angleX, glm::vec3(1, 0, 0)); // Tumble
+    model = glm::scale(model, glm::vec3(s.scale));
+    m_modelShader->setMat4("model", model);
+
+    for (const auto &mb : m_iceSmallMeshes) {
+      if (mb.indexCount == 0 || mb.hidden)
+        continue;
+      glBindTexture(GL_TEXTURE_2D, mb.texture);
+      glBindVertexArray(mb.vao);
+      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    }
+  }
+
+  glDepthMask(GL_TRUE);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glBindVertexArray(0);
+  glEnable(GL_CULL_FACE);
+}
+
 void VFXManager::updateRibbon(Ribbon &r, float dt) {
   // Steer head toward target (Main 5.2: MoveHumming with max turn = 50 deg)
   glm::vec3 toTarget = r.targetPos - r.headPos;
@@ -1040,61 +1434,70 @@ void VFXManager::updateSpellProjectiles(float dt) {
     auto &p = m_spellProjectiles[i];
     p.lifetime -= dt;
 
-    // Impact when close to target (XZ distance)
+    // Main 5.2: CheckTargetRange — impact when within 100 units XZ of target
     glm::vec3 toTarget = p.target - p.position;
     float distXZ = std::sqrt(toTarget.x * toTarget.x + toTarget.z * toTarget.z);
-    if (p.lifetime <= 0.0f || distXZ <= 30.0f) {
-      // Impact VFX at TARGET position (monster), not projectile position
-      glm::vec3 impactPos = p.target;
-      // Impact energy burst — orbs expanding outward
-      for (int j = 0; j < 10; j++) {
-        Particle spark;
-        spark.type = ParticleType::SPELL_ENERGY_ORB;
-        spark.position = impactPos;
-        float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
-        float speed = 60.0f + (float)(rand() % 150);
-        spark.velocity =
-            glm::vec3(std::cos(angle) * speed, 60.0f + (float)(rand() % 120),
-                      std::sin(angle) * speed);
-        spark.scale = 35.0f + (float)(rand() % 30);
-        spark.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
-        spark.frame = -1.0f;
-        spark.lifetime = 0.35f + (float)(rand() % 15) * 0.01f;
-        spark.maxLifetime = spark.lifetime;
-        spark.color = p.color;
-        spark.alpha = 1.0f;
-        m_particles.push_back(spark);
+    if (p.lifetime <= 0.0f || distXZ <= 100.0f) {
+      glm::vec3 impactPos = p.position; // Explode at fireball's actual position
+
+      if (p.skillId == 4) {
+        // Fire Ball — Main 5.2: 2× MODEL_STONE debris on impact
+        // Substitute with sparks + fire burst (no stone model)
+        SpawnBurst(ParticleType::HIT_SPARK, impactPos, 8);
+        SpawnBurst(ParticleType::SPELL_FIRE, impactPos, 6);
+        SpawnBurst(ParticleType::FLARE, impactPos, 2);
+      } else {
+        // Energy Ball — rich energy orb explosion
+        for (int j = 0; j < 10; j++) {
+          Particle spark;
+          spark.type = ParticleType::SPELL_ENERGY_ORB;
+          spark.position = impactPos;
+          float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
+          float speed = 60.0f + (float)(rand() % 150);
+          spark.velocity =
+              glm::vec3(std::cos(angle) * speed, 60.0f + (float)(rand() % 120),
+                        std::sin(angle) * speed);
+          spark.scale = 35.0f + (float)(rand() % 30);
+          spark.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+          spark.frame = -1.0f;
+          spark.lifetime = 0.35f + (float)(rand() % 15) * 0.01f;
+          spark.maxLifetime = spark.lifetime;
+          spark.color = p.color;
+          spark.alpha = 1.0f;
+          m_particles.push_back(spark);
+        }
+        // Bright impact flash
+        {
+          Particle flash;
+          flash.type = ParticleType::FLARE;
+          flash.position = impactPos;
+          flash.velocity = glm::vec3(0);
+          flash.scale = 150.0f;
+          flash.rotation = 0.0f;
+          flash.frame = -1.0f;
+          flash.lifetime = 0.3f;
+          flash.maxLifetime = 0.3f;
+          flash.color = p.color;
+          flash.alpha = 1.0f;
+          m_particles.push_back(flash);
+        }
+        // Secondary smaller flash
+        {
+          Particle flash2;
+          flash2.type = ParticleType::FLARE;
+          flash2.position = impactPos;
+          flash2.velocity = glm::vec3(0);
+          flash2.scale = 100.0f;
+          flash2.rotation = 0.785f;
+          flash2.frame = -1.0f;
+          flash2.lifetime = 0.2f;
+          flash2.maxLifetime = 0.2f;
+          flash2.color = glm::vec3(0.6f, 0.8f, 1.0f);
+          flash2.alpha = 1.0f;
+          m_particles.push_back(flash2);
+        }
       }
-      // Bright impact flash — large FLARE at monster position
-      {
-        Particle flash;
-        flash.type = ParticleType::FLARE;
-        flash.position = impactPos;
-        flash.velocity = glm::vec3(0);
-        flash.scale = 150.0f;
-        flash.rotation = 0.0f;
-        flash.frame = -1.0f;
-        flash.lifetime = 0.3f;
-        flash.maxLifetime = 0.3f;
-        flash.color = p.color;
-        flash.alpha = 1.0f;
-        m_particles.push_back(flash);
-      }
-      // Secondary smaller flash with offset rotation
-      {
-        Particle flash2;
-        flash2.type = ParticleType::FLARE;
-        flash2.position = impactPos;
-        flash2.velocity = glm::vec3(0);
-        flash2.scale = 100.0f;
-        flash2.rotation = 0.785f; // 45 degrees
-        flash2.frame = -1.0f;
-        flash2.lifetime = 0.2f;
-        flash2.maxLifetime = 0.2f;
-        flash2.color = glm::vec3(0.6f, 0.8f, 1.0f); // Brighter blue-white
-        flash2.alpha = 1.0f;
-        m_particles.push_back(flash2);
-      }
+
       m_spellProjectiles[i] = m_spellProjectiles.back();
       m_spellProjectiles.pop_back();
       continue;
@@ -1129,58 +1532,26 @@ void VFXManager::updateSpellProjectiles(float dt) {
       p.trailTimer -= 0.04f;
 
       if (has3DModel) {
-        // --- 3D model trail: particles stay behind, forming a fire tail ---
-
-        // 1) Fire glow left behind — fades in place
+        // Main 5.2: 1× BITMAP_FIRE SubType 5 per tick at fireball position
+        // LifeTime=24 ticks (0.96s), Scale=Scale*(rand%64+128)*0.01
+        // Velocity=(0,-(rand%16+32)*0.1,0), Frame=(23-LifeTime)/6 (4-frame sprite)
         {
-          Particle glow;
-          glow.type = ParticleType::SPELL_FIRE;
-          glow.position = p.position;
-          glow.velocity = trailDrift + glm::vec3(0, 30.0f + (float)(rand() % 30), 0);
-          glow.scale = 40.0f + (float)(rand() % 20);
-          glow.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
-          glow.frame = -1.0f;
-          glow.lifetime = 0.25f + (float)(rand() % 10) * 0.01f;
-          glow.maxLifetime = glow.lifetime;
-          glow.color = p.color;
-          glow.alpha = 0.9f;
-          m_particles.push_back(glow);
-        }
-
-        // 2) Bright core ember left behind
-        {
-          Particle ember;
-          ember.type = ParticleType::FLARE;
-          ember.position = p.position;
-          ember.velocity = trailDrift * 0.5f;
-          ember.scale = 50.0f + (float)(rand() % 20);
-          ember.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
-          ember.frame = -1.0f;
-          ember.lifetime = 0.18f;
-          ember.maxLifetime = 0.18f;
-          ember.color = p.color;
-          ember.alpha = 0.7f;
-          m_particles.push_back(ember);
-        }
-
-        // 3) Trailing spark — drifts outward from path
-        {
-          Particle sp;
-          sp.type = ParticleType::HIT_SPARK;
-          sp.position = p.position;
-          float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
-          float speed = 20.0f + (float)(rand() % 40);
-          sp.velocity = glm::vec3(std::cos(angle) * speed,
-                                  30.0f + (float)(rand() % 40),
-                                  std::sin(angle) * speed);
-          sp.scale = 15.0f + (float)(rand() % 10);
-          sp.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
-          sp.frame = -1.0f;
-          sp.lifetime = 0.30f;
-          sp.maxLifetime = sp.lifetime;
-          sp.color = p.color;
-          sp.alpha = 1.0f;
-          m_particles.push_back(sp);
+          Particle trail;
+          trail.type = ParticleType::SPELL_FIRE;
+          trail.position = p.position;
+          trail.velocity = glm::vec3(0.0f, 0.0f, 0.0f);
+          // Main 5.2: Scale = parentScale * (rand%64+128)*0.01 = 1.28-1.92x
+          float scaleMul = (float)(rand() % 64 + 128) * 0.01f;
+          trail.scale = 30.0f * scaleMul;
+          trail.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+          trail.frame = 0.0f; // Main 5.2: 4-frame sprite animation
+          trail.lifetime = 0.96f;  // Main 5.2: 24 ticks
+          trail.maxLifetime = 0.96f;
+          // Main 5.2: Light = (L*1.0, L*0.1, 0.0) — red tint
+          float lum = 0.8f + (float)(rand() % 3) * 0.1f;
+          trail.color = glm::vec3(lum, lum * 0.1f, 0.0f);
+          trail.alpha = 1.0f;
+          m_particles.push_back(trail);
         }
       } else {
         // --- Billboard-only trail (Energy Ball, fallback) ---
@@ -1343,11 +1714,31 @@ void VFXManager::Update(float deltaTime) {
       p.scale *= (1.0f - 1.2f * deltaTime);
       break;
     case ParticleType::SPELL_FIRE:
-      // Strong updraft, shrink over time
-      p.velocity.y += 30.0f * deltaTime;
+      // Main 5.2 BITMAP_FIRE SubType 5:
+      // Gravity += 0.004/tick → Position[Z] += Gravity*10 (accelerating rise)
+      // Scale -= 0.04/tick, Rotation += 5°/tick, Alpha = LifeTime/maxLifeTime
+      // Frame = (maxTicks - ticksLeft) / 6 (4-frame sprite animation)
+      p.velocity.y += 25.0f * deltaTime; // ~0.004*10*25fps² ≈ 25 u/s²
       p.velocity.x *= (1.0f - 1.0f * deltaTime);
       p.velocity.z *= (1.0f - 1.0f * deltaTime);
-      p.scale *= (1.0f - 1.0f * deltaTime);
+      p.scale -= 25.0f * deltaTime; // Main 5.2: -0.04/tick × 25fps = -1.0/s
+      if (p.scale < 1.0f) p.scale = 1.0f;
+      p.rotation += 2.18f * deltaTime; // 5°/tick × 25fps = 125°/s ≈ 2.18 rad/s
+      p.alpha = p.lifetime / p.maxLifetime; // Linear fade
+      // 4-frame sprite animation: frame advances as lifetime decreases
+      if (p.maxLifetime > 0.0f) {
+        float progress = 1.0f - (p.lifetime / p.maxLifetime); // 0→1
+        p.frame = std::min(3.0f, std::floor(progress * 4.0f));
+      }
+      break;
+    case ParticleType::SPELL_FLAME:
+      // Main 5.2 BITMAP_FLAME: rises with velocity, light fades over lifetime
+      // Rotation randomized per frame (Main 5.2: o->Rotation = rand()%360)
+      p.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+      // Light fades: subtract 0.05 per tick → ~1.25/sec
+      p.color -= glm::vec3(1.25f * deltaTime);
+      p.color = glm::max(p.color, glm::vec3(0.0f));
+      p.alpha = p.lifetime / p.maxLifetime;
       break;
     case ParticleType::SPELL_ICE:
       // Moderate gravity, fast shrink (sharp shards)
@@ -1389,17 +1780,76 @@ void VFXManager::Update(float deltaTime) {
       p.scale *= (1.0f - 1.5f * deltaTime);
       break;
     case ParticleType::SPELL_TELEPORT:
-      // Fast rise, expand outward then fade
-      p.velocity.y += 40.0f * deltaTime;
+      // Rising blue sparks — drift slows
       p.velocity.x *= (1.0f - 2.0f * deltaTime);
       p.velocity.z *= (1.0f - 2.0f * deltaTime);
-      p.scale *= (1.0f - 1.5f * deltaTime);
       break;
     case ParticleType::SPELL_ENERGY_ORB:
       // Main 5.2: BITMAP_ENERGY — Gravity=20 is rotation speed
       // No velocity decay: core orb particles must track projectile at full speed
       p.rotation += 500.0f * deltaTime;
       break;
+    case ParticleType::INFERNO_SPARK: {
+      // Main 5.2: BITMAP_SPARK SubType 2 — arcing sparks with terrain bounce
+      p.velocity.y -= 500.0f * deltaTime;
+      p.velocity.x *= (1.0f - 0.5f * deltaTime);
+      p.velocity.z *= (1.0f - 0.5f * deltaTime);
+      p.scale *= (1.0f - 0.6f * deltaTime);
+      // Smooth color gradient: white-hot → orange → red as spark cools
+      float sparkLife = p.lifetime / p.maxLifetime; // 1→0
+      p.color = glm::vec3(1.0f,
+                           0.4f + 0.6f * sparkLife,   // G: 1.0→0.4
+                           0.1f + 0.9f * sparkLife * sparkLife); // B: 1.0→0.1 (fast)
+      // Smooth quadratic fade-out (gentle disappearance)
+      p.alpha = sparkLife * sparkLife;
+      // Bounce on terrain
+      if (m_getTerrainHeight) {
+        float groundY = m_getTerrainHeight(p.position.x, p.position.z);
+        if (p.position.y < groundY + 2.0f && p.velocity.y < 0.0f) {
+          p.velocity.y *= -0.4f;
+          p.position.y = groundY + 2.0f;
+        }
+      }
+      break;
+    }
+    case ParticleType::INFERNO_EXPLOSION: {
+      // 4x4 animated explosion sprite sheet (100+ encoding)
+      // Quick flash-in (first 10%), smooth ease-out fade
+      float expLife = p.lifetime / p.maxLifetime; // 1→0
+      if (p.maxLifetime > 0.0f) {
+        float progress = 1.0f - expLife;
+        p.frame = 100.0f + std::min(15.0f, std::floor(progress * 16.0f));
+      }
+      p.scale *= (1.0f - 0.3f * deltaTime);
+      p.velocity.y += 15.0f * deltaTime;
+      // Smooth alpha: flash in over first 10%, then ease-out
+      if (expLife > 0.9f)
+        p.alpha = (1.0f - expLife) * 10.0f; // 0→1 in first 10%
+      else
+        p.alpha = expLife * expLife * 1.23f; // Quadratic ease-out (1.23 to hit 1.0 at 90%)
+      // Color shifts from white-yellow to deep orange as explosion cools
+      p.color = glm::vec3(1.0f,
+                           0.6f + 0.4f * expLife,  // G: 1.0→0.6
+                           0.2f + 0.5f * expLife);  // B: 0.7→0.2
+      break;
+    }
+    case ParticleType::INFERNO_FIRE: {
+      // inferno.OZJ — dedicated fire texture, accelerating rise
+      float fireLife = p.lifetime / p.maxLifetime; // 1→0
+      p.velocity.y += 60.0f * deltaTime;
+      p.velocity.x *= (1.0f - 1.5f * deltaTime);
+      p.velocity.z *= (1.0f - 1.5f * deltaTime);
+      p.scale -= 30.0f * deltaTime;
+      if (p.scale < 2.0f) p.scale = 2.0f;
+      p.rotation += 3.0f * deltaTime;
+      // Smooth ease-out alpha with gentle tail
+      p.alpha = fireLife * (2.0f - fireLife); // Parabolic: peaks at 1.0, smooth fade
+      // Color: bright yellow-white → deep orange-red
+      p.color = glm::vec3(1.0f,
+                           0.5f + 0.4f * fireLife,  // G: 0.9→0.5
+                           0.15f + 0.45f * fireLife * fireLife); // B: 0.6→0.15 (fast)
+      break;
+    }
     }
 
     p.alpha = p.lifetime / p.maxLifetime;
@@ -1412,6 +1862,9 @@ void VFXManager::Update(float deltaTime) {
   updateLightningBolts(deltaTime);
   // Update meteor fireballs
   updateMeteorBolts(deltaTime);
+  // Update ice crystals and shards
+  updateIceCrystals(deltaTime);
+  updateIceShards(deltaTime);
 
   // Update ribbons
   for (int i = (int)m_ribbons.size() - 1; i >= 0; --i) {
@@ -1471,6 +1924,20 @@ void VFXManager::Update(float deltaTime) {
 
   // Update poison clouds
   updatePoisonClouds(deltaTime);
+
+  // Update flame ground effects
+  updateFlameGrounds(deltaTime);
+
+  // Update twister storm tornados
+  updateTwisterStorms(deltaTime);
+
+  // Update Evil Spirit beams
+  updateSpiritBeams(deltaTime);
+  updateLaserFlashes(deltaTime);
+  updateHellfireBeams(deltaTime);
+  updateHellfireEffects(deltaTime);
+  updateInfernoEffects(deltaTime);
+  updateAquaBeams(deltaTime);
 }
 
 void VFXManager::renderRibbons(const glm::mat4 &view,
@@ -1487,6 +1954,7 @@ void VFXManager::renderRibbons(const glm::mat4 &view,
   glBindTexture(GL_TEXTURE_2D, m_lightningTexture);
   m_lineShader->setInt("ribbonTex", 0);
   m_lineShader->setBool("useTexture", m_lightningTexture != 0);
+  m_lineShader->setBool("beamMode", false);
 
   // Additive blend (Main 5.2: glBlendFunc(GL_ONE, GL_ONE))
   glBlendFunc(GL_ONE, GL_ONE);
@@ -1672,6 +2140,8 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
             m_energyTexture ? m_energyTexture : m_flareTexture);
   drawBatch(ParticleType::SPELL_FIRE,
             m_fireTexture ? m_fireTexture : m_flareTexture);
+  drawBatch(ParticleType::SPELL_FLAME,
+            m_flameTexture ? m_flameTexture : m_fireTexture);
   drawBatch(ParticleType::SPELL_ICE,
             m_sparkTexture ? m_sparkTexture : m_flareTexture);
   drawBatch(ParticleType::SPELL_LIGHTNING,
@@ -1683,11 +2153,19 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
   drawBatch(ParticleType::SPELL_WATER,
             m_energyTexture ? m_energyTexture : m_flareTexture);
   drawBatch(ParticleType::SPELL_TELEPORT,
-            m_flareTexture ? m_flareTexture : m_hitTexture);
+            m_energyTexture ? m_energyTexture : m_flareTexture);
 
   // Main 5.2: BITMAP_ENERGY orb (Thunder01.jpg) — full-texture rotating glow
   drawBatch(ParticleType::SPELL_ENERGY_ORB,
             m_thunderTexture ? m_thunderTexture : m_energyTexture);
+
+  // Inferno-specific particles (additive)
+  drawBatch(ParticleType::INFERNO_SPARK,
+            m_sparkTexture ? m_sparkTexture : m_hitTexture);
+  drawBatch(ParticleType::INFERNO_EXPLOSION,
+            m_explosionTexture ? m_explosionTexture : m_flareTexture);
+  drawBatch(ParticleType::INFERNO_FIRE,
+            m_infernoFireTexture ? m_infernoFireTexture : m_fireTexture);
 
   // Spell projectile 3D models (Fire Ball: Fire01.bmd) + billboard fallback
   // Trail particles already rendered via drawBatch above.
@@ -1695,7 +2173,10 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
   renderSpellProjectiles(view, projection);
   renderLightningBolts(view, projection);
   renderMeteorBolts(view, projection);
+  renderIceCrystals(view, projection);
+  renderIceShards(view, projection);
   renderPoisonClouds(view, projection);
+  renderTwisterStorms(view, projection);
   glDepthMask(GL_FALSE); // Back to billboard mode for remaining effects
 
   // Render level-up orbiting flares (Main 5.2: 15 BITMAP_FLARE joints)
@@ -1703,6 +2184,25 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
 
   // Render ground circles (Main 5.2: BITMAP_MAGIC level-up decal)
   renderGroundCircles(view, projection);
+
+  // Main 5.2: BITMAP_FLAME terrain decal — flat fire sprite on ground
+  renderFlameGrounds(view, projection);
+
+  // Render Evil Spirit beams (subtractive blend — before ribbons)
+  renderSpiritBeams(view, projection);
+  renderLaserFlashes(view, projection);
+
+  // Render Hellfire beams (additive blend — warm fire ribbons)
+  renderHellfireBeams(view, projection);
+
+  // Render Hellfire ground circle decals
+  renderHellfireEffects(view, projection);
+
+  // Render Inferno ring model
+  renderInfernoEffects(view, projection);
+
+  // Render Aqua Beam laser segments (additive billboard sprites)
+  renderAquaBeams(view, projection);
 
   // Render textured ribbons (Lich Joint Thunder)
   renderRibbons(view, projection);
@@ -2095,22 +2595,22 @@ void VFXManager::renderFireModel(const SpellProjectile &p,
   glm::mat4 invView = glm::inverse(view);
   m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
 
-  // Model matrix: translate → BMD base rotation → heading → spin → scale
+  // Model matrix: translate → BMD base rotation → heading → pitch to horizontal → scale
+  // Fire01.bmd is elongated along local Z (-62 to +103). After BMD base rotation,
+  // local Z maps to world Y (vertical). Pitch 90° to lay it along the flight path.
   glm::mat4 model = glm::translate(glm::mat4(1.0f), p.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
   model = glm::rotate(model, p.yaw, glm::vec3(0, 0, 1));      // Heading
-  model = glm::rotate(model, p.rotation, glm::vec3(0, 1, 0));  // Spin
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0)); // Tilt: flame tail trails behind flight path
   model = glm::scale(model, glm::vec3(p.scale));
 
   m_modelShader->setMat4("model", model);
   m_modelShader->setVec3("terrainLight", glm::vec3(1.0f)); // Self-lit
   m_modelShader->setFloat("objectAlpha", p.alpha);
 
-  // Main 5.2: BlendMesh=1 — mesh 0 = solid fire, mesh 1 = additive glow
-  // BlendMeshLight flicker: (rand()%4+4)*0.1f = 0.4-0.7 (Main 5.2 ZzzEffect.cpp)
-  float glowIntensity = (float)(rand() % 4 + 4) * 0.1f;
-
+  // Main 5.2: BlendMesh=1, SubType 1 (Fire Ball): BlendMeshLight=0 (no glow)
+  // Only SubType 0 (meteorite) has the 0.4-0.7 flicker
   glEnable(GL_BLEND);
   glDisable(GL_CULL_FACE);
   for (const auto &mb : m_fireMeshes) {
@@ -2118,20 +2618,14 @@ void VFXManager::renderFireModel(const SpellProjectile &p,
       continue;
     bool isGlow = (mb.bmdTextureId == 1);
     if (isGlow) {
-      m_modelShader->setFloat("blendMeshLight", glowIntensity);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
-      glDepthMask(GL_FALSE);
-    } else {
-      m_modelShader->setFloat("blendMeshLight", 1.0f);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      // Main 5.2 SubType 1: BlendMeshLight = 0 — skip glow mesh entirely
+      continue;
     }
+    m_modelShader->setFloat("blendMeshLight", 1.0f);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBindTexture(GL_TEXTURE_2D, mb.texture);
     glBindVertexArray(mb.vao);
     glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-    if (isGlow) {
-      glDepthMask(GL_TRUE);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    }
   }
   glBindVertexArray(0);
   glEnable(GL_CULL_FACE);
@@ -2181,11 +2675,12 @@ void VFXManager::renderLightningBolts(const glm::mat4 &view,
       float alpha = std::min(1.0f, b.lifetime / b.maxLifetime * 4.0f);
       m_modelShader->setFloat("objectAlpha", alpha);
 
-      // Lightning: standard BMD orientation + spin
+      m_modelShader->setFloat("blendMeshLight", 1.0f);
+
       glm::mat4 model = glm::translate(glm::mat4(1.0f), b.position);
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-      model = glm::rotate(model, b.rotation, glm::vec3(0, 1, 0));
+      model = glm::rotate(model, glm::radians(20.0f), glm::vec3(0, 1, 0)); // Fall angle tilt
       model = glm::scale(model, glm::vec3(b.scale));
       m_modelShader->setMat4("model", model);
 
@@ -2202,16 +2697,17 @@ void VFXManager::renderLightningBolts(const glm::mat4 &view,
 
   // Pass 2: Energy trail (Main 5.2: BITMAP_JOINT_ENERGY SubType 5)
   // 10-segment trailing ribbon following the bolt, two cross-plane faces
-  if (m_lightningTexture && m_ribbonVAO && m_lineShader) {
+  if (m_energyTexture && m_ribbonVAO && m_lineShader) {
     m_lineShader->use();
     m_lineShader->setMat4("view", view);
     m_lineShader->setMat4("projection", projection);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_lightningTexture);
+    glBindTexture(GL_TEXTURE_2D, m_energyTexture);
     m_lineShader->setInt("ribbonTex", 0);
     m_lineShader->setBool("useTexture", true);
+    m_lineShader->setBool("beamMode", false);
 
-    glBlendFunc(GL_ONE, GL_ONE); // Additive
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Main 5.2: RENDER_TYPE_ALPHA_BLEND
     glDepthMask(GL_FALSE);
 
     for (const auto &b : m_lightningBolts) {
@@ -2219,15 +2715,15 @@ void VFXManager::renderLightningBolts(const glm::mat4 &view,
         continue;
 
       float alpha = b.impacted
-                        ? std::max(0.0f, 1.0f - b.impactTimer * 4.0f)
+                        ? std::max(0.0f, 1.0f - b.impactTimer * 7.0f)
                         : std::min(1.0f, b.lifetime / b.maxLifetime * 4.0f);
       if (alpha <= 0.01f)
         continue;
 
       float flicker = 0.7f + 0.3f * ((float)(rand() % 100) / 100.0f);
-      glm::vec3 trailColor = glm::vec3(0.4f, 0.6f, 1.0f);
-      m_lineShader->setVec3("ribbonColor", trailColor * flicker);
-      m_lineShader->setFloat("ribbonAlpha", alpha);
+      glm::vec3 trailColor = glm::vec3(0.3f, 0.5f, 1.0f);
+      m_lineShader->setVec3("color", trailColor * flicker);
+      m_lineShader->setFloat("alpha", alpha);
 
       // Build quad strips between consecutive trail positions
       // Two perpendicular faces (cross-plane) per segment, Scale=100 (±50)
@@ -2321,7 +2817,7 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
     switch (p.skillId) {
     case 4: // Fire Ball — Main 5.2: (L*1.0, L*0.1, 0.0)
       lightColor = glm::vec3(L * 1.0f, L * 0.1f, 0.0f);
-      lightRange = 300.0f; // 3 grid cells
+      lightRange = 200.0f; // Main 5.2: AddTerrainLight range 2 grid cells
       break;
     case 1: // Poison — green (no projectile, but keep for completeness)
       lightColor = glm::vec3(L * 0.3f, L * 1.0f, L * 0.6f);
@@ -2362,6 +2858,12 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
   // Main 5.2: AddTerrainLight(pos, (L*0.2, L*0.4, L*1.0), 2, PrimaryTerrainLight)
   for (const auto &b : m_lightningBolts) {
     float L = 0.7f + (float)(rand() % 4) * 0.1f;
+    // Main 5.2: Luminosity dims in last 5 ticks (0.2s) before impact
+    if (!b.impacted && b.lifetime < 0.2f) {
+      float ticksLeft = b.lifetime / 0.04f;
+      L -= (5.0f - ticksLeft) * 0.2f;
+      if (L < 0.0f) L = 0.0f;
+    }
     if (b.impacted)
       L *= std::max(0.0f, 1.0f - b.impactTimer * 4.0f); // Quick fade after impact
     if (L <= 0.01f)
@@ -2387,6 +2889,97 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
     ranges.push_back(200.0f); // range=2 grid cells
     objectTypes.push_back(-1);
   }
+
+  // Twister storm terrain darkening — Main 5.2: Luminosity = (rand()%4+7)*0.1f
+  // Fades when LifeTime < 5: Luminosity -= (5-LifeTime)*0.2f
+  // AddTerrainLight(-L*0.4, -L*0.3, -L*0.2), range=5
+  for (const auto &ts : m_twisterStorms) {
+    float ticksRemaining = ts.lifetime / 0.04f;
+    float L = (float)(rand() % 4 + 7) * 0.1f; // Main 5.2: 0.7-1.0 randomized
+    if (ticksRemaining < 5.0f) {
+      L -= (5.0f - ticksRemaining) * 0.2f;
+      if (L < 0.0f) L = 0.0f;
+    }
+    if (L <= 0.01f)
+      continue;
+    positions.push_back(ts.position);
+    colors.push_back(glm::vec3(-L * 0.4f, -L * 0.3f, -L * 0.2f));
+    ranges.push_back(500.0f); // range=5 grid cells
+    objectTypes.push_back(-1);
+  }
+
+  // Flame ground fire lights — Main 5.2: AddTerrainLight(pos, (1.0, 0.4, 0.0), 3)
+  for (const auto &fg : m_flameGrounds) {
+    float ticksRemaining = fg.lifetime / 0.04f;
+    float L = std::min(1.0f, ticksRemaining * 0.05f);
+    L *= (0.7f + (float)(rand() % 4) * 0.1f); // Luminosity flicker
+    if (L <= 0.01f)
+      continue;
+    positions.push_back(fg.position);
+    colors.push_back(glm::vec3(L * 1.0f, L * 0.4f, L * 0.0f));
+    ranges.push_back(300.0f);
+    objectTypes.push_back(-1);
+  }
+
+  // Hellfire ground circle — warm orange terrain light
+  // Main 5.2: AddTerrainLight(pos, (Lum, Lum*0.8, Lum*0.2), 4)
+  for (const auto &hf : m_hellfireEffects) {
+    float ticksRemaining = hf.lifetime / 0.04f;
+    float L = std::min(1.0f, ticksRemaining * 0.1f);
+    L *= (0.7f + (float)(rand() % 4) * 0.1f);
+    if (L <= 0.01f)
+      continue;
+    positions.push_back(hf.position);
+    colors.push_back(glm::vec3(L, L * 0.8f, L * 0.2f));
+    ranges.push_back(300.0f);
+    objectTypes.push_back(-1);
+  }
+
+  // Inferno ring — smooth warm fire glow at ring points + darkening at center
+  for (const auto &inf : m_infernoEffects) {
+    float t = inf.lifetime / inf.maxLifetime; // 1→0
+    // Smooth quadratic falloff — no random flicker for clean blending
+    float L = t * t;
+    if (L <= 0.005f)
+      continue;
+    // Center: Main 5.2 negative light (darkening), smooth fade
+    positions.push_back(inf.position);
+    colors.push_back(glm::vec3(-L * 0.4f, -L * 0.4f, -L * 0.4f));
+    ranges.push_back(500.0f);
+    objectTypes.push_back(-1);
+    // Ring points: warm orange glow, smooth fade with color shift
+    // Fire color cools from bright orange to deep red as effect fades
+    for (int rp = 0; rp < 8; ++rp) {
+      positions.push_back(inf.ringPoints[rp]);
+      colors.push_back(glm::vec3(L * 0.8f,
+                                  L * (0.25f + 0.2f * t),  // G fades faster
+                                  L * 0.08f));              // Minimal blue
+      ranges.push_back(200.0f);
+      objectTypes.push_back(-1);
+    }
+  }
+
+  // Evil Spirit beams — terrain darkening (negative light)
+  // Main 5.2: Luminosity = -(rand()%4+4)*0.01, AddTerrainLight(pos, (L,L,L), range=4)
+  for (const auto &b : m_spiritBeams) {
+    float L = -(float)(rand() % 4 + 4) * 0.01f; // -0.04 to -0.08
+    positions.push_back(b.position);
+    colors.push_back(glm::vec3(L));
+    ranges.push_back(400.0f); // range=4 grid cells
+    objectTypes.push_back(-1);
+  }
+
+  // Aqua Beam — blue terrain light at all 20 segments (Main 5.2: AddTerrainLight, no fade)
+  for (const auto &ab : m_aquaBeams) {
+    for (int j = 0; j < AquaBeam::NUM_SEGMENTS; ++j) {
+      glm::vec3 pos = ab.startPosition + ab.direction * (float)j;
+      positions.push_back(pos);
+      colors.push_back(ab.light); // Full brightness, no fade
+      ranges.push_back(200.0f);   // range=2 grid cells
+      objectTypes.push_back(-1);
+    }
+  }
+
 }
 
 // Main 5.2: MODEL_POISON — spawn green cloud at target position
@@ -2404,6 +2997,112 @@ void VFXManager::SpawnPoisonCloud(const glm::vec3 &targetPos) {
 
   // Main 5.2: 10x BITMAP_SMOKE at target, Light=(0.4, 0.6, 1.0), SubType=1
   SpawnBurst(ParticleType::SMOKE, targetPos + glm::vec3(0, 30, 0), 10);
+}
+
+// Main 5.2: BITMAP_FLAME SubType 0 — persistent ground fire at target position
+// ZzzEffect.cpp: CreateEffect(BITMAP_FLAME, Position=target, LifeTime=40)
+// Every tick: 6 BITMAP_FLAME particles + AddTerrainLight(1.0, 0.4, 0.0, range=3)
+void VFXManager::SpawnFlameGround(const glm::vec3 &targetPos) {
+  FlameGround fg;
+  fg.position = targetPos;
+  fg.lifetime = 1.6f;     // 40 ticks @ 25fps
+  fg.maxLifetime = 1.6f;
+  fg.tickTimer = 0.0f;
+  m_flameGrounds.push_back(fg);
+
+  // Initial burst — Main 5.2: first tick spawns particles immediately
+  SpawnBurst(ParticleType::SPELL_FLAME, targetPos + glm::vec3(0, 10, 0), 6);
+  SpawnBurst(ParticleType::FLARE, targetPos + glm::vec3(0, 30, 0), 2);
+}
+
+void VFXManager::updateFlameGrounds(float dt) {
+  for (int i = (int)m_flameGrounds.size() - 1; i >= 0; --i) {
+    auto &fg = m_flameGrounds[i];
+    fg.lifetime -= dt;
+    if (fg.lifetime <= 0.0f) {
+      m_flameGrounds[i] = m_flameGrounds.back();
+      m_flameGrounds.pop_back();
+      continue;
+    }
+
+    // Tick-based spawning: 6 BITMAP_FLAME particles per tick (25fps = 0.04s)
+    fg.tickTimer += dt;
+    while (fg.tickTimer >= 0.04f) {
+      fg.tickTimer -= 0.04f;
+
+      // Main 5.2: 6 BITMAP_FLAME particles with random +-25 offset
+      SpawnBurst(ParticleType::SPELL_FLAME,
+                 fg.position + glm::vec3(0, 10, 0), 6);
+
+      // Main 5.2: 1-in-8 chance per tick — stone debris (substitute with sparks)
+      if (rand() % 8 == 0) {
+        SpawnBurst(ParticleType::HIT_SPARK,
+                   fg.position + glm::vec3(0, 20, 0), 3);
+      }
+    }
+  }
+}
+
+// Main 5.2: RenderTerrainAlphaBitmap(BITMAP_FLAME, pos, 2.f, 2.f, Light, rotation)
+// Flat terrain-projected fire sprite, flickering luminosity 0.8-1.2
+void VFXManager::renderFlameGrounds(const glm::mat4 &view,
+                                     const glm::mat4 &projection) {
+  if (m_flameGrounds.empty() || !m_lineShader || m_flameTexture == 0)
+    return;
+
+  m_lineShader->use();
+  m_lineShader->setMat4("view", view);
+  m_lineShader->setMat4("projection", projection);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, m_flameTexture);
+  m_lineShader->setInt("ribbonTex", 0);
+  m_lineShader->setBool("useTexture", true);
+
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive blend
+  glDisable(GL_CULL_FACE);
+
+  glBindVertexArray(m_ribbonVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
+
+  for (const auto &fg : m_flameGrounds) {
+    // Main 5.2: Luminosity = (rand()%4+8)*0.1f = 0.8-1.2 flicker per frame
+    float lum = (float)(rand() % 4 + 8) * 0.1f;
+    // Fade alpha in last 25% of lifetime
+    float alpha = 1.0f;
+    if (fg.lifetime < fg.maxLifetime * 0.25f)
+      alpha = fg.lifetime / (fg.maxLifetime * 0.25f);
+
+    m_lineShader->setVec3("color", glm::vec3(lum, lum, lum));
+    m_lineShader->setFloat("alpha", alpha);
+
+    // Main 5.2: 2.0 x 2.0 terrain scale ≈ 200x200 world units
+    float halfSize = 100.0f;
+
+    // No rotation for SubType 0 (stationary ground fire)
+    glm::vec3 right(halfSize, 0.0f, 0.0f);
+    glm::vec3 fwd(0.0f, 0.0f, halfSize);
+    glm::vec3 pos = fg.position + glm::vec3(0.0f, 2.0f, 0.0f); // Slight Y offset
+
+    RibbonVertex verts[6];
+    verts[0].pos = pos - right - fwd;
+    verts[0].uv = glm::vec2(0.0f, 0.0f);
+    verts[1].pos = pos + right - fwd;
+    verts[1].uv = glm::vec2(1.0f, 0.0f);
+    verts[2].pos = pos + right + fwd;
+    verts[2].uv = glm::vec2(1.0f, 1.0f);
+    verts[3].pos = pos - right - fwd;
+    verts[3].uv = glm::vec2(0.0f, 0.0f);
+    verts[4].pos = pos + right + fwd;
+    verts[4].uv = glm::vec2(1.0f, 1.0f);
+    verts[5].pos = pos - right + fwd;
+    verts[5].uv = glm::vec2(0.0f, 1.0f);
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+  }
+
+  glEnable(GL_CULL_FACE);
 }
 
 void VFXManager::updatePoisonClouds(float dt) {
@@ -2486,6 +3185,960 @@ void VFXManager::renderPoisonClouds(const glm::mat4 &view,
   glEnable(GL_CULL_FACE);
 }
 
+// Main 5.2: MODEL_STORM SubType 0 — Twister tornado at target
+// ZzzEffect.cpp: CreateEffect(MODEL_STORM, Position=caster, LifeTime=59)
+// Tornado travels from caster toward target direction
+void VFXManager::SpawnTwisterStorm(const glm::vec3 &casterPos,
+                                    const glm::vec3 &targetDir) {
+  TwisterStorm ts;
+  ts.position = casterPos;
+  // Snap to terrain height if callback available
+  if (m_getTerrainHeight) {
+    ts.position.y = m_getTerrainHeight(casterPos.x, casterPos.z);
+  }
+  // Horizontal direction toward target
+  glm::vec3 dir = targetDir;
+  dir.y = 0.0f;
+  float len = glm::length(dir);
+  ts.direction = (len > 0.01f) ? dir / len : glm::vec3(0, 0, 1);
+  ts.speed = 200.0f; // Travel speed (world units/sec)
+  ts.lifetime = 2.36f;     // 59 ticks @ 25fps
+  ts.maxLifetime = 2.36f;
+  ts.tickTimer = 0.0f;
+  ts.rotation = 0.0f;
+  m_twisterStorms.push_back(ts);
+}
+
+void VFXManager::updateTwisterStorms(float dt) {
+  for (int i = (int)m_twisterStorms.size() - 1; i >= 0; --i) {
+    auto &ts = m_twisterStorms[i];
+    ts.lifetime -= dt;
+    if (ts.lifetime <= 0.0f) {
+      m_twisterStorms[i] = m_twisterStorms.back();
+      m_twisterStorms.pop_back();
+      continue;
+    }
+
+    // Move tornado in click direction
+    ts.position += ts.direction * ts.speed * dt;
+    // Snap to terrain height each tick
+    if (m_getTerrainHeight) {
+      ts.position.y = m_getTerrainHeight(ts.position.x, ts.position.z);
+    }
+    // Main 5.2 SubType 0: no explicit model spin — UV scroll creates visual rotation
+
+    // Tick-based particle effects (25fps = 0.04s/tick)
+    ts.tickTimer += dt;
+    while (ts.tickTimer >= 0.04f) {
+      ts.tickTimer -= 0.04f;
+
+      // Main 5.2: BITMAP_SMOKE SubType 3 — LifeTime=10, Scale=(rand()%32+80)*0.01
+      // Velocity *= 0.4 per tick (rapid decel), Scale += 0.1/tick (fast expand)
+      // Color: Luminosity=LifeTime/8 → (L*0.8, L*0.8, L) slight blue tint
+      Particle smoke;
+      smoke.type = ParticleType::SMOKE;
+      smoke.position = ts.position;
+      smoke.velocity = glm::vec3(
+          (float)(rand() % 10 - 5) * 0.5f,
+          (float)(rand() % 9 + 40) * 2.0f,  // Higher initial → decels fast with our update
+          (float)(rand() % 10 - 5) * 0.5f);
+      smoke.scale = (float)(rand() % 32 + 80) * 0.15f; // Start smaller, grows with update
+      smoke.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+      smoke.frame = -1.0f;
+      smoke.lifetime = 0.4f;      // Main 5.2: 10 ticks @ 25fps
+      smoke.maxLifetime = 0.4f;
+      smoke.color = glm::vec3(0.45f, 0.45f, 0.55f); // Slight blue tint (L*0.8, L*0.8, L)
+      smoke.alpha = 0.6f;
+      m_particles.push_back(smoke);
+
+      // Main 5.2: TWO independent 50% checks for left/right lightning
+      // Left bolt: Position[0]-200, Position[2]+700 → Position (tornado center)
+      if (rand() % 2 == 0) {
+        glm::vec3 skyPos = ts.position + glm::vec3(-200.0f, 700.0f, 0.0f);
+        SpawnRibbon(skyPos, ts.position, 10.0f,
+                    glm::vec3(0.6f, 0.7f, 1.0f), 0.2f);
+        SpawnBurst(ParticleType::SPELL_LIGHTNING, ts.position, 3);
+      }
+      // Right bolt: Position[0]+200, Position[2]+700 → Position
+      if (rand() % 2 == 0) {
+        glm::vec3 skyPos = ts.position + glm::vec3(200.0f, 700.0f, 0.0f);
+        SpawnRibbon(skyPos, ts.position, 10.0f,
+                    glm::vec3(0.6f, 0.7f, 1.0f), 0.2f);
+        SpawnBurst(ParticleType::SPELL_LIGHTNING, ts.position, 3);
+      }
+
+      // Main 5.2: 25% chance stone debris (MODEL_STONE1/2 SubType 2)
+      // 20-35 frame lifetime (0.8-1.4s), scale 0.24-1.04, bouncing upward
+      // Substitute with dark particles + sparks (no stone model)
+      if (rand() % 4 == 0) {
+        for (int d = 0; d < 2; ++d) {
+          Particle debris;
+          debris.type = ParticleType::SPELL_DARK;
+          debris.position = ts.position + glm::vec3(
+              (float)(rand() % 80 - 40), 5.0f, (float)(rand() % 80 - 40));
+          debris.velocity = glm::vec3(
+              (float)(rand() % 40 - 20),
+              75.0f + (float)(rand() % 50),  // Upward fling
+              (float)(rand() % 40 - 20));
+          debris.scale = 6.0f + (float)(rand() % 20); // Main 5.2: 0.24-1.04
+          debris.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+          debris.frame = -1.0f;
+          debris.lifetime = 0.8f + (float)(rand() % 15) * 0.04f; // 20-35 frames
+          debris.maxLifetime = debris.lifetime;
+          debris.color = glm::vec3(0.4f, 0.35f, 0.3f); // Earthy brown
+          debris.alpha = 0.9f;
+          m_particles.push_back(debris);
+        }
+      }
+    }
+  }
+}
+
+void VFXManager::renderTwisterStorms(const glm::mat4 &view,
+                                      const glm::mat4 &projection) {
+  if (m_twisterStorms.empty() || m_stormMeshes.empty() || !m_modelShader)
+    return;
+
+  m_modelShader->use();
+  m_modelShader->setMat4("view", view);
+  m_modelShader->setMat4("projection", projection);
+  m_modelShader->setFloat("luminosity", 1.0f);
+  m_modelShader->setInt("numPointLights", 0);
+  m_modelShader->setBool("useFog", false);
+  m_modelShader->setFloat("outlineOffset", 0.0f);
+  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
+  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  glm::mat4 invView = glm::inverse(view);
+  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
+
+  glEnable(GL_BLEND);
+  glDisable(GL_CULL_FACE);
+
+  for (const auto &ts : m_twisterStorms) {
+    // Main 5.2: BlendMeshLight = LifeTime * 0.1 (0→5.9)
+    // In fixed-function GL this was clamped to [0,1] by glColor3f.
+    // Clamp to 1.0 max so additive blend isn't overblown white.
+    float ticksRemaining = ts.lifetime / 0.04f;
+    float blendMeshLight = std::min(ticksRemaining * 0.1f, 1.0f);
+
+    // Main 5.2: BlendMeshTexCoordU = -(float)LifeTime * 0.1f (scrolls U axis)
+    float uvScrollU = -ticksRemaining * 0.1f;
+
+    // Subtle alpha: keep tornado translucent, fade out in last 20%
+    float alpha = 0.6f;
+    if (ts.lifetime < ts.maxLifetime * 0.2f)
+      alpha = 0.6f * ts.lifetime / (ts.maxLifetime * 0.2f);
+
+    // Model matrix: translate → BMD base rotation → scale
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), ts.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::scale(model, glm::vec3(1.0f));
+
+    m_modelShader->setMat4("model", model);
+    m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
+    m_modelShader->setFloat("objectAlpha", alpha);
+
+    // Tornado is fully transparent effect — disable depth write
+    glDepthMask(GL_FALSE);
+
+    // Main 5.2: BlendMesh=0 — mesh with textureId==0 renders additive
+    // BlendMeshTexCoordU only applies to the blend mesh, not other meshes
+    for (const auto &mb : m_stormMeshes) {
+      if (mb.indexCount == 0 || mb.hidden)
+        continue;
+      bool isBlend = (mb.bmdTextureId == 0);
+      if (isBlend) {
+        m_modelShader->setFloat("blendMeshLight", blendMeshLight);
+        m_modelShader->setVec2("texCoordOffset", glm::vec2(uvScrollU, 0.0f));
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+      } else {
+        m_modelShader->setFloat("blendMeshLight", 1.0f);
+        m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      }
+      glBindTexture(GL_TEXTURE_2D, mb.texture);
+      glBindVertexArray(mb.vao);
+      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    }
+
+    glDepthMask(GL_TRUE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  }
+
+  // Reset UV offset
+  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
+  glBindVertexArray(0);
+  glEnable(GL_CULL_FACE);
+}
+
+// ── Evil Spirit: 4-directional homing spirit beams ──
+// Main 5.2: Beams launch outward then curve back toward caster (MoveHumming),
+// creating a spiraling dark energy field. Wobble via random angular drift.
+
+void VFXManager::SpawnEvilSpirit(const glm::vec3 &casterPos, float facing) {
+  // Main 5.2: Position[2] += 100 (start 100 above caster)
+  glm::vec3 startPos = casterPos + glm::vec3(0, 100, 0);
+
+  // 4 directions: Angle Z = i*90 degrees (Main 5.2: absolute, NOT relative to facing)
+  // Each direction: 2 beams (scale 80 primary + scale 20 secondary) = 8 total
+  for (int d = 0; d < 4; ++d) {
+    // Main 5.2 line 4416: Vector(0, 0, i*90) — absolute cardinal directions
+    float yawDeg = (float)d * 90.0f;
+
+    for (int s = 0; s < 2; ++s) {
+      SpiritBeam beam;
+      beam.position = startPos;
+      beam.casterPos = casterPos;
+      beam.angle = glm::vec3(0.0f, 0.0f, yawDeg);       // (pitch, unused, yaw)
+      beam.direction = glm::vec3(0.0f);                   // Angular drift (wobble)
+      beam.scale = (s == 0) ? 80.0f : 20.0f;
+      beam.lifetime = 1.96f;          // 49 ticks @ 25fps
+      beam.maxLifetime = 1.96f;
+      beam.trailTimer = 0.0f;
+      beam.numTrail = 0;
+      m_spiritBeams.push_back(beam);
+    }
+  }
+}
+
+// Main 5.2 TurnAngle2: rotate current angle toward target by at most maxTurn
+// degrees. Takes shortest path around 0-360 wraparound.
+static float TurnAngle2(float current, float target, float maxTurn) {
+  // Normalize to [0, 360)
+  while (current < 0.0f) current += 360.0f;
+  while (current >= 360.0f) current -= 360.0f;
+  while (target < 0.0f) target += 360.0f;
+  while (target >= 360.0f) target -= 360.0f;
+
+  float diff = target - current;
+  if (diff > 180.0f) diff -= 360.0f;
+  if (diff < -180.0f) diff += 360.0f;
+
+  if (fabsf(diff) <= maxTurn) return target;
+  return current + (diff > 0.0f ? maxTurn : -maxTurn);
+}
+
+// Main 5.2 MoveHumming: ONLY updates Angle toward target. Does NOT move position.
+// Yaw (angle.z) steers toward target in XZ plane.
+// Pitch (angle.x) steers toward target height.
+// Turn = max degrees per call (per tick).
+static void MoveHumming(const glm::vec3 &pos, glm::vec3 &angle,
+                        const glm::vec3 &target, float turn) {
+  // Yaw: angle from pos to target in XZ plane (our Y-up convention)
+  float dx = target.x - pos.x;
+  float dz = target.z - pos.z;
+  float targetYaw = atan2f(dx, -dz) * (180.0f / 3.14159f);
+  if (targetYaw < 0.0f) targetYaw += 360.0f;
+  angle.z = TurnAngle2(angle.z, targetYaw, turn);
+
+  // Pitch: vertical angle toward target
+  float horizDist = sqrtf(dx * dx + dz * dz);
+  float dy = target.y - pos.y;
+  float targetPitch = atan2f(dy, std::max(horizDist, 1.0f)) * (180.0f / 3.14159f);
+  if (targetPitch < 0.0f) targetPitch += 360.0f;
+  angle.x = TurnAngle2(angle.x, targetPitch, turn);
+}
+
+void VFXManager::updateSpiritBeams(float dt) {
+  for (int i = (int)m_spiritBeams.size() - 1; i >= 0; --i) {
+    auto &b = m_spiritBeams[i];
+    b.lifetime -= dt;
+    if (b.lifetime <= 0.0f) {
+      m_spiritBeams[i] = m_spiritBeams.back();
+      m_spiritBeams.pop_back();
+      continue;
+    }
+
+    // Main 5.2: All logic is per-tick (25fps = 0.04s per tick)
+    b.trailTimer += dt;
+    while (b.trailTimer >= 0.04f) {
+      b.trailTimer -= 0.04f;
+
+      // 1. Trail: store current position before moving (Main 5.2: Tails)
+      int n = std::min(b.numTrail, SpiritBeam::MAX_TRAIL - 1);
+      for (int t = n; t > 0; --t)
+        b.trail[t] = b.trail[t - 1];
+      b.trail[0] = b.position;
+      if (b.numTrail < SpiritBeam::MAX_TRAIL)
+        b.numTrail++;
+
+      // 2. MoveHumming: steer angle toward caster (ONLY updates angles, max 10 deg/tick)
+      // Main 5.2 line 3801: called BEFORE wobble
+      glm::vec3 target = b.casterPos + glm::vec3(0, 80, 0);
+      MoveHumming(b.position, b.angle, target, 10.0f);
+
+      // 3. Wobble: random angular drift AFTER MoveHumming (Main 5.2 lines 3812-3817)
+      // Deflects beam away from homed trajectory → creates erratic spiral
+      b.direction.x += (float)(rand() % 32 - 16) * 0.2f;
+      b.direction.z += (float)(rand() % 32 - 16) * 0.8f;
+      b.angle.x += b.direction.x;
+      b.angle.z += b.direction.z;
+      b.direction.x *= 0.6f;
+      b.direction.z *= 0.8f;
+
+      // 4. Height clamping: terrain+100 to terrain+400 (Main 5.2 lines 3820-3830)
+      // Applied BEFORE position movement so corrected angle affects this tick's move
+      // Our convention: positive pitch = sin(pitch) > 0 = beam goes UP
+      if (m_getTerrainHeight) {
+        float terrainH = m_getTerrainHeight(b.position.x, b.position.z);
+        if (b.position.y < terrainH + 100.0f) {
+          b.direction.x = 0.0f;
+          b.angle.x = 5.0f; // Positive pitch → beam goes UP
+        }
+        if (b.position.y > terrainH + 400.0f) {
+          b.direction.x = 0.0f;
+          b.angle.x = 355.0f; // Negative pitch (360-5) → beam goes DOWN
+        }
+      }
+
+      // 5. Forward movement: velocity vector rotated by current angles (per-tick)
+      float yawRad = b.angle.z * (3.14159f / 180.0f);
+      float pitchRad = b.angle.x * (3.14159f / 180.0f);
+      float cosP = cosf(pitchRad);
+      glm::vec3 forward(sinf(yawRad) * cosP, sinf(pitchRad), -cosf(yawRad) * cosP);
+      b.position += forward * 70.0f; // 70 units per tick (Main 5.2: Velocity)
+
+      // Main 5.2: Primary beams (scale 80) spawn MODEL_LASER flash at head
+      // (handled separately via LaserFlash system)
+      if (b.scale > 40.0f) {
+        float lifeTicks = b.lifetime / 0.04f;
+        float beamLight = std::min(1.0f, lifeTicks * 0.1f);
+        LaserFlash lf;
+        lf.position = b.position;
+        lf.yaw = b.angle.z;
+        lf.pitch = b.angle.x;
+        lf.light = beamLight;
+        lf.lifetime = 0.04f; // 1 tick
+        m_laserFlashes.push_back(lf);
+      }
+    }
+  }
+}
+
+void VFXManager::renderSpiritBeams(const glm::mat4 &view,
+                                    const glm::mat4 &projection) {
+  if (m_spiritBeams.empty() || !m_lineShader)
+    return;
+
+  m_lineShader->use();
+  m_lineShader->setMat4("view", view);
+  m_lineShader->setMat4("projection", projection);
+
+  // Bind JointSpirit01 texture (fallback to energy texture)
+  GLuint tex = m_jointSpiritTexture ? m_jointSpiritTexture : m_energyTexture;
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, tex);
+  m_lineShader->setInt("ribbonTex", 0);
+  m_lineShader->setBool("useTexture", tex != 0);
+
+  // Main 5.2: RENDER_TYPE_ALPHA_BLEND_MINUS — subtractive blending (dark void)
+  // result = dst * (1 - srcColor): white pixels darken, black pixels no effect
+  glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
+
+  glBindVertexArray(m_ribbonVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
+  glDisable(GL_CULL_FACE);
+
+  for (const auto &b : m_spiritBeams) {
+    if (b.numTrail < 1)
+      continue;
+
+    // Build positions array: head + trail
+    glm::vec3 positions[SpiritBeam::MAX_TRAIL + 1];
+    positions[0] = b.position;
+    int count = 1;
+    for (int t = 0; t < b.numTrail && count <= SpiritBeam::MAX_TRAIL; ++t)
+      positions[count++] = b.trail[t];
+
+    if (count < 2)
+      continue;
+
+    // Main 5.2: o->Light = LifeTime * 0.1 (luminosity decreases as beam ages)
+    // Full darkening until last ~10 ticks, then fades out
+    float lifeTicks = b.lifetime / 0.04f;
+    float light = std::min(1.0f, lifeTicks * 0.1f);
+    // Grayscale luminosity: texture color determines darkening shape,
+    // light value controls intensity. With GL_ZERO/GL_ONE_MINUS_SRC_COLOR,
+    // brighter fragment output = stronger darkening of background.
+    m_lineShader->setVec3("color", glm::vec3(light));
+    m_lineShader->setFloat("alpha", light);
+
+    std::vector<RibbonVertex> verts;
+    verts.reserve(count * 12);
+
+    for (int j = 0; j < count - 1; ++j) {
+      glm::vec3 seg = positions[j] - positions[j + 1];
+      float segLen = glm::length(seg);
+      if (segLen < 0.01f)
+        continue;
+      glm::vec3 fwd = seg / segLen;
+
+      // Perpendicular axes for quad width (Main 5.2: constant Scale*0.5 per segment)
+      glm::vec3 worldUp(0, 1, 0);
+      glm::vec3 right = glm::normalize(glm::cross(fwd, worldUp)) * b.scale;
+      glm::vec3 up = glm::normalize(glm::cross(right, fwd)) * b.scale;
+
+      float u0v = (float)j / (float)(count - 1);
+      float u1v = (float)(j + 1) / (float)(count - 1);
+
+      RibbonVertex v;
+      // Face 1: horizontal (Main 5.2: Tails[j][0..1] X-axis strip)
+      v.pos = positions[j] - right;     v.uv = glm::vec2(u0v, 0.0f); verts.push_back(v);
+      v.pos = positions[j] + right;     v.uv = glm::vec2(u0v, 1.0f); verts.push_back(v);
+      v.pos = positions[j+1] + right;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
+      v.pos = positions[j] - right;     v.uv = glm::vec2(u0v, 0.0f); verts.push_back(v);
+      v.pos = positions[j+1] + right;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
+      v.pos = positions[j+1] - right;   v.uv = glm::vec2(u1v, 0.0f); verts.push_back(v);
+
+      // Face 2: vertical cross-section (Main 5.2: Tails[j][2..3] Z-axis strip)
+      v.pos = positions[j] - up;     v.uv = glm::vec2(u0v, 0.0f); verts.push_back(v);
+      v.pos = positions[j] + up;     v.uv = glm::vec2(u0v, 1.0f); verts.push_back(v);
+      v.pos = positions[j+1] + up;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
+      v.pos = positions[j] - up;     v.uv = glm::vec2(u0v, 0.0f); verts.push_back(v);
+      v.pos = positions[j+1] + up;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
+      v.pos = positions[j+1] - up;   v.uv = glm::vec2(u1v, 0.0f); verts.push_back(v);
+    }
+
+    if (verts.empty())
+      continue;
+    if ((int)verts.size() > MAX_RIBBON_VERTS)
+      verts.resize(MAX_RIBBON_VERTS);
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(RibbonVertex),
+                    verts.data());
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)verts.size());
+  }
+
+  // Restore normal blend state
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glEnable(GL_CULL_FACE);
+}
+
+void VFXManager::updateLaserFlashes(float dt) {
+  for (int i = (int)m_laserFlashes.size() - 1; i >= 0; --i) {
+    m_laserFlashes[i].lifetime -= dt;
+    if (m_laserFlashes[i].lifetime <= 0.0f) {
+      m_laserFlashes[i] = m_laserFlashes.back();
+      m_laserFlashes.pop_back();
+    }
+  }
+}
+
+void VFXManager::renderLaserFlashes(const glm::mat4 &view,
+                                     const glm::mat4 &projection) {
+  if (m_laserFlashes.empty() || m_laserMeshes.empty() || !m_modelShader)
+    return;
+
+  m_modelShader->use();
+  m_modelShader->setMat4("view", view);
+  m_modelShader->setMat4("projection", projection);
+  m_modelShader->setFloat("luminosity", 1.0f);
+  m_modelShader->setInt("numPointLights", 0);
+  m_modelShader->setBool("useFog", false);
+  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
+  m_modelShader->setFloat("outlineOffset", 0.0f);
+  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
+  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  glm::mat4 invView = glm::inverse(view);
+  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
+  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
+
+  glEnable(GL_BLEND);
+  glDisable(GL_CULL_FACE);
+  glDepthMask(GL_FALSE);
+
+  // Main 5.2: RENDER_DARK = subtractive blending (GL_FUNC_SUBTRACT + GL_ONE, GL_ONE)
+  // result = dst - src: bright pixels darken the background
+  glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+  glBlendFunc(GL_ONE, GL_ONE);
+
+  for (const auto &lf : m_laserFlashes) {
+    // Model matrix: translate → BMD base rotation → beam heading → scale
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), lf.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    // Apply beam heading rotation
+    model = glm::rotate(model, glm::radians(lf.yaw), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(lf.pitch), glm::vec3(1, 0, 0));
+    model = glm::scale(model, glm::vec3(1.3f)); // Main 5.2: Scale = 1.3
+
+    m_modelShader->setMat4("model", model);
+    m_modelShader->setFloat("objectAlpha", 1.0f);
+    m_modelShader->setFloat("blendMeshLight", lf.light);
+
+    for (const auto &mb : m_laserMeshes) {
+      if (mb.indexCount == 0 || mb.hidden)
+        continue;
+      glBindTexture(GL_TEXTURE_2D, mb.texture);
+      glBindVertexArray(mb.vao);
+      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    }
+  }
+
+  // Restore normal blend state
+  glBlendEquation(GL_FUNC_ADD);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDepthMask(GL_TRUE);
+  glEnable(GL_CULL_FACE);
+  glBindVertexArray(0);
+}
+
+bool VFXManager::CheckSpiritBeamHit(uint16_t serverIndex,
+                                     const glm::vec3 &monPos,
+                                     float radiusSq) {
+  for (auto &b : m_spiritBeams) {
+    if (b.scale < 40.0f)
+      continue; // Only primary beams (scale 80) trigger spin
+    if (b.affectedMonsters.count(serverIndex))
+      continue;
+    float dx = monPos.x - b.position.x;
+    float dz = monPos.z - b.position.z;
+    if (dx * dx + dz * dz <= radiusSq) {
+      b.affectedMonsters.insert(serverIndex);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ── Hellfire: ground fire circle + fire sprites + debris ──
+// Main 5.2: AT_SKILL_HELL creates MODEL_CIRCLE (SubType 0) + MODEL_CIRCLE_LIGHT
+// MODEL_CIRCLE: glowing circle mesh, fading over 45 ticks
+// MODEL_CIRCLE_LIGHT: scrolling UV, screen shake, stone debris, warm terrain light
+// PLAYER_SKILL_HELL animation: 10x BITMAP_FIRE sprites from character bones per frame
+// AT_SKILL_BLAST_HELL creates MODEL_CIRCLE SubType 1 with 36 spirit beams
+
+void VFXManager::SpawnHellfire(const glm::vec3 &casterPos) {
+  // Ground circle effect at terrain height (MODEL_CIRCLE + MODEL_CIRCLE_LIGHT)
+  HellfireEffect hf;
+  hf.position = casterPos;
+  if (m_getTerrainHeight)
+    hf.position.y = m_getTerrainHeight(casterPos.x, casterPos.z);
+  hf.lifetime = 1.8f;     // 45 ticks @ 25fps
+  hf.maxLifetime = 1.8f;
+  hf.tickTimer = 0.0f;
+  hf.chargePhase = true;
+  m_hellfireEffects.push_back(hf);
+}
+
+void VFXManager::SpawnHellfireBeams(const glm::vec3 &casterPos) {
+  (void)casterPos; // Not used — Hellfire has no outward beams
+}
+
+void VFXManager::EndHellfireCharge() {
+  for (auto &hf : m_hellfireEffects)
+    hf.chargePhase = false;
+}
+
+void VFXManager::SetHeroBonePositions(
+    const std::vector<glm::vec3> &positions) {
+  m_heroBoneWorldPositions = positions;
+}
+
+void VFXManager::updateHellfireBeams(float dt) {
+  m_hellfireBeams.clear();
+  (void)dt;
+}
+
+void VFXManager::renderHellfireBeams(const glm::mat4 &view,
+                                      const glm::mat4 &projection) {
+  (void)view;
+  (void)projection;
+}
+
+void VFXManager::updateHellfireEffects(float dt) {
+  for (int i = (int)m_hellfireEffects.size() - 1; i >= 0; --i) {
+    auto &hf = m_hellfireEffects[i];
+    hf.lifetime -= dt;
+    if (hf.lifetime <= 0.0f) {
+      m_hellfireEffects[i] = m_hellfireEffects.back();
+      m_hellfireEffects.pop_back();
+      continue;
+    }
+
+    hf.tickTimer += dt;
+    while (hf.tickTimer >= 0.04f) {
+      hf.tickTimer -= 0.04f;
+      hf.tickCount++;
+
+      // Main 5.2: BlendMeshTexCoordU = -LifeTime * 0.01 (UV scroll for MODEL_CIRCLE_LIGHT)
+      float ticksLeft = hf.lifetime / 0.04f;
+      hf.uvScroll = -ticksLeft * 0.01f;
+
+      // ── 1. BITMAP_FIRE SubType 0 from character bones ──
+      // Main 5.2: 10x per frame during PLAYER_SKILL_HELL, random bones
+      // Init: LifeTime=24, Velocity=(0, -(rand%16+32)*0.1, 0), Scale=(rand%64+128)*0.01
+      // Update: Gravity+=0.004, Pos[Z]+=Gravity*10, Scale-=0.04, Frame=(23-Life)/6
+      for (int j = 0; j < 10; ++j) {
+        // Approximate bone positions: random spread around character body
+        float angle = ((float)(rand() % 360)) * 3.14159f / 180.0f;
+        float radius = (float)(rand() % 50 + 10); // ~10-60 units from center (body spread)
+        float ox = cosf(angle) * radius;
+        float oz = sinf(angle) * radius;
+        float oy = (float)(rand() % 80); // 0-80 units height (character body height)
+
+        Particle p;
+        p.type = ParticleType::SPELL_FIRE;
+        p.position = hf.position + glm::vec3(ox, oy, oz);
+        // Main 5.2: initial velocity is mostly zero, gravity causes rise
+        // Velocity = (0, -(rand%16+32)*0.1, 0) → lateral drift only
+        p.velocity = glm::vec3((float)(rand() % 10 - 5) * 0.5f,
+                               (float)(rand() % 4) * 1.0f, // Tiny initial upward
+                               (float)(rand() % 10 - 5) * 0.5f);
+        // Main 5.2: Scale = (rand%64+128)*0.01 = 1.28-1.92 → world scale ~20-30
+        p.scale = (float)(rand() % 64 + 128) * 0.16f; // 20-31 units
+        p.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+        p.frame = 0.0f; // 4-frame sprite sheet animation
+        // Main 5.2: LifeTime = 24 ticks = 0.96s
+        p.lifetime = 0.96f;
+        p.maxLifetime = 0.96f;
+        // Main 5.2: Light is character's light (white), texture provides fire color
+        p.color = glm::vec3(1.0f, 0.8f, 0.4f);
+        p.alpha = 1.0f;
+        m_particles.push_back(p);
+      }
+
+      // ── 2. Stone debris — MODEL_CIRCLE_LIGHT spawns these (25% chance per tick) ──
+      // Main 5.2: CreateEffect(MODEL_STONE1+rand()%2, Position, Angle, Light, 1)
+      // Random position within 300 units from center
+      if (rand() % 4 == 0) {
+        float angle = ((float)(rand() % 360)) * 3.14159f / 180.0f;
+        float radius = (float)(rand() % 300);
+        glm::vec3 debrisPos = hf.position +
+            glm::vec3(cosf(angle) * radius, 0.0f, sinf(angle) * radius);
+        if (m_getTerrainHeight)
+          debrisPos.y = m_getTerrainHeight(debrisPos.x, debrisPos.z);
+
+        // Approximate MODEL_STONE with dark particles (no BMD stone models loaded)
+        // Main 5.2: Gravity 3-5, HeadAngle[2]+=15, bounce 0.6x, spin
+        for (int s = 0; s < 2; ++s) {
+          Particle p;
+          p.type = ParticleType::FIRE;
+          p.position = debrisPos + glm::vec3((float)(rand()%20-10), 0, (float)(rand()%20-10));
+          float upSpeed = (float)(rand() % 64 + 64) * 2.5f;
+          p.velocity = glm::vec3((float)(rand()%30-15), upSpeed, (float)(rand()%30-15));
+          p.scale = (float)(rand() % 6 + 5); // 5-11 units
+          p.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+          p.frame = -1.0f;
+          p.lifetime = 0.8f + (float)(rand() % 16) * 0.04f; // 20-35 ticks
+          p.maxLifetime = p.lifetime;
+          p.color = glm::vec3(0.4f, 0.3f, 0.15f); // Dark brown
+          p.alpha = 0.8f;
+          m_particles.push_back(p);
+        }
+      }
+
+      // ── 3. Bone-based BITMAP_LIGHT aura (wing effect) ──
+      // Main 5.2 ZzzCharacter.cpp:5584-5614: energy particles from character bones
+      // Only during charge phase (~first 15 ticks = HELL_BEGIN+HELL_START duration)
+      if (hf.tickCount < 15 && !m_heroBoneWorldPositions.empty()) {
+        int maxBone = std::min((int)m_heroBoneWorldPositions.size(), 41);
+        for (int bi = 0; bi < maxBone; bi += 2) {
+          Particle p;
+          p.type = ParticleType::SPELL_ENERGY;
+          p.position = m_heroBoneWorldPositions[bi];
+          // Main 5.2: outward drift from body
+          float outAngle = ((float)(rand() % 360)) * 3.14159f / 180.0f;
+          float outSpeed = (float)(rand() % 16 + 32) * 2.5f; // ~80-120 units/sec
+          p.velocity = glm::vec3(cosf(outAngle) * outSpeed,
+                                  (float)(rand() % 40 + 20), // slight upward
+                                  sinf(outAngle) * outSpeed);
+          // Main 5.2: Scale = 1.3 + (m_bySkillCount * 0.08) → ~25 world units
+          p.scale = 25.0f + (float)(rand() % 6);
+          p.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+          p.frame = -1.0f;
+          p.lifetime = 0.64f; // 16 ticks
+          p.maxLifetime = 0.64f;
+          p.color = glm::vec3(0.3f, 0.3f, 1.0f); // Blue-white
+          p.alpha = 0.9f;
+          m_particles.push_back(p);
+        }
+      }
+
+      // ── 4. CreateForce spiraling energy (3 beams/tick) ──
+      // Main 5.2 ZzzEffect.cpp:215-229: 3 joints from random angles inward
+      // Only during charge phase (~first 15 ticks)
+      if (hf.tickCount < 15) {
+        for (int f = 0; f < 3; ++f) {
+          float yaw = ((float)(rand() % 360)) * 3.14159f / 180.0f;
+          float pitch = ((float)(rand() % 60 + 15)) * 3.14159f / 180.0f;
+          float radius = 300.0f;
+          float ox = cosf(yaw) * cosf(pitch) * radius;
+          float oy = sinf(pitch) * radius;
+          float oz = sinf(yaw) * cosf(pitch) * radius;
+
+          Particle p;
+          p.type = ParticleType::SPELL_ENERGY;
+          p.position = hf.position + glm::vec3(ox, oy + 120.0f, oz);
+          // Velocity toward center (inward spiral)
+          glm::vec3 toCenter = hf.position + glm::vec3(0, 120, 0) - p.position;
+          float len = glm::length(toCenter);
+          if (len > 1.0f)
+            p.velocity = (toCenter / len) * 200.0f;
+          else
+            p.velocity = glm::vec3(0.0f);
+          p.scale = 20.0f;
+          p.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+          p.frame = -1.0f;
+          p.lifetime = 0.6f;
+          p.maxLifetime = 0.6f;
+          p.color = glm::vec3(0.4f, 0.4f, 1.0f); // Blue-white
+          p.alpha = 0.7f;
+          m_particles.push_back(p);
+        }
+      }
+    }
+  }
+}
+
+void VFXManager::renderHellfireEffects(const glm::mat4 &view,
+                                        const glm::mat4 &projection) {
+  if (m_hellfireEffects.empty() || !m_modelShader)
+    return;
+
+  bool hasCircle = !m_circleMeshes.empty();
+  bool hasCircleLight = !m_circleLightMeshes.empty();
+  if (!hasCircle && !hasCircleLight)
+    return;
+
+  // Use model shader for 3D BMD mesh rendering (same as poison, storm, etc.)
+  m_modelShader->use();
+  m_modelShader->setMat4("view", view);
+  m_modelShader->setMat4("projection", projection);
+  m_modelShader->setFloat("luminosity", 1.0f);
+  m_modelShader->setInt("numPointLights", 0);
+  m_modelShader->setBool("useFog", false);
+  m_modelShader->setFloat("outlineOffset", 0.0f);
+  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
+  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  glm::mat4 invView = glm::inverse(view);
+  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
+  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
+
+  glEnable(GL_BLEND);
+  glDisable(GL_CULL_FACE);
+  glDepthMask(GL_FALSE); // No depth write for additive spell effects
+
+  for (const auto &hf : m_hellfireEffects) {
+    float ticksLeft = hf.lifetime / 0.04f;
+
+    // ── Layer 1: MODEL_CIRCLE (Circle01.bmd) ──
+    // Main 5.2: BlendMeshLight = LifeTime * 0.1 → 4.5 at start, fades to 0
+    // Circle01.bmd UVs use range 0-2 with mirrored repeat for star pattern
+    if (hasCircle) {
+      float blendLight = ticksLeft * 0.1f; // Uncapped — drives additive brightness
+
+      glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position);
+      model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+      model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+
+      m_modelShader->setMat4("model", model);
+      m_modelShader->setFloat("objectAlpha", 1.0f);
+      m_modelShader->setFloat("blendMeshLight", blendLight);
+      m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
+
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+      for (const auto &mb : m_circleMeshes) {
+        if (mb.indexCount == 0 || mb.hidden)
+          continue;
+        glBindTexture(GL_TEXTURE_2D, mb.texture);
+        // Circle01 UVs are 0-2 range — mirrored repeat creates full star from 1/4 texture
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+        glBindVertexArray(mb.vao);
+        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      }
+    }
+
+    // ── Layer 2: MODEL_CIRCLE_LIGHT (Circle02.bmd) ──
+    // Main 5.2: Parabolic fade — ticks>=30: (40-ticks)*0.1; ticks<30: ticks*0.1
+    // UV scrolling: BlendMeshTexCoordU = -LifeTime * 0.01 (smoky light effect)
+    if (hasCircleLight) {
+      float lightTicks = std::min(ticksLeft, 40.0f);
+      float blendLight2;
+      if (lightTicks >= 30.0f)
+        blendLight2 = (40.0f - lightTicks) * 0.1f; // Fade in: 0→1.0
+      else
+        blendLight2 = lightTicks * 0.1f; // Fade out: 3.0→0
+      if (blendLight2 > 0.01f) {
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position);
+        model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+        model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+
+        m_modelShader->setMat4("model", model);
+        m_modelShader->setFloat("objectAlpha", 1.0f);
+        m_modelShader->setFloat("blendMeshLight", blendLight2);
+        m_modelShader->setVec2("texCoordOffset", glm::vec2(hf.uvScroll, 0.0f));
+
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+        for (const auto &mb : m_circleLightMeshes) {
+          if (mb.indexCount == 0 || mb.hidden)
+            continue;
+          glBindTexture(GL_TEXTURE_2D, mb.texture);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+          glBindVertexArray(mb.vao);
+          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        }
+      }
+    }
+  }
+
+  glDepthMask(GL_TRUE);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glEnable(GL_CULL_FACE);
+  glBindVertexArray(0);
+}
+
+// Main 5.2: CreateInferno — 8 fire explosions in ring, radius 220, 45° apart
+void VFXManager::SpawnInferno(const glm::vec3 &casterPos) {
+  InfernoEffect inf;
+  inf.position = casterPos;
+  if (m_getTerrainHeight)
+    inf.position.y = m_getTerrainHeight(casterPos.x, casterPos.z);
+  inf.lifetime = 1.2f;
+  inf.maxLifetime = 1.2f;
+  inf.tickTimer = 0.0f;
+
+  // Main 5.2 CreateInferno: 8 explosion points in ring, radius 220, 45° apart
+  for (int j = 0; j < 8; ++j) {
+    float angle = (float)j * 45.0f * 3.14159f / 180.0f;
+    float rx = cosf(angle) * 220.0f;
+    float rz = sinf(angle) * 220.0f;
+    glm::vec3 ringPos = inf.position + glm::vec3(rx, 0, rz);
+    if (m_getTerrainHeight)
+      ringPos.y = m_getTerrainHeight(ringPos.x, ringPos.z);
+    inf.ringPoints[j] = ringPos;
+
+    // Main 5.2 CreateBomb: Position[2]+=80, massive burst at each ring point
+    glm::vec3 bombPos = ringPos + glm::vec3(0, 80, 0);
+    // 20x BITMAP_SPARK SubType 2 — heavy arcing sparks with bounce physics
+    SpawnBurst(ParticleType::INFERNO_SPARK, bombPos, 20);
+    // Main 5.2: BITMAP_EXPLOTION — animated 4x4 explosion sprite at each point
+    SpawnBurst(ParticleType::INFERNO_EXPLOSION, bombPos, 2);
+    // Dedicated inferno fire (inferno.OZJ) — dense fire columns
+    SpawnBurst(ParticleType::INFERNO_FIRE, bombPos, 6);
+    SpawnBurst(ParticleType::INFERNO_FIRE, ringPos + glm::vec3(0, 20, 0), 4);
+    // Generic fire/flame layers for density
+    SpawnBurst(ParticleType::SPELL_FIRE, bombPos, 6);
+    SpawnBurst(ParticleType::SPELL_FLAME, ringPos + glm::vec3(0, 20, 0), 4);
+    SpawnBurst(ParticleType::SPELL_FLAME, ringPos + glm::vec3(0, 60, 0), 3);
+    // Smoke clouds rising from explosions
+    SpawnBurst(ParticleType::SMOKE, bombPos + glm::vec3(0, 40, 0), 3);
+  }
+  m_infernoEffects.push_back(inf);
+}
+
+void VFXManager::updateInfernoEffects(float dt) {
+  for (int i = (int)m_infernoEffects.size() - 1; i >= 0; --i) {
+    auto &inf = m_infernoEffects[i];
+    inf.lifetime -= dt;
+    if (inf.lifetime <= 0.0f) {
+      m_infernoEffects[i] = m_infernoEffects.back();
+      m_infernoEffects.pop_back();
+      continue;
+    }
+    // Per-tick fire columns at ring positions — heavy, persistent fire
+    inf.tickTimer += dt;
+    while (inf.tickTimer >= 0.04f) {
+      inf.tickTimer -= 0.04f;
+      float intensity = inf.lifetime / inf.maxLifetime; // 1→0
+      // Smooth intensity curve — quadratic for gentle ramp-down
+      float smoothInt = intensity * intensity;
+      for (int j = 0; j < 8; ++j) {
+        glm::vec3 base = inf.ringPoints[j];
+        // Dedicated inferno fire — probability scales with smooth intensity
+        if ((float)(rand() % 100) / 100.0f < smoothInt + 0.2f) {
+          SpawnBurst(ParticleType::INFERNO_FIRE,
+                     base + glm::vec3((float)(rand() % 40) - 20.0f,
+                                      10 + rand() % 80,
+                                      (float)(rand() % 40) - 20.0f), 1);
+        }
+        // Generic flame — always present but thins out smoothly
+        if ((float)(rand() % 100) / 100.0f < smoothInt + 0.15f) {
+          SpawnBurst(ParticleType::SPELL_FLAME,
+                     base + glm::vec3((float)(rand() % 50) - 25.0f,
+                                      20 + rand() % 100,
+                                      (float)(rand() % 50) - 25.0f), 1);
+        }
+        // Fire particles — only during strong phase
+        if (intensity > 0.35f) {
+          SpawnBurst(ParticleType::SPELL_FIRE,
+                     base + glm::vec3(0, 40 + rand() % 60, 0), 1);
+        }
+        // Arcing sparks — sparser as effect fades
+        if (rand() % 4 == 0 && intensity > 0.2f) {
+          SpawnBurst(ParticleType::INFERNO_SPARK,
+                     base + glm::vec3(0, 60 + rand() % 40, 0), 1);
+        }
+        // Late-phase smoke — rises as fire dies, smooth transition
+        if (intensity < 0.45f && (float)(rand() % 100) / 100.0f > intensity) {
+          SpawnBurst(ParticleType::SMOKE,
+                     base + glm::vec3(0, 30 + rand() % 50, 0), 1);
+        }
+      }
+    }
+  }
+}
+
+void VFXManager::renderInfernoEffects(const glm::mat4 &view,
+                                       const glm::mat4 &projection) {
+  if (m_infernoEffects.empty() || m_infernoMeshes.empty() || !m_modelShader)
+    return;
+
+  m_modelShader->use();
+  m_modelShader->setMat4("view", view);
+  m_modelShader->setMat4("projection", projection);
+  m_modelShader->setFloat("luminosity", 1.0f);
+  m_modelShader->setInt("numPointLights", 0);
+  m_modelShader->setBool("useFog", false);
+  m_modelShader->setFloat("outlineOffset", 0.0f);
+  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
+  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  glm::mat4 invView = glm::inverse(view);
+  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
+  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
+  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
+
+  glEnable(GL_BLEND);
+  glDisable(GL_CULL_FACE);
+  glDepthMask(GL_FALSE);
+  // Main 5.2: BlendMesh=-2 → additive blending
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+  for (const auto &inf : m_infernoEffects) {
+    float t = inf.lifetime / inf.maxLifetime; // 1→0
+    // Smooth blendMeshLight: quadratic ease-out for natural flash→fade
+    // Peaks bright at start, gentle tail instead of harsh linear cutoff
+    float blendLight = t * t * 3.5f;
+    m_modelShader->setFloat("blendMeshLight", blendLight);
+    m_modelShader->setFloat("objectAlpha", 1.0f);
+
+    // Scale: smooth ease-out growth (0.9 → 1.05), decelerating
+    float age = 1.0f - t; // 0→1
+    float growScale = 0.9f + age * (2.0f - age) * 0.075f; // Parabolic ease-out
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), inf.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::scale(model, glm::vec3(growScale));
+    m_modelShader->setMat4("model", model);
+
+    for (const auto &mb : m_infernoMeshes) {
+      if (mb.indexCount == 0 || mb.hidden)
+        continue;
+      glBindTexture(GL_TEXTURE_2D, mb.texture);
+      glBindVertexArray(mb.vao);
+      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    }
+  }
+
+  glDepthMask(GL_TRUE);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glEnable(GL_CULL_FACE);
+  glBindVertexArray(0);
+}
+
 void VFXManager::Cleanup() {
   if (m_quadVAO)
     glDeleteVertexArrays(1, &m_quadVAO);
@@ -2505,7 +4158,9 @@ void VFXManager::Cleanup() {
                        m_smokeTexture,       m_fireTexture,
                        m_energyTexture,      m_lightningTexture,
                        m_magicGroundTexture, m_ringTexture,
-                       m_bitmapFlareTexture, m_thunderTexture};
+                       m_bitmapFlareTexture, m_thunderTexture,
+                       m_flameTexture,       m_jointSpiritTexture,
+                       m_hellfireCircleTex,  m_hellfireLightTex};
   for (auto t : textures) {
     if (t)
       glDeleteTextures(1, &t);
@@ -2542,6 +4197,42 @@ void VFXManager::Cleanup() {
   m_poisonMeshes.clear();
   m_poisonBmd.reset();
 
+  // Clean up Storm tornado model
+  for (auto &mb : m_stormMeshes) {
+    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
+    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
+    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
+    if (mb.texture) glDeleteTextures(1, &mb.texture);
+  }
+  m_stormMeshes.clear();
+  m_stormBmd.reset();
+
+  // Clean up Hellfire circle models
+  for (auto &mb : m_circleMeshes) {
+    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
+    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
+    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
+    if (mb.texture) glDeleteTextures(1, &mb.texture);
+  }
+  m_circleMeshes.clear();
+  m_circleBmd.reset();
+  for (auto &mb : m_circleLightMeshes) {
+    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
+    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
+    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
+    if (mb.texture) glDeleteTextures(1, &mb.texture);
+  }
+  m_circleLightMeshes.clear();
+  m_circleLightBmd.reset();
+  for (auto &mb : m_laserMeshes) {
+    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
+    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
+    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
+    if (mb.texture) glDeleteTextures(1, &mb.texture);
+  }
+  m_laserMeshes.clear();
+  m_laserBmd.reset();
+
   m_particles.clear();
   m_ribbons.clear();
   m_groundCircles.clear();
@@ -2549,4 +4240,260 @@ void VFXManager::Cleanup() {
   m_spellProjectiles.clear();
   m_lightningBolts.clear();
   m_poisonClouds.clear();
+  m_flameGrounds.clear();
+  m_twisterStorms.clear();
+  m_aquaBeams.clear();
+  m_infernoEffects.clear();
+}
+
+// Main 5.2: AT_SKILL_FLASH (Aqua Beam) — BITMAP_BOSS_LASER SubType 2
+// CalcAddPosition(o, -20, -90, 100, Position) → offset from caster hands
+// Flash is SubType 2: Scale=2.5, LifeTime=35, sprite=BITMAP_FIRE+1, color=(0,0.2,1)
+// Direction = (0,-50,0) rotated by character angle → 50 units forward per step
+void VFXManager::SpawnAquaBeam(const glm::vec3 &casterPos, float facing) {
+  AquaBeam ab;
+
+  glm::vec3 forward(-cosf(facing), 0.0f, sinf(facing));
+
+  // Anchor beam start to character's hand bones (no forward offset).
+  // At frame 7.0 the hands are fully extended in the release pose, so bone
+  // positions already reflect where the beam should originate.
+  // Staff is on bone 42 (L Hand), casting hand is bone 33 (R Hand).
+  if (m_heroBoneWorldPositions.size() > 42) {
+    glm::vec3 rHand = m_heroBoneWorldPositions[33];
+    glm::vec3 lHand = m_heroBoneWorldPositions[42];
+    ab.startPosition = (rHand + lHand) * 0.5f;
+  } else if (m_heroBoneWorldPositions.size() > 33) {
+    ab.startPosition = m_heroBoneWorldPositions[33];
+  } else {
+    glm::vec3 right(sinf(facing), 0.0f, cosf(facing));
+    ab.startPosition = casterPos + right * (-20.0f) + forward * 90.0f +
+                       glm::vec3(0.0f, 100.0f, 0.0f);
+  }
+
+  // Main 5.2: Direction = (0, -50, 0) rotated by character angle
+  ab.direction = forward * 50.0f;
+
+  ab.light = glm::vec3(0.5f, 0.7f, 1.0f);
+  ab.scale = 120.0f;
+  ab.lifetime = 0.8f; // Match remaining animation (~7 frames at 8.25 kf/s)
+
+  m_aquaBeams.push_back(ab);
+
+  // Spawn cast burst particles at origin
+  SpawnBurst(ParticleType::SPELL_WATER, ab.startPosition, 8);
+
+  // Impact burst at beam endpoint
+  glm::vec3 endpoint = ab.startPosition + ab.direction * (float)(AquaBeam::NUM_SEGMENTS - 1);
+  SpawnBurst(ParticleType::SPELL_WATER, endpoint, 15);
+  SpawnBurst(ParticleType::FLARE, endpoint, 2);
+}
+
+void VFXManager::KillAquaBeams() {
+  m_aquaBeams.clear();
+}
+
+// Main 5.2: BITMAP_GATHERING SubType 2 — converging lightning + water particles
+// Called per-tick during Flash wind-up (frames 1.2-3.0) before beam spawns
+void VFXManager::SpawnAquaGathering(const glm::vec3 &handPos) {
+  // Use midpoint of both hand bones (staff between hands) if available
+  glm::vec3 target = handPos;
+  if (m_heroBoneWorldPositions.size() > 42) {
+    target = (m_heroBoneWorldPositions[33] + m_heroBoneWorldPositions[42]) * 0.5f;
+  } else if (m_heroBoneWorldPositions.size() > 33) {
+    target = m_heroBoneWorldPositions[33];
+  }
+
+  // 3 converging water particles per tick (Main 5.2: CreateSprite BITMAP_SHINY+1)
+  for (int j = 0; j < 3; ++j) {
+    float angle = ((float)(rand() % 360)) * 3.14159f / 180.0f;
+    float radius = (float)(rand() % 80 + 50); // 50-130 units out
+    glm::vec3 offset(cosf(angle) * radius,
+                     (float)(rand() % 60 - 10),
+                     sinf(angle) * radius);
+    Particle p;
+    p.type = ParticleType::SPELL_WATER;
+    p.position = target + offset;
+    p.velocity = -offset * 4.0f; // Converge toward hand in ~0.25s
+    p.lifetime = 0.25f;
+    p.maxLifetime = 0.25f;
+    p.scale = (float)(rand() % 4 + 5);
+    p.alpha = 0.9f;
+    p.rotation = (float)(rand() % 360);
+    p.color = glm::vec3(0.5f, 0.7f, 1.0f);
+    m_particles.push_back(p);
+  }
+
+  // 1 lightning arc per tick (Main 5.2: CreateJoint BITMAP_JOINT_THUNDER every other tick)
+  {
+    float angle = ((float)(rand() % 360)) * 3.14159f / 180.0f;
+    float radius = (float)(rand() % 60 + 80); // 80-140 units out
+    glm::vec3 offset(cosf(angle) * radius,
+                     (float)(rand() % 80 + 20),
+                     sinf(angle) * radius);
+    Particle p;
+    p.type = ParticleType::SPELL_LIGHTNING;
+    p.position = target + offset;
+    p.velocity = -offset * 5.0f; // Converge faster
+    p.lifetime = 0.2f;
+    p.maxLifetime = 0.2f;
+    p.scale = (float)(rand() % 6 + 8);
+    p.alpha = 1.0f;
+    p.rotation = (float)(rand() % 360);
+    p.color = glm::vec3(0.6f, 0.8f, 1.2f);
+    m_particles.push_back(p);
+  }
+}
+
+void VFXManager::updateAquaBeams(float dt) {
+  for (int i = (int)m_aquaBeams.size() - 1; i >= 0; --i) {
+    auto &ab = m_aquaBeams[i];
+    ab.lifetime -= dt;
+    if (ab.lifetime <= 0.0f) {
+      m_aquaBeams[i] = m_aquaBeams.back();
+      m_aquaBeams.pop_back();
+      continue;
+    }
+
+    // Main 5.2: per-tick BITMAP_SPARK+1 particles along beam path
+    // 3-4 spark particles scattered along the beam every frame
+    ab.sparkTimer += dt;
+    while (ab.sparkTimer >= 0.04f) { // 25fps tick rate
+      ab.sparkTimer -= 0.04f;
+      for (int s = 0; s < 4; ++s) {
+        float t = (float)(rand() % (AquaBeam::NUM_SEGMENTS - 1)) +
+                  (float)(rand() % 100) / 100.0f;
+        glm::vec3 pos = ab.startPosition + ab.direction * t;
+        // Random lateral offset within beam width
+        glm::vec3 beamDir = glm::normalize(ab.direction);
+        glm::vec3 up(0.0f, 1.0f, 0.0f);
+        glm::vec3 right = glm::normalize(glm::cross(beamDir, up));
+        float lateralOffset = ((float)(rand() % 200) - 100.0f) * 0.6f; // ±60 units
+        float vertOffset = ((float)(rand() % 80) - 20.0f);             // -20 to +60 up
+        pos += right * lateralOffset + up * vertOffset;
+
+        Particle p;
+        p.type = ParticleType::SPELL_WATER;
+        p.position = pos;
+        p.velocity = glm::vec3(
+            ((float)(rand() % 60) - 30.0f),
+            (float)(rand() % 40 + 20),  // drift upward
+            ((float)(rand() % 60) - 30.0f));
+        p.lifetime = 0.2f + (float)(rand() % 10) * 0.02f;
+        p.maxLifetime = p.lifetime;
+        p.scale = (float)(rand() % 4 + 3);
+        p.alpha = 0.7f;
+        p.rotation = (float)(rand() % 360);
+        p.color = glm::vec3(0.4f, 0.8f, 1.0f);
+        m_particles.push_back(p);
+      }
+    }
+  }
+}
+
+void VFXManager::renderAquaBeams(const glm::mat4 &view,
+                                  const glm::mat4 &projection) {
+  if (m_aquaBeams.empty() || !m_lineShader)
+    return;
+
+  // Extract camera position from view matrix
+  glm::mat4 invView = glm::inverse(view);
+  glm::vec3 camPos(invView[3]);
+
+  m_lineShader->use();
+  m_lineShader->setMat4("view", view);
+  m_lineShader->setMat4("projection", projection);
+
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_ONE, GL_ONE); // Additive blend (same as ribbons)
+  glDepthMask(GL_FALSE);
+  glDisable(GL_CULL_FACE);
+
+  // Beam mode: Gaussian V-falloff in shader (no texture UV issues)
+  m_lineShader->setBool("useTexture", false);
+  m_lineShader->setBool("beamMode", true);
+
+  glBindVertexArray(m_ribbonVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
+
+  for (const auto &ab : m_aquaBeams) {
+    // Main 5.2: NO fade — beam renders at full brightness, then vanishes instantly
+    glm::vec3 beamDir = glm::normalize(ab.direction);
+
+    // U = position along beam (0→1), V = across width (0/1 edges, shader Gaussian)
+    // Extend 2 segments before start and 2 after end for soft taper
+    constexpr int EXT = 2; // extension segments each side
+    constexpr int TOTAL_SEGS = AquaBeam::NUM_SEGMENTS + EXT * 2;
+    auto buildStrip = [&](float halfWidth) {
+      std::vector<RibbonVertex> verts;
+      verts.reserve(TOTAL_SEGS * 6);
+      for (int j = -EXT; j < AquaBeam::NUM_SEGMENTS + EXT - 1; ++j) {
+        glm::vec3 p0 = ab.startPosition + ab.direction * (float)j;
+        glm::vec3 p1 = ab.startPosition + ab.direction * (float)(j + 1);
+        glm::vec3 mid = (p0 + p1) * 0.5f;
+        glm::vec3 viewDir = glm::normalize(camPos - mid);
+        glm::vec3 w = glm::normalize(glm::cross(beamDir, viewDir)) * halfWidth;
+
+        // U: 0 at extended start, 1 at extended end
+        float u0 = (float)(j + EXT) / (float)(TOTAL_SEGS - 1);
+        float u1 = (float)(j + EXT + 1) / (float)(TOTAL_SEGS - 1);
+
+        RibbonVertex v;
+        v.pos = p0 - w; v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
+        v.pos = p0 + w; v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
+        v.pos = p1 + w; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
+        v.pos = p0 - w; v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
+        v.pos = p1 + w; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
+        v.pos = p1 - w; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
+      }
+      return verts;
+    };
+
+    // Main 5.2 SubType 2: Scale=2.5, 128px sprites → ~320 world units per sprite
+    // 4 layered Gaussian ribbons simulate additive sprite overlap
+
+    // --- Pass 1: Wide atmospheric glow ---
+    m_lineShader->setVec3("color", glm::vec3(0.1f, 0.3f, 0.45f));
+    m_lineShader->setFloat("alpha", 1.0f);
+    auto outerVerts = buildStrip(160.0f);
+    if (!outerVerts.empty()) {
+      glBufferSubData(GL_ARRAY_BUFFER, 0,
+                      outerVerts.size() * sizeof(RibbonVertex), outerVerts.data());
+      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)outerVerts.size());
+    }
+
+    // --- Pass 2: Mid glow (visible cyan body) ---
+    m_lineShader->setVec3("color", glm::vec3(0.2f, 0.6f, 0.85f));
+    auto midVerts = buildStrip(90.0f);
+    if (!midVerts.empty()) {
+      glBufferSubData(GL_ARRAY_BUFFER, 0,
+                      midVerts.size() * sizeof(RibbonVertex), midVerts.data());
+      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)midVerts.size());
+    }
+
+    // --- Pass 3: Bright core beam ---
+    m_lineShader->setVec3("color", glm::vec3(0.4f, 0.85f, 1.0f));
+    auto coreVerts = buildStrip(45.0f);
+    if (!coreVerts.empty()) {
+      glBufferSubData(GL_ARRAY_BUFFER, 0,
+                      coreVerts.size() * sizeof(RibbonVertex), coreVerts.data());
+      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)coreVerts.size());
+    }
+
+    // --- Pass 4: White-hot center ---
+    m_lineShader->setVec3("color", glm::vec3(0.6f, 1.0f, 1.0f));
+    auto centerVerts = buildStrip(18.0f);
+    if (!centerVerts.empty()) {
+      glBufferSubData(GL_ARRAY_BUFFER, 0,
+                      centerVerts.size() * sizeof(RibbonVertex), centerVerts.data());
+      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)centerVerts.size());
+    }
+  }
+
+  // Reset beamMode for other ribbon renders
+  m_lineShader->setBool("beamMode", false);
+
+  glEnable(GL_CULL_FACE);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDepthMask(GL_TRUE);
 }

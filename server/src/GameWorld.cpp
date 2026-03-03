@@ -1140,6 +1140,20 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
       }
     }
 
+    // Main 5.2: StormTime stun — pause AI while spinning
+    if (mon.stormTime > 0) {
+      int prevStorm = mon.stormTime;
+      mon.stormTickTimer += dt;
+      while (mon.stormTickTimer >= 0.04f && mon.stormTime > 0) {
+        mon.stormTickTimer -= 0.04f;
+        mon.stormTime--;
+      }
+      if (mon.stormTime <= 0)
+        printf("[Twister] Mon %d StormTime expired, AI resumed (was %d)\n",
+               mon.index, prevStorm);
+      continue; // Skip AI state machine while stunned
+    }
+
     // Dispatch to state handler
     switch (mon.aiState) {
     case MonsterInstance::AIState::IDLE:

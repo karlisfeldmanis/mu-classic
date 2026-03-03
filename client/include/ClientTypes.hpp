@@ -128,6 +128,9 @@ struct ServerData {
   std::vector<ServerMonsterSpawn> monsters;
   std::vector<ServerEquipSlot> equipment;
   bool connected = false;
+  uint8_t spawnGridX = 0; // Character spawn position from CharInfo (F3:03)
+  uint8_t spawnGridY = 0;
+  bool hasSpawnPos = false;
 };
 
 #endif // MU_CLIENT_TYPES_HPP

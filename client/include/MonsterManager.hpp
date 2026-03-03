@@ -52,6 +52,7 @@ struct MonsterInfo {
   float bodyOffset;
   std::string name;
   uint16_t type;
+  uint16_t serverIndex;
   int level;
   int hp;
   int maxHp;
@@ -112,6 +113,9 @@ public:
   // Player position for cosmetic facing during CHASING/ATTACKING states
   void SetPlayerPosition(const glm::vec3 &pos) { m_playerPos = pos; }
   void SetPlayerDead(bool dead) { m_playerDead = dead; }
+
+  // Main 5.2: PushingCharacter — apply StormTime spin stun (Twister hit)
+  void ApplyStormTime(uint16_t serverIndex, int ticks = 10);
 
   // ── External data linkage ──
 
@@ -192,6 +196,11 @@ private:
         0.0f; // Per-instance scale override (0=use model default)
     bool deathSmokeDone = false;  // Giant death smoke burst (one-shot)
     float ambientVfxTimer = 0.0f; // Throttle for ambient VFX (smoke, etc.)
+
+    // Main 5.2: StormTime — spinning stun from Twister hit
+    // Angle[2] += StormTime*10 each tick, StormTime-- (10→0 over 0.4s)
+    int stormTime = 0;
+    float stormTickTimer = 0.0f;
 
     // Blending state (cross-fade on stop)
     int priorAction = -1;

@@ -4,6 +4,7 @@
 #include "ClientTypes.hpp"
 #include "GrassRenderer.hpp"
 #include "ItemDatabase.hpp"
+#include "ItemModelManager.hpp"
 #include "ObjectRenderer.hpp"
 #include "PacketDefs.hpp"
 #include "TextureLoader.hpp"
@@ -92,6 +93,10 @@ struct SlotRender {
   std::vector<MeshBuffers> baseHeadMeshes;
   std::vector<ShadowMesh> baseHeadShadowMeshes;
   bool showBaseHead = false;
+
+  // BlendMesh glow indices (-1 = none)
+  int weaponBlendMesh = -1;
+  int shieldBlendMesh = -1;
 };
 static SlotRender s_slotRender[MAX_SLOTS];
 
@@ -603,6 +608,8 @@ static void InitSlotMeshes(int slot) {
         s_slotRender[slot].weaponShadowMeshes = CreateShadowMeshes(bmd.get());
         s_slotRender[slot].weaponLocalBones = std::move(localBones);
         s_slotRender[slot].weaponBmd = std::move(bmd);
+        s_slotRender[slot].weaponBlendMesh =
+            ItemModelManager::GetItemBlendMesh(rh.category, rh.itemIndex);
         printf("[CharSelect] Slot %d: weapon loaded (%d meshes)\n", slot,
                (int)s_slotRender[slot].weaponMeshes.size());
       }
@@ -1436,23 +1443,55 @@ void Render(int windowWidth, int windowHeight) {
       }
 
       // Draw weapon (pre-skinned to back bone in ReskinSlot)
-      for (auto &mb : s_slotRender[i].weaponMeshes) {
-        if (mb.indexCount == 0) continue;
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        s_modelShader->setInt("texture_diffuse", 0);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+      {
+        int blendIdx = s_slotRender[i].weaponBlendMesh;
+        int mi = 0;
+        for (auto &mb : s_slotRender[i].weaponMeshes) {
+          if (mb.indexCount == 0) { mi++; continue; }
+          glActiveTexture(GL_TEXTURE0);
+          glBindTexture(GL_TEXTURE_2D, mb.texture);
+          s_modelShader->setInt("texture_diffuse", 0);
+          glBindVertexArray(mb.vao);
+          if (blendIdx >= 0 && mi == blendIdx) {
+            float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+            s_modelShader->setFloat("blendMeshLight", pulseLight);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glDepthMask(GL_FALSE);
+            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+            glDepthMask(GL_TRUE);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            s_modelShader->setFloat("blendMeshLight", 1.0f);
+          } else {
+            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+          }
+          mi++;
+        }
       }
 
       // Draw shield
-      for (auto &mb : s_slotRender[i].shieldMeshes) {
-        if (mb.indexCount == 0) continue;
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        s_modelShader->setInt("texture_diffuse", 0);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+      {
+        int blendIdx = s_slotRender[i].shieldBlendMesh;
+        int mi = 0;
+        for (auto &mb : s_slotRender[i].shieldMeshes) {
+          if (mb.indexCount == 0) { mi++; continue; }
+          glActiveTexture(GL_TEXTURE0);
+          glBindTexture(GL_TEXTURE_2D, mb.texture);
+          s_modelShader->setInt("texture_diffuse", 0);
+          glBindVertexArray(mb.vao);
+          if (blendIdx >= 0 && mi == blendIdx) {
+            float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+            s_modelShader->setFloat("blendMeshLight", pulseLight);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glDepthMask(GL_FALSE);
+            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+            glDepthMask(GL_TRUE);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            s_modelShader->setFloat("blendMeshLight", 1.0f);
+          } else {
+            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+          }
+          mi++;
+        }
       }
 
     }
@@ -1628,22 +1667,26 @@ void Render(int windowWidth, int windowHeight) {
     float bgW = maxW + 24.0f;
     float bgX = screenPos.x - bgW * 0.5f;
     float bgY = screenPos.y - totalH;
-    dl->AddRectFilled(ImVec2(bgX, bgY), ImVec2(bgX + bgW, bgY + totalH),
-                      IM_COL32(0, 0, 0, 140), 4.0f);
+    dl->AddRectFilledMultiColor(ImVec2(bgX, bgY), ImVec2(bgX + bgW, bgY + totalH),
+                      IM_COL32(8, 8, 18, 180), IM_COL32(8, 8, 18, 180),
+                      IM_COL32(14, 14, 26, 170), IM_COL32(14, 14, 26, 170));
     dl->AddRect(ImVec2(bgX, bgY), ImVec2(bgX + bgW, bgY + totalH),
-                IM_COL32(120, 120, 120, 100), 4.0f);
+                IM_COL32(65, 60, 45, 140), 4.0f);
 
-    // Name (white, gold for selected)
+    // Name (white, gold for selected) — with shadow
     ImU32 nameColor = (i == s_selectedSlot)
                           ? IM_COL32(255, 220, 150, 255)
                           : IM_COL32(255, 255, 255, 255);
-    dl->AddText(ImVec2(screenPos.x - nameSize.x * 0.5f, bgY + 4.0f),
-                nameColor, ch.name);
+    float nx = screenPos.x - nameSize.x * 0.5f;
+    dl->AddText(ImVec2(nx + 1, bgY + 5.0f), IM_COL32(0, 0, 0, 200), ch.name);
+    dl->AddText(ImVec2(nx, bgY + 4.0f), nameColor, ch.name);
 
-    // Class + level (orange)
-    dl->AddText(
-        ImVec2(screenPos.x - classSize.x * 0.5f, bgY + 4.0f + lineH),
-        IM_COL32(255, 180, 80, 255), classLine);
+    // Class + level (orange) — with shadow
+    float cx2 = screenPos.x - classSize.x * 0.5f;
+    dl->AddText(ImVec2(cx2 + 1, bgY + 5.0f + lineH),
+                IM_COL32(0, 0, 0, 200), classLine);
+    dl->AddText(ImVec2(cx2, bgY + 4.0f + lineH),
+                IM_COL32(255, 180, 80, 255), classLine);
   }
 
   ImGui::End();
@@ -1657,11 +1700,14 @@ void Render(int windowWidth, int windowHeight) {
       ImGuiWindowFlags_NoScrollbar;
 
   ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.15f, 0.25f, 0.9f));
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
   ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                        ImVec4(0.25f, 0.25f, 0.4f, 1.0f));
+                        ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
   ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                        ImVec4(0.35f, 0.35f, 0.55f, 1.0f));
+                        ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
+  ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.86f, 0.84f, 0.78f, 0.94f));
 
   // Left button: [Create]
   ImGui::SetNextWindowPos(ImVec2(10, btnY - 5));
@@ -1705,8 +1751,8 @@ void Render(int windowWidth, int windowHeight) {
     ImGui::End();
   }
 
-  ImGui::PopStyleColor(3);
-  ImGui::PopStyleVar();
+  ImGui::PopStyleColor(5);
+  ImGui::PopStyleVar(2);
   } // end if (!s_createOpen) bottom bar
 
   // ── Character slot click areas (invisible buttons over each slot) ──
@@ -1794,12 +1840,16 @@ void Render(int windowWidth, int windowHeight) {
     ImDrawList *cdl = ImGui::GetWindowDrawList();
 
     // ── Model container background ──
-    cdl->AddRectFilled(ImVec2(panelX, panelY),
+    cdl->AddRectFilledMultiColor(ImVec2(panelX, panelY),
                        ImVec2(panelX + panelW, formY),
-                       IM_COL32(0, 0, 0, 143), 2.0f);
+                       IM_COL32(8, 8, 18, 160), IM_COL32(8, 8, 18, 160),
+                       IM_COL32(14, 14, 26, 150), IM_COL32(14, 14, 26, 150));
     cdl->AddRect(ImVec2(panelX, panelY),
                  ImVec2(panelX + panelW, formY),
-                 IM_COL32(80, 70, 50, 180), 2.0f);
+                 IM_COL32(5, 5, 10, 220), 2.0f, 0, 2.0f);
+    cdl->AddRect(ImVec2(panelX + 2, panelY + 2),
+                 ImVec2(panelX + panelW - 2, formY - 2),
+                 IM_COL32(80, 70, 45, 120));
 
     // ── Face portrait — anchored to bottom of model container ──
     if (s_faceColorTex && s_faceLoadedClass >= 0) {
@@ -1826,7 +1876,10 @@ void Render(int windowWidth, int windowHeight) {
 
       cdl->AddRectFilled(ImVec2(statX, statY),
                          ImVec2(statX + statW, statY + statH),
-                         IM_COL32(0, 0, 0, 143), 2.0f);
+                         IM_COL32(8, 8, 16, 180), 3.0f);
+      cdl->AddRect(ImVec2(statX, statY),
+                   ImVec2(statX + statW, statY + statH),
+                   IM_COL32(65, 60, 45, 120), 3.0f);
 
       const char *statLabels[] = {"Strength", "Agility", "Vitality", "Energy"};
       int statValues[] = {cs.str, cs.dex, cs.vit, cs.ene};
@@ -1854,13 +1907,16 @@ void Render(int windowWidth, int windowHeight) {
       float cbX = cbAbsX - (panelX - 5);
       float cbY = cbAbsY - (panelY - 5);
 
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 1.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
       ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(0.0f, 0.0f, 0.0f, 0.56f));
+                            ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                            ImVec4(0.18f, 0.14f, 0.08f, 0.8f));
+                            ImVec4(0.14f, 0.13f, 0.10f, 0.92f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                            ImVec4(0.28f, 0.22f, 0.12f, 1.0f));
+                            ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Border,
+                            ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
 
       float yAccum = 0.0f;
       for (int i = 0; i < numClasses; i++) {
@@ -1871,14 +1927,18 @@ void Render(int windowWidth, int windowHeight) {
         bool isSelected = (classCodes[i] == s_createClass);
         if (isSelected) {
           ImGui::PushStyleColor(ImGuiCol_Button,
-                                ImVec4(0.25f, 0.20f, 0.10f, 0.9f));
+                                ImVec4(0.16f, 0.14f, 0.08f, 0.92f));
           ImGui::PushStyleColor(ImGuiCol_Text,
                                 ImVec4(1.0f, 0.88f, 0.55f, 1.0f));
+          ImGui::PushStyleColor(ImGuiCol_Border,
+                                ImVec4(0.70f, 0.63f, 0.35f, 0.8f));
         } else {
           ImGui::PushStyleColor(ImGuiCol_Text,
                                 ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
           ImGui::PushStyleColor(ImGuiCol_Button,
-                                ImVec4(0.0f, 0.0f, 0.0f, 0.56f));
+                                ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
+          ImGui::PushStyleColor(ImGuiCol_Border,
+                                ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
         }
 
         bool enabled = (classCodes[i] == CLASS_DK || classCodes[i] == CLASS_DW);
@@ -1891,24 +1951,28 @@ void Render(int windowWidth, int windowHeight) {
         }
 
         if (!enabled) ImGui::EndDisabled();
-        ImGui::PopStyleColor(2);
+        ImGui::PopStyleColor(3);
         yAccum += cbH + cbGap;
       }
-      ImGui::PopStyleColor(3);
-      ImGui::PopStyleVar();
+      ImGui::PopStyleColor(4);
+      ImGui::PopStyleVar(2);
     }
 
     // ── Form container background (below model) ──
-    cdl->AddRectFilled(ImVec2(panelX, formY),
+    cdl->AddRectFilledMultiColor(ImVec2(panelX, formY),
                        ImVec2(panelX + panelW, panelY + panelH),
-                       IM_COL32(0, 0, 0, 180), 2.0f);
+                       IM_COL32(10, 10, 20, 200), IM_COL32(10, 10, 20, 200),
+                       IM_COL32(16, 16, 30, 195), IM_COL32(16, 16, 30, 195));
     cdl->AddRect(ImVec2(panelX, formY),
                  ImVec2(panelX + panelW, panelY + panelH),
-                 IM_COL32(80, 70, 50, 180), 2.0f);
+                 IM_COL32(5, 5, 10, 220), 2.0f, 0, 2.0f);
+    cdl->AddRect(ImVec2(panelX + 2, formY + 2),
+                 ImVec2(panelX + panelW - 2, panelY + panelH - 2),
+                 IM_COL32(80, 70, 45, 120));
     // Divider line between model and form
-    cdl->AddLine(ImVec2(panelX + 1, formY),
-                 ImVec2(panelX + panelW - 1, formY),
-                 IM_COL32(100, 85, 60, 200), 1.0f);
+    cdl->AddLine(ImVec2(panelX + 3, formY),
+                 ImVec2(panelX + panelW - 3, formY),
+                 IM_COL32(80, 70, 45, 160), 1.0f);
 
     // ── Name input (form left side) ──
     {
@@ -1947,13 +2011,18 @@ void Render(int windowWidth, int windowHeight) {
       float okX = okAbsX - (panelX - 5);
       float okY = okAbsY - (panelY - 5);
 
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 2.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
       ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(0.15f, 0.12f, 0.07f, 0.9f));
+                            ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                            ImVec4(0.28f, 0.22f, 0.12f, 1.0f));
+                            ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                            ImVec4(0.38f, 0.30f, 0.18f, 1.0f));
+                            ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Border,
+                            ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
+      ImGui::PushStyleColor(ImGuiCol_Text,
+                            ImVec4(0.86f, 0.84f, 0.78f, 0.94f));
 
       ImGui::SetCursorPos(ImVec2(okX, okY));
       if (ImGui::Button("OK##create", ImVec2(obW, obH))) {
@@ -1970,8 +2039,8 @@ void Render(int windowWidth, int windowHeight) {
       if (ImGui::Button("Cancel##create", ImVec2(obW, obH))) {
         s_createOpen = false;
       }
-      ImGui::PopStyleColor(3);
-      ImGui::PopStyleVar();
+      ImGui::PopStyleColor(5);
+      ImGui::PopStyleVar(2);
     }
 
     // ── Description text (bottom of form) ──
@@ -1983,7 +2052,10 @@ void Render(int windowWidth, int windowHeight) {
           "The Magic Gladiator combines Strength and Energy for versatility."};
 
       float descY = formY + 36 * uiScale;
-      cdl->AddText(ImVec2(panelX + 10 * uiScale, descY),
+      float descX = panelX + 10 * uiScale;
+      cdl->AddText(ImVec2(descX + 1, descY + 1),
+                   IM_COL32(0, 0, 0, 180), classDescs[classIdx]);
+      cdl->AddText(ImVec2(descX, descY),
                    IM_COL32(200, 200, 200, 220), classDescs[classIdx]);
     }
 
@@ -1995,6 +2067,11 @@ void Render(int windowWidth, int windowHeight) {
     ImGui::SetNextWindowPos(ImVec2(cx - 150, windowHeight * 0.4f),
                             ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(300, 130), ImGuiCond_Always);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.04f, 0.08f, 0.95f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.08f, 0.07f, 0.05f, 0.95f));
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.12f, 0.10f, 0.07f, 0.95f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
     ImGui::Begin("Delete Character", &s_deleteConfirm,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 
@@ -2002,6 +2079,11 @@ void Render(int windowWidth, int windowHeight) {
     ImGui::Text("This cannot be undone.");
     ImGui::Spacing();
 
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
     if (ImGui::Button("Yes, Delete", ImVec2(120, 30))) {
       s_ctx.server->SendCharDelete(
           s_selectedSlot, s_slots[s_selectedSlot].name);
@@ -2010,8 +2092,12 @@ void Render(int windowWidth, int windowHeight) {
     if (ImGui::Button("Cancel", ImVec2(120, 30))) {
       s_deleteConfirm = false;
     }
+    ImGui::PopStyleColor(3);
+    ImGui::PopStyleVar(2);
 
     ImGui::End();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
   }
 }
 

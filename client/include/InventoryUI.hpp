@@ -112,6 +112,10 @@ void AddRenderJob(const ItemRenderJob &job);
 bool HasDeferredOverlays();
 void FlushDeferredOverlays();
 
+// Deferred cooldowns (potion cooldown overlay rendered after 3D items)
+bool HasDeferredCooldowns();
+void FlushDeferredCooldowns();
+
 // Load slot background textures
 void LoadSlotBackgrounds(const std::string &dataPath);
 

@@ -19,7 +19,9 @@ public:
   // Typed sends (build packet internally)
   void SendPrecisePosition(float worldX, float worldZ);
   void SendAttack(uint16_t monsterIndex);
-  void SendSkillAttack(uint16_t monsterIndex, uint8_t skillId);
+  void SendSkillAttack(uint16_t monsterIndex, uint8_t skillId,
+                       float targetX = 0, float targetZ = 0);
+  void SendTeleport(uint8_t gridX, uint8_t gridY);
   void SendPickup(uint16_t dropIndex);
   void SendCharSave(uint16_t charId, uint16_t level, uint16_t str, uint16_t dex,
                     uint16_t vit, uint16_t ene, uint16_t life, uint16_t maxLife,
@@ -40,6 +42,9 @@ public:
   void SendCharCreate(const char *name, uint8_t classCode);
   void SendCharDelete(uint8_t slot, const char *name);
   void SendCharSelect(const char *name);
+
+  // Game Menu
+  void SendCharListRequest();
 
   // Shop
   void SendShopOpen(uint16_t npcType);

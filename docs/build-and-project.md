@@ -27,7 +27,7 @@ The script ensures `Data/` symlinks exist in both build directories before launc
 
 Client targets: `MuRemaster` (game client), `ModelViewer` (BMD object browser), `CharViewer` (character animation browser).
 Server target: `MuServer` (game server).
-Dependencies: glfw3, GLEW, OpenGL, libjpeg-turbo (TurboJPEG), GLM (header-only), ImGui, giflib, SQLite3 (server only).
+Dependencies: glfw3, GLEW, OpenGL, OpenAL, libjpeg-turbo (TurboJPEG), GLM (header-only), ImGui, giflib, minimp3 (header-only), SQLite3 (server only).
 
 ### Data Directory
 
@@ -60,6 +60,7 @@ main.cpp (orchestrator: init, render loop, shutdown)
   ├── Terrain             -- Heightmap mesh, tile blending, lightmap
   ├── FireEffect / VFXManager -- Particle effects
   ├── GrassRenderer       -- Billboard grass with wind
+  ├── SoundManager        -- OpenAL sound engine + MP3 music
   └── Sky                 -- Sky dome
 ```
 
@@ -86,6 +87,8 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `Sky.hpp` | Sky dome: gradient hemisphere rendered behind scene. |
 | `FireEffect.hpp` | Particle-based fire system for Lorencia torches/bonfires/lights. GPU instancing + billboarding. |
 | `VFXManager.hpp` | Visual effects: particle bursts (blood/fire/energy/spark/smoke), ribbon trails (lightning), 3D model effects (meteor falling fireball, lightning bolt, poison cloud), GPU instanced billboards. |
+| **Sound** | |
+| `SoundManager.hpp` | `namespace SoundManager`: OpenAL sound engine. `SoundId` enum (Main 5.2 IDs), `Play/Play3D/PlayPitched/PlayLoop/Stop`, MP3 music via minimp3 (`PlayMusic/StopMusic`). |
 | **Characters & Entities** | |
 | `HeroCharacter.hpp` | Player character: 5-part DK model, click-to-move, combat, weapon attachment (bone 33/42/47), equipment visuals, blob shadow. |
 | `MonsterManager.hpp` | Monster system: multi-type rendering, server-driven state machine (7 states), skeleton weapon attachment, arrow projectiles, debris, nameplate rendering. |
@@ -125,6 +128,7 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `Sky.cpp` | Sky dome rendering. |
 | `FireEffect.cpp` | Fire particle system: emitter management, GPU instanced billboards. |
 | `VFXManager.cpp` | VFX: particle bursts (10+ types), ribbon trails (lightning skill), 3D model effects (MeteorBolt with Fire01.bmd, LightningBolt with Blast01.bmd, PoisonCloud with Poison01.bmd), per-monster combat effects (Budge fire, Lich lightning, Spider web), level-up effects. Main 5.2 1:1 migration. |
+| `SoundManager.cpp` | OpenAL init/shutdown, WAV loader (PCM 16-bit), multi-channel source pooling, 3D positional audio, random pitch variation, MP3 music (minimp3 decode to OpenAL buffer). |
 | **Characters & Entities** | |
 | `HeroCharacter.cpp` | DK character: 5-part body, skeletal animation, click-to-move, weapon bone attachment (safe zone/combat), blob shadow with stencil buffer, attack state machine with GCD (global cooldown). |
 | `MonsterManager.cpp` | Monster rendering, state machine, skeleton weapons (Sword/Shield/Bow/Axe via RetransformMeshWithBones), arrow projectiles (Arrow01.bmd), death debris, nameplates. |
@@ -134,7 +138,7 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `ItemDatabase.cpp` | 293 item definitions (addDef calls), all lookup functions, body part mapping, category names. |
 | `ItemModelManager.cpp` | BMD item model cache with GPU upload, viewport-based UI rendering, world-space rendering. |
 | `GroundItemRenderer.cpp` | Ground item physics (gravity/bounce), zen pile rendering, floating damage update/render, ground item labels/tooltips. |
-| `InventoryUI.cpp` | Full inventory/equipment UI: panel rendering, drag-drop state machine, tooltip system, equipment stats, stat allocation, quick slot. |
+| `InventoryUI.cpp` | Full inventory/equipment UI: panel rendering with WoW-style design system (gradient backgrounds, double borders, gold-tinted accents), drag-drop state machine, tooltip system, equipment stats, stat allocation, quickbar with styled resource bars. |
 | **Networking** | |
 | `NetworkClient.cpp` | TCP socket management, packet framing. |
 | `ServerConnection.cpp` | Typed packet builders for all client->server messages. |
@@ -189,6 +193,9 @@ main.cpp (orchestrator: init, render loop, shutdown)
   - `Effect/` -- Effect textures (fire, thunder, etc.)
   - `NPC/` -- NPC BMD models + textures
   - `Item/` -- Item BMD models
+  - `Sound/` -- WAV sound effects (1155 files, PCM 16-bit)
+  - `Music/` -- MP3 music tracks (72 files)
+  - `Skill/` -- Skill effect BMD models + textures
 - Server database: `server/build/mu_server.db` (SQLite, auto-created on first run)
 
 ## Key Constants

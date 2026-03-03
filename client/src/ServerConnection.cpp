@@ -36,11 +36,22 @@ void ServerConnection::SendAttack(uint16_t monsterIndex) {
   m_client.Send(&pkt, sizeof(pkt));
 }
 
-void ServerConnection::SendSkillAttack(uint16_t monsterIndex, uint8_t skillId) {
+void ServerConnection::SendSkillAttack(uint16_t monsterIndex, uint8_t skillId,
+                                       float targetX, float targetZ) {
   PMSG_SKILL_ATTACK_RECV pkt{};
   pkt.h = MakeC1Header(sizeof(pkt), Opcode::SKILL_USE);
   pkt.monsterIndex = monsterIndex;
   pkt.skillId = skillId;
+  pkt.targetX = targetX;
+  pkt.targetZ = targetZ;
+  m_client.Send(&pkt, sizeof(pkt));
+}
+
+void ServerConnection::SendTeleport(uint8_t gridX, uint8_t gridY) {
+  PMSG_SKILL_TELEPORT_RECV pkt{};
+  pkt.h = MakeC1Header(sizeof(pkt), Opcode::SKILL_TELEPORT);
+  pkt.targetGridX = gridX;
+  pkt.targetGridY = gridY;
   m_client.Send(&pkt, sizeof(pkt));
 }
 
@@ -160,6 +171,13 @@ void ServerConnection::SendCharSelect(const char *name) {
                           Opcode::SUB_CHARSELECT);
   std::memset(pkt.name, 0, 10);
   std::strncpy(pkt.name, name, 10);
+  m_client.Send(&pkt, sizeof(pkt));
+}
+
+void ServerConnection::SendCharListRequest() {
+  // Request character list — server will save current character first
+  PSBMSG_HEAD pkt = MakeC1SubHeader(sizeof(pkt), Opcode::CHARSELECT,
+                                     Opcode::SUB_CHARLIST);
   m_client.Send(&pkt, sizeof(pkt));
 }
 

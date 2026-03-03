@@ -23,6 +23,7 @@
 #include "ServerConnection.hpp"
 #include "Shader.hpp"
 #include "Sky.hpp"
+#include "SoundManager.hpp"
 #include "Terrain.hpp"
 #include "TerrainParser.hpp"
 #include "UICoords.hpp"
@@ -213,10 +214,10 @@ static std::vector<uint8_t> g_learnedSkills;
 // Quick slot assignments
 static int16_t g_potionBar[4] = {850, 851, 852, -1}; // Apple, SmallHP, MedHP, (empty)
 static int8_t g_skillBar[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
-static ImVec2 g_quickSlotPos = {0, 0}; // Screen pos of Q slot for overlays
 static float g_potionCooldown = 0.0f;  // Potion cooldown timer (seconds)
 static constexpr float POTION_COOLDOWN_TIME = 30.0f;
 static bool g_shopOpen = false;
+static bool g_showGameMenu = false;
 static std::vector<ShopItem> g_shopItems;
 
 // Skill learning state
@@ -736,6 +737,7 @@ int main(int argc, char **argv) {
     inputCtx.learnedSkills = &g_learnedSkills;
     inputCtx.heroCharacterId = &g_heroCharacterId;
     inputCtx.rightMouseHeld = &g_rightMouseHeld;
+    inputCtx.showGameMenu = &g_showGameMenu;
     InputHandler::Init(inputCtx);
     InputHandler::RegisterCallbacks(window);
   }
@@ -901,7 +903,12 @@ int main(int argc, char **argv) {
   }
 
   serverData.connected = true;
+
+  // Initialize sound engine before any playback calls
+  SoundManager::Init(g_dataPath);
+
   g_gameState = GameState::CHAR_SELECT;
+  SoundManager::PlayMusic(g_dataPath + "/Music/main_theme.mp3");
   std::cout << "[State] -> CHAR_SELECT (waiting for character list)"
             << std::endl;
 
@@ -1090,6 +1097,12 @@ int main(int argc, char **argv) {
       }
     }
 
+    // Update 3D audio listener to hero position
+    {
+      glm::vec3 lp = g_hero.GetPosition();
+      SoundManager::UpdateListener(lp.x, lp.y, lp.z);
+    }
+
     // Update monster manager (state machines, animation)
     g_monsterManager.SetPlayerPosition(g_hero.GetPosition());
     g_monsterManager.SetPlayerDead(g_hero.IsDead());
@@ -1125,13 +1138,25 @@ int main(int argc, char **argv) {
               if (curResource >= cost) {
                 std::cout << "[Skill] HIT! SendSkillAttack monIdx=" << serverIdx
                           << " skillId=" << (int)skillId << std::endl;
-                g_server.SendSkillAttack(serverIdx, skillId);
+                if (skillId == 12) {
+                  // Flash: delay damage until beam spawns at frame 7.0
+                  g_hero.SetPendingAquaPacket(serverIdx, skillId, 0.0f, 0.0f);
+                } else {
+                  g_server.SendSkillAttack(serverIdx, skillId);
+                }
               } else {
                 InventoryUI::ShowNotification(isDK ? "Not enough AG!" : "Not enough Mana!");
               }
             } else {
               g_server.SendAttack(serverIdx);
             }
+          }
+        }
+        // Flash: send delayed damage packet when beam spawns at frame 7.0
+        {
+          uint16_t aqTarget; uint8_t aqSkill; float aqX, aqZ;
+          if (g_hero.PopPendingAquaPacket(aqTarget, aqSkill, aqX, aqZ)) {
+            g_server.SendSkillAttack(aqTarget, aqSkill, aqX, aqZ);
           }
         }
         // Auto-attack: re-engage after cooldown if target still alive
@@ -1202,12 +1227,46 @@ int main(int argc, char **argv) {
             }
           }
         }
+
+        // Self-AoE continuous casting (Twister/Evil Spirit/Hellfire): re-cast when GCD expires + RMB held
+        if (g_hero.GetAttackState() == AttackState::NONE &&
+            g_hero.GetAttackTarget() < 0 && g_rightMouseHeld &&
+            (g_rmcSkillId == 8 || g_rmcSkillId == 9 || g_rmcSkillId == 10) &&
+            g_hero.GetGlobalCooldown() <= 0.0f) {
+          uint8_t skillId = (uint8_t)g_rmcSkillId;
+          int cost = InventoryUI::GetSkillResourceCost(skillId);
+          bool isDK = (g_hero.GetClass() == 16);
+          int curResource = isDK ? g_serverAG : g_serverMP;
+          if (curResource >= cost) {
+            double mx, my;
+            glfwGetCursorPos(window, &mx, &my);
+            glm::vec3 groundTarget;
+            if (RayPicker::ScreenToTerrain(window, mx, my, groundTarget)) {
+              g_hero.CastSelfAoE(skillId, groundTarget);
+              // Evil Spirit: caster-centered AoE, send player position
+              // Twister: directional, send click position for line path
+              glm::vec3 heroPos = g_hero.GetPosition();
+              // Evil Spirit/Hellfire: caster-centered, Twister: directional
+              float atkX = (skillId == 9 || skillId == 10) ? heroPos.x : groundTarget.x;
+              float atkZ = (skillId == 9 || skillId == 10) ? heroPos.z : groundTarget.z;
+              if (skillId == 12) {
+                g_hero.SetPendingAquaPacket(0xFFFF, skillId, atkX, atkZ);
+              } else {
+                g_server.SendSkillAttack(0xFFFF, skillId, atkX, atkZ);
+              }
+              // Optimistically deduct mana to prevent spam before server reply
+              if (isDK) g_serverAG -= cost; else g_serverMP -= cost;
+            }
+          }
+        }
       }
       wasInSafe = nowInSafe;
     }
 
     // Skill learning: play heal animation over 3 seconds, then return to idle
     if (g_isLearningSkill) {
+      if (g_learnSkillTimer == 0.0f)
+        SoundManager::Play(SOUND_JEWEL01); // eGem.wav on learn start
       g_learnSkillTimer += deltaTime;
       // Stop movement/attack only when needed (StopMoving resets action/frame)
       if (g_hero.IsMoving())
@@ -1262,6 +1321,8 @@ int main(int argc, char **argv) {
           if (found)
             break;
         }
+        // Stop all sounds on teleport (prevents 3D bleed from old location)
+        SoundManager::StopAll();
         g_hero.SetPosition(spawnPos);
         g_hero.SnapToTerrain();
         g_hero.SetSlowAnimDuration(0.0f);
@@ -1349,7 +1410,7 @@ int main(int argc, char **argv) {
         // Auto-pickup Zen only (items require explicit click)
         if (gi.defIndex == -1 && dist < 120.0f && !g_hero.IsDead()) {
           g_server.SendPickup(gi.dropIndex);
-          gi.active = false; // Optimistic remove
+          gi.active = false; // Optimistic remove (sound plays on server confirm)
         }
         // Despawn after 60s
         if (gi.timer > 60.0f)
@@ -1381,7 +1442,18 @@ int main(int argc, char **argv) {
       uint8_t heroAttr = 0;
       if (gx >= 0 && gz >= 0 && gx < S && gz < S)
         heroAttr = g_terrainDataPtr->mapping.attributes[gz * S + gx];
-      g_hero.SetInSafeZone((heroAttr & 0x01) != 0);
+      bool wasInSafeZone = g_hero.IsInSafeZone();
+      bool nowInSafeZone = (heroAttr & 0x01) != 0;
+      g_hero.SetInSafeZone(nowInSafeZone);
+      // Main 5.2: stop wind in safe zone, restart outside
+      // Music: MuTheme in safe zone, stop outside
+      if (nowInSafeZone && !wasInSafeZone) {
+        SoundManager::Stop(SOUND_WIND01);
+        SoundManager::PlayMusic(g_dataPath + "/Music/MuTheme.mp3");
+      } else if (!nowInSafeZone && wasInSafeZone) {
+        SoundManager::PlayLoop(SOUND_WIND01);
+        SoundManager::StopMusic();
+      }
     }
 
     // Auto-screenshot/diagnostic camera override
@@ -1477,6 +1549,21 @@ int main(int argc, char **argv) {
     g_fireEffect.Update(deltaTime);
     g_vfxManager.UpdateLevelUpCenter(g_hero.GetPosition());
     g_vfxManager.Update(deltaTime);
+
+    // Twister proximity: apply StormTime spin when tornado VFX reaches a monster
+    if (g_vfxManager.HasActiveTwisters()) {
+      int monCount = g_monsterManager.GetMonsterCount();
+      for (int mi = 0; mi < monCount; ++mi) {
+        MonsterInfo info = g_monsterManager.GetMonsterInfo(mi);
+        if (info.hp <= 0) continue;
+        if (g_vfxManager.CheckTwisterHit(info.serverIndex, info.position))
+          g_monsterManager.ApplyStormTime(info.serverIndex, 10);
+      }
+    }
+
+    // Evil Spirit: StormTime is server-authoritative (applied in DAMAGE packet)
+    // No client-side proximity check — beams travel farther than server AoE range
+
     g_boidManager.Update(deltaTime, g_hero.GetPosition(), 0, currentFrame);
     g_fireEffect.Render(view, projection);
 
@@ -1508,6 +1595,30 @@ int main(int argc, char **argv) {
     g_clickEffect.Render(view, projection, deltaTime, g_hero.GetShader());
     g_hero.RenderShadow(view, projection);
     g_hero.Render(view, projection, camPos, deltaTime);
+
+    // Compute hero bone world positions for VFX bone-attached particles
+    {
+      const auto &bones = g_hero.GetCachedBones();
+      float facing = g_hero.GetFacing();
+      glm::vec3 heroPos = g_hero.GetPosition();
+      float cosF = cosf(facing), sinF = sinf(facing);
+      std::vector<glm::vec3> boneWorldPos(bones.size());
+      for (int i = 0; i < (int)bones.size(); ++i) {
+        // Translation column of 3x4 bone matrix (model-local space)
+        float bx = bones[i][0][3];
+        float by = bones[i][1][3];
+        float bz = bones[i][2][3];
+        // Apply facing rotation in MU space (same as shadow HeroCharacter.cpp:994)
+        float rx = bx * cosF - by * sinF;
+        float ry = bx * sinF + by * cosF;
+        // Full model transform: translate * rotZ(-90) * rotY(-90) * rotZ(facing)
+        // After facing rotation in MU space: (rx, ry, bz)
+        // After rotY(-90): (-bz, ry, rx)
+        // After rotZ(-90): (ry, bz, rx)
+        boneWorldPos[i] = heroPos + glm::vec3(ry, bz, rx);
+      }
+      g_vfxManager.SetHeroBonePositions(boneWorldPos);
+    }
 
     // Render VFX (after all characters so particles layer on top)
     g_vfxManager.Render(view, projection);
@@ -1607,6 +1718,105 @@ int main(int argc, char **argv) {
     // Skill drag cursor — always on top of everything
     InventoryUI::RenderSkillDragCursor(panelDl);
 
+    // ── Game Menu (ESC menu) ──
+    if (g_showGameMenu) {
+      ImDrawList *dl = ImGui::GetForegroundDrawList();
+      ImVec2 dispSize = ImGui::GetIO().DisplaySize;
+
+      // Full-screen semi-transparent dark overlay
+      dl->AddRectFilled(ImVec2(0, 0), dispSize, IM_COL32(0, 0, 0, 160));
+
+      // Centered panel
+      float panelW = 250.0f, panelH = 180.0f;
+      float px = (dispSize.x - panelW) * 0.5f;
+      float py = (dispSize.y - panelH) * 0.5f;
+      ImVec2 pMin(px, py), pMax(px + panelW, py + panelH);
+
+      // Panel background and border (matches InventoryUI style)
+      dl->AddRectFilled(pMin, pMax, IM_COL32(15, 15, 25, 240), 4.0f);
+      dl->AddRect(pMin, pMax, IM_COL32(120, 100, 60, 255), 4.0f, 0, 1.5f);
+
+      // Title: "Game Menu"
+      const char *title = "Game Menu";
+      ImVec2 titleSize = ImGui::CalcTextSize(title);
+      float titleX = px + (panelW - titleSize.x) * 0.5f;
+      dl->AddText(ImVec2(titleX, py + 14.0f), IM_COL32(255, 210, 80, 255), title);
+
+      // Button dimensions and positions
+      float btnW = 180.0f, btnH = 36.0f;
+      float btnX = px + (panelW - btnW) * 0.5f;
+      float btn1Y = py + 55.0f;  // "Switch Character"
+      float btn2Y = py + 110.0f; // "Exit Game"
+
+      ImVec2 mousePos = ImGui::GetIO().MousePos;
+      bool mouseClicked = ImGui::GetIO().MouseClicked[0];
+
+      // Helper lambda for buttons
+      auto drawButton = [&](float bx, float by, float bw, float bh,
+                            const char *label) -> bool {
+        ImVec2 bMin(bx, by), bMax(bx + bw, by + bh);
+        bool hovered = mousePos.x >= bx && mousePos.x <= bx + bw &&
+                       mousePos.y >= by && mousePos.y <= by + bh;
+        ImU32 bgCol = hovered ? IM_COL32(60, 50, 30, 255)
+                              : IM_COL32(35, 30, 20, 255);
+        ImU32 borderCol = hovered ? IM_COL32(200, 170, 60, 255)
+                                  : IM_COL32(120, 100, 60, 200);
+        dl->AddRectFilled(bMin, bMax, bgCol, 3.0f);
+        dl->AddRect(bMin, bMax, borderCol, 3.0f, 0, 1.2f);
+        ImVec2 labelSize = ImGui::CalcTextSize(label);
+        float lx = bx + (bw - labelSize.x) * 0.5f;
+        float ly = by + (bh - labelSize.y) * 0.5f;
+        ImU32 textCol = hovered ? IM_COL32(255, 230, 150, 255)
+                                : IM_COL32(200, 190, 160, 255);
+        dl->AddText(ImVec2(lx, ly), textCol, label);
+        return hovered && mouseClicked;
+      };
+
+      // "Switch Character" button
+      if (drawButton(btnX, btn1Y, btnW, btnH, "Switch Character")) {
+        SoundManager::Play(SOUND_CLICK01);
+        SoundManager::StopAll();
+        SoundManager::StopMusic();
+        SoundManager::PlayMusic(g_dataPath + "/Music/main_theme.mp3");
+        g_server.SendCharListRequest();
+        g_showGameMenu = false;
+        g_hero.StopMoving();
+        InputHandler::ResetGameReady();
+        g_gameState = GameState::CHAR_SELECT;
+        g_worldInitialized = false;
+        // Re-init character select scene
+        CharacterSelect::Context csCtx;
+        csCtx.server = &g_server;
+        csCtx.dataPath = data_path;
+        csCtx.window = window;
+        csCtx.onCharSelected = [&]() {
+          g_loadingFrames = 0;
+          g_gameState = GameState::LOADING;
+          if (!g_loadingTex) {
+            int idx = (rand() % 3) + 1;
+            char path[256];
+            snprintf(path, sizeof(path), "%s/Logo/Loading%02d.OZJ",
+                     data_path.c_str(), idx);
+            g_loadingTex = TextureLoader::LoadOZJ(path);
+            if (!g_loadingTex) {
+              snprintf(path, sizeof(path), "%s/Local/loading%02d.ozj",
+                       data_path.c_str(), idx);
+              g_loadingTex = TextureLoader::LoadOZJ(path);
+            }
+          }
+          std::cout << "[State] -> LOADING (waiting for world data)" << std::endl;
+        };
+        csCtx.onExit = [&]() { glfwSetWindowShouldClose(window, GLFW_TRUE); };
+        CharacterSelect::Init(csCtx);
+      }
+
+      // "Exit Game" button
+      if (drawButton(btnX, btn2Y, btnW, btnH, "Exit Game")) {
+        SoundManager::Play(SOUND_CLICK01);
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+      }
+    }
+
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -1630,28 +1840,15 @@ int main(int argc, char **argv) {
 
     // Second ImGui pass: draw deferred tooltip and HUD overlays ON TOP of 3D
     // items
-    if (InventoryUI::HasPendingTooltip() || g_potionCooldown > 0.0f ||
-        InventoryUI::HasDeferredOverlays()) {
+    if (InventoryUI::HasPendingTooltip() ||
+        InventoryUI::HasDeferredOverlays() ||
+        InventoryUI::HasDeferredCooldowns()) {
       ImGui_ImplOpenGL3_NewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
 
-      if (g_potionCooldown > 0.0f && g_quickSlotPos.x > 0) {
-        ImVec2 p0 = g_quickSlotPos;
-        ImVec2 p1 = ImVec2(p0.x + 50, p0.y + 50);
-
-        // Dark semi-transparent overlay
-        ImGui::GetForegroundDrawList()->AddRectFilled(
-            p0, p1, IM_COL32(20, 20, 20, 180));
-
-        // Countdown text (bright white)
-        char cdBuf[16];
-        snprintf(cdBuf, sizeof(cdBuf), "%d", (int)ceil(g_potionCooldown));
-        ImVec2 txtSize = ImGui::CalcTextSize(cdBuf);
-        ImGui::GetForegroundDrawList()->AddText(
-            ImVec2(p0.x + (50 - txtSize.x) * 0.5f,
-                   p0.y + (50 - txtSize.y) * 0.5f),
-            IM_COL32(255, 255, 255, 255), cdBuf);
+      if (InventoryUI::HasDeferredCooldowns()) {
+        InventoryUI::FlushDeferredCooldowns();
       }
 
       if (InventoryUI::HasDeferredOverlays()) {
@@ -1766,6 +1963,7 @@ int main(int argc, char **argv) {
   // Disconnect from server
   g_server.Disconnect();
   // Cleanup
+  SoundManager::Shutdown();
   CharacterSelect::Shutdown();
   g_monsterManager.Cleanup();
   g_boidManager.Cleanup();
@@ -1831,6 +2029,10 @@ static void InitGameWorld(ServerData &serverData) {
   }
 
   g_syncDone = true;
+  // Stop char select music, start Lorencia town music + ambient wind
+  SoundManager::StopMusic();
+  SoundManager::PlayMusic(g_dataPath + "/Music/MuTheme.mp3");
+  SoundManager::PlayLoop(SOUND_WIND01);
   g_npcManager.SetTerrainLightmap(g_terrainDataPtr->lightmap);
   g_npcManager.SetVFXManager(&g_vfxManager);
   InventoryUI::RecalcEquipmentStats();
@@ -1854,11 +2056,21 @@ static void InitGameWorld(ServerData &serverData) {
               << " monsters from server" << std::endl;
   }
 
-  // Default spawn: Lorencia town center
-  g_hero.SetPosition(glm::vec3(12750.0f, 0.0f, 13500.0f));
+  // Spawn at server-provided position (from CharInfo F3:03), fallback to town center
+  if (serverData.hasSpawnPos) {
+    float spawnX = (float)serverData.spawnGridY * 100.0f;
+    float spawnZ = (float)serverData.spawnGridX * 100.0f;
+    g_hero.SetPosition(glm::vec3(spawnX, 0.0f, spawnZ));
+    std::cout << "[Spawn] Using server position: grid ("
+              << (int)serverData.spawnGridX << ","
+              << (int)serverData.spawnGridY << ") -> world ("
+              << spawnX << "," << spawnZ << ")" << std::endl;
+  } else {
+    g_hero.SetPosition(glm::vec3(12750.0f, 0.0f, 13500.0f));
+  }
   g_hero.SnapToTerrain();
 
-  // Fix: if hero spawned on a non-walkable tile, move to a known safe position
+  // Fix: if hero spawned on a non-walkable tile, find nearest walkable
   {
     glm::vec3 heroPos = g_hero.GetPosition();
     const int S = TerrainParser::TERRAIN_SIZE;
@@ -1867,7 +2079,8 @@ static void InitGameWorld(ServerData &serverData) {
     bool walkable = (gx >= 0 && gz >= 0 && gx < S && gz < S) &&
                     (g_terrainDataPtr->mapping.attributes[gz * S + gx] & 0x04) == 0;
     if (!walkable) {
-      int startGX = 125, startGZ = 135;
+      int startGX = gx > 0 ? gx : 125;
+      int startGZ = gz > 0 ? gz : 135;
       bool found = false;
       for (int radius = 0; radius < 30 && !found; radius++) {
         for (int dy = -radius; dy <= radius && !found; dy++) {

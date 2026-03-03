@@ -15,6 +15,12 @@ std::string ItemModelManager::s_dataPath;
 std::shared_ptr<BMDData> ItemModelManager::s_playerBmd;
 std::vector<BoneWorldMatrix> ItemModelManager::s_playerIdleBones;
 
+// Main 5.2: ItemLight — returns BlendMesh index for weapons with glow
+int ItemModelManager::GetItemBlendMesh(int category, int itemIndex) {
+  if (category == 3 && itemIndex == 0) return 1; // Light Spear: mesh 1 glows
+  return -1; // No glow
+}
+
 // Per-category display poses from Main 5.2 RenderObjectScreen()
 // Angles are MU Euler: (pitch, yaw, roll) in degrees
 struct ItemDisplayPose {
@@ -411,6 +417,12 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
   // which should be hidden in inventory/shop display.
   bool isBodyPart = (category >= 7 && category <= 11);
 
+  // Main 5.2: ItemLight — determine if this item has a glow mesh
+  int itemIndex = (defIndex >= 0) ? (defIndex % 32) : -1;
+  int blendMeshIdx = (category >= 0 && itemIndex >= 0)
+                         ? GetItemBlendMesh(category, itemIndex)
+                         : -1;
+
   // Render — disable face culling for double-sided meshes (pet wings etc.)
   glDisable(GL_CULL_FACE);
   for (int mi = 0; mi < (int)model->meshes.size(); ++mi) {
@@ -438,21 +450,32 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
     shader->setBool("useTexture", true);
     shader->setVec3("colorTint", glm::vec3(1));
 
-    // Alpha blend if needed
-    if (mb.hasAlpha || mb.bright) {
+    // Main 5.2: ItemLight — glow mesh renders additively with pulsing brightness
+    bool isGlowMesh = (blendMeshIdx >= 0 && mi == blendMeshIdx);
+
+    if (isGlowMesh) {
+      float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+      shader->setFloat("blendMeshLight", pulseLight);
       glEnable(GL_BLEND);
-      glDepthMask(GL_FALSE); // Disable depth writes for transparent layers
+      glBlendFunc(GL_ONE, GL_ONE); // Additive
+      glDepthMask(GL_FALSE);
+    } else if (mb.hasAlpha || mb.bright) {
+      glEnable(GL_BLEND);
+      glDepthMask(GL_FALSE);
       if (mb.bright)
-        glBlendFunc(GL_ONE, GL_ONE); // Pure additive
+        glBlendFunc(GL_ONE, GL_ONE);
       else
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     } else {
-      glDisable(GL_BLEND);  // Opaque
-      glDepthMask(GL_TRUE); // Enable depth writes
+      glDisable(GL_BLEND);
+      glDepthMask(GL_TRUE);
     }
 
     glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-    glDepthMask(GL_TRUE); // Restore state after draw
+    glDepthMask(GL_TRUE);
+
+    if (isGlowMesh)
+      shader->setFloat("blendMeshLight", 1.0f); // Restore
   }
   glEnable(GL_CULL_FACE);
   glBindVertexArray(0);
@@ -470,7 +493,8 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
                                        const glm::vec3 &pos,
                                        const glm::mat4 &view,
                                        const glm::mat4 &proj, float scale,
-                                       glm::vec3 rotation) {
+                                       glm::vec3 rotation,
+                                       int16_t defIndex) {
   LoadedItemModel *model = Get(filename);
   if (!model || !model->bmd)
     return;
@@ -500,7 +524,13 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
   shader->setMat4("model", mod);
   shader->setVec3("colorTint", glm::vec3(1)); // Reset tint
 
-  for (const auto &mb : model->meshes) {
+  // Main 5.2: ItemLight — determine if this item has a glow mesh
+  int category = (defIndex >= 0) ? (defIndex / 32) : -1;
+  int itemIndex = (defIndex >= 0) ? (defIndex % 32) : -1;
+  int blendMeshIdx = (category >= 0) ? GetItemBlendMesh(category, itemIndex) : -1;
+
+  for (int mi = 0; mi < (int)model->meshes.size(); ++mi) {
+    const auto &mb = model->meshes[mi];
     if (mb.hidden)
       continue;
     glBindVertexArray(mb.vao);
@@ -509,7 +539,15 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
     shader->setInt("diffuseMap", 0);
     shader->setBool("useTexture", true);
 
-    if (mb.hasAlpha || mb.bright) {
+    bool isGlowMesh = (blendMeshIdx >= 0 && mi == blendMeshIdx);
+
+    if (isGlowMesh) {
+      float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+      shader->setFloat("blendMeshLight", pulseLight);
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_ONE, GL_ONE); // Additive
+      glDepthMask(GL_FALSE);
+    } else if (mb.hasAlpha || mb.bright) {
       glEnable(GL_BLEND);
       if (mb.bright)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -520,6 +558,11 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
     }
 
     glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+
+    if (isGlowMesh) {
+      shader->setFloat("blendMeshLight", 1.0f);
+      glDepthMask(GL_TRUE);
+    }
   }
   glBindVertexArray(0);
   glDisable(GL_BLEND);

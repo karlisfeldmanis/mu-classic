@@ -3,6 +3,7 @@
 #include "InventoryUI.hpp"
 #include "ItemDatabase.hpp"
 #include "PacketDefs.hpp"
+#include "SoundManager.hpp"
 #include <cstring>
 #include <iostream>
 
@@ -310,6 +311,18 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
   if (type == 0xC1 && pktSize >= 3) {
     uint8_t headcode = pkt[2];
 
+    // CharInfo (F3:03) — extract spawn position
+    if (headcode == Opcode::CHARSELECT && pktSize >= 4 &&
+        pkt[3] == Opcode::SUB_CHARSELECT &&
+        pktSize >= (int)sizeof(PMSG_CHARINFO_SEND)) {
+      auto *info = reinterpret_cast<const PMSG_CHARINFO_SEND *>(pkt);
+      result.spawnGridX = info->x;
+      result.spawnGridY = info->y;
+      result.hasSpawnPos = true;
+      std::cout << "[Net] CharInfo spawn position: grid (" << (int)info->x
+                << "," << (int)info->y << ")" << std::endl;
+    }
+
     // Monster viewport V1
     if (headcode == 0x1F && pktSize >= 4) {
       uint8_t count = pkt[3];
@@ -404,6 +417,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         } else {
           // Normal/skill hits: trigger hit animation + VFX
           g_state->monsterManager->TriggerHitAnimation(idx);
+          SoundManager::Play(SOUND_HIT1 + rand() % 5);
 
           // Skill attacks: spawn skill-specific impact VFX + reduced blood
           // Normal attacks: standard blood burst (Main 5.2: 10x BITMAP_BLOOD+1)
@@ -411,6 +425,8 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           if (heroSkill > 0 &&
               p->attackerCharId == (uint16_t)*g_state->heroCharacterId) {
             g_state->vfxManager->SpawnSkillImpact(heroSkill, monPos);
+            // Note: Twister StormTime spin is applied by proximity check
+            // in main loop when tornado VFX reaches the monster, not here
             if (mi.type != 7)
               g_state->vfxManager->SpawnBurst(ParticleType::BLOOD, hitPos, 5);
           } else {
@@ -447,6 +463,8 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
       uint32_t xp = p->xpReward;
       if (xp > 0) {
         g_state->hero->GainExperience(xp);
+        if (g_state->hero->LeveledUpThisFrame())
+          SoundManager::Play(SOUND_LEVEL_UP);
         *g_state->serverXP = (int64_t)g_state->hero->GetExperience();
         *g_state->serverLevel = g_state->hero->GetLevel();
         *g_state->serverLevelUpPoints = g_state->hero->GetLevelUpPoints();
@@ -569,6 +587,11 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         pktSize >= (int)sizeof(PMSG_PICKUP_RESULT_SEND)) {
       auto *p = reinterpret_cast<const PMSG_PICKUP_RESULT_SEND *>(pkt);
       if (p->success) {
+        // Play appropriate pickup sound based on item type
+        if (p->defIndex == -1)
+          SoundManager::Play(SOUND_DROP_GOLD01); // Zen pickup
+        else
+          SoundManager::Play(SOUND_GET_ITEM01); // Item pickup
         for (int i = 0; i < MAX_GROUND_ITEMS; i++) {
           if (g_state->groundItems[i].active &&
               g_state->groundItems[i].dropIndex == p->dropIndex) {
@@ -624,9 +647,11 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         pktSize >= (int)sizeof(PMSG_SHOP_BUY_RESULT_SEND)) {
       auto *p = reinterpret_cast<const PMSG_SHOP_BUY_RESULT_SEND *>(pkt);
       if (p->result) {
+        SoundManager::Play(SOUND_DROP_GOLD01);
         std::cout << "[Shop] Bought item defIndex=" << p->defIndex
                   << " qty=" << (int)p->quantity << "\n";
       } else {
+        SoundManager::Play(SOUND_ERROR01);
         std::cout << "[Shop] Failed to buy item\n";
       }
     }
@@ -636,9 +661,11 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         pktSize >= (int)sizeof(PMSG_SHOP_SELL_RESULT_SEND)) {
       auto *p = reinterpret_cast<const PMSG_SHOP_SELL_RESULT_SEND *>(pkt);
       if (p->result) {
+        SoundManager::Play(SOUND_DROP_GOLD01);
         std::cout << "[Shop] Sold item bagSlot=" << (int)p->bagSlot
                   << " gained " << p->zenGained << " zen\n";
       } else {
+        SoundManager::Play(SOUND_ERROR01);
         std::cout << "[Shop] Failed to sell item\n";
       }
     }
@@ -689,6 +716,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           g_state->shopItems->push_back(item);
         }
         *g_state->shopOpen = true;
+        SoundManager::Play(SOUND_INTERFACE01);
         std::cout << "[Shop] Received list with " << (int)count << " items\n";
       }
     }

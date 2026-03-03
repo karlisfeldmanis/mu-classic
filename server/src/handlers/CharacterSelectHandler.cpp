@@ -209,6 +209,19 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
     return;
   }
 
+  // Save old character before switching (prevent stat contamination)
+  if (session.characterId > 0 && session.characterId != c.id && session.inWorld) {
+    server.SaveSession(session);
+    printf("[CharSelect] Saved old character %d before switching to %d\n",
+           session.characterId, c.id);
+  }
+
+  // Clear old equipment cache to prevent bleed-through
+  for (int i = 0; i < Session::NUM_EQUIP_SLOTS; i++) {
+    session.equipment[i] = {};
+    session.equipment[i].category = 0xFF;
+  }
+
   session.characterId = c.id;
   session.characterName = c.name;
   session.charClass = c.charClass;

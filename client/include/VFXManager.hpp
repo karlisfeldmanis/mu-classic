@@ -8,7 +8,9 @@
 #include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <functional>
+#include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -27,7 +29,8 @@ enum class ParticleType {
   SKILL_STAB,    // Dark red piercing sparks (Death Stab)
   // DW Spell effects
   SPELL_ENERGY,    // Blue-white energy burst (Energy Ball)
-  SPELL_FIRE,      // Orange-yellow fire burst (Fire Ball, Flame, Hellfire)
+  SPELL_FIRE,      // Orange-yellow fire burst (Fire Ball, Hellfire)
+  SPELL_FLAME,     // Main 5.2: BITMAP_FLAME (Flame ground fire — larger, slower fade)
   SPELL_ICE,       // Cyan-white ice shards (Ice)
   SPELL_LIGHTNING,  // Bright white-blue electric sparks (Lightning)
   SPELL_POISON,    // Green toxic cloud (Poison)
@@ -35,6 +38,10 @@ enum class ParticleType {
   SPELL_DARK,      // Purple-black dark energy (Evil Spirit, Twister)
   SPELL_WATER,     // Blue water spray (Aqua Beam)
   SPELL_TELEPORT,  // Bright white flash ring (Teleport)
+  // Inferno-specific particles (Main 5.2: BITMAP_SPARK SubType 2 + BITMAP_EXPLOTION)
+  INFERNO_SPARK,     // 2x scale, 3x velocity sparks (Main 5.2: SubType 2)
+  INFERNO_EXPLOSION, // Animated 4x4 explosion sprite sheet (Explotion01.OZJ)
+  INFERNO_FIRE,      // Dedicated inferno fire (inferno.OZJ texture)
   // Main 5.2: BITMAP_ENERGY orb (Thunder01.jpg, full-texture, rotating)
   SPELL_ENERGY_ORB, // Energy Ball core glow — uses Thunder01 texture at full UV
 };
@@ -83,9 +90,69 @@ public:
 
   // Main 5.2: Meteorite — single fireball falling from sky at target
   void SpawnMeteorStrike(const glm::vec3 &targetPos);
+  void SpawnIceStrike(const glm::vec3 &targetPos);
 
   // Main 5.2: MODEL_POISON — spawn green cloud at target position
   void SpawnPoisonCloud(const glm::vec3 &targetPos);
+
+  // Main 5.2: BITMAP_FLAME SubType 0 — persistent ground fire at target
+  void SpawnFlameGround(const glm::vec3 &targetPos);
+
+  // Main 5.2: MODEL_STORM SubType 0 — Twister tornado from caster toward target
+  void SpawnTwisterStorm(const glm::vec3 &casterPos, const glm::vec3 &targetDir);
+
+  // Main 5.2: Evil Spirit — 4-directional spirit beams from caster
+  void SpawnEvilSpirit(const glm::vec3 &casterPos, float facing);
+
+  // Main 5.2: Hellfire — ground fire ring from caster
+  void SpawnHellfire(const glm::vec3 &casterPos);
+
+  // Main 5.2: MODEL_SKILL_INFERNO — ring of 8 fire explosions around caster
+  void SpawnInferno(const glm::vec3 &casterPos);
+
+  // Main 5.2: Hellfire blast — 36 radial spirit beams at spell release
+  void SpawnHellfireBeams(const glm::vec3 &casterPos);
+
+  // Main 5.2: AT_SKILL_FLASH (Aqua Beam) — 20-segment laser beam from caster forward
+  void SpawnAquaBeam(const glm::vec3 &casterPos, float facing);
+
+  // Kill all active aqua beams (called when casting animation ends)
+  void KillAquaBeams();
+
+  // Main 5.2: BITMAP_GATHERING SubType 2 — converging particles before Aqua Beam
+  // Spawns lightning arcs + water sprites converging toward hand position
+  void SpawnAquaGathering(const glm::vec3 &handPos);
+
+  // Called when Hellfire transitions from charge to blast phase
+  void EndHellfireCharge();
+
+  // Per-frame hero bone world positions (for bone-attached particles)
+  void SetHeroBonePositions(const std::vector<glm::vec3> &positions);
+
+  // Check if a monster should receive StormTime spin from a nearby spirit beam.
+  // Returns true (once per beam per monster) if any primary beam is within range.
+  bool CheckSpiritBeamHit(uint16_t serverIndex, const glm::vec3 &monPos,
+                          float radiusSq = 80.0f * 80.0f);
+
+  bool HasActiveSpiritBeams() const { return !m_spiritBeams.empty(); }
+
+  // Check if a monster should receive StormTime spin from a nearby tornado.
+  // Returns true (once per tornado per monster) if any tornado is within range.
+  bool CheckTwisterHit(uint16_t serverIndex, const glm::vec3 &monPos,
+                       float radiusSq = 80.0f * 80.0f) {
+    for (auto &ts : m_twisterStorms) {
+      if (ts.affectedMonsters.count(serverIndex)) continue;
+      float dx = monPos.x - ts.position.x;
+      float dz = monPos.z - ts.position.z;
+      if (dx * dx + dz * dz <= radiusSq) {
+        ts.affectedMonsters.insert(serverIndex);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool HasActiveTwisters() const { return !m_twisterStorms.empty(); }
 
   // Terrain height callback (set from main.cpp for ground collision)
   void SetTerrainHeightFunc(std::function<float(float, float)> fn) {
@@ -234,6 +301,135 @@ private:
     float scale;
   };
 
+  // Main 5.2: BITMAP_FLAME SubType 0 — persistent ground fire at target
+  // LifeTime=40 ticks, spawns 6 flame particles/tick, orange terrain light
+  struct FlameGround {
+    glm::vec3 position;      // Target position (ground level)
+    float lifetime;           // Remaining seconds (starts at 1.6f = 40 ticks)
+    float maxLifetime;        // 1.6f
+    float tickTimer = 0.0f;   // Accumulator for tick-rate spawning (0.04s/tick)
+  };
+
+  // Main 5.2: MODEL_STORM SubType 0 — Twister tornado at target
+  // LifeTime=59 ticks (~2.36s), BlendMesh=0, Direction=(0,-10,0)
+  // UV scroll = -LifeTime*0.1, smoke/lightning/debris per tick
+  struct TwisterStorm {
+    glm::vec3 position;      // Current position (snapped to terrain each tick)
+    glm::vec3 direction;     // Horizontal travel direction (normalized XZ)
+    float speed;             // Travel speed (world units/sec)
+    float lifetime;           // Remaining seconds (starts at 2.36f = 59 ticks)
+    float maxLifetime;        // 2.36f
+    float tickTimer = 0.0f;   // Accumulator for tick-rate effects
+    float rotation;           // Current Y-axis rotation
+    std::set<uint16_t> affectedMonsters; // Monsters already spun by this tornado
+  };
+
+  // Main 5.2: Evil Spirit — homing spirit beams spiraling around caster
+  // 4 directions × 2 scales (80+20) = 8 beams, BITMAP_JOINT_SPIRIT texture
+  // RENDER_TYPE_ALPHA_BLEND_MINUS (subtractive blending)
+  // MoveHumming: beams fly outward then curve back toward caster, creating spiral
+  struct SpiritBeam {
+    glm::vec3 position;     // Current head position
+    glm::vec3 angle;        // Current heading (pitch, unused, yaw) in degrees
+    glm::vec3 direction;    // Angular drift accumulator (wobble)
+    glm::vec3 casterPos;    // Caster origin (beams home back toward this)
+    float scale;            // Half-width: 80 (primary) or 20 (secondary)
+    float lifetime;
+    float maxLifetime;      // 1.96s (49 ticks)
+    float trailTimer;
+    // Trail: 6 previous positions for ribbon rendering
+    static constexpr int MAX_TRAIL = 6;
+    glm::vec3 trail[MAX_TRAIL];
+    int numTrail = 0;
+    std::set<uint16_t> affectedMonsters; // StormTime tracking per beam
+  };
+
+  // Main 5.2: Hellfire — BITMAP_JOINT_SPIRIT SubType 6/7 beams
+  // SubType 6: MoveHumming toward center + forward movement (curving outward/back)
+  // SubType 7: straight up (Position[2]+=Vel) + forward movement (tall columns)
+  struct HellfireBeam {
+    glm::vec3 position;
+    glm::vec3 angle;       // (pitch, unused, yaw) degrees
+    glm::vec3 casterPos;   // SubType 6: MoveHumming target (center + 100Y)
+    float scale;           // 60.0 (Main 5.2: CreateJoint scale=60)
+    float velocity;        // Starts 0, +5/tick, cap 30 (turn rate + speed)
+    float lifetime;
+    float maxLifetime;     // 0.8s (20 ticks)
+    float trailTimer;
+    static constexpr int MAX_TRAIL = 5;
+    glm::vec3 trail[MAX_TRAIL];
+    int numTrail = 0;
+    int subType;           // 6=homing outward, 7=straight up + forward
+  };
+
+  // Main 5.2: Hellfire ground circle — MODEL_CIRCLE + MODEL_CIRCLE_LIGHT
+  // MODEL_CIRCLE: BlendMeshLight = LifeTime*0.1 fade, 45 ticks
+  // MODEL_CIRCLE_LIGHT: scrolling UV, stone debris, terrain light, 40 ticks
+  struct HellfireEffect {
+    glm::vec3 position;     // Ground-level center
+    float lifetime;          // 1.8s (45 ticks)
+    float maxLifetime;
+    float tickTimer = 0.0f;
+    float uvScroll = 0.0f;   // MODEL_CIRCLE_LIGHT: BlendMeshTexCoordU scrolling
+    int tickCount = 0;       // Tick counter for debris/ring fire timing
+    bool chargePhase = true; // True during HELL_BEGIN+HELL_START, false at BLAST
+  };
+
+  // Main 5.2: MODEL_SKILL_INFERNO — ring of 8 fire explosions around caster
+  // Inferno01.bmd at center, BlendMesh=-2, Scale=0.9
+  struct InfernoEffect {
+    glm::vec3 position;     // Caster position (center of ring)
+    float lifetime;
+    float maxLifetime;
+    float tickTimer = 0.0f;
+    glm::vec3 ringPoints[8]; // 8 explosion positions for per-tick fire
+  };
+
+  // Main 5.2: BITMAP_BOSS_LASER SubType 0 — Aqua Beam laser from caster forward
+  // 20 billboard sprites (BITMAP_SPARK+1) along a line, LifeTime=20 ticks
+  struct AquaBeam {
+    glm::vec3 startPosition;  // CalcAddPosition result (offset origin)
+    glm::vec3 direction;      // Per-step direction (50 units * facing)
+    glm::vec3 light;          // (0.5, 0.7, 1.0) blue tint
+    float scale;              // Billboard size (~30 world units)
+    float lifetime;           // 0.8s (20 ticks)
+    float gatherTimer = 0.0f; // Accumulator for gathering particle spawns
+    float sparkTimer = 0.0f;  // Accumulator for per-tick spark trail particles
+    static constexpr int NUM_SEGMENTS = 20;
+  };
+
+  // Main 5.2: MODEL_LASER SubType 0 — 1-tick dark flash at spirit beam head
+  // RENDER_DARK, Scale=1.3, BlendMeshLight = beam's light intensity
+  struct LaserFlash {
+    glm::vec3 position;
+    float yaw;       // Beam heading (degrees)
+    float pitch;     // Beam pitch (degrees)
+    float light;     // BlendMeshLight intensity
+    float lifetime;  // 0.04s (1 tick)
+  };
+
+  // Main 5.2: MODEL_ICE SubType 0 — ice crystal at target for Ice spell
+  struct IceCrystal {
+    glm::vec3 position;
+    float scale;         // 0.8
+    float alpha;         // 1.0 → fades to 0
+    float lifetime;      // 50 ticks = 2.0s
+    float maxLifetime;
+    bool fadePhase;      // true after growth animation, starts fading
+    float smokeTimer;    // Accumulator for smoke particle spawning
+  };
+
+  // Main 5.2: MODEL_ICE_SMALL SubType 0 — ice debris with bouncing physics
+  struct IceShard {
+    glm::vec3 position;
+    glm::vec3 velocity;  // Random outward direction (decays 10%/tick)
+    float gravity;       // 200-575 units/sec upward (8-23 per tick), decreases by 75/sec
+    float angleX;        // Tumble rotation
+    float scale;         // 0.8-1.1 (Main 5.2: rand()%4/10 + 0.8)
+    float lifetime;      // 1.28-1.88s (32-47 ticks)
+    float smokeTimer;
+  };
+
   std::vector<Particle> m_particles;
   std::vector<Ribbon> m_ribbons;
   std::vector<GroundCircle> m_groundCircles;
@@ -241,7 +437,20 @@ private:
   std::vector<SpellProjectile> m_spellProjectiles;
   std::vector<LightningBolt> m_lightningBolts;
   std::vector<MeteorBolt> m_meteorBolts;
+  std::vector<IceCrystal> m_iceCrystals;
+  std::vector<IceShard> m_iceShards;
   std::vector<PoisonCloud> m_poisonClouds;
+  std::vector<FlameGround> m_flameGrounds;
+  std::vector<TwisterStorm> m_twisterStorms;
+  std::vector<SpiritBeam> m_spiritBeams;
+  std::vector<HellfireBeam> m_hellfireBeams;
+  std::vector<HellfireEffect> m_hellfireEffects;
+  std::vector<LaserFlash> m_laserFlashes;
+  std::vector<AquaBeam> m_aquaBeams;
+  std::vector<InfernoEffect> m_infernoEffects;
+
+  // Per-frame hero bone world positions (for bone-attached particles)
+  std::vector<glm::vec3> m_heroBoneWorldPositions;
 
   // Textures
   GLuint m_bloodTexture = 0;
@@ -257,6 +466,14 @@ private:
       0; // Main 5.2: Magic_Ground2.OZJ (level-up circle)
   GLuint m_ringTexture = 0;         // ring_of_gradation.OZJ (level-up ring)
   GLuint m_bitmapFlareTexture = 0;  // Main 5.2: BITMAP_FLARE (Effect/Flare.OZJ)
+  GLuint m_flameTexture = 0;        // Main 5.2: BITMAP_FLAME (Effect/Flame01.OZJ)
+  GLuint m_jointSpiritTexture = 0;  // Main 5.2: BITMAP_JOINT_SPIRIT (Effect/JointSpirit01.OZJ)
+  GLuint m_spark3Texture = 0;       // Main 5.2: BITMAP_SPARK+1 (Effect/Spark03.OZJ)
+  GLuint m_flareBlueTexture = 0;    // Aqua Beam outer glow (Effect/flareBlue.OZJ)
+  GLuint m_explosionTexture = 0;   // Main 5.2: BITMAP_EXPLOTION (Explotion01.OZJ, 4x4 sprite)
+  GLuint m_infernoFireTexture = 0; // Main 5.2: Inferno fire (inferno.OZJ)
+  GLuint m_hellfireCircleTex = 0;   // Main 5.2: Circle01.bmd texture (Skill/magic_a01.OZJ)
+  GLuint m_hellfireLightTex = 0;    // Main 5.2: Circle02.bmd texture (Skill/magic_a02.OZJ)
 
   std::unique_ptr<Shader> m_shader;
   std::unique_ptr<Shader> m_lineShader;
@@ -274,6 +491,32 @@ private:
   std::unique_ptr<BMDData> m_poisonBmd;
   std::vector<MeshBuffers> m_poisonMeshes;
 
+  // Ice crystal (Main 5.2: MODEL_ICE = Data/Skill/Ice01.bmd)
+  std::unique_ptr<BMDData> m_iceBmd;
+  std::vector<MeshBuffers> m_iceMeshes;
+
+  // Ice shard debris (Main 5.2: MODEL_ICE_SMALL = Data/Skill/Ice02.bmd)
+  std::unique_ptr<BMDData> m_iceSmallBmd;
+  std::vector<MeshBuffers> m_iceSmallMeshes;
+
+  // Storm tornado (Main 5.2: MODEL_STORM = Data/Skill/Storm01.bmd)
+  std::unique_ptr<BMDData> m_stormBmd;
+  std::vector<MeshBuffers> m_stormMeshes;
+
+  // Hellfire ground circles (Main 5.2: MODEL_CIRCLE / MODEL_CIRCLE_LIGHT)
+  std::unique_ptr<BMDData> m_circleBmd;       // Circle01.bmd
+  std::vector<MeshBuffers> m_circleMeshes;
+  std::unique_ptr<BMDData> m_circleLightBmd;   // Circle02.bmd
+  std::vector<MeshBuffers> m_circleLightMeshes;
+
+  // Inferno ring (Main 5.2: MODEL_SKILL_INFERNO = Data/Skill/Inferno01.bmd)
+  std::unique_ptr<BMDData> m_infernoBmd;
+  std::vector<MeshBuffers> m_infernoMeshes;
+
+  // Evil Spirit beam head flash (Main 5.2: MODEL_LASER = Data/Skill/Laser01.bmd)
+  std::unique_ptr<BMDData> m_laserBmd;
+  std::vector<MeshBuffers> m_laserMeshes;
+
   // Terrain height callback for ground collision
   std::function<float(float, float)> m_getTerrainHeight;
 
@@ -284,7 +527,7 @@ private:
   // Ribbon buffers (pos + uv per vertex)
   GLuint m_ribbonVAO = 0, m_ribbonVBO = 0;
   static constexpr int MAX_RIBBON_VERTS =
-      1600; // 4 ribbons x 50 seg x 2 faces x 4 verts
+      4000; // Increased for Hellfire 36-beam ring + Evil Spirit + ribbons
 
   static constexpr int MAX_PARTICLES = 8192;
 
@@ -304,6 +547,26 @@ private:
   void renderMeteorBolts(const glm::mat4 &view, const glm::mat4 &projection);
   void updatePoisonClouds(float dt);
   void renderPoisonClouds(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateIceCrystals(float dt);
+  void renderIceCrystals(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateIceShards(float dt);
+  void renderIceShards(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateFlameGrounds(float dt);
+  void renderFlameGrounds(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateTwisterStorms(float dt);
+  void renderTwisterStorms(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateSpiritBeams(float dt);
+  void renderSpiritBeams(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateHellfireBeams(float dt);
+  void renderHellfireBeams(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateHellfireEffects(float dt);
+  void renderHellfireEffects(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateInfernoEffects(float dt);
+  void renderInfernoEffects(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateLaserFlashes(float dt);
+  void renderLaserFlashes(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateAquaBeams(float dt);
+  void renderAquaBeams(const glm::mat4 &view, const glm::mat4 &projection);
 };
 
 #endif // VFX_MANAGER_HPP

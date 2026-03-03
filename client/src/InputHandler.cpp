@@ -2,6 +2,7 @@
 #include "Camera.hpp"
 #include "ClickEffect.hpp"
 #include "ClientTypes.hpp"
+#include "SoundManager.hpp"
 #include "HeroCharacter.hpp"
 #include "InventoryUI.hpp"
 #include "MonsterManager.hpp"
@@ -159,7 +160,9 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
   if (!s_ctxInitialized || !s_gameReady)
     return;
 
-  // Block world interactions while learning a skill
+  // Block world interactions while Game Menu or skill learning is active
+  if (s_ctx->showGameMenu && *s_ctx->showGameMenu)
+    return;
   if (s_ctx->isLearningSkill && *s_ctx->isLearningSkill)
     return;
 
@@ -263,6 +266,57 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
                                      : (s_ctx->serverMP ? *s_ctx->serverMP : 0);
           if (currentResource < cost) {
             InventoryUI::ShowNotification(isDK ? "Not enough AG!" : "Not enough Mana!");
+          } else if (skillId == 6) {
+            // Teleport — ground-targeted (Main 5.2: AT_SKILL_TELEPORT)
+            // Block teleport in safe zone
+            if (s_ctx->hero && s_ctx->hero->IsInSafeZone()) {
+              InventoryUI::ShowNotification("Cannot teleport in safe zone!");
+            } else {
+              glm::vec3 target;
+              if (RayPicker::ScreenToTerrain(window, mx, my, target)) {
+                if (RayPicker::IsWalkable(target.x, target.z)) {
+                  uint8_t gridX = (uint8_t)(target.z / 100.0f);
+                  uint8_t gridY = (uint8_t)(target.x / 100.0f);
+                  s_ctx->server->SendTeleport(gridX, gridY);
+                  s_ctx->hero->TeleportTo(target);
+                  s_ctx->hero->ClearPendingPickup();
+                }
+              }
+            }
+          } else if (skillId == 8 || skillId == 9 || skillId == 10 || skillId == 12 || skillId == 14) {
+            // Twister/Evil Spirit/Hellfire/Flash — AoE: cast from caster toward click direction
+            // GCD blocks spam, but allow interrupting normal melee attacks
+            bool gcdReady = s_ctx->hero->GetGlobalCooldown() <= 0.0f ||
+                            s_ctx->hero->GetActiveSkillId() == 0;
+            if (gcdReady) {
+              int monHit = RayPicker::PickMonster(window, mx, my);
+              if (monHit >= 0) {
+                MonsterInfo info = s_ctx->monsterMgr->GetMonsterInfo(monHit);
+                s_ctx->hero->SkillAttackMonster(monHit, info.position, skillId);
+              } else {
+                glm::vec3 groundTarget;
+                if (RayPicker::ScreenToTerrain(window, mx, my, groundTarget)) {
+                  s_ctx->hero->CastSelfAoE(skillId, groundTarget);
+                  // Evil Spirit: caster-centered AoE, send player position
+                  // Twister: directional, send click position for line path
+                  glm::vec3 heroPos = s_ctx->hero->GetPosition();
+                  // Evil Spirit/Hellfire: caster-centered, Twister: directional
+                  // Evil Spirit/Hellfire: caster-centered, Twister/Flash: directional
+                  float atkX = (skillId == 9 || skillId == 10 || skillId == 14) ? heroPos.x : groundTarget.x;
+                  float atkZ = (skillId == 9 || skillId == 10 || skillId == 14) ? heroPos.z : groundTarget.z;
+                  if (skillId == 12) {
+                    // Flash: delay damage until beam spawns at frame 7.0
+                    s_ctx->hero->SetPendingAquaPacket(0xFFFF, skillId, atkX, atkZ);
+                  } else {
+                    s_ctx->server->SendSkillAttack(0xFFFF, skillId, atkX, atkZ);
+                  }
+                  // Optimistically deduct mana to prevent spam before server reply
+                  if (isDK && s_ctx->serverAG) *s_ctx->serverAG -= cost;
+                  else if (s_ctx->serverMP) *s_ctx->serverMP -= cost;
+                }
+              }
+            }
+            s_ctx->hero->ClearPendingPickup();
           } else {
             int monHit = RayPicker::PickMonster(window, mx, my);
             if (monHit >= 0) {
@@ -295,12 +349,18 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
   // when ImGui panels have focus. Only text-input widgets need that guard.
 
   if (action == GLFW_PRESS) {
-    if (key == GLFW_KEY_C)
+    if (key == GLFW_KEY_C) {
       *s_ctx->showCharInfo = !*s_ctx->showCharInfo;
-    if (key == GLFW_KEY_I)
+      SoundManager::Play(SOUND_INTERFACE01);
+    }
+    if (key == GLFW_KEY_I) {
       *s_ctx->showInventory = !*s_ctx->showInventory;
-    if (key == GLFW_KEY_S)
+      SoundManager::Play(SOUND_INTERFACE01);
+    }
+    if (key == GLFW_KEY_S) {
       *s_ctx->showSkillWindow = !*s_ctx->showSkillWindow;
+      SoundManager::Play(SOUND_INTERFACE01);
+    }
     if (key == GLFW_KEY_Q)
       InventoryUI::ConsumeQuickSlotItem(0);
     if (key == GLFW_KEY_W)
@@ -320,15 +380,19 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
         *s_ctx->rmcSkillId = s_ctx->skillBar[9];
     }
     if (key == GLFW_KEY_ESCAPE) {
-      if (*s_ctx->shopOpen) {
+      SoundManager::Play(SOUND_CLICK01);
+      if (*s_ctx->showGameMenu) {
+        // Menu already open — close it
+        *s_ctx->showGameMenu = false;
+      } else {
+        // Close all panels, then open Game Menu
         *s_ctx->shopOpen = false;
         *s_ctx->selectedNpc = -1;
-      } else if (*s_ctx->showCharInfo)
         *s_ctx->showCharInfo = false;
-      else if (*s_ctx->showInventory)
         *s_ctx->showInventory = false;
-      else if (*s_ctx->showSkillWindow)
         *s_ctx->showSkillWindow = false;
+        *s_ctx->showGameMenu = true;
+      }
     }
   }
 }
@@ -359,6 +423,8 @@ void InputHandler::RegisterCallbacks(GLFWwindow *window) {
   glfwSetKeyCallback(window, key_callback);
   glfwSetCharCallback(window, char_callback);
 }
+
+void InputHandler::ResetGameReady() { s_gameReady = false; }
 
 // --- Process input: hero movement + auto-pickup ---
 

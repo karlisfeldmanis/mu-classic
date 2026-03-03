@@ -79,8 +79,9 @@ constexpr uint8_t SHOP_SELL = 0x3F;        // C->S: sell request
 constexpr uint8_t SHOP_SELL_RESULT = 0x40; // S->C: sell result
 
 // Skills
-constexpr uint8_t SKILL_LIST = 0x41; // S->C: learned skill list (C2)
-constexpr uint8_t SKILL_USE = 0x42;  // C->S: skill attack
+constexpr uint8_t SKILL_LIST = 0x41;     // S->C: learned skill list (C2)
+constexpr uint8_t SKILL_USE = 0x42;      // C->S: skill attack
+constexpr uint8_t SKILL_TELEPORT = 0x43; // C->S: teleport to position
 } // namespace Opcode
 
 // =====================================================
@@ -350,6 +351,15 @@ struct PMSG_SKILL_ATTACK_RECV {
   PBMSG_HEAD h; // C1:0x42
   uint16_t monsterIndex;
   uint8_t skillId;
+  float targetX = 0; // Ground-cast AoE: world position of click
+  float targetZ = 0;
+};
+
+// C->S: Teleport to Position (0x43)
+struct PMSG_SKILL_TELEPORT_RECV {
+  PBMSG_HEAD h; // C1:0x43
+  uint8_t targetGridX;
+  uint8_t targetGridY;
 };
 
 // S->C: Damage Result (0x29)

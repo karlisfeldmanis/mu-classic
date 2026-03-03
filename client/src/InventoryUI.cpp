@@ -2,6 +2,7 @@
 #include "HeroCharacter.hpp"
 #include "ItemDatabase.hpp"
 #include "ServerConnection.hpp"
+#include "SoundManager.hpp"
 #include "TextureLoader.hpp"
 #include "UITexture.hpp"
 #include "imgui.h"
@@ -62,6 +63,13 @@ struct DeferredOverlay {
 };
 static std::vector<DeferredOverlay> g_deferredOverlays;
 
+// Deferred cooldown overlays (potion cooldown drawn on top of 3D items)
+struct DeferredCooldown {
+  float x, y, w, h; // screen-space rect
+  char text[8];
+};
+static std::vector<DeferredCooldown> g_deferredCooldowns;
+
 // Drag state
 static int g_dragFromSlot = -1;
 static int g_dragFromEquipSlot = -1;
@@ -83,37 +91,38 @@ struct SkillDef {
   int levelReq;
   int damageBonus;
   const char *desc;
+  int energyReq; // Energy stat required to learn
 };
 
 // DK skills (AG cost)
 static const SkillDef g_dkSkills[] = {
-    {19, "Falling Slash", 9, 1, 15, "Downward slash attack"},
-    {20, "Lunge", 9, 1, 15, "Forward thrust attack"},
-    {21, "Uppercut", 8, 1, 15, "Upward strike attack"},
-    {22, "Cyclone", 9, 1, 18, "Spinning attack"},
-    {23, "Slash", 10, 1, 20, "Horizontal slash"},
-    {41, "Twisting Slash", 10, 30, 25, "AoE spinning slash"},
-    {42, "Rageful Blow", 20, 170, 60, "Powerful ground strike"},
-    {43, "Death Stab", 12, 160, 70, "Piercing stab attack"},
+    {19, "Falling Slash", 9, 1, 15, "Downward slash attack", 0},
+    {20, "Lunge", 9, 1, 15, "Forward thrust attack", 0},
+    {21, "Uppercut", 8, 1, 15, "Upward strike attack", 0},
+    {22, "Cyclone", 9, 1, 18, "Spinning attack", 0},
+    {23, "Slash", 10, 1, 20, "Horizontal slash", 0},
+    {41, "Twisting Slash", 10, 30, 25, "AoE spinning slash", 0},
+    {42, "Rageful Blow", 20, 170, 60, "Powerful ground strike", 0},
+    {43, "Death Stab", 12, 160, 70, "Piercing stab attack", 0},
 };
 static constexpr int NUM_DK_SKILLS = 8;
 
 // DW spells (Mana cost) — OpenMU Version075
 static const SkillDef g_dwSpells[] = {
-    {17, "Energy Ball", 4, 1, 8, "Basic energy projectile"},
-    {4, "Fire Ball", 10, 5, 22, "Fireball projectile"},
-    {1, "Poison", 12, 10, 20, "Poison magic"},
-    {3, "Lightning", 15, 13, 30, "Lightning bolt"},
-    {2, "Meteorite", 16, 21, 40, "Falling meteorite"},
-    {7, "Ice", 18, 25, 35, "Ice magic"},
-    {5, "Flame", 25, 35, 50, "Fire AoE"},
-    {8, "Twister", 28, 40, 55, "Twisting wind AoE"},
-    {6, "Teleport", 30, 17, 0, "Teleport to location"},
-    {9, "Evil Spirit", 45, 50, 80, "Dark spirit AoE"},
-    {12, "Aqua Beam", 50, 74, 90, "Water beam attack"},
-    {10, "Hellfire", 60, 60, 100, "Massive fire AoE"},
-    {13, "Cometfall", 90, 72, 120, "Sky-strike AoE"},
-    {14, "Inferno", 200, 88, 150, "Ring of explosions"},
+    {17, "Energy Ball", 1, 1, 8, "Basic energy projectile", 0},
+    {4, "Fire Ball", 3, 5, 22, "Fireball projectile", 40},
+    {1, "Poison", 42, 10, 20, "Poison magic", 140},
+    {3, "Lightning", 15, 13, 30, "Lightning bolt", 72},
+    {2, "Meteorite", 12, 21, 40, "Falling meteorite", 104},
+    {7, "Ice", 38, 25, 35, "Ice magic", 120},
+    {5, "Flame", 50, 35, 50, "Fire AoE", 160},
+    {8, "Twister", 60, 40, 55, "Twisting wind AoE", 180},
+    {6, "Teleport", 30, 17, 0, "Teleport to location", 88},
+    {9, "Evil Spirit", 90, 50, 80, "Dark spirit AoE", 220},
+    {12, "Aqua Beam", 140, 74, 90, "Water beam attack", 345},
+    {10, "Hellfire", 160, 60, 100, "Massive fire AoE", 260},
+    {13, "Cometfall", 90, 72, 120, "Sky-strike AoE", 436},
+    {14, "Inferno", 200, 88, 150, "Ring of explosions", 578},
 };
 static constexpr int NUM_DW_SPELLS = 14;
 
@@ -191,6 +200,79 @@ static void BeginPendingTooltip(float tw, float th) {
 
 static void AddPendingTooltipLine(ImU32 color, const std::string &text) {
   g_pendingTooltip.lines.push_back({color, text});
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// WoW-style UI helpers
+// ═══════════════════════════════════════════════════════════════════
+
+// Panel background with gradient + double border (outer dark, inner gold)
+static void DrawStyledPanel(ImDrawList *dl, float x0, float y0, float x1,
+                            float y1, float rounding = 5.0f) {
+  // Gradient background: darker at top, slightly lighter at bottom
+  dl->AddRectFilledMultiColor(
+      ImVec2(x0, y0), ImVec2(x1, y1),
+      IM_COL32(8, 8, 18, 245),   // top-left
+      IM_COL32(8, 8, 18, 245),   // top-right
+      IM_COL32(18, 18, 32, 240), // bottom-right
+      IM_COL32(18, 18, 32, 240)  // bottom-left
+  );
+  // Outer border: dark edge
+  dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1),
+              IM_COL32(5, 5, 10, 255), rounding, 0, 2.0f);
+  // Inner border: gold/bronze highlight
+  dl->AddRect(ImVec2(x0 + 2, y0 + 2), ImVec2(x1 - 2, y1 - 2),
+              IM_COL32(80, 70, 45, 140), rounding > 2 ? rounding - 1 : rounding);
+}
+
+// Slot with inner shadow bevel
+static void DrawStyledSlot(ImDrawList *dl, ImVec2 p0, ImVec2 p1,
+                           bool hovered = false, float rounding = 3.0f) {
+  dl->AddRectFilled(p0, p1, IM_COL32(12, 12, 22, 220), rounding);
+  // Inner shadow: 1px dark line at top and left edges
+  dl->AddLine(ImVec2(p0.x + 1, p0.y + 1), ImVec2(p1.x - 1, p0.y + 1),
+              IM_COL32(0, 0, 0, 100));
+  dl->AddLine(ImVec2(p0.x + 1, p0.y + 1), ImVec2(p0.x + 1, p1.y - 1),
+              IM_COL32(0, 0, 0, 100));
+  // Border: gold-tinted
+  ImU32 borderCol = hovered ? IM_COL32(180, 160, 90, 200)
+                            : IM_COL32(65, 60, 45, 200);
+  dl->AddRect(p0, p1, borderCol, rounding);
+}
+
+// Resource bar with gradient fill + glass highlight
+static void DrawStyledBar(ImDrawList *dl, float x, float y, float w, float h,
+                          float frac, ImU32 topColor, ImU32 botColor,
+                          const char *label) {
+  frac = std::clamp(frac, 0.0f, 1.0f);
+  ImVec2 p0(x, y), p1(x + w, y + h);
+  // Dark background
+  dl->AddRectFilled(p0, p1, IM_COL32(8, 8, 15, 220), 3.0f);
+  // Gradient fill
+  if (frac > 0.01f) {
+    dl->AddRectFilledMultiColor(
+        p0, ImVec2(x + w * frac, y + h),
+        topColor, topColor, botColor, botColor);
+    // Glass highlight line at top of fill
+    dl->AddLine(ImVec2(x + 1, y + 1), ImVec2(x + w * frac - 1, y + 1),
+                IM_COL32(255, 255, 255, 40));
+  }
+  // Border: gold-tinted
+  dl->AddRect(p0, p1, IM_COL32(65, 60, 45, 180), 3.0f);
+  // Centered text with shadow
+  ImVec2 tsz = ImGui::CalcTextSize(label);
+  float tx = x + (w - tsz.x) * 0.5f;
+  float ty = y + (h - tsz.y) * 0.5f;
+  dl->AddText(ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 230), label);
+  dl->AddText(ImVec2(tx, ty), IM_COL32(255, 255, 255, 230), label);
+}
+
+// Text with shadow (stronger shadow for titles)
+static void DrawShadowText(ImDrawList *dl, ImVec2 pos, ImU32 color,
+                           const char *text, int shadowOffset = 1) {
+  dl->AddText(ImVec2(pos.x + shadowOffset, pos.y + shadowOffset),
+              IM_COL32(0, 0, 0, 230), text);
+  dl->AddText(pos, color, text);
 }
 
 // Close button with hover highlight — used by all panels
@@ -290,11 +372,12 @@ static void DrawPanelTextCentered(ImDrawList *dl, const UICoords &c, float px,
   float sx = c.ToScreenX(vx + sw * 0.5f) - sz.x * 0.5f;
   float sy = c.ToScreenY(vy);
 
+  // Strong 2px shadow for panel titles
   if (font) {
-    dl->AddText(font, fs, ImVec2(sx + 1, sy + 1), IM_COL32(0, 0, 0, 180), text);
+    dl->AddText(font, fs, ImVec2(sx + 2, sy + 2), IM_COL32(0, 0, 0, 230), text);
     dl->AddText(font, fs, ImVec2(sx, sy), color, text);
   } else {
-    dl->AddText(ImVec2(sx + 1, sy + 1), IM_COL32(0, 0, 0, 180), text);
+    dl->AddText(ImVec2(sx + 2, sy + 2), IM_COL32(0, 0, 0, 230), text);
     dl->AddText(ImVec2(sx, sy), color, text);
   }
 }
@@ -520,6 +603,7 @@ void ConsumeQuickSlotItem(int slotIndex) {
       }
 
       s_ctx->server->SendItemUse((uint8_t)foundSlot);
+      SoundManager::Play(SOUND_DRINK01);
       *s_ctx->potionCooldown = POTION_COOLDOWN_TIME;
       std::cout << "[QuickSlot] Requested to use "
                 << ItemDatabase::GetItemNameByDef(defIdx) << " from slot "
@@ -731,6 +815,8 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
       }
     }
     th += lineH; // Skill info line (name + cost)
+    th += lineH; // Level requirement
+    th += lineH; // Energy requirement
     th += lineH; // "Already Learned" or "Not Learned"
   }
 
@@ -799,34 +885,42 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
 
   // Skill scroll/orb: show skill info and learned status
   if (scrollSkillId > 0) {
-    // Find skill name and cost from skill tables
-    const char *skillName = nullptr;
-    int skillCost = 0;
-    const char *skillDesc = nullptr;
+    // Find skill definition from skill tables
+    const SkillDef *skillDef = nullptr;
     for (int i = 0; i < NUM_DK_SKILLS; i++) {
       if (g_dkSkills[i].skillId == scrollSkillId) {
-        skillName = g_dkSkills[i].name;
-        skillCost = g_dkSkills[i].resourceCost;
-        skillDesc = g_dkSkills[i].desc;
+        skillDef = &g_dkSkills[i];
         break;
       }
     }
-    if (!skillName) {
+    if (!skillDef) {
       for (int i = 0; i < NUM_DW_SPELLS; i++) {
         if (g_dwSpells[i].skillId == scrollSkillId) {
-          skillName = g_dwSpells[i].name;
-          skillCost = g_dwSpells[i].resourceCost;
-          skillDesc = g_dwSpells[i].desc;
+          skillDef = &g_dwSpells[i];
           break;
         }
       }
     }
-    if (skillName) {
+    if (skillDef) {
       char skillBuf[64];
       bool isDW = (def->category == 15);
-      snprintf(skillBuf, sizeof(skillBuf), "Teaches: %s (%d %s)", skillName,
-               skillCost, isDW ? "Mana" : "AG");
+      snprintf(skillBuf, sizeof(skillBuf), "Teaches: %s (%d %s)", skillDef->name,
+               skillDef->resourceCost, isDW ? "Mana" : "AG");
       AddPendingTooltipLine(IM_COL32(150, 200, 255, 255), skillBuf);
+      // Level requirement
+      if (skillDef->levelReq > 0) {
+        char reqBuf[48];
+        bool met = s_ctx->serverLevel && *s_ctx->serverLevel >= skillDef->levelReq;
+        snprintf(reqBuf, sizeof(reqBuf), "Req Level: %d", skillDef->levelReq);
+        AddPendingTooltipLine(met ? IM_COL32(80, 255, 80, 255) : IM_COL32(255, 80, 80, 255), reqBuf);
+      }
+      // Energy requirement
+      if (skillDef->energyReq > 0) {
+        char reqBuf[48];
+        bool met = s_ctx->serverEne && *s_ctx->serverEne >= skillDef->energyReq;
+        snprintf(reqBuf, sizeof(reqBuf), "Req Energy: %d", skillDef->energyReq);
+        AddPendingTooltipLine(met ? IM_COL32(80, 255, 80, 255) : IM_COL32(255, 80, 80, 255), reqBuf);
+      }
     }
     if (scrollAlreadyLearned)
       AddPendingTooltipLine(IM_COL32(255, 150, 50, 255), "(Already Learned)");
@@ -1064,21 +1158,14 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
              60.0f * g_uiPanelScale; // Extend to fit combat stats + atk speed
 
   // Colors
-  const ImU32 colBg = IM_COL32(15, 15, 25, 240);
-  const ImU32 colBr = IM_COL32(60, 65, 90, 200);
   const ImU32 colTitle = IM_COL32(255, 210, 80, 255);
   const ImU32 colLabel = IM_COL32(170, 170, 190, 255);
   const ImU32 colValue = IM_COL32(255, 255, 255, 255);
   const ImU32 colGreen = IM_COL32(100, 255, 100, 255);
   char buf[256];
 
-  // Simple Rect Background
-  dl->AddRectFilled(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-                    ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBg,
-                    5.0f);
-  dl->AddRect(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-              ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBr, 5.0f,
-              0, 1.5f);
+  DrawStyledPanel(dl, c.ToScreenX(px), c.ToScreenY(py),
+                  c.ToScreenX(px + pw), c.ToScreenY(py + ph));
 
   // Title
   DrawPanelTextCentered(dl, c, px, py, 0, 11, BASE_PANEL_W, "Character Info",
@@ -1275,8 +1362,6 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
   ImVec2 mp = ImGui::GetIO().MousePos;
 
   // Colors
-  const ImU32 colBg = IM_COL32(15, 15, 25, 240);
-  const ImU32 colBr = IM_COL32(60, 65, 90, 200);
   const ImU32 colTitle = IM_COL32(255, 210, 80, 255);
   const ImU32 colHeader = IM_COL32(200, 180, 120, 255);
   const ImU32 colSlotBg = IM_COL32(0, 0, 0, 150);
@@ -1286,13 +1371,8 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
   const ImU32 colDragHi = IM_COL32(255, 255, 0, 100);
   char buf[256];
 
-  // Simple Rect Background
-  dl->AddRectFilled(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-                    ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBg,
-                    5.0f);
-  dl->AddRect(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-              ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBr, 5.0f,
-              0, 1.5f);
+  DrawStyledPanel(dl, c.ToScreenX(px), c.ToScreenY(py),
+                  c.ToScreenX(px + pw), c.ToScreenY(py + ph));
 
   // Title
   DrawPanelTextCentered(dl, c, px, py, 0, 11, BASE_PANEL_W, "Inventory",
@@ -1595,17 +1675,11 @@ void RenderShopPanel(ImDrawList *dl, const UICoords &c) {
   float pw = PANEL_W, ph = PANEL_H;
   ImVec2 mp = ImGui::GetIO().MousePos;
 
-  const ImU32 colBg = IM_COL32(15, 15, 25, 240);
-  const ImU32 colBr = IM_COL32(60, 65, 90, 200);
   const ImU32 colTitle = IM_COL32(255, 210, 80, 255);
   const ImU32 colValue = IM_COL32(255, 255, 255, 255);
 
-  dl->AddRectFilled(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-                    ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBg,
-                    5.0f);
-  dl->AddRect(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-              ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBr, 5.0f,
-              0, 1.5f);
+  DrawStyledPanel(dl, c.ToScreenX(px), c.ToScreenY(py),
+                  c.ToScreenX(px + pw), c.ToScreenY(py + ph));
 
   DrawPanelTextCentered(dl, c, px, py, 0, 11, BASE_PANEL_W, "Shop", colTitle,
                         s_ctx->fontDefault);
@@ -1726,6 +1800,7 @@ bool HandlePanelClick(float vx, float vy) {
 
     // Close button
     if (relX >= 190 - 24 && relX < 190 - 8 && relY >= 6 && relY < 18) {
+      SoundManager::Play(SOUND_CLICK01);
       *s_ctx->shopOpen = false;
       s_shopGridDirty = true;
       return true;
@@ -1787,6 +1862,7 @@ bool HandlePanelClick(float vx, float vy) {
 
     // Close button (relative: 190 - 24, 6, size 16, 12)
     if (relX >= 190 - 24 && relX < 190 - 8 && relY >= 6 && relY < 18) {
+      SoundManager::Play(SOUND_CLICK01);
       *s_ctx->showCharInfo = false;
       return true;
     }
@@ -1799,6 +1875,7 @@ bool HandlePanelClick(float vx, float vy) {
         if (relX >= btnX && relX < btnX + 18 && relY >= btnY &&
             relY < btnY + 18) {
           s_ctx->server->SendStatAlloc(static_cast<uint8_t>(i));
+          SoundManager::Play(SOUND_CLICK01);
           return true;
         }
       }
@@ -1815,6 +1892,7 @@ bool HandlePanelClick(float vx, float vy) {
 
     // Close button
     if (relX >= 190 - 24 && relX < 190 - 8 && relY >= 6 && relY < 18) {
+      SoundManager::Play(SOUND_CLICK01);
       *s_ctx->showInventory = false;
       return true;
     }
@@ -1985,6 +2063,7 @@ bool HandlePanelClick(float vx, float vy) {
                  !*s_ctx->teleportingToTown) {
           *s_ctx->teleportingToTown = true;
           *s_ctx->teleportTimer = s_ctx->teleportCastTime;
+          SoundManager::Play(SOUND_SUMMON);
         }
         return true;
       }
@@ -2194,6 +2273,7 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
           if (*s_ctx->syncDone) {
             if (s_shopGrid[g_dragFromShopSlot].buyPrice > *s_ctx->zen) {
               ShowNotification("Not enough Zen!");
+              SoundManager::Play(SOUND_ERROR01);
             } else {
               s_ctx->server->SendShopBuy(
                   s_shopGrid[g_dragFromShopSlot].defIndex,
@@ -2282,6 +2362,7 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
             }
             if (has2H) {
               ShowNotification("Blocked: 2-handed weapon equipped!");
+              SoundManager::Play(SOUND_ERROR01);
               g_isDragging = false;
               g_dragFromSlot = -1;
               return;
@@ -2297,12 +2378,14 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
                   (defIt != g_itemDefs.end() && defIt->second.twoHanded);
               if (!canDualWield) {
                 ShowNotification("Only Dark Knights can dual-wield!");
+                SoundManager::Play(SOUND_ERROR01);
                 g_isDragging = false;
                 g_dragFromSlot = -1;
                 return;
               }
               if (isTwoHanded) {
                 ShowNotification("Two-handed weapons can't go in left hand!");
+                SoundManager::Play(SOUND_ERROR01);
                 g_isDragging = false;
                 g_dragFromSlot = -1;
                 return;
@@ -2373,6 +2456,7 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
             s_ctx->server->SendEquip(*s_ctx->heroCharacterId,
                                      static_cast<uint8_t>(ep.slot), cat, idx,
                                      g_dragItemLevel);
+            SoundManager::Play(SOUND_GET_ITEM01);
           }
 
           // Clear source bag slot, place swapped item if any
@@ -2568,6 +2652,7 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
       if (!insideInvPanel && !insideCharPanel && !insideShopPanel &&
           !droppedOnHUD) {
         s_ctx->server->SendDropItem(static_cast<uint8_t>(g_dragFromSlot));
+        SoundManager::Play(SOUND_DROP_ITEM01);
         std::cout << "[UI] Dropped item from slot " << g_dragFromSlot
                   << " to ground" << std::endl;
       }
@@ -2588,6 +2673,7 @@ const std::vector<ItemRenderJob> &GetRenderQueue() { return g_renderQueue; }
 void ClearRenderQueue() {
   g_renderQueue.clear();
   g_deferredOverlays.clear();
+  g_deferredCooldowns.clear();
 }
 
 void AddRenderJob(const ItemRenderJob &job) { g_renderQueue.push_back(job); }
@@ -2600,6 +2686,21 @@ void FlushDeferredOverlays() {
     // Shadow
     dl->AddText(ImVec2(ov.x + 1, ov.y + 1), IM_COL32(0, 0, 0, 220), ov.text);
     dl->AddText(ImVec2(ov.x, ov.y), ov.color, ov.text);
+  }
+}
+
+bool HasDeferredCooldowns() { return !g_deferredCooldowns.empty(); }
+
+void FlushDeferredCooldowns() {
+  ImDrawList *dl = ImGui::GetForegroundDrawList();
+  for (const auto &cd : g_deferredCooldowns) {
+    ImVec2 p0(cd.x, cd.y), p1(cd.x + cd.w, cd.y + cd.h);
+    dl->AddRectFilled(p0, p1, IM_COL32(20, 20, 20, 180), 3.0f);
+    ImVec2 tsz = ImGui::CalcTextSize(cd.text);
+    float tx = cd.x + (cd.w - tsz.x) * 0.5f;
+    float ty = cd.y + (cd.h - tsz.y) * 0.5f;
+    dl->AddText(ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 200), cd.text);
+    dl->AddText(ImVec2(tx, ty), IM_COL32(255, 255, 255, 255), cd.text);
   }
 }
 
@@ -2726,8 +2827,7 @@ void RenderRmcSlot(ImDrawList *dl, float screenX, float screenY, float size) {
   ImVec2 p0(screenX, screenY);
   ImVec2 p1(screenX + size, screenY + size);
 
-  dl->AddRectFilled(p0, p1, IM_COL32(20, 20, 35, 220), 3.0f);
-  dl->AddRect(p0, p1, IM_COL32(80, 80, 120, 200), 3.0f);
+  DrawStyledSlot(dl, p0, p1);
 
   if (skillId >= 0 && g_texSkillIcons != 0) {
     int ic = skillId % SKILL_ICON_COLS;
@@ -2829,12 +2929,19 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
   {
     float bgX = c.ToScreenX(START_VX - 8.0f);
     float bgY = c.ToScreenY(ROW_VY - 6.0f);
-    float bgW = c.ToScreenX(START_VX + CONTENT_W + 8.0f) - bgX;
-    float bgH = c.ToScreenY(XP_VY + XP_H + 4.0f) - bgY;
-    dl->AddRectFilled(ImVec2(bgX, bgY), ImVec2(bgX + bgW, bgY + bgH),
-                      IM_COL32(10, 10, 20, 180), 6.0f);
-    dl->AddRect(ImVec2(bgX, bgY), ImVec2(bgX + bgW, bgY + bgH),
-                IM_COL32(50, 50, 70, 150), 6.0f);
+    float bgX1 = c.ToScreenX(START_VX + CONTENT_W + 8.0f);
+    float bgY1 = c.ToScreenY(XP_VY + XP_H + 4.0f);
+    // Gradient background
+    dl->AddRectFilledMultiColor(
+        ImVec2(bgX, bgY), ImVec2(bgX1, bgY1),
+        IM_COL32(6, 6, 14, 200), IM_COL32(6, 6, 14, 200),
+        IM_COL32(14, 14, 26, 190), IM_COL32(14, 14, 26, 190));
+    // Outer dark border
+    dl->AddRect(ImVec2(bgX, bgY), ImVec2(bgX1, bgY1),
+                IM_COL32(5, 5, 10, 230), 6.0f, 0, 2.0f);
+    // Inner gold border
+    dl->AddRect(ImVec2(bgX + 2, bgY + 2), ImVec2(bgX1 - 2, bgY1 - 2),
+                IM_COL32(70, 65, 45, 120), 5.0f);
   }
 
   float curVX = START_VX;
@@ -2852,8 +2959,9 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     float hpFrac = maxHP > 0 ? (float)curHP / (float)maxHP : 0.0f;
     char hpLabel[32];
     snprintf(hpLabel, sizeof(hpLabel), "HP %d/%d", std::max(curHP, 0), maxHP);
-    RenderBar(dl, sx, sy, sw, sh, hpFrac, IM_COL32(200, 40, 40, 230),
-              IM_COL32(40, 10, 10, 200), hpLabel);
+    DrawStyledBar(dl, sx, sy, sw, sh, hpFrac,
+                  IM_COL32(220, 50, 50, 230), IM_COL32(160, 30, 30, 230),
+                  hpLabel);
     curVX += BAR_W + GAP * 2;
   }
 
@@ -2867,10 +2975,9 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     float sz = c.ToScreenX(vx + SLOT) - sx;
 
     ImVec2 p0(sx, sy), p1(sx + sz, sy + sz);
-    dl->AddRectFilled(p0, p1, IM_COL32(20, 20, 30, 200), 3.0f);
-    dl->AddRect(p0, p1, IM_COL32(80, 80, 100, 150), 3.0f);
-    dl->AddText(ImVec2(sx + 2, sy + 1), IM_COL32(255, 255, 255, 180),
-                potLabels[i]);
+    DrawStyledSlot(dl, p0, p1);
+    DrawShadowText(dl, ImVec2(sx + 2, sy + 1),
+                   IM_COL32(255, 255, 255, 180), potLabels[i]);
 
     int16_t defIdx = s_ctx->potionBar[i];
     if (defIdx != -1) {
@@ -2897,14 +3004,12 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     }
 
     if (*s_ctx->potionCooldown > 0.0f) {
-      dl->AddRectFilled(p0, p1, IM_COL32(20, 20, 20, 180), 3.0f);
-      char cdBuf[16];
-      snprintf(cdBuf, sizeof(cdBuf), "%d",
+      // Defer to second ImGui pass (renders on top of 3D item models)
+      DeferredCooldown cd;
+      cd.x = sx; cd.y = sy; cd.w = sz; cd.h = sz;
+      snprintf(cd.text, sizeof(cd.text), "%d",
                (int)ceil(*s_ctx->potionCooldown));
-      ImVec2 tsz = ImGui::CalcTextSize(cdBuf);
-      dl->AddText(
-          ImVec2(sx + (sz - tsz.x) * 0.5f, sy + (sz - tsz.y) * 0.5f),
-          IM_COL32(255, 255, 255, 255), cdBuf);
+      g_deferredCooldowns.push_back(cd);
     }
     curVX += SLOT + GAP;
   }
@@ -2920,10 +3025,9 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     float sz = c.ToScreenX(vx + SLOT) - sx;
 
     ImVec2 p0(sx, sy), p1(sx + sz, sy + sz);
-    dl->AddRectFilled(p0, p1, IM_COL32(20, 20, 35, 220), 3.0f);
-    dl->AddRect(p0, p1, IM_COL32(80, 80, 120, 200), 3.0f);
-    dl->AddText(ImVec2(sx + 2, sy + 1), IM_COL32(255, 255, 255, 180),
-                skillLabels[i]);
+    DrawStyledSlot(dl, p0, p1);
+    DrawShadowText(dl, ImVec2(sx + 2, sy + 1),
+                   IM_COL32(255, 255, 255, 180), skillLabels[i]);
 
     int8_t sid = s_ctx->skillBar[i];
     int skillCost = (sid > 0) ? GetSkillResourceCost(sid) : 0;
@@ -2975,15 +3079,15 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     int maxVal = isDK ? hero.GetMaxAG() : hero.GetMaxMana();
     float frac = maxVal > 0 ? (float)curVal / (float)maxVal : 0.0f;
     const char *resLabel = isDK ? "AG" : "MP";
-    ImU32 fillColor =
-        isDK ? IM_COL32(140, 50, 200, 230) : IM_COL32(40, 60, 200, 230);
-    ImU32 bgCol =
-        isDK ? IM_COL32(30, 10, 40, 200) : IM_COL32(10, 10, 40, 200);
+    ImU32 topCol = isDK ? IM_COL32(160, 60, 220, 230)
+                        : IM_COL32(50, 70, 220, 230);
+    ImU32 botCol = isDK ? IM_COL32(110, 35, 160, 230)
+                        : IM_COL32(30, 45, 160, 230);
 
     char barLabel[32];
     snprintf(barLabel, sizeof(barLabel), "%s %d/%d", resLabel,
              std::max(curVal, 0), maxVal);
-    RenderBar(dl, sx, sy, sw, sh, frac, fillColor, bgCol, barLabel);
+    DrawStyledBar(dl, sx, sy, sw, sh, frac, topCol, botCol, barLabel);
     curVX += BAR_W;
   }
 
@@ -2991,17 +3095,28 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
   {
     curVX += GAP;
     const char *btnLabels[] = {"C", "I", "T"};
+    ImVec2 mp = ImGui::GetIO().MousePos;
     for (int i = 0; i < 3; i++) {
       float bx = c.ToScreenX(curVX);
       float by = c.ToScreenY(ROW_VY + (SLOT - BTN) * 0.5f);
       float bs = c.ToScreenX(curVX + BTN) - bx;
       ImVec2 bp0(bx, by), bp1(bx + bs, by + bs);
-      dl->AddRectFilled(bp0, bp1, IM_COL32(25, 25, 40, 220), 4.0f);
-      dl->AddRect(bp0, bp1, IM_COL32(80, 80, 120, 200), 4.0f);
+      bool hov = mp.x >= bp0.x && mp.x < bp1.x &&
+                 mp.y >= bp0.y && mp.y < bp1.y;
+      // Gradient fill
+      ImU32 topFill = hov ? IM_COL32(35, 35, 55, 230)
+                          : IM_COL32(20, 20, 35, 220);
+      ImU32 botFill = hov ? IM_COL32(25, 25, 42, 230)
+                          : IM_COL32(14, 14, 26, 220);
+      dl->AddRectFilledMultiColor(bp0, bp1, topFill, topFill, botFill, botFill);
+      // Border: gold-tinted, brighter on hover
+      ImU32 borderCol = hov ? IM_COL32(180, 160, 90, 220)
+                            : IM_COL32(65, 60, 45, 180);
+      dl->AddRect(bp0, bp1, borderCol, 4.0f);
       ImVec2 tsz = ImGui::CalcTextSize(btnLabels[i]);
-      dl->AddText(
+      DrawShadowText(dl,
           ImVec2(bx + (bs - tsz.x) * 0.5f, by + (bs - tsz.y) * 0.5f),
-          IM_COL32(200, 200, 220, 230), btnLabels[i]);
+          IM_COL32(220, 215, 200, 240), btnLabels[i]);
       curVX += BTN + BTN_GAP;
     }
   }
@@ -3026,8 +3141,9 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     char xpLabel[64];
     snprintf(xpLabel, sizeof(xpLabel), "Lv.%d  -  %.1f%%", curLv,
              std::clamp(xpFrac, 0.0f, 1.0f) * 100.0f);
-    RenderBar(dl, sx, sy, sw, sh, xpFrac, IM_COL32(40, 160, 200, 230),
-              IM_COL32(10, 20, 30, 200), xpLabel);
+    DrawStyledBar(dl, sx, sy, sw, sh, xpFrac,
+                  IM_COL32(50, 180, 220, 230), IM_COL32(30, 130, 170, 230),
+                  xpLabel);
   }
 }
 
@@ -3063,8 +3179,6 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
   float py = (UICoords::VIRTUAL_H - ph) * 0.5f;
 
   // Colors
-  const ImU32 colBg = IM_COL32(15, 15, 25, 240);
-  const ImU32 colBr = IM_COL32(60, 65, 90, 200);
   const ImU32 colTitle = IM_COL32(255, 210, 80, 255);
   const ImU32 colLabel = IM_COL32(170, 170, 190, 255);
   const ImU32 colValue = IM_COL32(255, 255, 255, 255);
@@ -3074,21 +3188,16 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
   char buf[256];
 
   // Background
-  dl->AddRectFilled(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-                    ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBg,
-                    6.0f);
-  dl->AddRect(ImVec2(c.ToScreenX(px), c.ToScreenY(py)),
-              ImVec2(c.ToScreenX(px + pw), c.ToScreenY(py + ph)), colBr, 6.0f,
-              0, 1.5f);
+  DrawStyledPanel(dl, c.ToScreenX(px), c.ToScreenY(py),
+                  c.ToScreenX(px + pw), c.ToScreenY(py + ph), 6.0f);
 
-  // Title — centered
+  // Title — centered with strong shadow
   {
     const char *title = panelTitle;
     ImVec2 tsz = ImGui::CalcTextSize(title);
     float tx = c.ToScreenX(px + pw * 0.5f) - tsz.x * 0.5f;
     float ty = c.ToScreenY(py + 10.0f);
-    dl->AddText(ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 180), title);
-    dl->AddText(ImVec2(tx, ty), colTitle, title);
+    DrawShadowText(dl, ImVec2(tx, ty), colTitle, title, 2);
   }
 
   // Close button (top-right)
@@ -3110,8 +3219,10 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
     ImVec2 xPos(bMin.x + (bMax.x - bMin.x) * 0.5f - xSize.x * 0.5f,
                 bMin.y + (bMax.y - bMin.y) * 0.5f - xSize.y * 0.5f);
     dl->AddText(xPos, IM_COL32(255, 255, 255, 255), "X");
-    if (hovered && ImGui::IsMouseClicked(0))
+    if (hovered && ImGui::IsMouseClicked(0)) {
+      SoundManager::Play(SOUND_CLICK01);
       *s_ctx->showSkillWindow = false;
+    }
   }
 
   // Check which skills are learned

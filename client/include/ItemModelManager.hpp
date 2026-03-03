@@ -34,7 +34,11 @@ public:
   static void RenderItemWorld(const std::string &filename, const glm::vec3 &pos,
                               const glm::mat4 &view, const glm::mat4 &proj,
                               float scale = 1.0f,
-                              glm::vec3 rotation = glm::vec3(0));
+                              glm::vec3 rotation = glm::vec3(0),
+                              int16_t defIndex = -1);
+
+  // Main 5.2: ItemLight — returns BlendMesh index for weapons with glow (-1 = none)
+  static int GetItemBlendMesh(int category, int itemIndex);
   // Shadow projection for ground items (same technique as monsters/NPCs)
   static void RenderItemWorldShadow(const std::string &filename,
                                     const glm::vec3 &pos,

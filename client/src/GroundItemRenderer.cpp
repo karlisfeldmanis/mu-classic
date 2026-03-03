@@ -238,7 +238,7 @@ void RenderModels(GroundItem *items, int maxItems, float deltaTime,
     const char *modelFile = ItemDatabase::GetDropModelName(gi.defIndex);
     if (modelFile) {
       ItemModelManager::RenderItemWorld(modelFile, gi.position, view, proj,
-                                        gi.scale, gi.angle);
+                                        gi.scale, gi.angle, gi.defIndex);
     } else if (gi.defIndex == -1) {
       RenderZenPile(gi.quantity, gi.position, gi.angle, gi.scale, view, proj);
     }

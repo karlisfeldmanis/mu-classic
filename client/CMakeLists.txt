@@ -23,6 +23,7 @@ endif()
 find_package(glfw3 REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(OpenAL REQUIRED)
 
 # libjpeg-turbo
 find_path(JPEG_INCLUDE_DIR NAMES turbojpeg.h PATHS /opt/homebrew/include)
@@ -45,12 +46,16 @@ set(IMGUI_SOURCES
 # stb headers (stb_image for PNG loading)
 set(STB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/stb)
 
+# minimp3 (header-only MP3 decoder)
+set(MINIMP3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/minimp3)
+
 # Source and include directories
 include_directories(include)
 include_directories(/opt/homebrew/include)
 include_directories(${IMGUI_DIR})
 include_directories(${IMGUI_DIR}/backends)
 include_directories(${STB_DIR})
+include_directories(${MINIMP3_DIR})
 
 # Common source files (loaders, parsers, shared infrastructure)
 set(COMMON_SRC
@@ -68,11 +73,12 @@ set(COMMON_SRC
 )
 
 # Main Game Executable
-add_executable(MuRemaster src/main.cpp src/InputHandler.cpp src/ObjectRenderer.cpp src/ViewerCommon.cpp src/HeroCharacter.cpp src/ClickEffect.cpp src/NpcManager.cpp src/MonsterManager.cpp src/BoidManager.cpp src/NetworkClient.cpp src/ServerConnection.cpp src/ClientPacketHandler.cpp src/CharacterSelect.cpp src/ItemDatabase.cpp src/ItemModelManager.cpp src/GroundItemRenderer.cpp src/GameUI.cpp src/UITexture.cpp src/UIWidget.cpp src/HUD.cpp src/MockData.cpp src/RayPicker.cpp src/InventoryUI.cpp src/PathFinder.cpp ${COMMON_SRC} ${IMGUI_SOURCES})
+add_executable(MuRemaster src/main.cpp src/InputHandler.cpp src/ObjectRenderer.cpp src/ViewerCommon.cpp src/HeroCharacter.cpp src/ClickEffect.cpp src/NpcManager.cpp src/MonsterManager.cpp src/BoidManager.cpp src/NetworkClient.cpp src/ServerConnection.cpp src/ClientPacketHandler.cpp src/CharacterSelect.cpp src/ItemDatabase.cpp src/ItemModelManager.cpp src/GroundItemRenderer.cpp src/GameUI.cpp src/UITexture.cpp src/UIWidget.cpp src/HUD.cpp src/MockData.cpp src/RayPicker.cpp src/InventoryUI.cpp src/PathFinder.cpp src/SoundManager.cpp ${COMMON_SRC} ${IMGUI_SOURCES})
 target_link_libraries(MuRemaster PRIVATE
     glfw
     GLEW::GLEW
     OpenGL::GL
+    OpenAL::OpenAL
     ${JPEG_LIBRARY}
     ${GIF_LIBRARY}
 )

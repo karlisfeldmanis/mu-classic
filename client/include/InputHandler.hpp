@@ -41,12 +41,14 @@ struct InputContext {
   int *heroCharacterId;
   std::vector<uint8_t> *learnedSkills;
   bool *rightMouseHeld;
+  bool *showGameMenu;
 };
 
 namespace InputHandler {
 void Init(const InputContext &ctx);
 void RegisterCallbacks(GLFWwindow *window);
 void ProcessInput(GLFWwindow *window, float deltaTime);
+void ResetGameReady(); // Call on state transitions to prevent click bleed-through
 } // namespace InputHandler
 
 #endif // MU_INPUT_HANDLER_HPP

@@ -132,6 +132,22 @@ void NetworkClient::Send(const void *data, size_t len) {
   if (!m_connected || len == 0)
     return;
   const uint8_t *p = static_cast<const uint8_t *>(data);
+
+  // Try to send immediately (skip buffering for lower latency)
+  if (m_sendBuf.empty()) {
+    ssize_t n = send(m_fd, p, len, 0);
+    if (n > 0) {
+      if ((size_t)n < len)
+        m_sendBuf.insert(m_sendBuf.end(), p + n, p + len);
+      return;
+    }
+    if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+      printf("[Net] send error: %s\n", strerror(errno));
+      Disconnect();
+      return;
+    }
+  }
+  // Buffer if direct send didn't work or there's pending data
   m_sendBuf.insert(m_sendBuf.end(), p, p + len);
 }
 

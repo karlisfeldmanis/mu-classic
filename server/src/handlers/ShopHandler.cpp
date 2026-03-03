@@ -36,26 +36,25 @@ static std::map<uint16_t, std::vector<std::pair<uint8_t, uint8_t>>> s_shops = {
     // Pasi (254) - DW Scrolls, Staves & Armor
     {254,
      {// Scrolls
-      {15, 0},
-      {15, 1},
-      {15, 2},
-      {15, 3},
-      {15, 4},
-      {15, 5},
-      {15, 6},
-      {15, 7},
-      {15, 8},
-      {15, 9},
-      {15, 10},
-      // Staves
+      {15, 0},  // Poison
+      {15, 1},  // Meteorite
+      {15, 2},  // Lightning
+      {15, 3},  // Fire Ball
+      {15, 4},  // Flame
+      {15, 5},  // Teleport
+      {15, 6},  // Ice
+      {15, 7},  // Twister
+      {15, 8},  // Evil Spirit
+      {15, 9},  // Hellfire
+      {15, 11}, // Aqua Beam
+      {15, 12}, // Cometfall
+      {15, 13}, // Inferno
+      // Staves (up to Gorgon Staff lvl 52)
       {5, 0},
       {5, 1},
       {5, 2},
       {5, 3},
       {5, 4},
-      {5, 5},
-      {5, 6},
-      {5, 7},
       // Pad Set (beginner DW)
       {7, 2},
       {8, 2},

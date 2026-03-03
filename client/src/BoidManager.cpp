@@ -1,4 +1,5 @@
 #include "BoidManager.hpp"
+#include "SoundManager.hpp"
 #include "TextureLoader.hpp"
 #include "ViewerCommon.hpp"
 #include <algorithm>
@@ -439,6 +440,13 @@ void BoidManager::updateBoids(float dt, const glm::vec3 &heroPos,
     if (range >= 1500.0f) {
       b.live = false;
       b.respawnDelay = 3.0f + (float)(rand() % 5); // 3-8 second cooldown
+    }
+
+    // Main 5.2 GOBoid.cpp: bird sounds within 600 units, rand_fps_check(512)
+    if (range < 600.0f && rand() % 512 == 0) {
+      int birdSound = (rand() % 2 == 0) ? SOUND_BIRD01 : SOUND_BIRD02;
+      SoundManager::Play3D(birdSound, b.position.x, b.position.y,
+                           b.position.z);
     }
 
     // Random despawn (1/512 per tick at 25fps → ~every 20s average)

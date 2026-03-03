@@ -112,6 +112,10 @@ struct MonsterInstance {
   uint8_t attackRange = 1;      // Grid cells for attack range
   bool aggressive = false;      // true=red (auto-aggro)
 
+  // Main 5.2: StormTime — Twister stun (pauses AI for N ticks)
+  int stormTime = 0;
+  float stormTickTimer = 0.0f;
+
   // Aggro memory
   int aggroTargetFd = -1;  // FD of player who attacked us
   float aggroTimer = 0.0f; // Duration to keep aggro (negative = respawn immune)
