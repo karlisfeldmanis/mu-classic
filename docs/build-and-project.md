@@ -178,10 +178,12 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `server/src/PathFinder.cpp` | A* pathfinding on 256x256 terrain grid. |
 | `server/src/StatCalculator.cpp` | DK stat formulas: HP, damage, defense, XP. |
 | `server/src/handlers/CharacterHandler.cpp` | Character creation, stat allocation, save/load, quickslot sync, pet/mount combat bonus calculation. |
+| `server/src/handlers/CharacterSelectHandler.cpp` | Account-level character list and slot management. |
 | `server/src/handlers/CombatHandler.cpp` | Attack resolution, skill damage, death/XP, monster aggro/pack assist, pet attack multiplier. |
 | `server/src/handlers/InventoryHandler.cpp` | Item pickup, equip/unequip, inventory moves, consumption. |
 | `server/src/handlers/WorldHandler.cpp` | Position sync, monster AI, NPC viewport. |
 | `server/src/handlers/ShopHandler.cpp` | NPC shop: buy/sell with zen validation, inventory slot management. |
+| `server/src/handlers/QuestHandler.cpp` | Linear quest chain management (18 quests) and reward logic. |
 
 ### Shaders (shaders/)
 
