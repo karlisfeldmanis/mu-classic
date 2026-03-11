@@ -4,14 +4,14 @@ A native C++20 restoration of the MU Online engine for macOS with OpenGL 3.3+. F
 
 ## Features
 
-- **Lorencia World**: Full terrain, 2800+ objects, fire effects, grass, sky dome, lightmaps
-- **Dark Knight Class**: 5-part body model, weapon attachment, 8 skills (Falling Slash through Rageful Blow)
+- **Multi-World Support**: Lorencia (2800+ objects) and Devias (Rift/Void rendering, bridge safety fixes)
+- **Dark Knight Class**: 5-part body model, weapon attachment, 8 skills, mount system (Uniria/Dinorant)
 - **Combat System**: Server-authoritative hit resolution, DK stat formulas, AG (stamina) system, skill orb learning
-- **Monster AI**: Server-driven state machine (idle, wander, chase, attack, return), A* pathfinding, pack assist
-- **Inventory & Equipment**: 64-slot bag, 12 equipment slots, drag-drop, tooltips, stat allocation, NPC shops
-- **Unified HUD**: Bottom bar with HP/AG bars, QWER potion slots, 1234 skill slots, RMC skill, XP bar
-- **VFX System**: Particle bursts (blood, sparks, fire, energy), ribbon trails (lightning), level-up effects
-- **Networking**: Binary TCP protocol, SQLite persistence, 60s autosave
+- **Monster AI**: Server-driven state machine, A* pathfinding, pack assist, chase failure leashing
+- **Inventory & Equipment**: 64-slot bag, 12 equipment slots, drag-drop, stat allocation, NPC shops
+- **Diablo HUD**: Custom resource orbs (HP/AG/Mana), expanded 10-skill quickbar, 3 potion slots
+- **VFX & Effects**: Particle bursts, ribbon trails, level-up effects, **Chrome Glow** (+7 item enhancements)
+- **Networking**: Binary TCP protocol, SQLite persistence, 60s autosave, map name overlays (OZT)
 
 ## Project Structure
 
@@ -43,15 +43,17 @@ mu_remaster/
 ### Build & Run
 
 ```bash
-# Build server
+# One-click launch (handles build + data symlinks + process management)
+./launch.sh
+```
+
+Alternatively, manual build:
+```bash
+# Server
 cd server/build && cmake .. && ninja
 
-# Build client (always use Release)
+# Client (always use Release)
 cd client/build && cmake -DCMAKE_BUILD_TYPE=Release .. && ninja
-
-# Run (from build directories)
-cd server/build && ./MuServer &
-cd client/build && ./MuRemaster
 ```
 
 ### Database
@@ -85,5 +87,6 @@ Detailed reference docs in `docs/`:
 | [texture-formats.md](docs/texture-formats.md) | OZJ/OZT formats, texture resolution |
 | [animation-system.md](docs/animation-system.md) | Tick-based timing, PlaySpeed tables |
 | [rendering.md](docs/rendering.md) | Coordinate system, blend states, shadows |
-| [terrain-and-environment.md](docs/terrain-and-environment.md) | Terrain, water, lightmap, grass |
+| [terrain-and-environment.md](docs/terrain-and-environment.md) | Terrain, water, lightmap, grass, Devias rifts |
+| [ui-system.md](docs/ui-system.md) | Diablo HUD, quickbar, map name displays, notifications |
 | [reference-navigation.md](docs/reference-navigation.md) | Key functions in original Main 5.2 |
