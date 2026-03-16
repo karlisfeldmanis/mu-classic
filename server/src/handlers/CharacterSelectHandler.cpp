@@ -297,6 +297,7 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
   session.experience = c.experience;
   session.worldX = c.posY * 100.0f;
   session.worldZ = c.posX * 100.0f;
+  session.mapId = c.mapId;
 
   CharacterClass charCls = static_cast<CharacterClass>(session.classCode);
   session.maxHp =
@@ -346,6 +347,22 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
 
   // Load learned skills from DB
   session.learnedSkills = db.GetCharacterSkills(c.id);
+
+  // Always reload world data for the character's current map
+  world.ClearWorldData();
+  world.SetActiveMap(c.mapId);
+  world.LoadNpcsFromDB(db, c.mapId);
+  world.LoadMonstersFromDB(db, c.mapId);
+
+  // Notify client of non-default map (client starts in Lorencia by default)
+  if (c.mapId != 0) {
+    PMSG_MAP_CHANGE_SEND mapPkt{};
+    mapPkt.h = MakeC1Header(sizeof(mapPkt), Opcode::MAP_CHANGE);
+    mapPkt.mapId = c.mapId;
+    mapPkt.spawnX = c.posX;
+    mapPkt.spawnY = c.posY;
+    session.Send(&mapPkt, sizeof(mapPkt));
+  }
 
   // Send world data
   WorldHandler::SendNpcViewport(session, world);

@@ -176,16 +176,12 @@ void NpcManager::addNpc(int modelIdx, int gridX, int gridY, int dir,
         npc.weaponShadowMeshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       npc.weaponShadowMeshes.push_back(sm);
     }
   }
@@ -199,16 +195,12 @@ void NpcManager::addNpc(int modelIdx, int gridX, int gridY, int dir,
         npc.shadowMeshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       npc.shadowMeshes.push_back(sm);
     }
   }
@@ -225,9 +217,9 @@ void NpcManager::InitModels(const std::string &dataPath) {
   m_dataPath = dataPath;
 
   // Create shaders
-  m_shader = Shader::Load("model.vert", "model.frag");
-  m_shadowShader = Shader::Load("shadow.vert", "shadow.frag");
-  m_outlineShader = Shader::Load("outline.vert", "outline.frag");
+  m_shader = Shader::Load("vs_model.bin", "fs_model.bin");
+  m_shadowShader = Shader::Load("vs_shadow.bin", "fs_shadow.bin");
+  // m_outlineShader: not needed for BGFX (silhouette outline is GL-only)
 
   // Load NPC models for 0.97d Lorencia
   int smithIdx = loadModel(npcPath, "Smith01.bmd", {}, "Smith");
@@ -385,31 +377,21 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   for (int i = 0; i < 6; ++i)
     frustum[i] /= glm::length(glm::vec3(frustum[i]));
 
-  m_shader->use();
-  m_shader->setMat4("projection", proj);
-  m_shader->setMat4("view", view);
-
-  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
-  m_shader->setVec3("lightPos", eye + glm::vec3(0, 500, 0));
-  m_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-  m_shader->setVec3("viewPos", eye);
-  m_shader->setBool("useFog", true);
+  // BGFX: no shader->use() — program bound at submit time
+  // View/proj set via bgfx::setViewTransform() in caller
+  glm::vec3 eye = camPos;
+  float fogNear, fogFar;
+  float useFog = 1.0f;
+  glm::vec3 fogColor;
   if (m_mapId == 1) {
-    m_shader->setVec3("uFogColor", glm::vec3(0.0f));
-    m_shader->setFloat("uFogNear", 800.0f);
-    m_shader->setFloat("uFogFar", 2500.0f);
+    fogColor = glm::vec3(0.0f);
+    fogNear = 800.0f;
+    fogFar = 2500.0f;
   } else {
-    m_shader->setVec3("uFogColor", glm::vec3(0.117f, 0.078f, 0.039f));
-    m_shader->setFloat("uFogNear", 1500.0f);
-    m_shader->setFloat("uFogFar", 3500.0f);
+    fogColor = glm::vec3(0.117f, 0.078f, 0.039f);
+    fogNear = 1500.0f;
+    fogFar = 3500.0f;
   }
-  m_shader->setFloat("blendMeshLight", 1.0f);
-  m_shader->setFloat("objectAlpha", 1.0f);
-  m_shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_shader->setFloat("luminosity", m_luminosity);
-  m_shader->setVec3("baseTint", glm::vec3(1.0f));
-  m_shader->setVec3("glowColor", glm::vec3(0.0f));
-  m_shader->setInt("chromeMode", 0);
 
   // Point lights (pre-cached locations)
   int plCount = std::min((int)m_pointLights.size(), MAX_POINT_LIGHTS);
@@ -459,7 +441,7 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     if (npc.npcType == 251 && npc.action == 0) {
       float dx = npc.position.x - camPos.x;
       float dz = npc.position.z - camPos.z;
-      if (dx * dx + dz * dz < 2000.0f * 2000.0f) {
+      if (dx * dx + dz * dz < 1200.0f * 1200.0f) {
         if (prevAnimFrame < 5.0f && npc.animFrame >= 5.0f)
           SoundManager::Play3D(SOUND_NPC_BLACKSMITH, npc.position.x,
                                npc.position.y, npc.position.z);
@@ -621,11 +603,8 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     if (npc.scale != 1.0f)
       model = glm::scale(model, glm::vec3(npc.scale));
 
-    m_shader->setMat4("model", model);
-
     // Terrain lightmap at NPC position
     glm::vec3 tLight = sampleTerrainLightAt(npc.position);
-    m_shader->setVec3("terrainLight", tLight);
 
     // Blacksmith forge glow: BlendMesh=4, Luminosity=0.8 constant
     // Main 5.2: o->BlendMesh = 4; o->BlendMeshLight = Luminosity;
@@ -633,102 +612,108 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     bool isBlacksmith = (npc.npcType == 251);
     bool isGuardNpc = (npc.npcType >= 245 && npc.npcType <= 249) ||
                       (npc.npcType >= 310 && npc.npcType <= 312);
-    float forgeLum = 1.0f;
-    if (isBlacksmith) {
-      forgeLum = 0.8f;
-      m_shader->setFloat("blendMeshLight", forgeLum);
-    }
-    // Main 5.2: +7 armor dims base mesh to 0.8 so chrome glow stands out
-    if (isGuardNpc) {
-      m_shader->setFloat("blendMeshLight", 0.8f);
-    }
+    float blendMeshLight = 1.0f;
+    if (isBlacksmith) blendMeshLight = 0.8f;
+    if (isGuardNpc) blendMeshLight = 0.8f;
+
+    // Helper lambda: set all per-submit uniforms (BGFX consumes per submit)
+    auto setNpcUniforms = [&](float bml, float chromeMode, float chromeTime,
+                              const glm::vec3 &glowColor) {
+      m_shader->setVec4("u_params", glm::vec4(1.0f, bml, chromeMode, chromeTime));
+      m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+      m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+      m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+      m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+      m_shader->setVec4("u_glowColor", glm::vec4(glowColor, 0.0f));
+      m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+      m_shader->setVec4("u_fogParams", glm::vec4(fogNear, fogFar, useFog, 0.0f));
+      m_shader->setVec4("u_fogColor", glm::vec4(fogColor, 0.0f));
+      m_shader->uploadPointLights(plCount, m_pointLights.data());
+      // Shadow map
+      float shadowEnabled = bgfx::isValid(m_shadowMapTex) ? 1.0f : 0.0f;
+      m_shader->setVec4("u_shadowParams", glm::vec4(shadowEnabled, 0.0f, 0.0f, 0.0f));
+      if (shadowEnabled > 0.5f) {
+        m_shader->setMat4("u_lightMtx", m_lightMtx);
+        m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
+      }
+    };
 
     // Draw all body part meshes
-    int meshDrawIdx = 0;
     for (auto &bp : npc.bodyParts) {
       for (auto &mb : bp.meshBuffers) {
-        if (mb.indexCount == 0 || mb.hidden) {
-          meshDrawIdx++;
-          continue;
-        }
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-
-        // Blacksmith mesh 4 = forge glow (additive blend)
+        if (mb.indexCount == 0 || mb.hidden) continue;
         bool forgeGlow = isBlacksmith && (mb.bmdTextureId == 4);
 
-        if (forgeGlow || mb.bright) {
-          glBlendFunc(GL_ONE, GL_ONE);
-          glDepthMask(GL_FALSE);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-          glDepthMask(GL_TRUE);
-          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        } else if (mb.noneBlend) {
-          glDisable(GL_BLEND);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-          glEnable(GL_BLEND);
-        } else {
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        }
-        meshDrawIdx++;
-      }
-    }
+        bgfx::setTransform(glm::value_ptr(model));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        m_shader->setTexture(0, "s_texColor", mb.texture);
+        setNpcUniforms(blendMeshLight, 0.0f, 0.0f, glm::vec3(0.0f));
 
-    // Reset blendMeshLight after blacksmith or guard dimming
-    if (isBlacksmith || isGuardNpc) {
-      m_shader->setFloat("blendMeshLight", 1.0f);
+        uint64_t state;
+        if (forgeGlow || mb.bright) {
+          state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
+        } else if (mb.noneBlend) {
+          state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
+        } else {
+          state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                | BGFX_STATE_DEPTH_TEST_LESS
+                | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+        }
+        bgfx::setState(state);
+        bgfx::submit(0, m_shader->program);
+      }
     }
 
     // ── +7 plate armor enhancement glow for guards (ChromeGlow module) ──
     bool isGuardType = (npc.npcType >= 245 && npc.npcType <= 249) ||
                        (npc.npcType >= 310 && npc.npcType <= 312);
-    if (isGuardType && ChromeGlow::GetTextures().chrome1) {
+    if (isGuardType && TexValid(ChromeGlow::GetTextures().chrome1)) {
       static constexpr int GUARD_ARMOR_LEVEL = 7;
-      static constexpr int GUARD_ITEM_INDEX = 9; // Plate armor
+      static constexpr int GUARD_ITEM_INDEX = 9;
       float t = (float)glfwGetTime();
-      ChromeGlow::BeginGlow();
+      uint64_t glowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                         | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD;
       for (int p = 0; p < (int)npc.bodyParts.size(); ++p) {
         auto &bp = npc.bodyParts[p];
         ChromeGlow::GlowPass passes[3];
         int n = ChromeGlow::GetGlowPasses(GUARD_ARMOR_LEVEL, 7 + p, GUARD_ITEM_INDEX, passes);
         for (int gp = 0; gp < n; ++gp) {
-          m_shader->setVec3("glowColor", passes[gp].color);
-          m_shader->setInt("chromeMode", passes[gp].chromeMode);
-          m_shader->setFloat("chromeTime", t);
-          glBindTexture(GL_TEXTURE_2D, passes[gp].texture);
           for (auto &mb : bp.meshBuffers) {
             if (mb.indexCount == 0 || mb.hidden) continue;
-            glBindVertexArray(mb.vao);
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+            bgfx::setTransform(glm::value_ptr(model));
+            if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+            else bgfx::setVertexBuffer(0, mb.vbo);
+            bgfx::setIndexBuffer(mb.ebo);
+            m_shader->setTexture(0, "s_texColor", passes[gp].texture);
+            setNpcUniforms(blendMeshLight, (float)passes[gp].chromeMode, t, passes[gp].color);
+            bgfx::setState(glowState);
+            bgfx::submit(0, m_shader->program);
           }
         }
       }
-      ChromeGlow::EndGlow(m_shader->ID);
     }
 
     // ── Guard weapon rendering (Main 5.2: ZzzCharacter.cpp:13859-13890) ──
     if (mdl.weaponBmd && mdl.weaponAttachBone >= 0 &&
         !npc.weaponMeshBuffers.empty() &&
         mdl.weaponAttachBone < (int)bones.size()) {
-      // Guard weapon on back (bone 47) — guards are always in safe zones
-      // Same pattern as HeroCharacter::Draw back-carry (line 625-649)
       static constexpr int BONE_BACK = 47;
       int attachBone = (BONE_BACK < (int)bones.size())
                            ? BONE_BACK
                            : mdl.weaponAttachBone;
-
-      // Back rotation (70,0,90) + offset (-20,5,55) for back carry
       BoneWorldMatrix offsetMat = (attachBone == BONE_BACK)
           ? MuMath::BuildWeaponOffsetMatrix(glm::vec3(70.f, 0.f, 90.f),
                                             glm::vec3(-20.f, 5.f, 55.f))
           : MuMath::BuildWeaponOffsetMatrix(glm::vec3(0.0f), glm::vec3(0.0f));
-
       BoneWorldMatrix parentMat;
       MuMath::ConcatTransforms(
           (const float(*)[4])bones[attachBone].data(),
           (const float(*)[4])offsetMat.data(), (float(*)[4])parentMat.data());
-
-      // Use cached weapon local bones (static bind-pose, computed once at load)
       const auto &wLocalBones = mdl.cachedWeaponBones;
       std::vector<BoneWorldMatrix> wFinalBones(wLocalBones.size());
       for (int bi = 0; bi < (int)wLocalBones.size(); ++bi) {
@@ -736,30 +721,31 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
                                  (const float(*)[4])wLocalBones[bi].data(),
                                  (float(*)[4])wFinalBones[bi].data());
       }
-
-      // Re-skin weapon meshes
       for (int mi = 0; mi < (int)npc.weaponMeshBuffers.size() &&
                        mi < (int)mdl.weaponBmd->Meshes.size();
            ++mi) {
         RetransformMeshWithBones(mdl.weaponBmd->Meshes[mi], wFinalBones,
                                  npc.weaponMeshBuffers[mi]);
       }
-
-      // Draw weapon meshes
       for (auto &mb : npc.weaponMeshBuffers) {
-        if (mb.indexCount == 0 || mb.hidden)
-          continue;
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
+        if (mb.indexCount == 0 || mb.hidden) continue;
+        bgfx::setTransform(glm::value_ptr(model));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        m_shader->setTexture(0, "s_texColor", mb.texture);
+        setNpcUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+        uint64_t wState;
         if (mb.bright) {
-          glBlendFunc(GL_ONE, GL_ONE);
-          glDepthMask(GL_FALSE);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-          glDepthMask(GL_TRUE);
-          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+          wState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                 | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
         } else {
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+          wState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
         }
+        bgfx::setState(wState);
+        bgfx::submit(0, m_shader->program);
       }
     }
   }
@@ -772,19 +758,15 @@ void NpcManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
   if (!m_shadowShader || m_npcs.empty())
     return;
 
-  m_shadowShader->use();
-  m_shadowShader->setMat4("projection", proj);
-  m_shadowShader->setMat4("view", view);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE);
-  glEnable(GL_POLYGON_OFFSET_FILL);
-  glPolygonOffset(-1.0f, -1.0f);
-  glDisable(GL_CULL_FACE);
-
-  // Stencil per NPC to avoid overlap
-  glEnable(GL_STENCIL_TEST);
+  uint64_t shadowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                       | BGFX_STATE_DEPTH_TEST_LESS
+                       | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint32_t shadowStencil = BGFX_STENCIL_TEST_EQUAL
+                         | BGFX_STENCIL_FUNC_REF(0)
+                         | BGFX_STENCIL_FUNC_RMASK(0xFF)
+                         | BGFX_STENCIL_OP_FAIL_S_KEEP
+                         | BGFX_STENCIL_OP_FAIL_Z_KEEP
+                         | BGFX_STENCIL_OP_PASS_Z_INCR;
 
   const float sx = 2000.0f;
   const float sy = 4000.0f;
@@ -802,12 +784,6 @@ void NpcManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
     if (npc.scale != 1.0f)
       model = glm::scale(model, glm::vec3(npc.scale));
 
-    m_shadowShader->setMat4("model", model);
-
-    // Clear stencil for this NPC
-    glClear(GL_STENCIL_BUFFER_BIT);
-    glStencilFunc(GL_EQUAL, 0, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
 
     float cosF = cosf(npc.facing);
     float sinF = sinf(npc.facing);
@@ -819,7 +795,7 @@ void NpcManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
            mi < (int)bmd->Meshes.size() && smIdx < (int)npc.shadowMeshes.size();
            ++mi, ++smIdx) {
         auto &sm = npc.shadowMeshes[smIdx];
-        if (sm.vertexCount == 0 || sm.vao == 0)
+        if (sm.vertexCount == 0 || !bgfx::isValid(sm.vbo))
           continue;
 
         auto &mesh = bmd->Meshes[mi];
@@ -837,14 +813,11 @@ void NpcManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
               pos = MuMath::TransformPoint(
                   (const float(*)[4])npc.cachedBones[boneIdx].data(), pos);
             }
-            // Apply scale
             pos *= npc.scale;
-            // Apply facing rotation in MU space
             float rx = pos.x * cosF - pos.y * sinF;
             float ry = pos.x * sinF + pos.y * cosF;
             pos.x = rx;
             pos.y = ry;
-            // Shadow projection
             if (pos.z < sy) {
               float factor = 1.0f / (pos.z - sy);
               pos.x += pos.z * (pos.x + sx) * factor;
@@ -879,21 +852,62 @@ void NpcManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
           }
         }
 
-        glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                        shadowVerts.size() * sizeof(glm::vec3),
-                        shadowVerts.data());
-        glBindVertexArray(sm.vao);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+        if (!shadowVerts.empty()) {
+          bgfx::update(sm.vbo, 0,
+                       bgfx::copy(shadowVerts.data(), shadowVerts.size() * sizeof(glm::vec3)));
+          bgfx::setTransform(glm::value_ptr(model));
+          bgfx::setVertexBuffer(0, sm.vbo, 0, (uint32_t)shadowVerts.size());
+          bgfx::setState(shadowState);
+          bgfx::setStencil(shadowStencil);
+          bgfx::submit(0, m_shadowShader->program);
+        }
       }
     }
   }
 
-  glBindVertexArray(0);
-  glDisable(GL_STENCIL_TEST);
-  glDisable(GL_POLYGON_OFFSET_FILL);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
+}
+
+void NpcManager::SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx) {
+  m_shadowMapTex = tex;
+  m_lightMtx = lightMtx;
+}
+
+void NpcManager::RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram) {
+  if (m_npcs.empty()) return;
+
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_CULL_CCW;
+
+  for (auto &npc : m_npcs) {
+    auto &mdl = m_models[npc.modelIdx];
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), npc.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, npc.facing, glm::vec3(0, 0, 1));
+
+    // Body part meshes
+    for (auto &bp : npc.bodyParts) {
+      for (auto &mb : bp.meshBuffers) {
+        if (mb.hidden || mb.indexCount == 0) continue;
+        bgfx::setTransform(glm::value_ptr(model));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        bgfx::setState(state);
+        bgfx::submit(viewId, depthProgram);
+      }
+    }
+    // Weapon meshes (guards)
+    for (auto &mb : npc.weaponMeshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+  }
 }
 
 NpcInfo NpcManager::GetNpcInfo(int index) const {
@@ -909,103 +923,6 @@ NpcInfo NpcManager::GetNpcInfo(int index) const {
   return info;
 }
 
-void NpcManager::RenderSilhouetteOutline(int npcIndex, const glm::mat4 &view,
-                                          const glm::mat4 &proj) {
-  if (!m_outlineShader || npcIndex < 0 || npcIndex >= (int)m_npcs.size())
-    return;
-
-  auto &npc = m_npcs[npcIndex];
-
-  // Build model matrices: normal scale for stencil, slightly larger for outline
-  glm::mat4 baseModel = glm::translate(glm::mat4(1.0f), npc.position);
-  baseModel = glm::rotate(baseModel, glm::radians(-90.0f), glm::vec3(0, 0, 1));
-  baseModel = glm::rotate(baseModel, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  baseModel = glm::rotate(baseModel, npc.facing, glm::vec3(0, 0, 1));
-
-  glm::mat4 stencilModel = glm::scale(baseModel, glm::vec3(npc.scale));
-
-  m_outlineShader->use();
-  m_outlineShader->setMat4("projection", proj);
-  m_outlineShader->setMat4("view", view);
-
-  glDisable(GL_CULL_FACE);
-
-  // === Pass 1: Write COMPLETE silhouette to stencil ===
-  // Depth test OFF so ALL mesh pixels get stenciled (no gaps between parts)
-  glEnable(GL_STENCIL_TEST);
-  glStencilFunc(GL_ALWAYS, 1, 0xFF);
-  glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-  glStencilMask(0xFF);
-  glClear(GL_STENCIL_BUFFER_BIT);
-  glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-  glDepthMask(GL_FALSE);
-  glDisable(GL_DEPTH_TEST);
-
-  m_outlineShader->setMat4("model", stencilModel);
-  m_outlineShader->setFloat("outlineThickness", 0.0f);
-
-  for (auto &bp : npc.bodyParts) {
-    for (auto &mb : bp.meshBuffers) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-    }
-  }
-  for (auto &mb : npc.weaponMeshBuffers) {
-    if (mb.indexCount == 0)
-      continue;
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-  }
-
-  // === Pass 2: Multi-layer soft glow where stencil != 1 ===
-  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-  glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-  glStencilMask(0x00);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-  m_outlineShader->setVec3("outlineColor", 0.8f, 0.4f, 0.15f);
-
-  // Render multiple layers from outermost (faint) to innermost (bright)
-  // Normal extrusion for uniform width
-  constexpr float thicknesses[] = {5.0f, 3.5f, 2.0f};
-  constexpr float alphas[] = {0.08f, 0.18f, 0.35f};
-
-  m_outlineShader->setMat4("model", stencilModel);
-
-  for (int layer = 0; layer < 3; ++layer) {
-    m_outlineShader->setFloat("outlineThickness", thicknesses[layer]);
-    m_outlineShader->setFloat("outlineAlpha", alphas[layer]);
-
-    for (auto &bp : npc.bodyParts) {
-      for (auto &mb : bp.meshBuffers) {
-        if (mb.indexCount == 0 || mb.hidden)
-          continue;
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-      }
-    }
-    for (auto &mb : npc.weaponMeshBuffers) {
-      if (mb.indexCount == 0)
-        continue;
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-    }
-  }
-
-  // Restore state
-  glStencilMask(0xFF);
-  glStencilFunc(GL_ALWAYS, 0, 0xFF);
-  glDisable(GL_STENCIL_TEST);
-  glEnable(GL_DEPTH_TEST);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glBindVertexArray(0);
-}
 
 void NpcManager::SetNpcMoveTarget(uint16_t serverIndex, float worldX,
                                   float worldZ) {
@@ -1027,18 +944,12 @@ void NpcManager::Cleanup() {
     for (auto &bp : npc.bodyParts)
       CleanupMeshBuffers(bp.meshBuffers);
     for (auto &sm : npc.shadowMeshes) {
-      if (sm.vao)
-        glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo)
-        glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     // Weapon meshes (guards)
     CleanupMeshBuffers(npc.weaponMeshBuffers);
     for (auto &sm : npc.weaponShadowMeshes) {
-      if (sm.vao)
-        glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo)
-        glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
   }
   m_npcs.clear();

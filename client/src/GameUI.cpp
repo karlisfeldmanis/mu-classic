@@ -9,15 +9,9 @@ UITexture GameUI::LoadOZJUI(const std::string &path) {
   UITexture tex;
   tex.isOZT = false;
   tex.id = TextureLoader::LoadOZJ(path);
-  if (tex.id) {
-    glBindTexture(GL_TEXTURE_2D, tex.id);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex.width);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex.height);
-    // UI textures should clamp, not repeat
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    printf("[GameUI] OZJ %s: %dx%d (id=%d)\n", path.c_str(), tex.width,
-           tex.height, tex.id);
+  if (TexValid(tex.id)) {
+    printf("[GameUI] OZJ %s: %dx%d (id=%zu)\n", path.c_str(), tex.width,
+           tex.height, (size_t)TexImID(tex.id));
   } else {
     printf("[GameUI] FAILED to load OZJ: %s\n", path.c_str());
   }
@@ -28,14 +22,9 @@ UITexture GameUI::LoadOZTUI(const std::string &path) {
   UITexture tex;
   tex.isOZT = true;
   tex.id = TextureLoader::LoadOZT(path);
-  if (tex.id) {
-    glBindTexture(GL_TEXTURE_2D, tex.id);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex.width);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex.height);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    printf("[GameUI] OZT %s: %dx%d (id=%d)\n", path.c_str(), tex.width,
-           tex.height, tex.id);
+  if (TexValid(tex.id)) {
+    printf("[GameUI] OZT %s: %dx%d (id=%zu)\n", path.c_str(), tex.width,
+           tex.height, (size_t)TexImID(tex.id));
   } else {
     printf("[GameUI] FAILED to load OZT: %s\n", path.c_str());
   }
@@ -65,10 +54,7 @@ void GameUI::Init(const std::string &dataPath, GLFWwindow *window) {
 
 void GameUI::Cleanup() {
   auto del = [](UITexture &t) {
-    if (t.id) {
-      glDeleteTextures(1, &t.id);
-      t.id = 0;
-    }
+    t.Destroy();
   };
   del(m_texMenu1);
   del(m_texMenu2);
@@ -113,7 +99,7 @@ float GameUI::ScreenToVirtualY(float sy) const {
 
 void GameUI::DrawImage(const UITexture &tex, float vx, float vy, float vw,
                        float vh, ImVec2 uvMin, ImVec2 uvMax, ImU32 tint) {
-  if (tex.id == 0)
+  if (!TexValid(tex.id))
     return;
   auto *dl = ImGui::GetForegroundDrawList();
   ImVec2 pMin(ConvertX(vx), ConvertY(vy));
@@ -127,7 +113,7 @@ void GameUI::DrawImage(const UITexture &tex, float vx, float vy, float vw,
     uvMax.y = 1.0f - tmpMinY;
   }
 
-  dl->AddImage(ImTextureRef((ImTextureID)(uintptr_t)tex.id), pMin, pMax, uvMin,
+  dl->AddImage(ImTextureRef((ImTextureID)TexImID(tex.id)), pMin, pMax, uvMin,
                uvMax, tint);
 }
 
@@ -145,7 +131,7 @@ void GameUI::RenderToolbarFrame() {
 // UV must be scaled to only sample the valid region.
 
 void GameUI::RenderHPGauge() {
-  if (m_maxHp <= 0 || m_texGaugeRed.id == 0)
+  if (m_maxHp <= 0 || !TexValid(m_texGaugeRed.id))
     return;
   float fEmpty =
       (float)(m_maxHp - std::clamp(m_hp, 0, m_maxHp)) / (float)m_maxHp;
@@ -171,7 +157,7 @@ void GameUI::RenderHPGauge() {
 // --- MP gauge ---
 
 void GameUI::RenderMPGauge() {
-  if (m_maxMp <= 0 || m_texGaugeBlue.id == 0)
+  if (m_maxMp <= 0 || !TexValid(m_texGaugeBlue.id))
     return;
   float fEmpty =
       (float)(m_maxMp - std::clamp(m_mp, 0, m_maxMp)) / (float)m_maxMp;
@@ -197,7 +183,7 @@ void GameUI::RenderMPGauge() {
 // Reference UV: u=0..6/8, v=0..1 (texture is 8x4, uses 6px of width)
 
 void GameUI::RenderExperienceBar() {
-  if (m_texExbar.id == 0)
+  if (!TexValid(m_texExbar.id))
     return;
   float frac = 0.0f;
   if (m_nextXp > m_prevLevelXp) {
@@ -219,7 +205,7 @@ void GameUI::RenderExperienceBar() {
 
 void GameUI::RenderButtons() {
   for (int i = 0; i < 4; i++) {
-    if (m_texBtn[i].id == 0)
+    if (!TexValid(m_texBtn[i].id))
       continue;
 
     float x = BTN_START_X + i * BTN_W;

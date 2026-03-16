@@ -1,12 +1,12 @@
 #ifndef UI_TEXTURE_HPP
 #define UI_TEXTURE_HPP
 
-#include <GL/glew.h>
+#include "TextureLoader.hpp" // TexHandle, TexValid, kInvalidTex
 #include <string>
 
 // Texture handle with tracked dimensions and format info.
 struct UITexture {
-    GLuint id = 0;
+    TexHandle id = kInvalidTex;
     int width = 0;
     int height = 0;
     bool isOZT = false;   // OZT textures are V-flipped for 3D; need flip back for ImGui
@@ -20,7 +20,7 @@ struct UITexture {
 
     void Destroy();
 
-    explicit operator bool() const { return id != 0; }
+    explicit operator bool() const { return TexValid(id); }
 };
 
 #endif // UI_TEXTURE_HPP

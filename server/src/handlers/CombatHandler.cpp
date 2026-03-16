@@ -7,6 +7,7 @@
 #include "handlers/CharacterHandler.hpp"
 #include "handlers/QuestHandler.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -383,6 +384,13 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
 
   ApplyDamageToMonster(session, mon, 0, world, server);
   session.attackCooldown = 0.4f; // Minimum 0.4s between melee attacks
+
+  // AG recovery on auto-attack hit (DK only)
+  if (session.classCode == 16 && session.ag < session.maxAg) {
+    int agGain = std::max(1, session.maxAg / 50); // 2% of maxAG
+    session.ag = std::min(session.ag + agGain, session.maxAg);
+    CharacterHandler::SendCharStats(session);
+  }
 }
 
 // File-based debug log for skill attacks (stdout goes to /dev/null)
@@ -465,6 +473,9 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   // Deduct resource
   if (isDK) {
     session.ag -= skillDef->resourceCost;
+    session.lastAgUseTime = static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
   } else {
     session.mana -= skillDef->resourceCost;
   }
@@ -539,6 +550,11 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
       if (inRange) {
         ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
                              server, skillDef->isMagic);
+        // Twisting Slash (skill 41): double hit (spin start + spin end)
+        if (skillDef->skillId == 41 && other.hp > 0) {
+          ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
+                               server, skillDef->isMagic);
+        }
         if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0) {
           other.stormTime = 10;
           printf("[Storm] Ground AoE: stunned mon %d HP=%d at (%.0f,%.0f) skill=%d\n",
@@ -569,6 +585,12 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
 
   // Meteorite (skill 2): two fireballs = two damage hits
   if (skillDef->skillId == 2 && mon->hp > 0) {
+    ApplyDamageToMonster(session, mon, skillDef->damageBonus, world, server,
+                         skillDef->isMagic);
+  }
+
+  // Twisting Slash (skill 41): double hit (spin start + spin end)
+  if (skillDef->skillId == 41 && mon->hp > 0) {
     ApplyDamageToMonster(session, mon, skillDef->damageBonus, world, server,
                          skillDef->isMagic);
   }
@@ -692,6 +714,9 @@ void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
   // Deduct mana
   if (isDK) {
     session.ag -= skillDef->resourceCost;
+    session.lastAgUseTime = static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
   } else {
     session.mana -= skillDef->resourceCost;
   }

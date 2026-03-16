@@ -152,80 +152,47 @@ void VFXManager::updateSpiritBeams(float dt) {
 
 void VFXManager::renderSpiritBeams(const glm::mat4 &view,
                                     const glm::mat4 &projection) {
-  if (m_spiritBeams.empty() || !m_lineShader)
-    return;
-
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
-
-  // Bind JointSpirit01 texture (fallback to energy texture)
-  GLuint tex = m_jointSpiritTexture ? m_jointSpiritTexture : m_energyTexture;
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, tex);
-  m_lineShader->setInt("ribbonTex", 0);
-  m_lineShader->setBool("useTexture", tex != 0);
-
-  // Main 5.2: RENDER_TYPE_ALPHA_BLEND_MINUS — subtractive blending (dark void)
-  // result = dst * (1 - srcColor): white pixels darken, black pixels no effect
-  glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-  glDisable(GL_CULL_FACE);
+  if (m_spiritBeams.empty() || !m_lineShader) return;
+  TexHandle tex = TexValid(m_jointSpiritTexture) ? m_jointSpiritTexture : m_energyTexture;
+  bool hasTexture = TexValid(tex);
+  m_lineShader->setVec4("u_lineMode", glm::vec4(hasTexture ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f));
+  // Main 5.2: RENDER_TYPE_ALPHA_BLEND_MINUS — subtractive: dst * (1 - srcColor)
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ZERO, BGFX_STATE_BLEND_INV_SRC_COLOR);
 
   for (const auto &b : m_spiritBeams) {
-    if (b.numTrail < 1)
-      continue;
-
-    // Build positions array: head + trail
+    if (b.numTrail < 1) continue;
     glm::vec3 positions[SpiritBeam::MAX_TRAIL + 1];
     positions[0] = b.position;
     int count = 1;
     for (int t = 0; t < b.numTrail && count <= SpiritBeam::MAX_TRAIL; ++t)
       positions[count++] = b.trail[t];
+    if (count < 2) continue;
 
-    if (count < 2)
-      continue;
-
-    // Main 5.2: o->Light = LifeTime * 0.1 (luminosity decreases as beam ages)
-    // Full darkening until last ~10 ticks, then fades out
     float lifeTicks = b.lifetime / 0.04f;
     float light = std::min(1.0f, lifeTicks * 0.1f);
-    // Grayscale luminosity: texture color determines darkening shape,
-    // light value controls intensity. With GL_ZERO/GL_ONE_MINUS_SRC_COLOR,
-    // brighter fragment output = stronger darkening of background.
-    m_lineShader->setVec3("color", glm::vec3(light));
-    m_lineShader->setFloat("alpha", light);
 
     std::vector<RibbonVertex> verts;
     verts.reserve(count * 12);
-
     for (int j = 0; j < count - 1; ++j) {
       glm::vec3 seg = positions[j] - positions[j + 1];
       float segLen = glm::length(seg);
-      if (segLen < 0.01f)
-        continue;
+      if (segLen < 0.01f) continue;
       glm::vec3 fwd = seg / segLen;
-
-      // Perpendicular axes for quad width (Main 5.2: constant Scale*0.5 per segment)
       glm::vec3 worldUp(0, 1, 0);
       glm::vec3 right = glm::normalize(glm::cross(fwd, worldUp)) * b.scale;
       glm::vec3 up = glm::normalize(glm::cross(right, fwd)) * b.scale;
-
       float u0v = (float)j / (float)(count - 1);
       float u1v = (float)(j + 1) / (float)(count - 1);
-
       RibbonVertex v;
-      // Face 1: horizontal (Main 5.2: Tails[j][0..1] X-axis strip)
+      // Face 1: horizontal
       v.pos = positions[j] - right;     v.uv = glm::vec2(u0v, 0.0f); verts.push_back(v);
       v.pos = positions[j] + right;     v.uv = glm::vec2(u0v, 1.0f); verts.push_back(v);
       v.pos = positions[j+1] + right;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
       v.pos = positions[j] - right;     v.uv = glm::vec2(u0v, 0.0f); verts.push_back(v);
       v.pos = positions[j+1] + right;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
       v.pos = positions[j+1] - right;   v.uv = glm::vec2(u1v, 0.0f); verts.push_back(v);
-
-      // Face 2: vertical cross-section (Main 5.2: Tails[j][2..3] Z-axis strip)
+      // Face 2: vertical
       v.pos = positions[j] - up;     v.uv = glm::vec2(u0v, 0.0f); verts.push_back(v);
       v.pos = positions[j] + up;     v.uv = glm::vec2(u0v, 1.0f); verts.push_back(v);
       v.pos = positions[j+1] + up;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
@@ -233,20 +200,20 @@ void VFXManager::renderSpiritBeams(const glm::mat4 &view,
       v.pos = positions[j+1] + up;   v.uv = glm::vec2(u1v, 1.0f); verts.push_back(v);
       v.pos = positions[j+1] - up;   v.uv = glm::vec2(u1v, 0.0f); verts.push_back(v);
     }
-
-    if (verts.empty())
-      continue;
-    if ((int)verts.size() > MAX_RIBBON_VERTS)
-      verts.resize(MAX_RIBBON_VERTS);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(RibbonVertex),
-                    verts.data());
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)verts.size());
+    if (verts.empty()) continue;
+    if ((int)verts.size() > MAX_RIBBON_VERTS) verts.resize(MAX_RIBBON_VERTS);
+    uint32_t nv = (uint32_t)verts.size();
+    bgfx::TransientVertexBuffer tvb;
+    if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) >= nv) {
+      bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+      memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+      m_lineShader->setVec4("u_lineColor", glm::vec4(glm::vec3(light), light));
+      if (hasTexture) m_lineShader->setTexture(0, "s_ribbonTex", tex);
+      bgfx::setVertexBuffer(0, &tvb);
+      bgfx::setState(state);
+      bgfx::submit(0, m_lineShader->program);
+    }
   }
-
-  // Restore normal blend state
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_CULL_FACE);
 }
 
 void VFXManager::updateLaserFlashes(float dt) {
@@ -261,61 +228,40 @@ void VFXManager::updateLaserFlashes(float dt) {
 
 void VFXManager::renderLaserFlashes(const glm::mat4 &view,
                                      const glm::mat4 &projection) {
-  if (m_laserFlashes.empty() || m_laserMeshes.empty() || !m_modelShader)
-    return;
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  if (m_laserFlashes.empty() || m_laserMeshes.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-  glDepthMask(GL_FALSE);
-
-  // Main 5.2: RENDER_DARK = subtractive blending (GL_FUNC_SUBTRACT + GL_ONE, GL_ONE)
-  // result = dst - src: bright pixels darken the background
-  glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
-  glBlendFunc(GL_ONE, GL_ONE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  // Main 5.2: RENDER_DARK = reverse subtract (dst - src)
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE)
+                 | BGFX_STATE_BLEND_EQUATION(BGFX_STATE_BLEND_EQUATION_REVSUB);
   for (const auto &lf : m_laserFlashes) {
-    // Model matrix: translate → BMD base rotation → beam heading → scale
     glm::mat4 model = glm::translate(glm::mat4(1.0f), lf.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-    // Apply beam heading rotation
     model = glm::rotate(model, glm::radians(lf.yaw), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(lf.pitch), glm::vec3(1, 0, 0));
-    model = glm::scale(model, glm::vec3(1.3f)); // Main 5.2: Scale = 1.3
-
-    m_modelShader->setMat4("model", model);
-    m_modelShader->setFloat("objectAlpha", 1.0f);
-    m_modelShader->setFloat("blendMeshLight", lf.light);
-
+    model = glm::scale(model, glm::vec3(1.3f));
+    m_modelShader->setVec4("u_params", glm::vec4(1.0f, lf.light, 0, 0));
     for (const auto &mb : m_laserMeshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-
-  // Restore normal blend state
-  glBlendEquation(GL_FUNC_ADD);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
-  glBindVertexArray(0);
 }
 
 bool VFXManager::CheckSpiritBeamHit(uint16_t serverIndex,
@@ -528,101 +474,73 @@ void VFXManager::updateHellfireEffects(float dt) {
 
 void VFXManager::renderHellfireEffects(const glm::mat4 &view,
                                         const glm::mat4 &projection) {
-  if (m_hellfireEffects.empty() || !m_modelShader)
-    return;
-
+  if (m_hellfireEffects.empty() || !m_modelShader) return;
   bool hasCircle = !m_circleMeshes.empty();
   bool hasCircleLight = !m_circleLightMeshes.empty();
-  if (!hasCircle && !hasCircleLight)
-    return;
+  if (!hasCircle && !hasCircleLight) return;
 
-  // Use model shader for 3D BMD mesh rendering (same as poison, storm, etc.)
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
   glm::mat4 invView = glm::inverse(view);
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-  glDepthMask(GL_FALSE); // No depth write for additive spell effects
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
 
   for (const auto &hf : m_hellfireEffects) {
     float ticksLeft = hf.lifetime / 0.04f;
 
-    // ── Layer 1: MODEL_CIRCLE (Circle01.bmd) ──
-    // Main 5.2: BlendMeshLight = LifeTime * 0.1 → 4.5 at start, fades to 0
-    // Circle01.bmd UVs use range 0-2 with mirrored repeat for star pattern
+    // Layer 1: Circle01.bmd
     if (hasCircle) {
-      float blendLight = ticksLeft * 0.1f; // Uncapped — drives additive brightness
-
+      float blendLight = ticksLeft * 0.1f;
       glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position);
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-
-      m_modelShader->setMat4("model", model);
-      m_modelShader->setFloat("objectAlpha", 1.0f);
-      m_modelShader->setFloat("blendMeshLight", blendLight);
-      m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+      m_modelShader->setVec4("u_params", glm::vec4(1.0f, blendLight, 0, 0));
+      m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
       for (const auto &mb : m_circleMeshes) {
-        if (mb.indexCount == 0 || mb.hidden)
-          continue;
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        // Circle01 UVs are 0-2 range — mirrored repeat creates full star from 1/4 texture
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        if (mb.indexCount == 0 || mb.hidden) continue;
+        bgfx::setTransform(glm::value_ptr(model));
+        m_modelShader->setTexture(0, "s_texColor", mb.texture);
+        bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        bgfx::setState(state);
+        bgfx::submit(0, m_modelShader->program);
       }
     }
 
-    // ── Layer 2: MODEL_CIRCLE_LIGHT (Circle02.bmd) ──
-    // Main 5.2: Parabolic fade — ticks>=30: (40-ticks)*0.1; ticks<30: ticks*0.1
-    // UV scrolling: BlendMeshTexCoordU = -LifeTime * 0.01 (smoky light effect)
+    // Layer 2: Circle02.bmd (MODEL_CIRCLE_LIGHT) with UV scroll
     if (hasCircleLight) {
       float lightTicks = std::min(ticksLeft, 40.0f);
       float blendLight2;
       if (lightTicks >= 30.0f)
-        blendLight2 = (40.0f - lightTicks) * 0.1f; // Fade in: 0→1.0
+        blendLight2 = (40.0f - lightTicks) * 0.1f;
       else
-        blendLight2 = lightTicks * 0.1f; // Fade out: 3.0→0
+        blendLight2 = lightTicks * 0.1f;
       if (blendLight2 > 0.01f) {
         glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position);
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-
-        m_modelShader->setMat4("model", model);
-        m_modelShader->setFloat("objectAlpha", 1.0f);
-        m_modelShader->setFloat("blendMeshLight", blendLight2);
-        m_modelShader->setVec2("texCoordOffset", glm::vec2(hf.uvScroll, 0.0f));
-
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+        m_modelShader->setVec4("u_params", glm::vec4(1.0f, blendLight2, 0, 0));
+        m_modelShader->setVec4("u_texCoordOffset", glm::vec4(hf.uvScroll, 0, 0, 0));
         for (const auto &mb : m_circleLightMeshes) {
-          if (mb.indexCount == 0 || mb.hidden)
-            continue;
-          glBindTexture(GL_TEXTURE_2D, mb.texture);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
-          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-          glBindVertexArray(mb.vao);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+          if (mb.indexCount == 0 || mb.hidden) continue;
+          bgfx::setTransform(glm::value_ptr(model));
+          m_modelShader->setTexture(0, "s_texColor", mb.texture);
+          bgfx::setVertexBuffer(0, mb.vbo);
+          bgfx::setIndexBuffer(mb.ebo);
+          bgfx::setState(state);
+          bgfx::submit(0, m_modelShader->program);
         }
       }
     }
   }
-
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_CULL_FACE);
-  glBindVertexArray(0);
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
 }
 
 // Main 5.2: CreateInferno — 8 fire explosions in ring, radius 220, 45° apart
@@ -718,59 +636,40 @@ void VFXManager::updateInfernoEffects(float dt) {
 
 void VFXManager::renderInfernoEffects(const glm::mat4 &view,
                                        const glm::mat4 &projection) {
-  if (m_infernoEffects.empty() || m_infernoMeshes.empty() || !m_modelShader)
-    return;
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  if (m_infernoEffects.empty() || m_infernoMeshes.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-  glDepthMask(GL_FALSE);
-  // Main 5.2: BlendMesh=-2 → additive blending
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
   for (const auto &inf : m_infernoEffects) {
-    float t = inf.lifetime / inf.maxLifetime; // 1→0
-    // Smooth blendMeshLight: quadratic ease-out for natural flash→fade
-    // Peaks bright at start, gentle tail instead of harsh linear cutoff
+    float t = inf.lifetime / inf.maxLifetime;
     float blendLight = t * t * 3.5f;
-    m_modelShader->setFloat("blendMeshLight", blendLight);
-    m_modelShader->setFloat("objectAlpha", 1.0f);
-
-    // Scale: smooth ease-out growth (0.9 → 1.05), decelerating
-    float age = 1.0f - t; // 0→1
-    float growScale = 0.9f + age * (2.0f - age) * 0.075f; // Parabolic ease-out
+    float age = 1.0f - t;
+    float growScale = 0.9f + age * (2.0f - age) * 0.075f;
     glm::mat4 model = glm::translate(glm::mat4(1.0f), inf.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(growScale));
-    m_modelShader->setMat4("model", model);
-
+    m_modelShader->setVec4("u_params", glm::vec4(1.0f, blendLight, 0, 0));
     for (const auto &mb : m_infernoMeshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_CULL_FACE);
-  glBindVertexArray(0);
 }
 
 // Main 5.2: AT_SKILL_FLASH (Aqua Beam) — BITMAP_BOSS_LASER SubType 2
@@ -920,36 +819,17 @@ void VFXManager::updateAquaBeams(float dt) {
 
 void VFXManager::renderAquaBeams(const glm::mat4 &view,
                                   const glm::mat4 &projection) {
-  if (m_aquaBeams.empty() || !m_lineShader)
-    return;
-
-  // Extract camera position from view matrix
+  if (m_aquaBeams.empty() || !m_lineShader) return;
   glm::mat4 invView = glm::inverse(view);
   glm::vec3 camPos(invView[3]);
-
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_ONE, GL_ONE); // Additive blend (same as ribbons)
-  glDepthMask(GL_FALSE);
-  glDisable(GL_CULL_FACE);
-
-  // Beam mode: Gaussian V-falloff in shader (no texture UV issues)
-  m_lineShader->setBool("useTexture", false);
-  m_lineShader->setBool("beamMode", true);
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
+  // beamMode=true, useTexture=false
+  m_lineShader->setVec4("u_lineMode", glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_ADD;
 
   for (const auto &ab : m_aquaBeams) {
-    // Main 5.2: NO fade — beam renders at full brightness, then vanishes instantly
     glm::vec3 beamDir = glm::normalize(ab.direction);
-
-    // U = position along beam (0→1), V = across width (0/1 edges, shader Gaussian)
-    // Extend 2 segments before start and 2 after end for soft taper
-    constexpr int EXT = 2; // extension segments each side
+    constexpr int EXT = 2;
     constexpr int TOTAL_SEGS = AquaBeam::NUM_SEGMENTS + EXT * 2;
     auto buildStrip = [&](float halfWidth) {
       std::vector<RibbonVertex> verts;
@@ -960,11 +840,8 @@ void VFXManager::renderAquaBeams(const glm::mat4 &view,
         glm::vec3 mid = (p0 + p1) * 0.5f;
         glm::vec3 viewDir = glm::normalize(camPos - mid);
         glm::vec3 w = glm::normalize(glm::cross(beamDir, viewDir)) * halfWidth;
-
-        // U: 0 at extended start, 1 at extended end
         float u0 = (float)(j + EXT) / (float)(TOTAL_SEGS - 1);
         float u1 = (float)(j + EXT + 1) / (float)(TOTAL_SEGS - 1);
-
         RibbonVertex v;
         v.pos = p0 - w; v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
         v.pos = p0 + w; v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
@@ -976,51 +853,27 @@ void VFXManager::renderAquaBeams(const glm::mat4 &view,
       return verts;
     };
 
-    // Main 5.2 SubType 2: Scale=2.5, 128px sprites → ~320 world units per sprite
-    // 4 layered Gaussian ribbons simulate additive sprite overlap
-
-    // --- Pass 1: Wide atmospheric glow ---
-    m_lineShader->setVec3("color", glm::vec3(0.1f, 0.3f, 0.45f));
-    m_lineShader->setFloat("alpha", 1.0f);
-    auto outerVerts = buildStrip(160.0f);
-    if (!outerVerts.empty()) {
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      outerVerts.size() * sizeof(RibbonVertex), outerVerts.data());
-      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)outerVerts.size());
-    }
-
-    // --- Pass 2: Mid glow (visible cyan body) ---
-    m_lineShader->setVec3("color", glm::vec3(0.2f, 0.6f, 0.85f));
-    auto midVerts = buildStrip(90.0f);
-    if (!midVerts.empty()) {
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      midVerts.size() * sizeof(RibbonVertex), midVerts.data());
-      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)midVerts.size());
-    }
-
-    // --- Pass 3: Bright core beam ---
-    m_lineShader->setVec3("color", glm::vec3(0.4f, 0.85f, 1.0f));
-    auto coreVerts = buildStrip(45.0f);
-    if (!coreVerts.empty()) {
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      coreVerts.size() * sizeof(RibbonVertex), coreVerts.data());
-      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)coreVerts.size());
-    }
-
-    // --- Pass 4: White-hot center ---
-    m_lineShader->setVec3("color", glm::vec3(0.6f, 1.0f, 1.0f));
-    auto centerVerts = buildStrip(18.0f);
-    if (!centerVerts.empty()) {
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      centerVerts.size() * sizeof(RibbonVertex), centerVerts.data());
-      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)centerVerts.size());
+    // 4-pass layered Gaussian beam
+    struct BeamPass { glm::vec3 color; float halfW; };
+    BeamPass passes[] = {
+      { glm::vec3(0.1f, 0.3f, 0.45f), 160.0f },
+      { glm::vec3(0.2f, 0.6f, 0.85f), 90.0f },
+      { glm::vec3(0.4f, 0.85f, 1.0f), 45.0f },
+      { glm::vec3(0.6f, 1.0f, 1.0f), 18.0f },
+    };
+    for (const auto &pass : passes) {
+      auto verts = buildStrip(pass.halfW);
+      if (verts.empty()) continue;
+      uint32_t nv = (uint32_t)verts.size();
+      bgfx::TransientVertexBuffer tvb;
+      if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) >= nv) {
+        bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+        memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+        m_lineShader->setVec4("u_lineColor", glm::vec4(pass.color, 1.0f));
+        bgfx::setVertexBuffer(0, &tvb);
+        bgfx::setState(state);
+        bgfx::submit(0, m_lineShader->program);
+      }
     }
   }
-
-  // Reset beamMode for other ribbon renders
-  m_lineShader->setBool("beamMode", false);
-
-  glEnable(GL_CULL_FACE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_TRUE);
 }

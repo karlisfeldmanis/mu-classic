@@ -70,6 +70,13 @@ public:
   void InitDoors();
   // Call each frame with hero position. Updates door instance transforms.
   void UpdateDoors(const glm::vec3 &heroPos, float deltaTime);
+  // Reset door states after warp (so doors re-trigger on proximity)
+  void ResetDoorStates();
+
+  // Devias type 100: rotating lightning sprites ("northern lights")
+  // Main 5.2: ZzzObject.cpp:2813-2822 — two counter-rotating BITMAP_LIGHTNING+1 sprites
+  void RenderLightningSprites(const glm::mat4 &view, const glm::mat4 &projection,
+                              float currentTime);
 
 private:
   // Devias door state (types 20,65,88 = swinging, 86 = sliding)
@@ -128,12 +135,20 @@ private:
   std::vector<int> m_typeFilter; // If non-empty, only render these types
   int m_mapId = 0; // 0=Lorencia, 1=Dungeon
   std::vector<InteractiveObject> m_interactiveObjects;
-  GLuint m_chromeTexture = 0; // RENDER_CHROME environment map (Effect/Chrome01.OZJ)
+  TexHandle m_chromeTexture = kInvalidTex;
+  TexHandle m_lightningSpriteTex = kInvalidTex;
+  // Devias type 100 object world positions (model hidden, sprites only)
+  std::vector<glm::vec3> m_lightningPositions;
+  std::unique_ptr<Shader> m_spriteShader;
+  bgfx::VertexBufferHandle m_spriteQuadVBO = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle m_spriteQuadEBO = BGFX_INVALID_HANDLE;
 
   // Bilinear sample terrain lightmap at world position
   glm::vec3 SampleTerrainLight(const glm::vec3 &worldPos) const;
 
   std::unique_ptr<Shader> shader;
+  std::unique_ptr<Shader> skinnedShader; // GPU-skinned program (bone matrices + tree sway)
+  bgfx::UniformHandle u_boneMatrices = BGFX_INVALID_HANDLE;
 
   void UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
                   const std::vector<BoneWorldMatrix> &bones,

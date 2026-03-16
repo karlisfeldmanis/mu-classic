@@ -3,7 +3,7 @@
 void UIWidget::DrawImage(ImDrawList* dl, const UICoords& coords,
                           const UITexture& tex, float vx, float vy, float vw, float vh,
                           ImVec2 uvMin, ImVec2 uvMax, ImU32 tint) {
-    if (tex.id == 0) return;
+    if (!TexValid(tex.id)) return;
 
     ImVec2 pMin(coords.ToScreenX(vx), coords.ToScreenY(vy));
     ImVec2 pMax(coords.ToScreenX(vx + vw), coords.ToScreenY(vy + vh));
@@ -17,7 +17,7 @@ void UIWidget::DrawImage(ImDrawList* dl, const UICoords& coords,
         uvMax.y = 1.0f - tmpMinY;
     }
 
-    dl->AddImage(ImTextureRef((ImTextureID)(uintptr_t)tex.id), pMin, pMax, uvMin, uvMax, tint);
+    dl->AddImage(ImTextureRef((ImTextureID)TexImID(tex.id)), pMin, pMax, uvMin, uvMax, tint);
 }
 
 void UIWidget::DrawText(ImDrawList* dl, const UICoords& coords,

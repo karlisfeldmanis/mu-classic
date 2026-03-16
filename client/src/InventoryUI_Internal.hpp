@@ -4,8 +4,8 @@
 
 #include "InventoryUI.hpp"
 #include "ItemDatabase.hpp"
+#include "TextureLoader.hpp"
 #include "imgui.h"
-#include <GL/glew.h>
 #include <string>
 #include <vector>
 
@@ -62,7 +62,7 @@ struct DeferredCooldown {
 
 extern const InventoryUIContext *s_ctx;
 extern PendingTooltip g_pendingTooltip;
-extern GLuint g_texSkillIcons;
+extern TexHandle g_texSkillIcons;
 extern bool g_isDragging;
 extern int16_t g_dragDefIndex;
 extern int g_dragFromSlot;

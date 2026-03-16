@@ -6,8 +6,8 @@
 #include "MeshBuffers.hpp"
 #include "Shader.hpp"
 #include "TerrainParser.hpp"
+#include "TextureLoader.hpp"
 #include "ViewerCommon.hpp"
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -32,13 +32,13 @@ private:
   void drawGroundQuad(float cx, float cz, float halfSize, float hOff);
 
   // Ground quad GPU resources
-  GLuint m_vao = 0;
-  GLuint m_vbo = 0;
+  bgfx::DynamicVertexBufferHandle m_dynVbo = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle m_quadEbo = BGFX_INVALID_HANDLE;
 
   // Textures
-  GLuint m_ringTex = 0;   // cursorpin02.OZJ
-  GLuint m_waveTex = 0;   // cursorpin01.OZJ
-  GLuint m_glowTex = 0;   // Magic_Ground1.OZJ
+  TexHandle m_ringTex = kInvalidTex;   // cursorpin02.OZJ
+  TexHandle m_waveTex = kInvalidTex;   // cursorpin01.OZJ
+  TexHandle m_glowTex = kInvalidTex;   // Magic_Ground1.OZJ
 
   // BMD spinning cone model
   std::unique_ptr<BMDData> m_bmd;

@@ -10,10 +10,10 @@
 #include <string>
 #include <vector>
 
-class Shader;
+#include "Shader.hpp"
 
 struct ItemShadowMesh {
-  GLuint vao = 0, vbo = 0;
+  bgfx::DynamicVertexBufferHandle vbo = BGFX_INVALID_HANDLE;
   int vertexCount = 0;
 };
 
@@ -28,6 +28,7 @@ struct LoadedItemModel {
 class ItemModelManager {
 public:
   static void Init(Shader *shader, const std::string &dataPath);
+  static void SetFramebufferSize(int w, int h);
   static LoadedItemModel *Get(const std::string &filename);
   static void RenderItemUI(const std::string &modelFile, int16_t defIndex,
                            int x, int y, int w, int h, bool hovered = false,
@@ -56,6 +57,7 @@ private:
   // Player.bmd skeleton for computing idle-pose bones for body part items
   static std::shared_ptr<BMDData> s_playerBmd;
   static std::vector<BoneWorldMatrix> s_playerIdleBones;
+  static int s_fbW, s_fbH;
 };
 
 #endif // MU_ITEM_MODEL_MANAGER_HPP

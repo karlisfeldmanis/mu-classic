@@ -5,7 +5,6 @@
 #include "BMDUtils.hpp"
 #include "MeshBuffers.hpp"
 #include "Shader.hpp"
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <functional>
 #include <cstdint>
@@ -606,31 +605,31 @@ private:
 
   // Dungeon ground mist state
   // Textures
-  GLuint m_bloodTexture = 0;
-  GLuint m_hitTexture = 0;   // Legacy (Interface/hit.OZT)
-  GLuint m_sparkTexture = 0; // Main 5.2: BITMAP_SPARK (Effect/Spark01.OZJ)
-  GLuint m_flareTexture = 0; // Main 5.2: BITMAP_FLASH (Effect/flare01.OZJ)
-  GLuint m_smokeTexture = 0;
-  GLuint m_fireTexture = 0;
-  GLuint m_energyTexture = 0;
-  GLuint m_lightningTexture = 0; // JointThunder01.OZJ for ribbons
-  GLuint m_thunderTexture = 0;   // Main 5.2: BITMAP_ENERGY (Effect/Thunder01.OZJ)
-  GLuint m_magicGroundTexture =
-      0; // Main 5.2: Magic_Ground2.OZJ (level-up circle)
-  GLuint m_ringTexture = 0;         // ring_of_gradation.OZJ (level-up ring)
-  GLuint m_bitmapFlareTexture = 0;  // Main 5.2: BITMAP_FLARE (Effect/Flare.OZJ)
-  GLuint m_flameTexture = 0;        // Main 5.2: BITMAP_FLAME (Effect/Flame01.OZJ)
-  GLuint m_jointSpiritTexture = 0;  // Main 5.2: BITMAP_JOINT_SPIRIT (Effect/JointSpirit01.OZJ)
-  GLuint m_spark3Texture = 0;       // Main 5.2: BITMAP_SPARK+1 (Effect/Spark03.OZJ)
-  GLuint m_flareBlueTexture = 0;    // Aqua Beam outer glow (Effect/flareBlue.OZJ)
-  GLuint m_explosionTexture = 0;   // Main 5.2: BITMAP_EXPLOTION (Explotion01.OZJ, 4x4 sprite)
-  GLuint m_infernoFireTexture = 0; // Main 5.2: Inferno fire (inferno.OZJ)
-  GLuint m_hellfireCircleTex = 0;   // Main 5.2: Circle01.bmd texture (Skill/magic_a01.OZJ)
-  GLuint m_hellfireLightTex = 0;    // Main 5.2: Circle02.bmd texture (Skill/magic_a02.OZJ)
-  GLuint m_blurTexture = 0;         // Main 5.2: BITMAP_BLUR (Effect/blur01.OZJ) — regular attack
-  GLuint m_motionBlurTexture = 0;   // Main 5.2: BITMAP_BLUR+2 (Effect/motion_blur_r.OZJ) — skill
-  GLuint m_spark2Texture = 0;       // Main 5.2: BITMAP_SPARK (Effect/Spark02.OZJ) — hit sparks
-  GLuint m_flareForceTexture = 0;   // Main 5.2: BITMAP_FLARE_FORCE (Effect/NSkill.OZJ) — Death Stab spiral
+  TexHandle m_bloodTexture = kInvalidTex;
+  TexHandle m_hitTexture = kInvalidTex;   // Legacy (Interface/hit.OZT)
+  TexHandle m_sparkTexture = kInvalidTex; // Main 5.2: BITMAP_SPARK (Effect/Spark01.OZJ)
+  TexHandle m_flareTexture = kInvalidTex; // Main 5.2: BITMAP_FLASH (Effect/flare01.OZJ)
+  TexHandle m_smokeTexture = kInvalidTex;
+  TexHandle m_fireTexture = kInvalidTex;
+  TexHandle m_energyTexture = kInvalidTex;
+  TexHandle m_lightningTexture = kInvalidTex; // JointThunder01.OZJ for ribbons
+  TexHandle m_thunderTexture = kInvalidTex;   // Main 5.2: BITMAP_ENERGY (Effect/Thunder01.OZJ)
+  TexHandle m_magicGroundTexture =
+      kInvalidTex; // Main 5.2: Magic_Ground2.OZJ (level-up circle)
+  TexHandle m_ringTexture = kInvalidTex;         // ring_of_gradation.OZJ (level-up ring)
+  TexHandle m_bitmapFlareTexture = kInvalidTex;  // Main 5.2: BITMAP_FLARE (Effect/Flare.OZJ)
+  TexHandle m_flameTexture = kInvalidTex;        // Main 5.2: BITMAP_FLAME (Effect/Flame01.OZJ)
+  TexHandle m_jointSpiritTexture = kInvalidTex;  // Main 5.2: BITMAP_JOINT_SPIRIT (Effect/JointSpirit01.OZJ)
+  TexHandle m_spark3Texture = kInvalidTex;       // Main 5.2: BITMAP_SPARK+1 (Effect/Spark03.OZJ)
+  TexHandle m_flareBlueTexture = kInvalidTex;    // Aqua Beam outer glow (Effect/flareBlue.OZJ)
+  TexHandle m_explosionTexture = kInvalidTex;   // Main 5.2: BITMAP_EXPLOTION (Explotion01.OZJ, 4x4 sprite)
+  TexHandle m_infernoFireTexture = kInvalidTex; // Main 5.2: Inferno fire (inferno.OZJ)
+  TexHandle m_hellfireCircleTex = kInvalidTex;   // Main 5.2: Circle01.bmd texture (Skill/magic_a01.OZJ)
+  TexHandle m_hellfireLightTex = kInvalidTex;    // Main 5.2: Circle02.bmd texture (Skill/magic_a02.OZJ)
+  TexHandle m_blurTexture = kInvalidTex;         // Main 5.2: BITMAP_BLUR (Effect/blur01.OZJ) — regular attack
+  TexHandle m_motionBlurTexture = kInvalidTex;   // Main 5.2: BITMAP_BLUR+2 (Effect/motion_blur_r.OZJ) — skill
+  TexHandle m_spark2Texture = kInvalidTex;       // Main 5.2: BITMAP_SPARK (Effect/Spark02.OZJ) — hit sparks
+  TexHandle m_flareForceTexture = kInvalidTex;   // Main 5.2: BITMAP_FLARE_FORCE (Effect/NSkill.OZJ) — Death Stab spiral
 
   std::unique_ptr<Shader> m_shader;
   std::unique_ptr<Shader> m_lineShader;
@@ -695,11 +694,11 @@ private:
   std::function<void(int)> m_playSound;
 
   // Billboard particle buffers
-  GLuint m_quadVAO = 0, m_quadVBO = 0, m_quadEBO = 0;
-  GLuint m_instanceVBO = 0;
-
-  // Ribbon buffers (pos + uv per vertex)
-  GLuint m_ribbonVAO = 0, m_ribbonVBO = 0;
+  bgfx::VertexBufferHandle m_quadVBO = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle m_quadEBO = BGFX_INVALID_HANDLE;
+  bgfx::DynamicVertexBufferHandle m_instanceVBO = BGFX_INVALID_HANDLE;
+  bgfx::DynamicVertexBufferHandle m_ribbonVBO = BGFX_INVALID_HANDLE;
+  bgfx::VertexLayout m_ribbonLayout;
   static constexpr int MAX_RIBBON_VERTS =
       4000; // Increased for Hellfire 36-beam ring + Evil Spirit + ribbons
 

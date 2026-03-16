@@ -1,14 +1,30 @@
 #include "Sky.hpp"
 #include "TextureLoader.hpp"
 #include <cmath>
-#include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <vector>
 
-// Generate a soft radial glow texture for the sun
-static GLuint createSunTexture() {
+// ─── BGFX path ──────────────────────────────────────────────────────────
+
+// Sky vertex layout: pos(3f) + uv(2f) + alpha(1f packed as texcoord1.x)
+static bgfx::VertexLayout s_skyLayout;
+static bool s_skyLayoutInit = false;
+
+static void initSkyLayout() {
+  if (s_skyLayoutInit)
+    return;
+  s_skyLayout.begin()
+      .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+      .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+      .add(bgfx::Attrib::TexCoord1, 1, bgfx::AttribType::Float)
+      .end();
+  s_skyLayoutInit = true;
+}
+
+// Generate a soft radial glow texture for the sun (BGFX version)
+static TexHandle createSunTextureBgfx() {
   const int SIZE = 64;
   std::vector<uint8_t> pixels(SIZE * SIZE * 4);
   float center = SIZE * 0.5f;
@@ -17,9 +33,8 @@ static GLuint createSunTexture() {
       float dx = (x + 0.5f - center) / center;
       float dy = (y + 0.5f - center) / center;
       float dist = sqrtf(dx * dx + dy * dy);
-      // Soft core + wider halo
-      float core = std::max(0.0f, 1.0f - dist * 2.5f); // Bright center
-      float halo = std::max(0.0f, 1.0f - dist);         // Wider glow
+      float core = std::max(0.0f, 1.0f - dist * 2.5f);
+      float halo = std::max(0.0f, 1.0f - dist);
       halo *= halo;
       float brightness = core * 0.8f + halo * 0.4f;
       brightness = std::min(brightness, 1.0f);
@@ -30,45 +45,39 @@ static GLuint createSunTexture() {
       pixels[idx + 3] = (uint8_t)(255 * brightness);
     }
   }
-  GLuint tex;
-  glGenTextures(1, &tex);
-  glBindTexture(GL_TEXTURE_2D, tex);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, SIZE, SIZE, 0, GL_RGBA,
-               GL_UNSIGNED_BYTE, pixels.data());
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  return tex;
+  const bgfx::Memory *mem =
+      bgfx::copy(pixels.data(), (uint32_t)pixels.size());
+  return bgfx::createTexture2D(SIZE, SIZE, false, 1,
+                               bgfx::TextureFormat::RGBA8,
+                               BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+                               mem);
 }
 
 void Sky::Init(const std::string &dataPath) {
+  initSkyLayout();
+
   // Load sky texture from Object63/sky.OZJ
   std::string skyTexPath = dataPath + "Object63/sky.OZJ";
   texture = TextureLoader::LoadOZJ(skyTexPath);
-  if (!texture) {
-    std::cerr << "[Sky] Failed to load sky texture: " << skyTexPath << std::endl;
+  if (!TexValid(texture)) {
+    std::cerr << "[Sky] Failed to load sky texture: " << skyTexPath
+              << std::endl;
     return;
   }
 
-  // Set texture to repeat horizontally for seamless wrapping
-  glBindTexture(GL_TEXTURE_2D, texture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-  // Build cylinder geometry: a ring of quads around the camera
-  // Each vertex: position (3) + texcoord (2) + alpha (1)
-  struct Vertex {
+  // Build cylinder + bottom cap geometry
+  struct SkyVertex {
     glm::vec3 pos;
     glm::vec2 uv;
     float alpha;
   };
 
-  std::vector<Vertex> vertices;
-  std::vector<unsigned int> indices;
+  std::vector<SkyVertex> vertices;
+  std::vector<uint16_t> indices;
 
+  // Cylinder band
   for (int i = 0; i <= SEGMENTS; ++i) {
-    float angle = (float)i / SEGMENTS * 2.0f * M_PI;
+    float angle = (float)i / SEGMENTS * 2.0f * (float)M_PI;
     float x = cosf(angle) * RADIUS;
     float z = sinf(angle) * RADIUS;
     float u = (float)i / SEGMENTS * 2.0f; // Repeat texture twice around
@@ -80,151 +89,109 @@ void Sky::Init(const std::string &dataPath) {
   }
 
   for (int i = 0; i < SEGMENTS; ++i) {
-    int base = i * 2;
-    // Two triangles per quad
+    uint16_t base = (uint16_t)(i * 2);
     indices.push_back(base);
     indices.push_back(base + 1);
     indices.push_back(base + 2);
-
     indices.push_back(base + 1);
     indices.push_back(base + 3);
     indices.push_back(base + 2);
   }
 
-  // Bottom cap disc: separate vertices with alpha=2.0 (shader renders as fog color)
-  unsigned int capStart = vertices.size();
-  vertices.push_back({{0.0f, BAND_BOTTOM, 0.0f}, {0.5f, 0.0f}, 2.0f}); // center
+  // Bottom cap disc: separate vertices with alpha=2.0 (shader renders as fog)
+  uint16_t capStart = (uint16_t)vertices.size();
+  vertices.push_back(
+      {{0.0f, BAND_BOTTOM, 0.0f}, {0.5f, 0.0f}, 2.0f}); // center
   for (int i = 0; i < SEGMENTS; ++i) {
-    float angle = (float)i / SEGMENTS * 2.0f * M_PI;
+    float angle = (float)i / SEGMENTS * 2.0f * (float)M_PI;
     float x = cosf(angle) * RADIUS;
     float z = sinf(angle) * RADIUS;
     vertices.push_back({{x, BAND_BOTTOM, z}, {0.5f, 0.0f}, 2.0f});
   }
   for (int i = 0; i < SEGMENTS; ++i) {
-    indices.push_back(capStart); // center
+    indices.push_back(capStart);
     indices.push_back(capStart + 1 + ((i + 1) % SEGMENTS));
     indices.push_back(capStart + 1 + i);
   }
 
-  indexCount = indices.size();
+  indexCount = (int)indices.size();
 
-  glGenVertexArrays(1, &VAO);
-  glGenBuffers(1, &VBO);
-  glGenBuffers(1, &EBO);
+  // Create vertex/index buffers
+  const bgfx::Memory *vMem = bgfx::copy(
+      vertices.data(), (uint32_t)(vertices.size() * sizeof(SkyVertex)));
+  vbo = bgfx::createVertexBuffer(vMem, s_skyLayout);
 
-  glBindVertexArray(VAO);
-  glBindBuffer(GL_ARRAY_BUFFER, VBO);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex),
-               vertices.data(), GL_STATIC_DRAW);
+  const bgfx::Memory *iMem = bgfx::copy(
+      indices.data(), (uint32_t)(indices.size() * sizeof(uint16_t)));
+  ebo = bgfx::createIndexBuffer(iMem);
 
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-               indices.data(), GL_STATIC_DRAW);
+  // Load sky shader
+  shader = Shader::Load("vs_sky.bin", "fs_sky.bin");
+  if (!shader)
+    std::cerr << "[Sky] Failed to load sky shader" << std::endl;
 
-  // position
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)0);
-  glEnableVertexAttribArray(0);
-  // texcoord
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                        (void *)(sizeof(float) * 3));
-  glEnableVertexAttribArray(1);
-  // alpha
-  glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                        (void *)(sizeof(float) * 5));
-  glEnableVertexAttribArray(2);
+  // Sun billboard
+  sunTexture = createSunTextureBgfx();
 
-  glBindVertexArray(0);
+  struct SkyVertex sunVerts[] = {
+      {{-1, -1, 0}, {0, 0}, 1.0f},
+      {{1, -1, 0}, {1, 0}, 1.0f},
+      {{1, 1, 0}, {1, 1}, 1.0f},
+      {{-1, 1, 0}, {0, 1}, 1.0f},
+  };
+  uint16_t sunIdx[] = {0, 1, 2, 0, 2, 3};
 
-  {
-    std::ifstream test("shaders/sky.vert");
-    if (test.good())
-      shader = std::make_unique<Shader>("shaders/sky.vert", "shaders/sky.frag");
-    else
-      shader = std::make_unique<Shader>("../shaders/sky.vert",
-                                        "../shaders/sky.frag");
-  }
-
-  // Sun billboard: generate glow texture + simple quad VAO
-  sunTexture = createSunTexture();
-  {
-    // Unit quad centered at origin: will be positioned via model matrix
-    float sunVerts[] = {
-        // pos (3)       uv (2)
-        -1, -1, 0, 0, 0, //
-         1, -1, 0, 1, 0, //
-         1,  1, 0, 1, 1, //
-        -1,  1, 0, 0, 1, //
-    };
-    unsigned int sunIdx[] = {0, 1, 2, 0, 2, 3};
-
-    glGenVertexArrays(1, &sunVAO);
-    glGenBuffers(1, &sunVBO);
-    glGenBuffers(1, &sunEBO);
-    glBindVertexArray(sunVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, sunVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(sunVerts), sunVerts, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, sunEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(sunIdx), sunIdx,
-                 GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
-                          (void *)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
-                          (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    // Use attribute 2 (alpha) with a default value of 1.0
-    glDisableVertexAttribArray(2);
-    glVertexAttrib1f(2, 1.0f);
-    glBindVertexArray(0);
-  }
+  const bgfx::Memory *svMem = bgfx::copy(sunVerts, sizeof(sunVerts));
+  sunVbo = bgfx::createVertexBuffer(svMem, s_skyLayout);
+  const bgfx::Memory *siMem = bgfx::copy(sunIdx, sizeof(sunIdx));
+  sunEbo = bgfx::createIndexBuffer(siMem);
 
   std::cout << "[Sky] Initialized with " << SEGMENTS << " segments, radius "
-            << RADIUS << std::endl;
+            << RADIUS << " (BGFX)" << std::endl;
 }
 
 void Sky::Render(const glm::mat4 &view, const glm::mat4 &projection,
                  const glm::vec3 &cameraPos, float luminosity) {
-  if (!texture || !shader || indexCount == 0)
+  if (!TexValid(texture) || !shader || indexCount == 0)
     return;
 
-  shader->use();
+  // Set view transform (idempotent if caller already set it)
+  bgfx::setViewTransform(0, glm::value_ptr(view),
+                         glm::value_ptr(projection));
 
-  // Center the sky cylinder on the camera (horizontal position only)
-  glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                                    glm::vec3(cameraPos.x, 0.0f, cameraPos.z));
-  shader->setMat4("model", model);
-  shader->setMat4("view", view);
-  shader->setMat4("projection", projection);
-  shader->setFloat("luminosity", luminosity);
-  shader->setVec3("fogColor", 0.117f, 0.078f, 0.039f);
+  // Sky cylinder centered on camera (horizontal only)
+  glm::mat4 model = glm::translate(
+      glm::mat4(1.0f), glm::vec3(cameraPos.x, 0.0f, cameraPos.z));
+  bgfx::setTransform(glm::value_ptr(model));
 
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, texture);
-  shader->setInt("skyTexture", 0);
+  // Uniforms
+  shader->setFloat("u_skyParams", luminosity);
+  shader->setVec3("u_skyFogColor", glm::vec3(0.117f, 0.078f, 0.039f));
+  shader->setTexture(0, "s_skyTexture", texture);
 
-  // Render with blending, no depth write (sky is behind everything)
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE);
+  // Render state: depth test, no depth write, alpha blend
+  uint64_t state =
+      BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+      BGFX_STATE_DEPTH_TEST_LESS |
+      BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                             BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  bgfx::setState(state);
 
-  glBindVertexArray(VAO);
-  glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
-  glBindVertexArray(0);
+  bgfx::setVertexBuffer(0, vbo);
+  bgfx::setIndexBuffer(ebo);
+  bgfx::submit(0, shader->program);
 
   // ─── Sun sprite ─────────────────────────────────────────────────
-  // Main 5.2 RenderSun: position = camera + (-900, CameraViewFar*0.9, 550)
-  // We place the sun at a fixed offset from camera, inside the sky cylinder
-  if (sunVAO && sunTexture) {
-    float sunScale = 400.0f; // Size of the sun billboard
-    // Sun position: offset from camera (fixed direction in world space)
+  if (bgfx::isValid(sunVbo) && TexValid(sunTexture)) {
+    float sunScale = 400.0f;
     glm::vec3 sunOffset(-900.0f, 550.0f, RADIUS * 0.85f);
     glm::vec3 sunPos = cameraPos + sunOffset;
 
-    // Billboard: face camera by extracting right/up from inverse view
+    // Billboard: face camera by extracting right/up from view matrix
     glm::vec3 camRight =
-        glm::vec3(view[0][0], view[1][0], view[2][0]); // View row 0
+        glm::vec3(view[0][0], view[1][0], view[2][0]);
     glm::vec3 camUp =
-        glm::vec3(view[0][1], view[1][1], view[2][1]); // View row 1
+        glm::vec3(view[0][1], view[1][1], view[2][1]);
 
     glm::mat4 sunModel(1.0f);
     sunModel[0] = glm::vec4(camRight * sunScale, 0.0f);
@@ -232,46 +199,40 @@ void Sky::Render(const glm::mat4 &view, const glm::mat4 &projection,
     sunModel[2] = glm::vec4(glm::cross(camRight, camUp) * sunScale, 0.0f);
     sunModel[3] = glm::vec4(sunPos, 1.0f);
 
-    shader->setMat4("model", sunModel);
-    // Sun uses luminosity — dimmer at night, bright in day
-    // Override fog color to black so sun renders as pure additive glow
-    shader->setVec3("fogColor", 0.0f, 0.0f, 0.0f);
+    bgfx::setTransform(glm::value_ptr(sunModel));
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, sunTexture);
+    // Black fog so sun renders as pure additive glow
+    shader->setVec3("u_skyFogColor", glm::vec3(0.0f));
+    shader->setTexture(0, "s_skyTexture", sunTexture);
 
-    // Additive blending for sun glow
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    // Additive blend state
+    uint64_t sunState =
+        BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+        BGFX_STATE_DEPTH_TEST_LESS |
+        BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                               BGFX_STATE_BLEND_ONE);
+    bgfx::setState(sunState);
 
-    glBindVertexArray(sunVAO);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
-
-    // Restore blend mode
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    bgfx::setVertexBuffer(0, sunVbo);
+    bgfx::setIndexBuffer(sunEbo);
+    bgfx::submit(0, shader->program);
   }
-
-  glDepthMask(GL_TRUE);
 }
 
 void Sky::Cleanup() {
-  if (VAO)
-    glDeleteVertexArrays(1, &VAO);
-  if (VBO)
-    glDeleteBuffers(1, &VBO);
-  if (EBO)
-    glDeleteBuffers(1, &EBO);
-  if (texture)
-    glDeleteTextures(1, &texture);
-  if (sunVAO)
-    glDeleteVertexArrays(1, &sunVAO);
-  if (sunVBO)
-    glDeleteBuffers(1, &sunVBO);
-  if (sunEBO)
-    glDeleteBuffers(1, &sunEBO);
-  if (sunTexture)
-    glDeleteTextures(1, &sunTexture);
-  VAO = VBO = EBO = texture = 0;
-  sunVAO = sunVBO = sunEBO = sunTexture = 0;
+  if (bgfx::isValid(vbo))
+    bgfx::destroy(vbo);
+  if (bgfx::isValid(ebo))
+    bgfx::destroy(ebo);
+  TexDestroy(texture);
+  if (bgfx::isValid(sunVbo))
+    bgfx::destroy(sunVbo);
+  if (bgfx::isValid(sunEbo))
+    bgfx::destroy(sunEbo);
+  TexDestroy(sunTexture);
+  vbo = BGFX_INVALID_HANDLE;
+  ebo = BGFX_INVALID_HANDLE;
+  sunVbo = BGFX_INVALID_HANDLE;
+  sunEbo = BGFX_INVALID_HANDLE;
   shader.reset();
 }

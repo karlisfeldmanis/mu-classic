@@ -1,8 +1,6 @@
 #ifndef UI_COORDS_HPP
 #define UI_COORDS_HPP
 
-// GLEW must be included before GLFW (macOS requirement)
-#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 
 // Virtual 1280x720 coordinate system for the modern HUD.

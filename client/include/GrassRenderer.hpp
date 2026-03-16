@@ -2,7 +2,8 @@
 #define GRASS_RENDERER_HPP
 
 #include "TerrainParser.hpp"
-#include <GL/glew.h>
+#include "Shader.hpp"
+#include "TextureLoader.hpp"
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
@@ -30,11 +31,6 @@ public:
   void SetLuminosity(float l) { m_luminosity = l; }
 
 private:
-  GLuint VAO = 0, VBO = 0, EBO = 0;
-  GLuint shaderProgram = 0;
-  GLuint grassTextures[3] = {};
-  int indexCount = 0;
-
   struct GrassVertex {
     glm::vec3 position;
     glm::vec2 texCoord;
@@ -44,22 +40,20 @@ private:
     float texLayer;
   };
 
-  void setupShader();
+  int indexCount = 0;
 
-  glm::vec3 fogColor = glm::vec3(0.117f, 0.078f, 0.039f); // Default: MU brown
+  glm::vec3 fogColor = glm::vec3(0.117f, 0.078f, 0.039f);
   float fogNear = 1500.0f;
   float fogFar = 3500.0f;
-
-  // Cached uniform locations
-  GLint u_view = -1, u_projection = -1, u_uTime = -1, u_viewPos = -1;
-  GLint u_fogColor = -1, u_fogNear = -1, u_fogFar = -1, u_luminosity = -1;
   float m_luminosity = 1.0f;
-  GLint u_numPushers = -1;
-  GLint u_pushPos[17] = {}, u_pushRadius[17] = {};
-  GLint u_grassTex[3] = {};
-  GLint u_alphaMult = -1;
   int m_worldID = 0;
   float m_alphaMult = 1.0f;
+
+  std::unique_ptr<Shader> shader;
+  bgfx::VertexBufferHandle vbo = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle ebo = BGFX_INVALID_HANDLE;
+  bgfx::UniformHandle u_pushPosRadius = BGFX_INVALID_HANDLE;
+  TexHandle grassTextures[3] = {kInvalidTex, kInvalidTex, kInvalidTex};
 };
 
 #endif // GRASS_RENDERER_HPP

@@ -7,12 +7,14 @@ The original MU engine for Lorencia renders water as a **regular tile** (layer1 
 - `sampleLayerSmooth()` handles water tile animation: `tileUV.x += uTime * 0.1` + sinusoidal Y offset
 - Shore transitions: handled naturally by alpha map blending between Layer1 and Layer2
 - Bridge protection: `sampleLayerSmooth()` checks `TW_NOGROUND` (0x08) on bilinear neighbors.
-- Devias Bridge Fix: Rift chasms in Devias use `TW_NOGROUND` (0x08) which original engine renders as voids by skipping cell rendering. To prevent bridges from being "sunk" into these voids:
-    - `bridgeMask` is reconstructed from bridge objects (type 80).
-    - `Terrain::Load` uses `bridgeMask` to protect cells near bridges from the `TW_NOGROUND` void-skipping logic in `setupMesh`.
-    - `rawAttributes` (pre-reconstruction) are used for mesh generation to ensure only genuine rift cells create voids.
+- **Bridge Terrain Protection** (Devias, Dungeon): Rift chasms use `TW_NOGROUND` (0x08) which renders as voids by skipping cell index generation. Bridges span these voids:
+    - `ReconstructBridgeAttributes()` scans bridge objects (type 80/85) and builds a `bridgeZone` mask marking all cells within bridge radius whose height is within 200 units of the bridge object.
+    - `rawAttributes` (saved before reconstruction) are used for mesh generation. `bridgeZone` cells are exempt from void-skipping in index generation and from void vertex sinking.
+    - **Interior void sinking**: Void vertices are sunk 600 units and darkened to black, but ONLY if all 4 neighboring quads are also void (interior cells). Border void vertices shared with rendered terrain keep their original height to prevent triangle stretching at void edges.
+    - Tile 255 (invalid) in bridge zone cells is patched to nearest valid tile within a 10-cell radius.
+    - Dungeon bridge types: {80 (Bridge), 85 (BridgeStone)}.
 
-**Lesson learned**: Do not invent rendering systems that don't exist in the original source. For Lorencia, water is just a tile with animated UVs. Special water overlays only exist for Atlantis (WD_7ATLANSE). Devias rifts are procedural voids created by skipping `TW_NOGROUND` cell indices in the triangle EBO.
+**Lesson learned**: Do not invent rendering systems that don't exist in the original source. For Lorencia, water is just a tile with animated UVs. Special water overlays only exist for Atlantis (WD_7ATLANSE). When sinking void vertices to hide abyss clipping, only sink interior void vertices — border vertices are shared with rendered terrain quads and sinking them stretches adjacent triangles.
 
 ## Terrain Tile Index 255
 

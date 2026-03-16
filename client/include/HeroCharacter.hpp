@@ -7,6 +7,7 @@
 #include "Shader.hpp"
 #include "TerrainParser.hpp"
 #include "ViewerCommon.hpp"
+#include <bgfx/bgfx.h>
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <memory>
@@ -93,6 +94,8 @@ public:
   void Render(const glm::mat4 &view, const glm::mat4 &proj,
               const glm::vec3 &camPos, float deltaTime);
   void RenderShadow(const glm::mat4 &view, const glm::mat4 &proj);
+  void RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram);
+  void SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx);
   void ProcessMovement(float deltaTime);
   void MoveTo(const glm::vec3 &target);
   void StopMoving();
@@ -510,7 +513,7 @@ private:
 
   // Shadow rendering
   struct ShadowMesh {
-    GLuint vao = 0, vbo = 0, ebo = 0;
+    bgfx::DynamicVertexBufferHandle vbo = BGFX_INVALID_HANDLE;
     int indexCount = 0;
     int vertexCount = 0;
   };
@@ -530,6 +533,10 @@ private:
   BodyPart m_baseHead; // Base head model (HelmClassXX.bmd) for accessory helms
   bool m_showBaseHead = false; // True when equipped helm needs face visible
   std::unique_ptr<Shader> m_shader;
+
+  // Shadow map state
+  bgfx::TextureHandle m_shadowMapTex = BGFX_INVALID_HANDLE;
+  glm::mat4 m_lightMtx{1.0f};
 
   // Weapon (attached item model — right hand)
   std::unique_ptr<BMDData> m_weaponBmd;

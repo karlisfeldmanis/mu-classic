@@ -1,7 +1,6 @@
 #ifndef SCREENSHOT_HPP
 #define SCREENSHOT_HPP
 
-#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <string>
 #include <vector>

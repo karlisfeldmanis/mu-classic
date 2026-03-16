@@ -19,13 +19,13 @@ void VFXManager::Init(const std::string &effectDataPath) {
   // Main 5.2: BITMAP_SPARK+1 — Aqua Beam laser segments (Spark03.OZJ)
   m_spark3Texture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Spark03.OZJ");
-  if (m_spark3Texture == 0)
+  if (!TexValid(m_spark3Texture))
     std::cerr << "[VFX] Failed to load Spark03.OZJ" << std::endl;
 
   // Aqua Beam outer glow layer
   m_flareBlueTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/flareBlue.OZJ");
-  if (m_flareBlueTexture == 0)
+  if (!TexValid(m_flareBlueTexture))
     m_flareBlueTexture = m_spark3Texture; // Fallback
 
   // Main 5.2: BITMAP_FLASH — bright additive impact flare
@@ -61,13 +61,13 @@ void VFXManager::Init(const std::string &effectDataPath) {
   // Main 5.2: BITMAP_FLARE — level-up orbiting flare texture (Effect/Flare.jpg)
   m_bitmapFlareTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Flare.OZJ");
-  if (m_bitmapFlareTexture == 0)
+  if (!TexValid(m_bitmapFlareTexture))
     m_bitmapFlareTexture = m_flareTexture; // Fallback to flare01.OZJ
 
   // Main 5.2: BITMAP_FLAME — Flame spell ground fire particles
   m_flameTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Flame01.OZJ");
-  if (m_flameTexture == 0) {
+  if (!TexValid(m_flameTexture)) {
     std::cerr << "[VFX] Failed to load Flame01.OZJ — using Fire01 fallback"
               << std::endl;
     m_flameTexture = m_fireTexture;
@@ -76,94 +76,88 @@ void VFXManager::Init(const std::string &effectDataPath) {
   // Main 5.2: BITMAP_EXPLOTION — animated 4x4 explosion sprite sheet
   m_explosionTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Explotion01.OZJ");
-  if (m_explosionTexture == 0)
+  if (!TexValid(m_explosionTexture))
     m_explosionTexture = m_flareTexture; // Fallback
 
   // Main 5.2: Inferno-specific fire texture
   m_infernoFireTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/inferno.OZJ");
-  if (m_infernoFireTexture == 0)
+  if (!TexValid(m_infernoFireTexture))
     m_infernoFireTexture = m_fireTexture; // Fallback
 
   // Main 5.2: BITMAP_JOINT_SPIRIT — Evil Spirit beam texture
   m_jointSpiritTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/JointSpirit01.OZJ");
-  if (m_jointSpiritTexture == 0)
+  if (!TexValid(m_jointSpiritTexture))
     std::cerr << "[VFX] Failed to load JointSpirit01.OZJ" << std::endl;
 
   // Main 5.2: Circle01.bmd texture (Hellfire ground circle — star/pentagram pattern)
   m_hellfireCircleTex =
       TextureLoader::LoadOZJ(effectDataPath + "/Skill/magic_a01.OZJ");
-  if (m_hellfireCircleTex == 0)
+  if (!TexValid(m_hellfireCircleTex))
     std::cerr << "[VFX] Failed to load Skill/magic_a01.OZJ" << std::endl;
 
   // Main 5.2: Circle02.bmd texture (Hellfire light circle overlay)
   m_hellfireLightTex =
       TextureLoader::LoadOZJ(effectDataPath + "/Skill/magic_a02.OZJ");
-  if (m_hellfireLightTex == 0)
+  if (!TexValid(m_hellfireLightTex))
     std::cerr << "[VFX] Failed to load Skill/magic_a02.OZJ" << std::endl;
 
   // Main 5.2: BITMAP_BLUR — regular attack blur trail (blur01.OZJ)
   m_blurTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/blur01.OZJ");
-  if (m_blurTexture == 0)
+  if (!TexValid(m_blurTexture))
     std::cerr << "[VFX] Failed to load blur01.OZJ" << std::endl;
 
   // Main 5.2: BITMAP_BLUR+2 — skill attack blur trail (motion_blur_r.OZJ)
   m_motionBlurTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/motion_blur_r.OZJ");
-  if (m_motionBlurTexture == 0)
+  if (!TexValid(m_motionBlurTexture))
     std::cerr << "[VFX] Failed to load motion_blur_r.OZJ" << std::endl;
 
   // Main 5.2: BITMAP_SPARK — hit spark particles (Spark02.OZJ)
   m_spark2Texture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Spark02.OZJ");
-  if (m_spark2Texture == 0)
+  if (!TexValid(m_spark2Texture))
     std::cerr << "[VFX] Failed to load Spark02.OZJ" << std::endl;
 
   // Main 5.2: BITMAP_FLARE_FORCE — Death Stab spiral trail (NSkill.OZJ)
   m_flareForceTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/NSkill.OZJ");
-  if (m_flareForceTexture == 0)
+  if (!TexValid(m_flareForceTexture))
     m_flareForceTexture = m_energyTexture; // Fallback
 
-  if (m_bloodTexture == 0)
+  if (!TexValid(m_bloodTexture))
     std::cerr << "[VFX] Failed to load blood texture" << std::endl;
-  if (m_sparkTexture == 0)
+  if (!TexValid(m_sparkTexture))
     std::cerr << "[VFX] Failed to load spark texture (Spark01.OZJ)"
               << std::endl;
-  if (m_flareTexture == 0)
+  if (!TexValid(m_flareTexture))
     std::cerr << "[VFX] Failed to load flare texture (flare01.OZJ)"
               << std::endl;
-  if (m_lightningTexture == 0)
+  if (!TexValid(m_lightningTexture))
     std::cerr << "[VFX] Failed to load lightning texture" << std::endl;
-  if (m_smokeTexture == 0)
+  if (!TexValid(m_smokeTexture))
     std::cerr << "[VFX] Failed to load smoke texture" << std::endl;
-  if (m_fireTexture == 0)
+  if (!TexValid(m_fireTexture))
     std::cerr << "[VFX] Failed to load fire texture" << std::endl;
-  if (m_energyTexture == 0)
+  if (!TexValid(m_energyTexture))
     std::cerr << "[VFX] Failed to load energy texture" << std::endl;
-  if (m_magicGroundTexture == 0)
+  if (!TexValid(m_magicGroundTexture))
     std::cerr << "[VFX] Failed to load magic ground texture (Magic_Ground2.OZJ)"
               << std::endl;
 
-  if (m_thunderTexture == 0)
+  if (!TexValid(m_thunderTexture))
     std::cerr << "[VFX] WARNING: Thunder01.OZJ failed to load — Energy Ball will use "
                  "fallback texture" << std::endl;
 
-  // Shaders
-  std::ifstream test("shaders/billboard.vert");
-  if (test.good()) {
-    m_shader = std::make_unique<Shader>("shaders/billboard.vert",
-                                        "shaders/billboard.frag");
-    m_lineShader =
-        std::make_unique<Shader>("shaders/line.vert", "shaders/line.frag");
-  } else {
-    m_shader = std::make_unique<Shader>("../shaders/billboard.vert",
-                                        "../shaders/billboard.frag");
-    m_lineShader = std::make_unique<Shader>("../shaders/line.vert",
-                                            "../shaders/line.frag");
-  }
+  // BGFX shaders for VFX
+  m_shader = Shader::Load("vs_billboard.bin", "fs_billboard.bin");
+  m_lineShader = Shader::Load("vs_line.bin", "fs_line.bin");
+  if (!m_shader)
+    std::cerr << "[VFX] Failed to load BGFX billboard shader\n";
+  if (!m_lineShader)
+    std::cerr << "[VFX] Failed to load BGFX line shader\n";
 
   // Load Fire Ball 3D model (Main 5.2: MODEL_FIRE = Data/Skill/Fire01.bmd)
   std::string skillPath = effectDataPath + "/Skill/";
@@ -350,103 +344,38 @@ void VFXManager::Init(const std::string &effectDataPath) {
     std::cerr << "[VFX] FAILED to parse GroundStone2.bmd" << std::endl;
   }
 
-  // Model shader for 3D effect models (Fire Ball, etc.)
-  std::ifstream modelTest("shaders/model.vert");
-  if (modelTest.good()) {
-    m_modelShader = std::make_unique<Shader>("shaders/model.vert",
-                                              "shaders/model.frag");
-  } else {
-    m_modelShader = std::make_unique<Shader>("../shaders/model.vert",
-                                              "../shaders/model.frag");
-  }
-
+  m_modelShader = Shader::Load("vs_model.bin", "fs_model.bin");
+  if (!m_modelShader)
+    std::cerr << "[VFX] Failed to load BGFX model shader\n";
   initBuffers();
 }
 
 void VFXManager::initBuffers() {
-  // Billboard quad (existing)
+  // BGFX billboard quad (4 verts, 6 indices)
   float quadVerts[] = {
-      -0.5f, -0.5f, 0.5f, -0.5f, 0.5f, 0.5f, -0.5f, 0.5f,
+      -0.5f, -0.5f, 0.0f,
+       0.5f, -0.5f, 0.0f,
+       0.5f,  0.5f, 0.0f,
+      -0.5f,  0.5f, 0.0f,
   };
-  unsigned int quadIndices[] = {0, 1, 2, 0, 2, 3};
+  uint16_t quadIndices[] = {0, 1, 2, 0, 2, 3};
 
-  glGenVertexArrays(1, &m_quadVAO);
-  glGenBuffers(1, &m_quadVBO);
-  glGenBuffers(1, &m_quadEBO);
-  glGenBuffers(1, &m_instanceVBO);
+  bgfx::VertexLayout quadLayout;
+  quadLayout.begin()
+    .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+    .end();
+  m_quadVBO = bgfx::createVertexBuffer(
+    bgfx::copy(quadVerts, sizeof(quadVerts)), quadLayout);
+  m_quadEBO = bgfx::createIndexBuffer(
+    bgfx::copy(quadIndices, sizeof(quadIndices)));
 
-  glBindVertexArray(m_quadVAO);
+  // Ribbon vertex layout: Position(3f) + TexCoord0(2f) = matches vs_line.sc
+  m_ribbonLayout.begin()
+    .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+    .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+    .end();
 
-  glBindBuffer(GL_ARRAY_BUFFER, m_quadVBO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
-  glEnableVertexAttribArray(0);
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_quadEBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIndices), quadIndices,
-               GL_STATIC_DRAW);
-
-  glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
-  glBufferData(GL_ARRAY_BUFFER, MAX_PARTICLES * sizeof(InstanceData), nullptr,
-               GL_DYNAMIC_DRAW);
-
-  // location 1: iWorldPos (vec3)
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, worldPos));
-  glEnableVertexAttribArray(1);
-  glVertexAttribDivisor(1, 1);
-
-  // location 2: iScale (float)
-  glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, scale));
-  glEnableVertexAttribArray(2);
-  glVertexAttribDivisor(2, 1);
-
-  // location 3: iRotation (float)
-  glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, rotation));
-  glEnableVertexAttribArray(3);
-  glVertexAttribDivisor(3, 1);
-
-  // location 4: iFrame (float)
-  glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, frame));
-  glEnableVertexAttribArray(4);
-  glVertexAttribDivisor(4, 1);
-
-  // location 5: iColor (vec3)
-  glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, color));
-  glEnableVertexAttribArray(5);
-  glVertexAttribDivisor(5, 1);
-
-  // location 6: iAlpha (float)
-  glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, alpha));
-  glEnableVertexAttribArray(6);
-  glVertexAttribDivisor(6, 1);
-
-  // Ribbon buffers: vec3 pos + vec2 uv = 5 floats per vertex
-  // Matches line.vert layout: location 0 = aPos (vec3), location 1 = aTexCoord
-  // (vec2)
-  glGenVertexArrays(1, &m_ribbonVAO);
-  glGenBuffers(1, &m_ribbonVBO);
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-  glBufferData(GL_ARRAY_BUFFER, MAX_RIBBON_VERTS * sizeof(RibbonVertex),
-               nullptr, GL_DYNAMIC_DRAW);
-
-  // location 0: aPos (vec3)
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(RibbonVertex),
-                        (void *)offsetof(RibbonVertex, pos));
-  glEnableVertexAttribArray(0);
-
-  // location 1: aTexCoord (vec2)
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(RibbonVertex),
-                        (void *)offsetof(RibbonVertex, uv));
-  glEnableVertexAttribArray(1);
-
-  glBindVertexArray(0);
+  std::cout << "[VFX] BGFX buffers initialized\n";
 }
 
 void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
@@ -1717,250 +1646,178 @@ void VFXManager::Update(float deltaTime) {
 
 void VFXManager::renderRibbons(const glm::mat4 &view,
                                const glm::mat4 &projection) {
-  if (m_ribbons.empty() || !m_lineShader)
-    return;
+  if (m_ribbons.empty() || !m_lineShader) return;
 
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_ADD; // pure additive (ONE, ONE)
+  m_lineShader->setVec4("u_lineMode", glm::vec4(TexValid(m_lightningTexture) ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f));
 
-  // Bind JointThunder01 texture
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_lightningTexture);
-  m_lineShader->setInt("ribbonTex", 0);
-  m_lineShader->setBool("useTexture", m_lightningTexture != 0);
-  m_lineShader->setBool("beamMode", false);
-
-  // Additive blend (Main 5.2: glBlendFunc(GL_ONE, GL_ONE))
-  glBlendFunc(GL_ONE, GL_ONE);
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-  glDisable(GL_CULL_FACE);
-
-  // Draw each ribbon separately with its own color/alpha (fixes per-ribbon
-  // color bug)
   for (const auto &r : m_ribbons) {
-    if (r.segments.size() < 2)
-      continue;
-
-    // Main 5.2: Thunder light flicker — Vector(0.1f + rand()/15.f, ...)
+    if (r.segments.size() < 2) continue;
     float flicker = 0.7f + 0.3f * ((float)(rand() % 100) / 100.0f);
     glm::vec3 flickerColor = r.color * flicker;
     float ribbonAlpha = r.lifetime / r.maxLifetime;
 
-    m_lineShader->setVec3("color", flickerColor);
-    m_lineShader->setFloat("alpha", ribbonAlpha);
-
     std::vector<RibbonVertex> verts;
     verts.reserve(Ribbon::MAX_SEGMENTS * 12);
-
     float uvScroll = std::fmod(r.uvScroll, 1.0f);
-
-    // Draw two faces per segment pair (+ cross-section, Main 5.2 pattern)
     for (int j = 0; j < (int)r.segments.size() - 1; ++j) {
       const auto &s0 = r.segments[j];
       const auto &s1 = r.segments[j + 1];
-
-      // UV along ribbon: 0..2 range, scrolling
-      float u0 =
-          ((float)(r.segments.size() - j) / (float)(Ribbon::MAX_SEGMENTS - 1)) *
-              2.0f -
-          uvScroll;
-      float u1 = ((float)(r.segments.size() - (j + 1)) /
-                  (float)(Ribbon::MAX_SEGMENTS - 1)) *
-                     2.0f -
-                 uvScroll;
-
-      // Face 1: horizontal (using right offsets) — GL_TRIANGLE_STRIP as 2 tris
+      float u0 = ((float)(r.segments.size() - j) / (float)(Ribbon::MAX_SEGMENTS - 1)) * 2.0f - uvScroll;
+      float u1 = ((float)(r.segments.size() - (j + 1)) / (float)(Ribbon::MAX_SEGMENTS - 1)) * 2.0f - uvScroll;
       RibbonVertex v;
-
-      // Quad: s0-right, s0+right, s1-right, s1+right → 2 triangles
-      // Tri 1
-      v.pos = s0.center - s0.right;
-      v.uv = glm::vec2(u0, 0.0f);
-      verts.push_back(v);
-      v.pos = s0.center + s0.right;
-      v.uv = glm::vec2(u0, 1.0f);
-      verts.push_back(v);
-      v.pos = s1.center + s1.right;
-      v.uv = glm::vec2(u1, 1.0f);
-      verts.push_back(v);
-      // Tri 2
-      v.pos = s0.center - s0.right;
-      v.uv = glm::vec2(u0, 0.0f);
-      verts.push_back(v);
-      v.pos = s1.center + s1.right;
-      v.uv = glm::vec2(u1, 1.0f);
-      verts.push_back(v);
-      v.pos = s1.center - s1.right;
-      v.uv = glm::vec2(u1, 0.0f);
-      verts.push_back(v);
-
-      // Face 2: vertical (using up offsets) — offset UV for visual variety
-      float u0b = u0 + uvScroll * 2.0f;
-      float u1b = u1 + uvScroll * 2.0f;
-
-      // Tri 1
-      v.pos = s0.center - s0.up;
-      v.uv = glm::vec2(u0b, 0.0f);
-      verts.push_back(v);
-      v.pos = s0.center + s0.up;
-      v.uv = glm::vec2(u0b, 1.0f);
-      verts.push_back(v);
-      v.pos = s1.center + s1.up;
-      v.uv = glm::vec2(u1b, 1.0f);
-      verts.push_back(v);
-      // Tri 2
-      v.pos = s0.center - s0.up;
-      v.uv = glm::vec2(u0b, 0.0f);
-      verts.push_back(v);
-      v.pos = s1.center + s1.up;
-      v.uv = glm::vec2(u1b, 1.0f);
-      verts.push_back(v);
-      v.pos = s1.center - s1.up;
-      v.uv = glm::vec2(u1b, 0.0f);
-      verts.push_back(v);
+      v.pos = s0.center - s0.right; v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
+      v.pos = s0.center + s0.right; v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
+      v.pos = s1.center + s1.right; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
+      v.pos = s0.center - s0.right; v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
+      v.pos = s1.center + s1.right; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
+      v.pos = s1.center - s1.right; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
+      float u0b = u0 + uvScroll * 2.0f, u1b = u1 + uvScroll * 2.0f;
+      v.pos = s0.center - s0.up; v.uv = glm::vec2(u0b, 0.0f); verts.push_back(v);
+      v.pos = s0.center + s0.up; v.uv = glm::vec2(u0b, 1.0f); verts.push_back(v);
+      v.pos = s1.center + s1.up; v.uv = glm::vec2(u1b, 1.0f); verts.push_back(v);
+      v.pos = s0.center - s0.up; v.uv = glm::vec2(u0b, 0.0f); verts.push_back(v);
+      v.pos = s1.center + s1.up; v.uv = glm::vec2(u1b, 1.0f); verts.push_back(v);
+      v.pos = s1.center - s1.up; v.uv = glm::vec2(u1b, 0.0f); verts.push_back(v);
     }
+    if (verts.empty()) continue;
+    if ((int)verts.size() > MAX_RIBBON_VERTS) verts.resize(MAX_RIBBON_VERTS);
 
-    if (verts.empty())
-      continue;
+    uint32_t nv = (uint32_t)verts.size();
+    bgfx::TransientVertexBuffer tvb;
+    if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) < nv) continue;
+    bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+    memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
 
-    // Clamp to buffer size
-    if ((int)verts.size() > MAX_RIBBON_VERTS)
-      verts.resize(MAX_RIBBON_VERTS);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(RibbonVertex),
-                    verts.data());
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)verts.size());
+    m_lineShader->setVec4("u_lineColor", glm::vec4(flickerColor, ribbonAlpha));
+    if (TexValid(m_lightningTexture))
+      m_lineShader->setTexture(0, "s_ribbonTex", m_lightningTexture);
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setState(state);
+    bgfx::submit(0, m_lineShader->program);
   }
-
-  glEnable(GL_CULL_FACE);
 }
 
 void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
-  if (!m_shader)
+  if (!m_shader || !bgfx::isValid(m_quadVBO))
     return;
 
-  m_shader->use();
-  m_shader->setMat4("view", view);
-  m_shader->setMat4("projection", projection);
+  bgfx::setViewTransform(0, glm::value_ptr(view), glm::value_ptr(projection));
 
-  glEnable(GL_BLEND);
-  glDepthMask(GL_FALSE);
+  // Disable shadow sampling for all VFX model shader submits
+  if (m_modelShader)
+    m_modelShader->setVec4("u_shadowParams", glm::vec4(0.0f));
 
-  // Batch draw helper for billboard particles
-  auto drawBatch = [&](ParticleType type, GLuint texture) {
-    if (texture == 0)
+  // BGFX billboard batch draw helper using transient instance data
+  auto drawBatchBgfx = [&](ParticleType type, TexHandle texture, bool additive) {
+    if (!TexValid(texture))
       return;
-    std::vector<InstanceData> data;
+    // Collect particles of this type
+    struct BgfxInstance { float data[12]; }; // 3 x vec4 = 48 bytes
+    std::vector<BgfxInstance> instances;
     for (const auto &p : m_particles) {
-      if (p.type == type) {
-        InstanceData d;
-        d.worldPos = p.position;
-        d.scale = p.scale;
-        d.rotation = p.rotation;
-        d.frame = p.frame;
-        d.color = p.color;
-        d.alpha = p.alpha;
-        data.push_back(d);
-        if (data.size() >= (size_t)MAX_PARTICLES)
-          break;
-      }
+      if (p.type != type) continue;
+      BgfxInstance inst;
+      // i_data0: worldPos.xyz, scale
+      inst.data[0] = p.position.x; inst.data[1] = p.position.y;
+      inst.data[2] = p.position.z; inst.data[3] = p.scale;
+      // i_data1: rotation, frame, alpha, 0
+      inst.data[4] = p.rotation; inst.data[5] = p.frame;
+      inst.data[6] = p.alpha; inst.data[7] = 0.0f;
+      // i_data2: color.xyz, 0
+      inst.data[8] = p.color.x; inst.data[9] = p.color.y;
+      inst.data[10] = p.color.z; inst.data[11] = 0.0f;
+      instances.push_back(inst);
+      if (instances.size() >= (size_t)MAX_PARTICLES) break;
     }
-    if (data.empty())
-      return;
+    if (instances.empty()) return;
 
-    glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, data.size() * sizeof(InstanceData),
-                    data.data());
+    uint32_t numInst = (uint32_t)instances.size();
+    if (bgfx::getAvailInstanceDataBuffer(numInst, 48) < numInst) return;
+    bgfx::InstanceDataBuffer idb;
+    bgfx::allocInstanceDataBuffer(&idb, numInst, 48);
+    memcpy(idb.data, instances.data(), numInst * 48);
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-    m_shader->setInt("fireTexture", 0);
+    bgfx::setVertexBuffer(0, m_quadVBO);
+    bgfx::setIndexBuffer(m_quadEBO);
+    bgfx::setInstanceDataBuffer(&idb);
+    m_shader->setTexture(0, "s_fireTex", texture);
 
-    glBindVertexArray(m_quadVAO);
-    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0,
-                            (GLsizei)data.size());
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                   | BGFX_STATE_DEPTH_TEST_LESS;
+    if (additive)
+      state |= BGFX_STATE_BLEND_ADD;
+    else
+      state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                       BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
   };
 
   // Normal alpha blend particles
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  drawBatch(ParticleType::BLOOD, m_bloodTexture);
-  drawBatch(ParticleType::SMOKE, m_smokeTexture);
-  drawBatch(ParticleType::SPELL_POISON,
-            m_smokeTexture ? m_smokeTexture : m_flareTexture);
+  drawBatchBgfx(ParticleType::BLOOD, m_bloodTexture, false);
+  drawBatchBgfx(ParticleType::SMOKE, m_smokeTexture, false);
+  drawBatchBgfx(ParticleType::SPELL_POISON,
+                TexValid(m_smokeTexture) ? m_smokeTexture : m_flareTexture, false);
+
   // Additive blend particles
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-  drawBatch(ParticleType::HIT_SPARK,
-            m_sparkTexture ? m_sparkTexture : m_hitTexture);
-  drawBatch(ParticleType::FIRE, m_fireTexture);
-  drawBatch(ParticleType::ENERGY, m_energyTexture);
-  drawBatch(ParticleType::FLARE,
-            m_flareTexture ? m_flareTexture : m_hitTexture);
+  drawBatchBgfx(ParticleType::HIT_SPARK,
+                TexValid(m_sparkTexture) ? m_sparkTexture : m_hitTexture, true);
+  drawBatchBgfx(ParticleType::FIRE, m_fireTexture, true);
+  drawBatchBgfx(ParticleType::ENERGY, m_energyTexture, true);
+  drawBatchBgfx(ParticleType::FLARE,
+                TexValid(m_flareTexture) ? m_flareTexture : m_hitTexture, true);
 
   // DK Skill effect particles (additive)
-  drawBatch(ParticleType::SKILL_SLASH,
-            m_spark2Texture ? m_spark2Texture : m_sparkTexture);
-  drawBatch(ParticleType::SKILL_CYCLONE,
-            m_energyTexture ? m_energyTexture : m_sparkTexture);
-  drawBatch(ParticleType::SKILL_FURY,
-            m_flareTexture ? m_flareTexture : m_hitTexture);
-  drawBatch(ParticleType::SKILL_STAB,
-            m_sparkTexture ? m_sparkTexture : m_hitTexture);
-  drawBatch(ParticleType::DEATHSTAB_SPARK,
-            m_lightningTexture ? m_lightningTexture : m_sparkTexture);
+  drawBatchBgfx(ParticleType::SKILL_SLASH,
+                TexValid(m_spark2Texture) ? m_spark2Texture : m_sparkTexture, true);
+  drawBatchBgfx(ParticleType::SKILL_CYCLONE,
+                TexValid(m_energyTexture) ? m_energyTexture : m_sparkTexture, true);
+  drawBatchBgfx(ParticleType::SKILL_FURY,
+                TexValid(m_flareTexture) ? m_flareTexture : m_hitTexture, true);
+  drawBatchBgfx(ParticleType::SKILL_STAB,
+                TexValid(m_sparkTexture) ? m_sparkTexture : m_hitTexture, true);
+  drawBatchBgfx(ParticleType::DEATHSTAB_SPARK,
+                TexValid(m_lightningTexture) ? m_lightningTexture : m_sparkTexture, true);
 
   // DW Spell effect particles (additive)
-  drawBatch(ParticleType::SPELL_ENERGY,
-            m_energyTexture ? m_energyTexture : m_flareTexture);
-  drawBatch(ParticleType::SPELL_FIRE,
-            m_fireTexture ? m_fireTexture : m_flareTexture);
-  drawBatch(ParticleType::SPELL_FLAME,
-            m_flameTexture ? m_flameTexture : m_fireTexture);
-  drawBatch(ParticleType::SPELL_ICE,
-            m_sparkTexture ? m_sparkTexture : m_flareTexture);
-  drawBatch(ParticleType::SPELL_LIGHTNING,
-            m_lightningTexture ? m_lightningTexture : m_energyTexture);
-  drawBatch(ParticleType::SPELL_METEOR,
-            m_flareTexture ? m_flareTexture : m_hitTexture);
-  drawBatch(ParticleType::SPELL_DARK,
-            m_energyTexture ? m_energyTexture : m_flareTexture);
-  drawBatch(ParticleType::SPELL_WATER,
-            m_energyTexture ? m_energyTexture : m_flareTexture);
-  drawBatch(ParticleType::SPELL_TELEPORT,
-            m_energyTexture ? m_energyTexture : m_flareTexture);
+  drawBatchBgfx(ParticleType::SPELL_ENERGY,
+                TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_FIRE,
+                TexValid(m_fireTexture) ? m_fireTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_FLAME,
+                TexValid(m_flameTexture) ? m_flameTexture : m_fireTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_ICE,
+                TexValid(m_sparkTexture) ? m_sparkTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_LIGHTNING,
+                TexValid(m_lightningTexture) ? m_lightningTexture : m_energyTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_METEOR,
+                TexValid(m_flareTexture) ? m_flareTexture : m_hitTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_DARK,
+                TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_WATER,
+                TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_TELEPORT,
+                TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::SPELL_ENERGY_ORB,
+                TexValid(m_thunderTexture) ? m_thunderTexture : m_energyTexture, true);
+  drawBatchBgfx(ParticleType::PET_SPARKLE,
+                TexValid(m_sparkTexture) ? m_sparkTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::IMP_SPARKLE,
+                TexValid(m_sparkTexture) ? m_sparkTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::MOUNT_DUST,
+                TexValid(m_smokeTexture) ? m_smokeTexture : m_flareTexture, false);
+  drawBatchBgfx(ParticleType::INFERNO_SPARK,
+                TexValid(m_sparkTexture) ? m_sparkTexture : m_hitTexture, true);
+  drawBatchBgfx(ParticleType::INFERNO_EXPLOSION,
+                TexValid(m_explosionTexture) ? m_explosionTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::INFERNO_FIRE,
+                TexValid(m_infernoFireTexture) ? m_infernoFireTexture : m_fireTexture, true);
+  drawBatchBgfx(ParticleType::SET_WATERFALL,
+                TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
 
-  // Main 5.2: BITMAP_ENERGY orb (Thunder01.jpg) — full-texture rotating glow
-  drawBatch(ParticleType::SPELL_ENERGY_ORB,
-            m_thunderTexture ? m_thunderTexture : m_energyTexture);
-
-  // Pet companion sparkle (Main 5.2: BITMAP_SPARK SubType 1 — white dot, additive)
-  drawBatch(ParticleType::PET_SPARKLE,
-            m_sparkTexture ? m_sparkTexture : m_flareTexture);
-  // Imp companion ember sparkle (red-orange fire motes)
-  drawBatch(ParticleType::IMP_SPARKLE,
-            m_sparkTexture ? m_sparkTexture : m_flareTexture);
-
-  // Mount hoofbeat dust (BITMAP_SMOKE texture)
-  drawBatch(ParticleType::MOUNT_DUST,
-            m_smokeTexture ? m_smokeTexture : m_flareTexture);
-
-  // Inferno-specific particles (additive)
-  drawBatch(ParticleType::INFERNO_SPARK,
-            m_sparkTexture ? m_sparkTexture : m_hitTexture);
-  drawBatch(ParticleType::INFERNO_EXPLOSION,
-            m_explosionTexture ? m_explosionTexture : m_flareTexture);
-  drawBatch(ParticleType::INFERNO_FIRE,
-            m_infernoFireTexture ? m_infernoFireTexture : m_fireTexture);
-
-  // Main 5.2: BITMAP_WATERFALL_2 — full armor set bonus rising energy
-  drawBatch(ParticleType::SET_WATERFALL,
-            m_energyTexture ? m_energyTexture : m_flareTexture);
-
-  // Spell projectile 3D models (Fire Ball: Fire01.bmd) + billboard fallback
-  // Trail particles already rendered via drawBatch above.
-  glDepthMask(GL_TRUE); // Re-enable depth for 3D model rendering
+  // 3D spell models — use model shader for MeshBuffers with BGFX handles
   renderSpellProjectiles(view, projection);
   renderLightningBolts(view, projection);
   renderMeteorBolts(view, projection);
@@ -1969,50 +1826,24 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
   renderPoisonClouds(view, projection);
   renderTwisterStorms(view, projection);
   renderStoneDebris(view, projection);
-  glDepthMask(GL_FALSE); // Back to billboard mode for remaining effects
 
-  // Render level-up orbiting flares (Main 5.2: 15 BITMAP_FLARE joints)
+  // Billboard-based effects
   renderLevelUpEffects(view, projection);
-
-  // Render ground circles (Main 5.2: BITMAP_MAGIC level-up decal)
   renderGroundCircles(view, projection);
-
-  // Main 5.2: BITMAP_FLAME terrain decal — flat fire sprite on ground
   renderFlameGrounds(view, projection);
 
-  // Render Evil Spirit beams (subtractive blend — before ribbons)
+  // Ribbon/trail effects
   renderSpiritBeams(view, projection);
   renderLaserFlashes(view, projection);
-
-  // Render Hellfire beams (additive blend — warm fire ribbons)
   renderHellfireBeams(view, projection);
-
-  // Render Hellfire ground circle decals
   renderHellfireEffects(view, projection);
-
-  // Render Inferno ring model
   renderInfernoEffects(view, projection);
-
-  // Render Rageful Blow EarthQuake ground cracks + stone debris
   renderEarthQuakeCracks(view, projection);
-
-  // Render Aqua Beam laser segments (additive billboard sprites)
   renderAquaBeams(view, projection);
-
-  // Render textured ribbons (Lich Joint Thunder)
   renderRibbons(view, projection);
-
-  // Render weapon blur trail (Main 5.2: ZzzEffectBlurSpark)
   renderWeaponTrail(view, projection);
-
-  // Death Stab target electrocution arcs (additive lightning ribbons)
   renderDeathStabShocks(view, projection);
-
-  // Death Stab Phase 1: spiraling energy from above converging on weapon
   renderDeathStabSpirals(view, projection);
-
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_TRUE);
 }
 
 void VFXManager::UpdateLevelUpCenter(const glm::vec3 &position) {
@@ -2084,355 +1915,260 @@ void VFXManager::SpawnLevelUpEffect(const glm::vec3 &position) {
 
 void VFXManager::renderLevelUpEffects(const glm::mat4 &view,
                                       const glm::mat4 &projection) {
-  if (m_levelUpEffects.empty())
-    return;
+  if (m_levelUpEffects.empty()) return;
 
-  // ── Pass 1: Trail ribbons (line shader) ──────────────────────────────────
-  if (m_lineShader) {
-    m_lineShader->use();
-    m_lineShader->setMat4("view", view);
-    m_lineShader->setMat4("projection", projection);
+  TexHandle flareTex = TexValid(m_bitmapFlareTexture) ? m_bitmapFlareTexture : m_flareTexture;
 
-    GLuint tex = m_bitmapFlareTexture ? m_bitmapFlareTexture : m_flareTexture;
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    m_lineShader->setInt("ribbonTex", 0);
-    m_lineShader->setBool("useTexture", true);
-
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glDisable(GL_CULL_FACE);
-
-    glBindVertexArray(m_ribbonVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
+  // Pass 1: Trail ribbons
+  if (m_lineShader && TexValid(flareTex)) {
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                   | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+    m_lineShader->setVec4("u_lineMode", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
 
     for (const auto &effect : m_levelUpEffects) {
-      // Main 5.2: Light fades last 10 ticks (Light /= 1.3 per tick)
       float effectAlpha = 1.0f;
       if (effect.lifeTime < 10)
         effectAlpha = std::pow(1.0f / 1.3f, (float)(10 - effect.lifeTime));
-
-      m_lineShader->setVec3("color", 1.0f, 0.85f, 0.35f); // Warm golden
-      m_lineShader->setFloat("alpha", effectAlpha);
-
-      float hw = effect.spriteScale * 0.5f; // Half-width = Scale/2 = 20
+      float hw = effect.spriteScale * 0.5f;
 
       for (const auto &sp : effect.sprites) {
-        if (sp.numTails < 2)
-          continue;
-
-        // Sub-tick interpolation: compute smooth head position between ticks
+        if (sp.numTails < 2) continue;
         float frac = effect.tickAccum;
-        float curCount = (sp.phase + (float)effect.lifeTime) / 2.0f;
-        float nextCount = curCount - 0.5f; // Next tick angle
-        float interpCount = curCount + (nextCount - curCount) * frac;
-        float interpHeight = sp.height + sp.riseSpeed * frac;
-        glm::vec3 interpHead =
-            effect.center +
-            glm::vec3(std::cos(interpCount) * effect.radius, interpHeight,
-                      -std::sin(interpCount) * effect.radius);
-
-        int nSegs = sp.numTails - 1;
-        constexpr int MAX_VERTS = LEVEL_UP_MAX_TAILS * 12;
-        RibbonVertex verts[MAX_VERTS];
-        int nVerts = 0;
-
-        int maxTails = LEVEL_UP_MAX_TAILS;
-        for (int j = 0; j < nSegs && nVerts + 12 <= MAX_VERTS; ++j) {
-          // Use interpolated head for newest segment
-          glm::vec3 p0 = (j == 0) ? interpHead : sp.tails[j];
-          glm::vec3 p1 = sp.tails[j + 1];
-
-          // Main 5.2 UV: fades head→tail
-          float L1 = (float)(sp.numTails - j) / (float)(maxTails - 1);
-          float L2 = (float)(sp.numTails - (j + 1)) / (float)(maxTails - 1);
-
-          // Trail tapering: full width at head, narrows to 30% at tail
-          float taper0 = 0.3f + 0.7f * L1;
-          float taper1 = 0.3f + 0.7f * L2;
-          float hw0 = hw * taper0;
-          float hw1 = hw * taper1;
-
-          // Face 1 (horizontal): offset along world X
-          verts[nVerts++] = {p0 + glm::vec3(-hw0, 0, 0), {L1, 0.0f}};
-          verts[nVerts++] = {p0 + glm::vec3(+hw0, 0, 0), {L1, 1.0f}};
-          verts[nVerts++] = {p1 + glm::vec3(+hw1, 0, 0), {L2, 1.0f}};
-
-          verts[nVerts++] = {p0 + glm::vec3(-hw0, 0, 0), {L1, 0.0f}};
-          verts[nVerts++] = {p1 + glm::vec3(+hw1, 0, 0), {L2, 1.0f}};
-          verts[nVerts++] = {p1 + glm::vec3(-hw1, 0, 0), {L2, 0.0f}};
-
-          // Face 2 (vertical): offset along world Y (up)
-          verts[nVerts++] = {p0 + glm::vec3(0, -hw0, 0), {L1, 1.0f}};
-          verts[nVerts++] = {p0 + glm::vec3(0, +hw0, 0), {L1, 0.0f}};
-          verts[nVerts++] = {p1 + glm::vec3(0, +hw1, 0), {L2, 0.0f}};
-
-          verts[nVerts++] = {p0 + glm::vec3(0, -hw0, 0), {L1, 1.0f}};
-          verts[nVerts++] = {p1 + glm::vec3(0, +hw1, 0), {L2, 0.0f}};
-          verts[nVerts++] = {p1 + glm::vec3(0, -hw1, 0), {L2, 1.0f}};
-        }
-
-        if (nVerts > 0) {
-          glBufferSubData(GL_ARRAY_BUFFER, 0, nVerts * sizeof(RibbonVertex),
-                          verts);
-          glDrawArrays(GL_TRIANGLES, 0, nVerts);
-        }
-      }
-    }
-    glEnable(GL_CULL_FACE);
-  }
-
-  // ── Pass 2: Head glow billboards (billboard shader) ──────────────────────
-  if (m_shader) {
-    m_shader->use();
-    m_shader->setMat4("view", view);
-    m_shader->setMat4("projection", projection);
-
-    GLuint tex = m_bitmapFlareTexture ? m_bitmapFlareTexture : m_flareTexture;
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    m_shader->setInt("fireTexture", 0);
-
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-    std::vector<InstanceData> heads;
-    for (const auto &effect : m_levelUpEffects) {
-      float effectAlpha = 1.0f;
-      if (effect.lifeTime < 10)
-        effectAlpha = std::pow(1.0f / 1.3f, (float)(10 - effect.lifeTime));
-
-      float frac = effect.tickAccum;
-      for (const auto &sp : effect.sprites) {
-        if (sp.numTails < 1)
-          continue;
-        // Interpolated head position for smooth glow
         float curCount = (sp.phase + (float)effect.lifeTime) / 2.0f;
         float interpCount = curCount - 0.5f * frac;
         float interpHeight = sp.height + sp.riseSpeed * frac;
-        glm::vec3 headPos =
-            effect.center +
-            glm::vec3(std::cos(interpCount) * effect.radius, interpHeight,
-                      -std::sin(interpCount) * effect.radius);
+        glm::vec3 interpHead = effect.center + glm::vec3(std::cos(interpCount) * effect.radius, interpHeight, -std::sin(interpCount) * effect.radius);
 
-        InstanceData d;
-        d.worldPos = headPos;
-        d.scale = effect.spriteScale * 1.2f; // Slightly larger glow
-        d.rotation = interpCount;             // Rotate with orbit
-        d.frame = 0.0f;
-        d.color = glm::vec3(1.0f, 0.9f, 0.5f); // Bright golden-white
-        d.alpha = effectAlpha * 0.8f;
-        heads.push_back(d);
+        int nSegs = sp.numTails - 1;
+        std::vector<RibbonVertex> verts;
+        verts.reserve(nSegs * 12);
+        for (int j = 0; j < nSegs; ++j) {
+          glm::vec3 p0 = (j == 0) ? interpHead : sp.tails[j];
+          glm::vec3 p1 = sp.tails[j + 1];
+          float L1 = (float)(sp.numTails - j) / (float)(LEVEL_UP_MAX_TAILS - 1);
+          float L2 = (float)(sp.numTails - (j + 1)) / (float)(LEVEL_UP_MAX_TAILS - 1);
+          float taper0 = 0.3f + 0.7f * L1, taper1 = 0.3f + 0.7f * L2;
+          float hw0 = hw * taper0, hw1 = hw * taper1;
+          verts.push_back({p0 + glm::vec3(-hw0, 0, 0), {L1, 0.0f}});
+          verts.push_back({p0 + glm::vec3(+hw0, 0, 0), {L1, 1.0f}});
+          verts.push_back({p1 + glm::vec3(+hw1, 0, 0), {L2, 1.0f}});
+          verts.push_back({p0 + glm::vec3(-hw0, 0, 0), {L1, 0.0f}});
+          verts.push_back({p1 + glm::vec3(+hw1, 0, 0), {L2, 1.0f}});
+          verts.push_back({p1 + glm::vec3(-hw1, 0, 0), {L2, 0.0f}});
+          verts.push_back({p0 + glm::vec3(0, -hw0, 0), {L1, 1.0f}});
+          verts.push_back({p0 + glm::vec3(0, +hw0, 0), {L1, 0.0f}});
+          verts.push_back({p1 + glm::vec3(0, +hw1, 0), {L2, 0.0f}});
+          verts.push_back({p0 + glm::vec3(0, -hw0, 0), {L1, 1.0f}});
+          verts.push_back({p1 + glm::vec3(0, +hw1, 0), {L2, 0.0f}});
+          verts.push_back({p1 + glm::vec3(0, -hw1, 0), {L2, 1.0f}});
+        }
+        if (verts.empty()) continue;
+        uint32_t nv = (uint32_t)verts.size();
+        bgfx::TransientVertexBuffer tvb;
+        if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) < nv) continue;
+        bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+        memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+        m_lineShader->setVec4("u_lineColor", glm::vec4(1.0f, 0.85f, 0.35f, effectAlpha));
+        m_lineShader->setTexture(0, "s_ribbonTex", flareTex);
+        bgfx::setVertexBuffer(0, &tvb);
+        bgfx::setState(state);
+        bgfx::submit(0, m_lineShader->program);
       }
     }
+  }
 
+  // Pass 2: Head glow billboards
+  if (m_shader && bgfx::isValid(m_quadVBO) && TexValid(flareTex)) {
+    struct BgfxInstance { float data[12]; };
+    std::vector<BgfxInstance> heads;
+    for (const auto &effect : m_levelUpEffects) {
+      float effectAlpha = 1.0f;
+      if (effect.lifeTime < 10) effectAlpha = std::pow(1.0f / 1.3f, (float)(10 - effect.lifeTime));
+      float frac = effect.tickAccum;
+      for (const auto &sp : effect.sprites) {
+        if (sp.numTails < 1) continue;
+        float curCount = (sp.phase + (float)effect.lifeTime) / 2.0f;
+        float interpCount = curCount - 0.5f * frac;
+        float interpHeight = sp.height + sp.riseSpeed * frac;
+        glm::vec3 headPos = effect.center + glm::vec3(std::cos(interpCount) * effect.radius, interpHeight, -std::sin(interpCount) * effect.radius);
+        BgfxInstance inst;
+        inst.data[0] = headPos.x; inst.data[1] = headPos.y;
+        inst.data[2] = headPos.z; inst.data[3] = effect.spriteScale * 1.2f;
+        inst.data[4] = interpCount; inst.data[5] = 0.0f;
+        inst.data[6] = effectAlpha * 0.8f; inst.data[7] = 0.0f;
+        inst.data[8] = 1.0f; inst.data[9] = 0.9f;
+        inst.data[10] = 0.5f; inst.data[11] = 0.0f;
+        heads.push_back(inst);
+      }
+    }
     if (!heads.empty()) {
-      glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      heads.size() * sizeof(InstanceData), heads.data());
-      glBindVertexArray(m_quadVAO);
-      glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0,
-                              (GLsizei)heads.size());
+      uint32_t n = (uint32_t)heads.size();
+      if (bgfx::getAvailInstanceDataBuffer(n, 48) >= n) {
+        bgfx::InstanceDataBuffer idb;
+        bgfx::allocInstanceDataBuffer(&idb, n, 48);
+        memcpy(idb.data, heads.data(), n * 48);
+        bgfx::setVertexBuffer(0, m_quadVBO);
+        bgfx::setIndexBuffer(m_quadEBO);
+        bgfx::setInstanceDataBuffer(&idb);
+        m_shader->setTexture(0, "s_fireTex", flareTex);
+        uint64_t bs = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                    | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+        bgfx::setState(bs);
+        bgfx::submit(0, m_shader->program);
+      }
     }
   }
 }
 
 void VFXManager::renderGroundCircles(const glm::mat4 &view,
                                      const glm::mat4 &projection) {
-  if (m_groundCircles.empty() || !m_lineShader || m_magicGroundTexture == 0)
-    return;
+  if (m_groundCircles.empty() || !m_lineShader || !TexValid(m_magicGroundTexture)) return;
 
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
-
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_magicGroundTexture);
-  m_lineShader->setInt("ribbonTex", 0);
-  m_lineShader->setBool("useTexture", true);
-
-  // Additive blend for magic glow
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-  glDisable(GL_CULL_FACE);
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+  m_lineShader->setVec4("u_lineMode", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
 
   for (const auto &gc : m_groundCircles) {
-    // Main 5.2: Scale = (20-LifeTime)*0.15 → 0..3 terrain cells → 0..300 units
-    float t = 1.0f - gc.lifetime / gc.maxLifetime; // 0..1
-    float halfSize = t * 150.0f; // Grows from 0 to 150 world units
-
-    // Alpha: full brightness, fade in last 25% of lifetime
+    float t = 1.0f - gc.lifetime / gc.maxLifetime;
+    float halfSize = t * 150.0f;
     float alpha = 1.0f;
     if (gc.lifetime < gc.maxLifetime * 0.25f)
       alpha = gc.lifetime / (gc.maxLifetime * 0.25f);
 
-    m_lineShader->setVec3("color", gc.color);
-    m_lineShader->setFloat("alpha", alpha);
-
-    // Build XZ-plane quad rotated around Y axis at gc.position
     float c = std::cos(gc.rotation), s = std::sin(gc.rotation);
-    // Rotated right and forward vectors in XZ plane
     glm::vec3 right(c * halfSize, 0.0f, s * halfSize);
     glm::vec3 fwd(-s * halfSize, 0.0f, c * halfSize);
-    // Slight Y offset to avoid z-fighting with terrain
     glm::vec3 pos = gc.position + glm::vec3(0.0f, 2.0f, 0.0f);
 
     RibbonVertex verts[6];
-    // Triangle 1
-    verts[0].pos = pos - right - fwd;
-    verts[0].uv = glm::vec2(0.0f, 0.0f);
-    verts[1].pos = pos + right - fwd;
-    verts[1].uv = glm::vec2(1.0f, 0.0f);
-    verts[2].pos = pos + right + fwd;
-    verts[2].uv = glm::vec2(1.0f, 1.0f);
-    // Triangle 2
-    verts[3].pos = pos - right - fwd;
-    verts[3].uv = glm::vec2(0.0f, 0.0f);
-    verts[4].pos = pos + right + fwd;
-    verts[4].uv = glm::vec2(1.0f, 1.0f);
-    verts[5].pos = pos - right + fwd;
-    verts[5].uv = glm::vec2(0.0f, 1.0f);
+    verts[0] = {pos - right - fwd, {0.0f, 0.0f}};
+    verts[1] = {pos + right - fwd, {1.0f, 0.0f}};
+    verts[2] = {pos + right + fwd, {1.0f, 1.0f}};
+    verts[3] = {pos - right - fwd, {0.0f, 0.0f}};
+    verts[4] = {pos + right + fwd, {1.0f, 1.0f}};
+    verts[5] = {pos - right + fwd, {0.0f, 1.0f}};
 
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    bgfx::TransientVertexBuffer tvb;
+    if (bgfx::getAvailTransientVertexBuffer(6, m_ribbonLayout) < 6) continue;
+    bgfx::allocTransientVertexBuffer(&tvb, 6, m_ribbonLayout);
+    memcpy(tvb.data, verts, sizeof(verts));
+
+    m_lineShader->setVec4("u_lineColor", glm::vec4(gc.color, alpha));
+    m_lineShader->setTexture(0, "s_ribbonTex", m_magicGroundTexture);
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setState(state);
+    bgfx::submit(0, m_lineShader->program);
   }
-
-  glEnable(GL_CULL_FACE);
 }
 
 void VFXManager::renderSpellProjectiles(const glm::mat4 &view,
                                         const glm::mat4 &projection) {
-  if (m_spellProjectiles.empty())
-    return;
+  if (m_spellProjectiles.empty()) return;
 
-  // Pass 1: Render 3D model fire balls (Main 5.2: MODEL_FIRE = Fire01.bmd)
+  // Pass 1: 3D fire model
   bool hasFireModel = !m_fireMeshes.empty() && m_modelShader;
   for (const auto &p : m_spellProjectiles) {
-    if (p.skillId == 4 && hasFireModel) {
+    if (p.skillId == 4 && hasFireModel)
       renderFireModel(p, view, projection);
-    }
   }
 
-  // Pass 2: Billboard projectiles (non-fire-ball spells, or fallback)
-  if (!m_shader)
-    return;
+  // Pass 2: Billboard orbs + halos
+  if (!m_shader || !bgfx::isValid(m_quadVBO)) return;
 
-  m_shader->use();
-  m_shader->setMat4("view", view);
-  m_shader->setMat4("projection", projection);
+  struct BgfxInstance { float data[12]; };
+  auto submitBillboards = [&](const std::vector<BgfxInstance> &instances, TexHandle tex, uint64_t blendState) {
+    if (instances.empty() || !TexValid(tex)) return;
+    uint32_t n = (uint32_t)instances.size();
+    if (bgfx::getAvailInstanceDataBuffer(n, 48) < n) return;
+    bgfx::InstanceDataBuffer idb;
+    bgfx::allocInstanceDataBuffer(&idb, n, 48);
+    memcpy(idb.data, instances.data(), n * 48);
+    bgfx::setVertexBuffer(0, m_quadVBO);
+    bgfx::setIndexBuffer(m_quadEBO);
+    bgfx::setInstanceDataBuffer(&idb);
+    m_shader->setTexture(0, "s_fireTex", tex);
+    bgfx::setState(blendState);
+    bgfx::submit(0, m_shader->program);
+  };
 
-  // Render projectile orbs as large additive billboards
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+  uint64_t addState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                    | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
 
-  // Core glow pass — Main 5.2: BITMAP_ENERGY = Thunder01.jpg
-  GLuint orbTex = m_thunderTexture ? m_thunderTexture
-                  : (m_energyTexture ? m_energyTexture : m_flareTexture);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, orbTex);
-  m_shader->setInt("fireTexture", 0);
+  TexHandle orbTex = TexValid(m_thunderTexture) ? m_thunderTexture
+                   : (TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture);
 
-  std::vector<InstanceData> orbData;
+  // Core orbs
+  std::vector<BgfxInstance> orbData;
   for (const auto &p : m_spellProjectiles) {
-    // Skip fire balls that use 3D model
-    if (p.skillId == 4 && hasFireModel)
-      continue;
-    InstanceData d;
-    d.worldPos = p.position;
-    d.scale = p.scale;
-    d.rotation = p.rotation;
-    d.frame = -1.0f; // Full texture UV (not sprite sheet)
-    d.color = p.color;
-    d.alpha = p.alpha * 0.9f;
-    orbData.push_back(d);
+    if (p.skillId == 4 && hasFireModel) continue;
+    BgfxInstance inst;
+    inst.data[0] = p.position.x; inst.data[1] = p.position.y;
+    inst.data[2] = p.position.z; inst.data[3] = p.scale;
+    inst.data[4] = p.rotation; inst.data[5] = -1.0f;
+    inst.data[6] = p.alpha * 0.9f; inst.data[7] = 0.0f;
+    inst.data[8] = p.color.x; inst.data[9] = p.color.y;
+    inst.data[10] = p.color.z; inst.data[11] = 0.0f;
+    orbData.push_back(inst);
   }
+  submitBillboards(orbData, orbTex, addState);
 
-  if (!orbData.empty()) {
-    glBindBuffer(GL_ARRAY_BUFFER, m_instanceVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    orbData.size() * sizeof(InstanceData), orbData.data());
-    glBindVertexArray(m_quadVAO);
-    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0,
-                            (GLsizei)orbData.size());
-  }
-
-  // Outer halo pass (flare texture, larger, more transparent)
-  GLuint haloTex = m_flareTexture ? m_flareTexture : m_energyTexture;
-  glBindTexture(GL_TEXTURE_2D, haloTex);
-
-  std::vector<InstanceData> haloData;
+  // Outer halos
+  TexHandle haloTex = TexValid(m_flareTexture) ? m_flareTexture : m_energyTexture;
+  std::vector<BgfxInstance> haloData;
   for (const auto &p : m_spellProjectiles) {
-    if (p.skillId == 4 && hasFireModel)
-      continue;
-    InstanceData d;
-    d.worldPos = p.position;
-    d.scale = p.scale * 1.8f; // Larger halo
-    d.rotation = -p.rotation * 0.5f; // Counter-rotate for visual interest
-    d.frame = -1.0f; // Full texture UV (not sprite sheet)
-    d.color = p.color;
-    d.alpha = p.alpha * 0.4f;
-    haloData.push_back(d);
+    if (p.skillId == 4 && hasFireModel) continue;
+    BgfxInstance inst;
+    inst.data[0] = p.position.x; inst.data[1] = p.position.y;
+    inst.data[2] = p.position.z; inst.data[3] = p.scale * 1.8f;
+    inst.data[4] = -p.rotation * 0.5f; inst.data[5] = -1.0f;
+    inst.data[6] = p.alpha * 0.4f; inst.data[7] = 0.0f;
+    inst.data[8] = p.color.x; inst.data[9] = p.color.y;
+    inst.data[10] = p.color.z; inst.data[11] = 0.0f;
+    haloData.push_back(inst);
   }
-
-  if (!haloData.empty()) {
-    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    haloData.size() * sizeof(InstanceData), haloData.data());
-    glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0,
-                            (GLsizei)haloData.size());
-  }
+  submitBillboards(haloData, haloTex, addState);
 }
 
 void VFXManager::renderFireModel(const SpellProjectile &p,
                                   const glm::mat4 &view,
                                   const glm::mat4 &projection) {
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f); // Self-lit fire
-  m_modelShader->setFloat("blendMeshLight", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false); // Fire doesn't fog out
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
-  // Extract camera position from view matrix
-  glm::mat4 invView = glm::inverse(view);
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
+  if (!m_modelShader) return;
 
-  // Model matrix: translate → BMD base rotation → heading → pitch to horizontal → scale
-  // Fire01.bmd is elongated along local Z (-62 to +103). After BMD base rotation,
-  // local Z maps to world Y (vertical). Pitch 90° to lay it along the flight path.
+  // Model matrix: translate → BMD base rotation → heading → pitch → scale
   glm::mat4 model = glm::translate(glm::mat4(1.0f), p.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, p.yaw, glm::vec3(0, 0, 1));      // Heading
-  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0)); // Tilt: flame tail trails behind flight path
+  model = glm::rotate(model, p.yaw, glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
   model = glm::scale(model, glm::vec3(p.scale));
 
-  m_modelShader->setMat4("model", model);
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f)); // Self-lit
-  m_modelShader->setFloat("objectAlpha", p.alpha);
+  m_modelShader->setVec4("u_params", glm::vec4(p.alpha, 1.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+  glm::mat4 invView = glm::inverse(view);
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0.0f));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
 
-  // Main 5.2: BlendMesh=1, SubType 1 (Fire Ball): BlendMeshLight=0 (no glow)
-  // Only SubType 0 (meteorite) has the 0.4-0.7 flicker
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+
+  m_modelShader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (const auto &mb : m_fireMeshes) {
-    if (mb.indexCount == 0 || mb.hidden)
-      continue;
-    bool isGlow = (mb.bmdTextureId == 1);
-    if (isGlow) {
-      // Main 5.2 SubType 1: BlendMeshLight = 0 — skip glow mesh entirely
-      continue;
-    }
-    m_modelShader->setFloat("blendMeshLight", 1.0f);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glBindTexture(GL_TEXTURE_2D, mb.texture);
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    if (mb.indexCount == 0 || mb.hidden) continue;
+    if (mb.bmdTextureId == 1) continue; // Skip glow mesh
+    bgfx::setTransform(glm::value_ptr(model));
+    m_modelShader->setTexture(0, "s_texColor", mb.texture);
+    bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    bgfx::setState(state);
+    bgfx::submit(0, m_modelShader->program);
   }
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 
@@ -2637,98 +2373,69 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
 
 
 void VFXManager::Cleanup() {
-  if (m_quadVAO)
-    glDeleteVertexArrays(1, &m_quadVAO);
-  if (m_quadVBO)
-    glDeleteBuffers(1, &m_quadVBO);
-  if (m_quadEBO)
-    glDeleteBuffers(1, &m_quadEBO);
-  if (m_instanceVBO)
-    glDeleteBuffers(1, &m_instanceVBO);
-  if (m_ribbonVAO)
-    glDeleteVertexArrays(1, &m_ribbonVAO);
-  if (m_ribbonVBO)
-    glDeleteBuffers(1, &m_ribbonVBO);
+  // Buffer cleanup (backend-specific)
+  if (bgfx::isValid(m_quadVBO))   bgfx::destroy(m_quadVBO);
+  if (bgfx::isValid(m_quadEBO))   bgfx::destroy(m_quadEBO);
+  if (bgfx::isValid(m_instanceVBO)) bgfx::destroy(m_instanceVBO);
+  if (bgfx::isValid(m_ribbonVBO)) bgfx::destroy(m_ribbonVBO);
+  m_quadVBO = BGFX_INVALID_HANDLE;
+  m_quadEBO = BGFX_INVALID_HANDLE;
+  m_instanceVBO = BGFX_INVALID_HANDLE;
+  m_ribbonVBO = BGFX_INVALID_HANDLE;
 
-  GLuint textures[] = {m_bloodTexture,       m_hitTexture,
-                       m_sparkTexture,       m_flareTexture,
-                       m_smokeTexture,       m_fireTexture,
-                       m_energyTexture,      m_lightningTexture,
-                       m_magicGroundTexture, m_ringTexture,
-                       m_bitmapFlareTexture, m_thunderTexture,
-                       m_flameTexture,       m_jointSpiritTexture,
-                       m_hellfireCircleTex,  m_hellfireLightTex};
+  // Texture cleanup (TexValid/TexDestroy are dual-path)
+  TexHandle textures[] = {m_bloodTexture,       m_hitTexture,
+                          m_sparkTexture,       m_flareTexture,
+                          m_smokeTexture,       m_fireTexture,
+                          m_energyTexture,      m_lightningTexture,
+                          m_magicGroundTexture, m_ringTexture,
+                          m_bitmapFlareTexture, m_thunderTexture,
+                          m_flameTexture,       m_jointSpiritTexture,
+                          m_hellfireCircleTex,  m_hellfireLightTex,
+                          m_explosionTexture,   m_infernoFireTexture,
+                          m_spark3Texture,      m_flareBlueTexture,
+                          m_blurTexture,        m_motionBlurTexture,
+                          m_spark2Texture,      m_flareForceTexture};
   for (auto t : textures) {
-    if (t)
-      glDeleteTextures(1, &t);
+    if (TexValid(t))
+      TexDestroy(t);
   }
 
-  // Clean up Fire Ball 3D model
-  for (auto &mb : m_fireMeshes) {
-    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture) glDeleteTextures(1, &mb.texture);
-  }
-  m_fireMeshes.clear();
+  // Mesh cleanup (CleanupMeshBuffers is dual-path)
+  CleanupMeshBuffers(m_fireMeshes);
   m_fireBmd.reset();
   m_modelShader.reset();
 
-  // Clean up Lightning sky-strike model
-  for (auto &mb : m_blastMeshes) {
-    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture) glDeleteTextures(1, &mb.texture);
-  }
-  m_blastMeshes.clear();
+  CleanupMeshBuffers(m_blastMeshes);
   m_blastBmd.reset();
 
-  // Clean up Poison cloud model
-  for (auto &mb : m_poisonMeshes) {
-    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture) glDeleteTextures(1, &mb.texture);
-  }
-  m_poisonMeshes.clear();
+  CleanupMeshBuffers(m_poisonMeshes);
   m_poisonBmd.reset();
 
-  // Clean up Storm tornado model
-  for (auto &mb : m_stormMeshes) {
-    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture) glDeleteTextures(1, &mb.texture);
-  }
-  m_stormMeshes.clear();
+  CleanupMeshBuffers(m_stormMeshes);
   m_stormBmd.reset();
 
-  // Clean up Hellfire circle models
-  for (auto &mb : m_circleMeshes) {
-    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture) glDeleteTextures(1, &mb.texture);
-  }
-  m_circleMeshes.clear();
+  CleanupMeshBuffers(m_circleMeshes);
   m_circleBmd.reset();
-  for (auto &mb : m_circleLightMeshes) {
-    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture) glDeleteTextures(1, &mb.texture);
-  }
-  m_circleLightMeshes.clear();
+  CleanupMeshBuffers(m_circleLightMeshes);
   m_circleLightBmd.reset();
-  for (auto &mb : m_laserMeshes) {
-    if (mb.vao) glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo) glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo) glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture) glDeleteTextures(1, &mb.texture);
-  }
-  m_laserMeshes.clear();
+  CleanupMeshBuffers(m_laserMeshes);
   m_laserBmd.reset();
+
+  CleanupMeshBuffers(m_iceMeshes);
+  m_iceBmd.reset();
+  CleanupMeshBuffers(m_iceSmallMeshes);
+  m_iceSmallBmd.reset();
+  CleanupMeshBuffers(m_infernoMeshes);
+  m_infernoBmd.reset();
+  for (int i = 1; i <= 8; ++i) {
+    CleanupMeshBuffers(m_eqMeshes[i]);
+    m_eqBmd[i].reset();
+  }
+  CleanupMeshBuffers(m_stone1Meshes);
+  m_stone1Bmd.reset();
+  CleanupMeshBuffers(m_stone2Meshes);
+  m_stone2Bmd.reset();
 
   m_particles.clear();
   m_ribbons.clear();

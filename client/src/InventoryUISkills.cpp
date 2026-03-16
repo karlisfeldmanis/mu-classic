@@ -31,7 +31,7 @@ static void RenderBar(ImDrawList *dl, float x, float y, float w, float h,
 static void RenderSkillIcon(ImDrawList *dl, int8_t skillId, float sx, float sy,
                             float sz,
                             ImU32 tint = IM_COL32(255, 255, 255, 255)) {
-  if (skillId >= 0 && g_texSkillIcons != 0) {
+  if (skillId >= 0 && TexValid(g_texSkillIcons)) {
     int ic = skillId % SKILL_ICON_COLS;
     int ir = skillId / SKILL_ICON_COLS;
     static constexpr float UV_INSET = 0.1f / SKILL_TEX_SIZE;
@@ -40,7 +40,7 @@ static void RenderSkillIcon(ImDrawList *dl, int8_t skillId, float sx, float sy,
     float u1 = (SKILL_ICON_W * (ic + 1)) / SKILL_TEX_SIZE - UV_INSET;
     float v1 = (SKILL_ICON_H * (ir + 1)) / SKILL_TEX_SIZE - UV_INSET;
     float pad = 4.0f;
-    dl->AddImage((ImTextureID)(uintptr_t)g_texSkillIcons,
+    dl->AddImage((ImTextureID)TexImID(g_texSkillIcons),
                  ImVec2(sx + pad, sy + pad),
                  ImVec2(sx + sz - pad, sy + sz - pad), ImVec2(u0, v0),
                  ImVec2(u1, v1), tint);
@@ -70,7 +70,7 @@ void RenderSkillDragCursor(ImDrawList *dl) {
   ImVec2 iMax(iMin.x + dw, iMin.y + dh);
 
   dl->AddRectFilled(iMin, iMax, IM_COL32(30, 30, 50, 180), 3.0f);
-  if (g_texSkillIcons != 0) {
+  if (TexValid(g_texSkillIcons)) {
     int ic = skillId % SKILL_ICON_COLS;
     int ir = skillId / SKILL_ICON_COLS;
     float uvIn = 0.1f / SKILL_TEX_SIZE;
@@ -78,7 +78,7 @@ void RenderSkillDragCursor(ImDrawList *dl) {
     float v0 = (SKILL_ICON_H * ir) / SKILL_TEX_SIZE + uvIn;
     float u1 = (SKILL_ICON_W * (ic + 1)) / SKILL_TEX_SIZE - uvIn;
     float v1 = (SKILL_ICON_H * (ir + 1)) / SKILL_TEX_SIZE - uvIn;
-    dl->AddImage((ImTextureID)(uintptr_t)g_texSkillIcons, iMin, iMax,
+    dl->AddImage((ImTextureID)TexImID(g_texSkillIcons), iMin, iMax,
                  ImVec2(u0, v0), ImVec2(u1, v1));
   }
   // Look up skill name from both DK and DW tables
@@ -128,7 +128,7 @@ void RenderRmcSlot(ImDrawList *dl, float screenX, float screenY, float size) {
   bool hov = mpos.x >= p0.x && mpos.x < p1.x && mpos.y >= p0.y && mpos.y < p1.y;
   DrawStyledSlot(dl, p0, p1, hov);
 
-  if (skillId >= 0 && g_texSkillIcons != 0) {
+  if (skillId >= 0 && TexValid(g_texSkillIcons)) {
     int ic = skillId % SKILL_ICON_COLS;
     int ir = skillId / SKILL_ICON_COLS;
     static constexpr float UV_INSET = 0.1f / SKILL_TEX_SIZE;
@@ -140,7 +140,7 @@ void RenderRmcSlot(ImDrawList *dl, float screenX, float screenY, float size) {
     float pad = 4.0f;
     ImVec2 iMin(screenX + pad, screenY + pad);
     ImVec2 iMax(screenX + size - pad, screenY + size - pad);
-    dl->AddImage((ImTextureID)(uintptr_t)g_texSkillIcons, iMin, iMax,
+    dl->AddImage((ImTextureID)TexImID(g_texSkillIcons), iMin, iMax,
                  ImVec2(u0, v0), ImVec2(u1, v1), tint);
   }
 
@@ -183,8 +183,8 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     return;
   HeroCharacter &hero = *s_ctx->hero;
 
-  int winW, winH;
-  glfwGetWindowSize(glfwGetCurrentContext(), &winW, &winH);
+  int winW = (int)ImGui::GetIO().DisplaySize.x;
+  int winH = (int)ImGui::GetIO().DisplaySize.y;
   float screenBottom = (float)winH;
 
   using namespace HudLayout;
@@ -367,8 +367,9 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
       if (count > 0) {
         auto it = ItemDatabase::GetItemDefs().find(defIdx);
         if (it != ItemDatabase::GetItemDefs().end()) {
+          int potY = (int)(sy + 4); // BGFX: top-left origin
           AddRenderJob({it->second.modelFile, defIdx, (int)sx + 4,
-                        (int)(screenBottom - sy - sz + 4), (int)sz - 8,
+                        potY, (int)sz - 8,
                         (int)sz - 8, false});
           char cbuf[16];
           snprintf(cbuf, sizeof(cbuf), "%d", count);
@@ -670,7 +671,7 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
     dl->AddRect(cMin, cMax, IM_COL32(50, 55, 75, 150), 4.0f);
 
     // Icon centered at top of cell
-    if (g_texSkillIcons != 0) {
+    if (TexValid(g_texSkillIcons)) {
       int iconIdx = skill.skillId;
       int ic = iconIdx % SKILL_ICON_COLS;
       int ir = iconIdx / SKILL_ICON_COLS;
@@ -700,7 +701,7 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
       else
         iconAlpha = 100;
       ImU32 iconTint = IM_COL32(255, 255, 255, iconAlpha);
-      dl->AddImage((ImTextureID)(uintptr_t)g_texSkillIcons, iMin, iMax,
+      dl->AddImage((ImTextureID)TexImID(g_texSkillIcons), iMin, iMax,
                    ImVec2(u0, v0), ImVec2(u1, v1), iconTint);
 
       // "Learning..." / "Learned" label overlay

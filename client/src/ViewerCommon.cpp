@@ -1,212 +1,41 @@
 #include "ViewerCommon.hpp"
-#include "imgui.h"
-#include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
 #include <cmath>
 
-// ---------- Line shader GLSL ----------
+#include <bgfx/bgfx.h>
+#include <cstring>
 
-static const char *kLineVertSrc = R"(
-#version 330 core
-layout(location = 0) in vec3 aPos;
-layout(location = 1) in vec3 aColor;
-uniform mat4 uMVP;
-out vec3 vColor;
-void main() {
-  gl_Position = uMVP * vec4(aPos, 1.0);
-  vColor = aColor;
-}
-)";
+// ---------- BGFX vertex layout ----------
 
-static const char *kLineFragSrc = R"(
-#version 330 core
-in vec3 vColor;
-out vec4 FragColor;
-void main() {
-  FragColor = vec4(vColor, 1.0);
-}
-)";
+static bgfx::VertexLayout s_modelLayout;
+static bool s_modelLayoutInit = false;
 
-GLuint CompileLineShader() {
-  GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-  glShaderSource(vs, 1, &kLineVertSrc, nullptr);
-  glCompileShader(vs);
-
-  GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-  glShaderSource(fs, 1, &kLineFragSrc, nullptr);
-  glCompileShader(fs);
-
-  GLuint prog = glCreateProgram();
-  glAttachShader(prog, vs);
-  glAttachShader(prog, fs);
-  glLinkProgram(prog);
-
-  glDeleteShader(vs);
-  glDeleteShader(fs);
-  return prog;
-}
-
-// ---------- OrbitCamera ----------
-
-glm::vec3 OrbitCamera::GetEyePosition() const {
-  float yawRad = glm::radians(yaw);
-  float pitchRad = glm::radians(pitch);
-
-  glm::vec3 offset;
-  offset.x = distance * cos(pitchRad) * cos(yawRad);
-  offset.y = -distance * sin(pitchRad);
-  offset.z = distance * cos(pitchRad) * sin(yawRad);
-
-  return center + offset;
-}
-
-glm::mat4 OrbitCamera::GetViewMatrix() const {
-  return glm::lookAt(GetEyePosition(), center, glm::vec3(0, 1, 0));
-}
-
-// ---------- DebugAxes ----------
-
-void DebugAxes::Init() {
-  program = CompileLineShader();
-
-  glGenVertexArrays(1, &vao);
-  glGenBuffers(1, &vbo);
-  glBindVertexArray(vao);
-  glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  glBufferData(GL_ARRAY_BUFFER, 6 * 6 * sizeof(float), nullptr,
-               GL_DYNAMIC_DRAW);
-  // pos
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-  glEnableVertexAttribArray(0);
-  // color
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
-                        (void *)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  glBindVertexArray(0);
-}
-
-void DebugAxes::UpdateGeometry() {
-  float L = length;
-  // clang-format off
-  float verts[] = {
-    // X axis - Red
-    0, 0, 0,   1, 0, 0,
-    L, 0, 0,   1, 0, 0,
-    // Y axis - Green
-    0, 0, 0,   0, 1, 0,
-    0, L, 0,   0, 1, 0,
-    // Z axis - Blue
-    0, 0, 0,   0, 0, 1,
-    0, 0, L,   0, 0, 1,
-  };
-  // clang-format on
-  glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-}
-
-void DebugAxes::Draw(const glm::mat4 &mvp) {
-  if (!program)
-    return;
-  glUseProgram(program);
-  glUniformMatrix4fv(glGetUniformLocation(program, "uMVP"), 1, GL_FALSE,
-                     &mvp[0][0]);
-  glLineWidth(2.0f);
-  glBindVertexArray(vao);
-  glDrawArrays(GL_LINES, 0, 6);
-  glBindVertexArray(0);
-}
-
-void DebugAxes::Cleanup() {
-  if (program) {
-    glDeleteProgram(program);
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    program = 0;
-    vao = vbo = 0;
+const bgfx::VertexLayout &GetModelVertexLayout() {
+  if (!s_modelLayoutInit) {
+    s_modelLayout.begin()
+        .add(bgfx::Attrib::Position,  3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::Normal,    3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .end();
+    s_modelLayoutInit = true;
   }
+  return s_modelLayout;
 }
 
-// ---------- DebugLines ----------
-
-void DebugLines::Init() {
-  program = CompileLineShader();
-
-  glGenVertexArrays(1, &vao);
-  glGenBuffers(1, &vbo);
-  glBindVertexArray(vao);
-  glBindBuffer(GL_ARRAY_BUFFER, vbo);
-  glBufferData(GL_ARRAY_BUFFER, maxVerts * 6 * sizeof(float), nullptr,
-               GL_DYNAMIC_DRAW);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void *)0);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float),
-                        (void *)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  glBindVertexArray(0);
-}
-
-void DebugLines::Clear() { verts.clear(); }
-
-void DebugLines::AddLine(const glm::vec3 &a, const glm::vec3 &b,
-                         const glm::vec3 &color) {
-  verts.insert(verts.end(), {a.x, a.y, a.z, color.r, color.g, color.b});
-  verts.insert(verts.end(), {b.x, b.y, b.z, color.r, color.g, color.b});
-}
-
-void DebugLines::Upload() {
-  int numVerts = (int)verts.size() / 6;
-  if (numVerts > maxVerts) {
-    maxVerts = numVerts * 2;
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, maxVerts * 6 * sizeof(float), nullptr,
-                 GL_DYNAMIC_DRAW);
-  }
-  if (numVerts > 0) {
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(float),
-                    verts.data());
-  }
-}
-
-void DebugLines::Draw(const glm::mat4 &mvp) {
-  int numVerts = (int)verts.size() / 6;
-  if (!program || numVerts == 0)
-    return;
-  glUseProgram(program);
-  glUniformMatrix4fv(glGetUniformLocation(program, "uMVP"), 1, GL_FALSE,
-                     &mvp[0][0]);
-  glLineWidth(2.0f);
-  glBindVertexArray(vao);
-  glDrawArrays(GL_LINES, 0, numVerts);
-  glBindVertexArray(0);
-}
-
-void DebugLines::Cleanup() {
-  if (program) {
-    glDeleteProgram(program);
-    glDeleteVertexArrays(1, &vao);
-    glDeleteBuffers(1, &vbo);
-    program = 0;
-    vao = vbo = 0;
-  }
-}
-
-// ---------- Mesh upload / retransform ----------
+// ---------- BGFX Mesh upload ----------
 
 void UploadMeshWithBones(const Mesh_t &mesh, const std::string &textureDir,
                          const std::vector<BoneWorldMatrix> &bones,
                          std::vector<MeshBuffers> &out, AABB &aabb,
                          bool dynamic) {
   MeshBuffers mb;
-  mb.texture = 0;
 
   std::vector<ViewerVertex> vertices;
-  std::vector<unsigned int> indices;
+  std::vector<uint16_t> indices;
 
   for (int i = 0; i < mesh.NumTriangles; ++i) {
     auto &tri = mesh.Triangles[i];
     int steps = (tri.Polygon == 3) ? 3 : 4;
-    int startIdx = vertices.size();
+    int startIdx = (int)vertices.size();
     for (int v = 0; v < 3; ++v) {
       ViewerVertex vert;
       auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
@@ -227,7 +56,7 @@ void UploadMeshWithBones(const Mesh_t &mesh, const std::string &textureDir,
       vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                            mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
       vertices.push_back(vert);
-      indices.push_back(startIdx + v);
+      indices.push_back((uint16_t)(startIdx + v));
 
       aabb.min = glm::min(aabb.min, vert.pos);
       aabb.max = glm::max(aabb.max, vert.pos);
@@ -254,43 +83,32 @@ void UploadMeshWithBones(const Mesh_t &mesh, const std::string &textureDir,
         vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
         vertices.push_back(vert);
-        indices.push_back(vertices.size() - 1);
+        indices.push_back((uint16_t)(vertices.size() - 1));
       }
     }
   }
 
-  mb.indexCount = indices.size();
-  mb.vertexCount = vertices.size();
+  mb.indexCount = (int)indices.size();
+  mb.vertexCount = (int)vertices.size();
   mb.isDynamic = dynamic;
   if (mb.indexCount == 0) {
     out.push_back(mb);
     return;
   }
 
-  GLenum usage = dynamic ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW;
+  const auto &layout = GetModelVertexLayout();
+  uint32_t vbSize = (uint32_t)(vertices.size() * sizeof(ViewerVertex));
+  uint32_t ibSize = (uint32_t)(indices.size() * sizeof(uint16_t));
 
-  glGenVertexArrays(1, &mb.vao);
-  glGenBuffers(1, &mb.vbo);
-  glGenBuffers(1, &mb.ebo);
+  if (dynamic) {
+    mb.dynVbo = bgfx::createDynamicVertexBuffer(
+        bgfx::copy(vertices.data(), vbSize), layout, BGFX_BUFFER_ALLOW_RESIZE);
+  } else {
+    mb.vbo = bgfx::createVertexBuffer(
+        bgfx::copy(vertices.data(), vbSize), layout);
+  }
 
-  glBindVertexArray(mb.vao);
-  glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(ViewerVertex),
-               vertices.data(), usage);
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mb.ebo);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-               indices.data(), GL_STATIC_DRAW);
-
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(ViewerVertex),
-                        (void *)0);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(ViewerVertex),
-                        (void *)(sizeof(float) * 3));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(ViewerVertex),
-                        (void *)(sizeof(float) * 6));
-  glEnableVertexAttribArray(2);
+  mb.ebo = bgfx::createIndexBuffer(bgfx::copy(indices.data(), ibSize));
 
   // Load texture
   auto texResult = TextureLoader::ResolveWithInfo(textureDir, mesh.TextureName);
@@ -304,19 +122,13 @@ void UploadMeshWithBones(const Mesh_t &mesh, const std::string &textureDir,
   mb.bright = scriptFlags.bright;
 
   // Main 5.2: BITMAP_HIDE — meshes with "hide" textures are never rendered.
-  // Note: "skin_" textures (bare skin under armor) are NOT hidden here — they
-  // are the character's exposed skin areas and also the DW default face mesh.
-  // In Main 5.2 these are conditionally hidden via HideSkin, but our body parts
-  // always show skin which is correct for character rendering.
   {
     std::string texLower = mesh.TextureName;
     std::transform(texLower.begin(), texLower.end(), texLower.begin(),
                    ::tolower);
-    // Strip path
     auto slash = texLower.find_last_of("\\/");
     if (slash != std::string::npos)
       texLower = texLower.substr(slash + 1);
-    // Strip extension
     auto dot = texLower.find_last_of('.');
     if (dot != std::string::npos)
       texLower = texLower.substr(0, dot);
@@ -324,22 +136,21 @@ void UploadMeshWithBones(const Mesh_t &mesh, const std::string &textureDir,
     if (texLower == "hide" || texLower == "hide_m" || texLower == "hide22") {
       mb.hidden = true;
     }
-
-    // Force additive for specific textures that lack _R suffix
     if (texLower.find("flail00") != std::string::npos) {
       mb.bright = true;
     }
   }
 
   mb.bmdTextureId = mesh.Texture;
-
   out.push_back(mb);
 }
+
+// ---------- BGFX Retransform ----------
 
 void RetransformMeshWithBones(const Mesh_t &mesh,
                               const std::vector<BoneWorldMatrix> &bones,
                               MeshBuffers &mb) {
-  if (!mb.isDynamic || mb.vertexCount == 0 || mb.vbo == 0)
+  if (!mb.isDynamic || mb.vertexCount == 0 || !bgfx::isValid(mb.dynVbo))
     return;
 
   std::vector<ViewerVertex> vertices;
@@ -391,41 +202,41 @@ void RetransformMeshWithBones(const Mesh_t &mesh,
     }
   }
 
-  glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-  glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(ViewerVertex),
-                  vertices.data());
+  uint32_t size = (uint32_t)(vertices.size() * sizeof(ViewerVertex));
+  bgfx::update(mb.dynVbo, 0, bgfx::copy(vertices.data(), size));
 }
 
-// ---------- Mesh cleanup ----------
+// ---------- BGFX Mesh cleanup ----------
 
 void CleanupMeshBuffers(std::vector<MeshBuffers> &buffers) {
   for (auto &mb : buffers) {
-    if (mb.vao)
-      glDeleteVertexArrays(1, &mb.vao);
-    if (mb.vbo)
-      glDeleteBuffers(1, &mb.vbo);
-    if (mb.ebo)
-      glDeleteBuffers(1, &mb.ebo);
-    if (mb.texture)
-      glDeleteTextures(1, &mb.texture);
+    if (bgfx::isValid(mb.vbo))
+      bgfx::destroy(mb.vbo);
+    if (bgfx::isValid(mb.dynVbo))
+      bgfx::destroy(mb.dynVbo);
+    if (bgfx::isValid(mb.ebo))
+      bgfx::destroy(mb.ebo);
+    TexDestroy(mb.texture);
   }
   buffers.clear();
 }
 
-// ---------- ImGui ----------
+// ---------- OrbitCamera (shared, no GL/BGFX dependency) ----------
 
-void InitImGui(GLFWwindow *window) {
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGui::StyleColorsDark();
-  ImGui_ImplGlfw_InitForOpenGL(window, false);
-  ImGui_ImplOpenGL3_Init("#version 150");
+glm::vec3 OrbitCamera::GetEyePosition() const {
+  float yawRad = glm::radians(yaw);
+  float pitchRad = glm::radians(pitch);
+
+  glm::vec3 offset;
+  offset.x = distance * cos(pitchRad) * cos(yawRad);
+  offset.y = -distance * sin(pitchRad);
+  offset.z = distance * cos(pitchRad) * sin(yawRad);
+
+  return center + offset;
 }
 
-void ShutdownImGui() {
-  ImGui_ImplOpenGL3_Shutdown();
-  ImGui_ImplGlfw_Shutdown();
-  ImGui::DestroyContext();
+glm::mat4 OrbitCamera::GetViewMatrix() const {
+  return glm::lookAt(GetEyePosition(), center, glm::vec3(0, 1, 0));
 }
 
 // ---------- macOS activation ----------

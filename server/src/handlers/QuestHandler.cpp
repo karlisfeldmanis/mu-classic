@@ -195,17 +195,43 @@ void SendQuestState(Session &session) {
   pkt.questIndex = (uint8_t)session.questIndex;           // Lorencia chain (0-11)
   pkt.deviasQuestIndex = (uint8_t)session.deviasQuestIndex; // Devias chain (12-17)
 
-  // Kill counts are for the map-appropriate active chain
+  // Send kill targets for whichever chain has an accepted quest.
+  // Prefer current map's chain, fall back to the other if not accepted.
   bool devias = (session.mapId == 2);
-  int activeIdx = devias ? session.deviasQuestIndex : session.questIndex;
-  bool activeAccepted = devias ? session.deviasQuestAccepted : session.questAccepted;
+  int activeIdx;
+  bool activeAccepted;
+  bool useDevias;
+
+  if (devias && session.deviasQuestAccepted) {
+    activeIdx = session.deviasQuestIndex;
+    activeAccepted = true;
+    useDevias = true;
+  } else if (!devias && session.questAccepted) {
+    activeIdx = session.questIndex;
+    activeAccepted = true;
+    useDevias = false;
+  } else if (session.questAccepted) {
+    // Fallback: Lorencia chain accepted but on different map
+    activeIdx = session.questIndex;
+    activeAccepted = true;
+    useDevias = false;
+  } else if (session.deviasQuestAccepted) {
+    // Fallback: Devias chain accepted but on different map
+    activeIdx = session.deviasQuestIndex;
+    activeAccepted = true;
+    useDevias = true;
+  } else {
+    activeIdx = 0;
+    activeAccepted = false;
+    useDevias = false;
+  }
 
   if (activeIdx < QUEST_COUNT && activeAccepted) {
     const auto &q = g_quests[activeIdx];
     if (q.questType == 0) { // Kill quest
       pkt.targetCount = q.targetCount;
       int kc[3];
-      if (devias) {
+      if (useDevias) {
         kc[0] = session.deviasKillCount0;
         kc[1] = session.deviasKillCount1;
         kc[2] = session.deviasKillCount2;

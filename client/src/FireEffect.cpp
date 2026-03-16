@@ -116,124 +116,54 @@ static float RandFloat(float lo, float hi) {
 
 // --- FireEffect implementation ---
 
+static bgfx::VertexLayout s_quadLayout;
+static bool s_quadLayoutInit = false;
+
 void FireEffect::Init(const std::string &effectDataPath) {
   // Load fire sprite sheet texture
   std::string firePath = effectDataPath + "/Fire01.OZJ";
   fireTexture = TextureLoader::LoadOZJ(firePath);
-  if (fireTexture == 0) {
+  if (!TexValid(fireTexture)) {
     std::cerr << "[FireEffect] Failed to load fire texture: " << firePath
               << std::endl;
     return;
   }
-
-  // Override wrap mode to clamp (prevent frame bleeding in sprite sheet)
-  // Override mipmap filtering: fire particles are small (60-100 units) and
-  // trigger lower mipmap levels which cause heavy blur. Use GL_LINEAR (no mipmaps)
-  // to keep fire sharp at any distance.
-  glBindTexture(GL_TEXTURE_2D, fireTexture);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
   std::cout << "[FireEffect] Loaded fire texture: " << firePath << std::endl;
 
-  // Load smoke texture (Main 5.2: BITMAP_SMOKE = smoke01.jpg for fountain spray)
+  // Load smoke texture
   std::string smokePath = effectDataPath + "/smoke01.OZJ";
   waterTexture = TextureLoader::LoadOZJ(smokePath);
-  if (waterTexture == 0) {
-    std::cerr << "[FireEffect] Failed to load smoke texture: " << smokePath
-              << std::endl;
-  } else {
-    glBindTexture(GL_TEXTURE_2D, waterTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    std::cout << "[FireEffect] Loaded smoke texture: " << smokePath
-              << std::endl;
+  if (TexValid(waterTexture))
+    std::cout << "[FireEffect] Loaded smoke texture: " << smokePath << std::endl;
+  else
+    std::cerr << "[FireEffect] Failed to load smoke texture: " << smokePath << std::endl;
+
+  // Load billboard shader
+  billboardShader = Shader::Load("vs_billboard.bin", "fs_billboard.bin");
+  if (!billboardShader)
+    std::cerr << "[FireEffect] Failed to load billboard shader" << std::endl;
+
+  // Initialize vertex layout (vec3 position, z=0)
+  if (!s_quadLayoutInit) {
+    s_quadLayout.begin()
+        .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+        .end();
+    s_quadLayoutInit = true;
   }
 
-  // Compile billboard shader
-  {
-    std::ifstream test("shaders/billboard.vert");
-    if (test.good())
-      billboardShader = std::make_unique<Shader>("shaders/billboard.vert",
-                                                 "shaders/billboard.frag");
-    else
-      billboardShader = std::make_unique<Shader>("../shaders/billboard.vert",
-                                                 "../shaders/billboard.frag");
-  }
-
-  // Create static quad VAO (4 corners at ±0.5)
+  // Static quad: 4 corners at +/-0.5 (z=0)
   float quadVerts[] = {
-      -0.5f, -0.5f, // bottom-left
-      0.5f,  -0.5f, // bottom-right
-      0.5f,  0.5f,  // top-right
-      -0.5f, 0.5f,  // top-left
+      -0.5f, -0.5f, 0.0f,
+       0.5f, -0.5f, 0.0f,
+       0.5f,  0.5f, 0.0f,
+      -0.5f,  0.5f, 0.0f,
   };
-  unsigned int quadIndices[] = {0, 1, 2, 0, 2, 3};
+  uint16_t quadIndices[] = {0, 1, 2, 0, 2, 3};
 
-  glGenVertexArrays(1, &quadVAO);
-  glGenBuffers(1, &quadVBO);
-  glGenBuffers(1, &quadEBO);
-  glGenBuffers(1, &instanceVBO);
-
-  glBindVertexArray(quadVAO);
-
-  // Quad vertex data (location 0: aCorner)
-  glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
-  glEnableVertexAttribArray(0);
-
-  // Index buffer
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, quadEBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIndices), quadIndices,
-               GL_STATIC_DRAW);
-
-  // Instance VBO (will be filled each frame)
-  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-  glBufferData(GL_ARRAY_BUFFER, MAX_PARTICLES * sizeof(InstanceData), nullptr,
-               GL_DYNAMIC_DRAW);
-
-  // location 1: iWorldPos (vec3)
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, worldPos));
-  glEnableVertexAttribArray(1);
-  glVertexAttribDivisor(1, 1);
-
-  // location 2: iScale (float)
-  glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, scale));
-  glEnableVertexAttribArray(2);
-  glVertexAttribDivisor(2, 1);
-
-  // location 3: iRotation (float)
-  glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, rotation));
-  glEnableVertexAttribArray(3);
-  glVertexAttribDivisor(3, 1);
-
-  // location 4: iFrame (float)
-  glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, frame));
-  glEnableVertexAttribArray(4);
-  glVertexAttribDivisor(4, 1);
-
-  // location 5: iColor (vec3)
-  glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, color));
-  glEnableVertexAttribArray(5);
-  glVertexAttribDivisor(5, 1);
-
-  // location 6: iAlpha (float)
-  glVertexAttribPointer(6, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                        (void *)offsetof(InstanceData, alpha));
-  glEnableVertexAttribArray(6);
-  glVertexAttribDivisor(6, 1);
-
-  glBindVertexArray(0);
+  quadVBO = bgfx::createVertexBuffer(
+      bgfx::copy(quadVerts, sizeof(quadVerts)), s_quadLayout);
+  quadEBO = bgfx::createIndexBuffer(
+      bgfx::copy(quadIndices, sizeof(quadIndices)));
 }
 
 void FireEffect::ClearEmitters() {
@@ -267,7 +197,7 @@ void FireEffect::AddWaterSmokeEmitter(const glm::vec3 &worldPos) {
 }
 
 void FireEffect::Update(float deltaTime) {
-  if (fireTexture == 0)
+  if (!TexValid(fireTexture))
     return;
 
   // Clamp deltaTime to avoid particle explosion after pause/lag
@@ -350,123 +280,97 @@ void FireEffect::Update(float deltaTime) {
   }
 }
 
+void FireEffect::submitBatch(const std::vector<InstanceData> &batch,
+                             TexHandle tex) {
+  uint32_t count = (uint32_t)batch.size();
+  const uint16_t stride = 48; // 3 × vec4
+
+  uint32_t avail = bgfx::getAvailInstanceDataBuffer(count, stride);
+  if (avail == 0) return;
+  count = std::min(count, avail);
+
+  bgfx::InstanceDataBuffer idb;
+  bgfx::allocInstanceDataBuffer(&idb, count, stride);
+
+  uint8_t *data = idb.data;
+  for (uint32_t i = 0; i < count; ++i) {
+    float *d = (float *)data;
+    // i_data0: worldPos.xyz, scale
+    d[0] = batch[i].worldPos.x;
+    d[1] = batch[i].worldPos.y;
+    d[2] = batch[i].worldPos.z;
+    d[3] = batch[i].scale;
+    // i_data1: rotation, frame, alpha, pad
+    d[4] = batch[i].rotation;
+    d[5] = batch[i].frame;
+    d[6] = batch[i].alpha;
+    d[7] = 0.0f;
+    // i_data2: color.rgb, pad
+    d[8] = batch[i].color.x;
+    d[9] = batch[i].color.y;
+    d[10] = batch[i].color.z;
+    d[11] = 0.0f;
+    data += stride;
+  }
+
+  bgfx::setVertexBuffer(0, quadVBO);
+  bgfx::setIndexBuffer(quadEBO);
+  bgfx::setInstanceDataBuffer(&idb);
+  billboardShader->setTexture(0, "s_fireTex", tex);
+
+  // Additive blend, depth test but no depth write, no face culling
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                 | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                         BGFX_STATE_BLEND_ONE);
+  bgfx::setState(state);
+  bgfx::submit(0, billboardShader->program);
+}
+
 void FireEffect::Render(const glm::mat4 &view, const glm::mat4 &projection) {
-  if (fireTexture == 0 || particles.empty() || !billboardShader)
+  if (!TexValid(fireTexture) || particles.empty() || !billboardShader)
     return;
 
-  // Build instance data
   int count = std::min((int)particles.size(), MAX_PARTICLES);
-  std::vector<InstanceData> instanceData(count);
+
+  // Separate into fire and water batches
+  std::vector<InstanceData> fireBatch, waterBatch;
+  fireBatch.reserve(count);
 
   for (int i = 0; i < count; ++i) {
     auto &p = particles[i];
-    float t = 1.0f - p.lifetime / p.maxLifetime; // 0 → 1 over life
+    float t = 1.0f - p.lifetime / p.maxLifetime;
     int frame = std::min((int)(t * 4.0f), 3);
-    float alpha = p.lifetime / p.maxLifetime; // fade out
+    float alpha = p.lifetime / p.maxLifetime;
 
-    instanceData[i].worldPos = p.position;
-    instanceData[i].scale = p.scale;
-    instanceData[i].rotation = p.rotation;
-    instanceData[i].frame = (float)frame;
-    instanceData[i].color = p.color;
-    instanceData[i].alpha = alpha;
-  }
+    InstanceData d;
+    d.worldPos = p.position;
+    d.scale = p.scale;
+    d.rotation = p.rotation;
+    d.frame = (float)frame;
+    d.color = p.color;
+    d.alpha = alpha;
 
-  // Upload instance data
-  glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-  glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(InstanceData),
-                  instanceData.data());
-
-  // Set shader
-  billboardShader->use();
-  billboardShader->setMat4("view", view);
-  billboardShader->setMat4("projection", projection);
-  billboardShader->setInt("fireTexture", 0);
-
-  glActiveTexture(GL_TEXTURE0);
-
-  // Additive blending, no depth writes
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Pre-multiplied additive
-  glDepthMask(GL_FALSE);
-
-  glBindVertexArray(quadVAO);
-
-  // Batch 1: Fire & Smoke (using fireTexture)
-  {
-    std::vector<InstanceData> fireBatch;
-    for (int i = 0; i < count; ++i) {
-      if (!particles[i].isWater) {
-        fireBatch.push_back(instanceData[i]);
-      }
-    }
-
-    if (!fireBatch.empty()) {
-      glBindTexture(GL_TEXTURE_2D, fireTexture);
-      glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      fireBatch.size() * sizeof(InstanceData),
-                      fireBatch.data());
-      glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0,
-                              (int)fireBatch.size());
+    if (p.isWater) {
+      d.frame = 0.0f; // water uses full texture
+      waterBatch.push_back(d);
+    } else {
+      fireBatch.push_back(d);
     }
   }
 
-  // Batch 2: Water Mist (using waterTexture)
-  if (waterTexture != 0) {
-    std::vector<InstanceData> waterBatch;
-    for (int i = 0; i < count; ++i) {
-      if (particles[i].isWater) {
-        // Override frame for water (not a sprite sheet)
-        InstanceData d = instanceData[i];
-        d.frame = 0.0f;
-        waterBatch.push_back(d);
-      }
-    }
+  if (!fireBatch.empty())
+    submitBatch(fireBatch, fireTexture);
 
-    if (!waterBatch.empty()) {
-      glBindTexture(GL_TEXTURE_2D, waterTexture);
-      glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      waterBatch.size() * sizeof(InstanceData),
-                      waterBatch.data());
-      glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0,
-                              (int)waterBatch.size());
-    }
-  }
-
-  glBindVertexArray(0);
-
-  // Restore GL state
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  if (!waterBatch.empty() && TexValid(waterTexture))
+    submitBatch(waterBatch, waterTexture);
 }
 
 void FireEffect::Cleanup() {
-  if (quadVAO) {
-    glDeleteVertexArrays(1, &quadVAO);
-    quadVAO = 0;
-  }
-  if (quadVBO) {
-    glDeleteBuffers(1, &quadVBO);
-    quadVBO = 0;
-  }
-  if (quadEBO) {
-    glDeleteBuffers(1, &quadEBO);
-    quadEBO = 0;
-  }
-  if (instanceVBO) {
-    glDeleteBuffers(1, &instanceVBO);
-    instanceVBO = 0;
-  }
-  if (fireTexture) {
-    glDeleteTextures(1, &fireTexture);
-    fireTexture = 0;
-  }
-  if (waterTexture) {
-    glDeleteTextures(1, &waterTexture);
-    waterTexture = 0;
-  }
+  if (bgfx::isValid(quadVBO)) { bgfx::destroy(quadVBO); quadVBO = BGFX_INVALID_HANDLE; }
+  if (bgfx::isValid(quadEBO)) { bgfx::destroy(quadEBO); quadEBO = BGFX_INVALID_HANDLE; }
+  TexDestroy(fireTexture);
+  TexDestroy(waterTexture);
   billboardShader.reset();
   emitters.clear();
   particles.clear();

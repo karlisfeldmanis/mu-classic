@@ -7,7 +7,7 @@
 #include "MeshBuffers.hpp"
 #include "Shader.hpp"
 #include "TerrainParser.hpp"
-#include <GL/glew.h>
+#include "TextureLoader.hpp"
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -130,7 +130,7 @@ private:
 
   // Shadow mesh buffers (one per boid for bird, one per fish)
   struct ShadowMesh {
-    GLuint vao = 0, vbo = 0;
+    bgfx::DynamicVertexBufferHandle vbo = BGFX_INVALID_HANDLE;
     int vertexCount = 0;
   };
   ShadowMesh m_birdShadow;
@@ -170,8 +170,9 @@ private:
 
   // Falling leaves (Main 5.2: ZzzEffectFireLeave.cpp)
   std::unique_ptr<Shader> m_leafShader;
-  GLuint m_leafTexture = 0;
-  GLuint m_leafVAO = 0, m_leafVBO = 0, m_leafEBO = 0;
+  TexHandle m_leafTexture = kInvalidTex;
+  bgfx::VertexBufferHandle m_leafVBO = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle m_leafEBO = BGFX_INVALID_HANDLE;
   void updateLeaves(float dt, const glm::vec3 &heroPos);
   void spawnLeaf(LeafParticle &leaf, const glm::vec3 &heroPos);
 };

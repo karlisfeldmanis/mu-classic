@@ -13,7 +13,6 @@
 #include "SoundManager.hpp"
 #include "TextureLoader.hpp"
 #include "imgui.h"
-#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cmath>
@@ -76,7 +75,7 @@ static ClassParts s_classParts[4]; // 0=DW, 1=DK, 2=ELF, 3=MG
 
 // Shadow mesh (VAO/VBO for projected shadow vertices)
 struct ShadowMesh {
-  unsigned int vao = 0, vbo = 0;
+  bgfx::DynamicVertexBufferHandle vbo = BGFX_INVALID_HANDLE;
   int vertexCount = 0;
 };
 
@@ -136,6 +135,15 @@ static SlotRender s_slotRender[MAX_SLOTS];
 static std::unique_ptr<Shader> s_modelShader;
 static std::unique_ptr<Shader> s_shadowShader;
 
+// Shadow map state
+static constexpr uint8_t CS_SHADOW_VIEW = 8;
+static constexpr int CS_SHADOW_MAP_SIZE = 2048;
+static bgfx::FrameBufferHandle s_shadowFB = BGFX_INVALID_HANDLE;
+static bgfx::TextureHandle s_shadowColorTex = BGFX_INVALID_HANDLE;
+static bgfx::TextureHandle s_shadowDepthTex = BGFX_INVALID_HANDLE;
+static std::unique_ptr<Shader> s_depthShader;
+static glm::mat4 s_lightMtx{1.0f};
+
 static float s_time = 0.0f;
 
 // Point lights collected from light-emitting world objects
@@ -152,8 +160,9 @@ static constexpr int CS_MAX_POINT_LIGHTS = 64;
 static constexpr float CS_LUMINOSITY = 1.0f;
 
 // Selection spotlight — tall light cone around selected character
-static GLuint s_spotlightTex = 0;
-static GLuint s_spotlightVAO = 0, s_spotlightVBO = 0, s_spotlightEBO = 0;
+static TexHandle s_spotlightTex = kInvalidTex;
+static bgfx::VertexBufferHandle s_spotVBO = BGFX_INVALID_HANDLE;
+static bgfx::IndexBufferHandle s_spotEBO = BGFX_INVALID_HANDLE;
 static int s_spotlightIndexCount = 0;
 static std::unique_ptr<Shader> s_spotlightShader;
 static constexpr int CONE_SEGMENTS = 32;
@@ -202,10 +211,15 @@ static int s_faceLoadedClass = -1;
 static glm::vec3 s_faceAABBMin(0.0f);
 static glm::vec3 s_faceAABBMax(0.0f);
 
+// Face screen rect (set by UI code, used by BGFX render to draw face directly)
+static bool  s_faceScreenValid = false;
+static uint16_t s_faceScreenX = 0, s_faceScreenY = 0;
+static uint16_t s_faceScreenW = 0, s_faceScreenH = 0;
+
 // FBO for rendering face portrait to texture
-static GLuint s_faceFBO = 0;
-static GLuint s_faceColorTex = 0;
-static GLuint s_faceDepthRBO = 0;
+static bgfx::FrameBufferHandle s_faceFB = BGFX_INVALID_HANDLE;
+static constexpr uint8_t FACE_VIEW_ID = 10; // Dedicated view for face FBO rendering
+static TexHandle s_faceColorTex = kInvalidTex;
 static constexpr int FACE_TEX_W = 410;
 static constexpr int FACE_TEX_H = 500;
 
@@ -214,10 +228,10 @@ struct FaceRenderParams {
   float angleZ; // Z-axis rotation for 3/4 view
 };
 static constexpr FaceRenderParams FACE_PARAMS[4] = {
-    {-12.0f},  // DW — slight left turn
-    {-40.0f},  // DK — 3/4 left turn
-    {  5.0f},  // ELF — slight right turn
-    {-13.0f},  // MG — slight left turn
+    {-18.0f},  // DW — 3/4 left turn
+    {-30.0f},  // DK — 3/4 left turn (matches original)
+    {  8.0f},  // ELF — slight right turn
+    {-18.0f},  // MG — 3/4 left turn
 };
 
 // Character slot positions (world coordinates) — customize these
@@ -326,50 +340,27 @@ static void LoadFaceModels() {
 }
 
 static void SetupFaceFBO() {
-  // Create FBO for face portrait rendering
-  glGenFramebuffers(1, &s_faceFBO);
-  glGenTextures(1, &s_faceColorTex);
-  glGenRenderbuffers(1, &s_faceDepthRBO);
-
-  glBindTexture(GL_TEXTURE_2D, s_faceColorTex);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, FACE_TEX_W, FACE_TEX_H, 0, GL_RGBA,
-               GL_UNSIGNED_BYTE, nullptr);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-  glBindRenderbuffer(GL_RENDERBUFFER, s_faceDepthRBO);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, FACE_TEX_W,
-                        FACE_TEX_H);
-
-  glBindFramebuffer(GL_FRAMEBUFFER, s_faceFBO);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                         s_faceColorTex, 0);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-                            GL_RENDERBUFFER, s_faceDepthRBO);
-
-  GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-  if (status != GL_FRAMEBUFFER_COMPLETE) {
-    printf("[CharSelect] WARNING: Face FBO incomplete (0x%x)\n", status);
-  }
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-  printf("[CharSelect] Face FBO created (%dx%d)\n", FACE_TEX_W, FACE_TEX_H);
+  const uint64_t tsFlags = BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+  bgfx::TextureHandle faceTex[] = {
+    bgfx::createTexture2D(FACE_TEX_W, FACE_TEX_H, false, 1,
+                          bgfx::TextureFormat::RGBA8, tsFlags),
+    bgfx::createTexture2D(FACE_TEX_W, FACE_TEX_H, false, 1,
+                          bgfx::TextureFormat::D24S8, tsFlags),
+  };
+  s_faceFB = bgfx::createFrameBuffer(2, faceTex, true);
+  // Get color attachment handle for ImGui display
+  s_faceColorTex = bgfx::getTexture(s_faceFB, 0);
+  printf("[CharSelect] BGFX Face FBO created (%dx%d)\n", FACE_TEX_W, FACE_TEX_H);
 }
 
 static void CleanupFaceFBO() {
-  if (s_faceFBO) {
-    glDeleteFramebuffers(1, &s_faceFBO);
-    s_faceFBO = 0;
+  if (bgfx::isValid(s_faceFB)) {
+    bgfx::destroy(s_faceFB);
+    s_faceFB = BGFX_INVALID_HANDLE;
   }
-  if (s_faceColorTex) {
-    glDeleteTextures(1, &s_faceColorTex);
-    s_faceColorTex = 0;
-  }
-  if (s_faceDepthRBO) {
-    glDeleteRenderbuffers(1, &s_faceDepthRBO);
-    s_faceDepthRBO = 0;
-  }
+  // Color texture is owned by the framebuffer (destroyTextures=true), so
+  // just invalidate our handle
+  s_faceColorTex = kInvalidTex;
 }
 
 // Rebuild face meshes for a given class index, compute AABB for auto-framing
@@ -431,54 +422,35 @@ static void ReskinFace() {
   }
 }
 
-// Render face model to FBO with AABB-based auto-framing
-// Model is anchored to the bottom of the FBO (feet/bottom of bust at bottom edge)
-static void RenderFaceToFBO() {
+// Render face model directly to backbuffer using a restricted viewport.
+// This avoids the FBO alpha compositing issue on Metal.
+static constexpr uint8_t FACE_DIRECT_VIEW = 31; // AFTER ImGui (30), face on top of container fill
+static void RenderFaceToBackbuffer() {
   if (s_faceLoadedClass < 0 || s_faceMeshes.empty() || !s_modelShader ||
-      !s_faceFBO)
+      !s_faceScreenValid || s_faceScreenW == 0 || s_faceScreenH == 0)
     return;
-
-  GLint prevViewport[4];
-  glGetIntegerv(GL_VIEWPORT, prevViewport);
-  GLint prevFBO;
-  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
-
-  glBindFramebuffer(GL_FRAMEBUFFER, s_faceFBO);
-  glViewport(0, 0, FACE_TEX_W, FACE_TEX_H);
-  glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  glEnable(GL_DEPTH_TEST);
 
   auto &fp = FACE_PARAMS[s_faceLoadedClass];
 
   // Auto-frame: compute camera from AABB
-  // In BMD space: X/Y are horizontal, Z is up
-  // Apply the Z rotation to the AABB center for correct framing
   float angleZ = glm::radians(fp.angleZ);
-  glm::vec3 center = (s_faceAABBMin + s_faceAABBMax) * 0.5f;
   float height = s_faceAABBMax.z - s_faceAABBMin.z;
   float width = glm::length(glm::vec2(s_faceAABBMax.x - s_faceAABBMin.x,
                                        s_faceAABBMax.y - s_faceAABBMin.y));
 
-  // Anchor to bottom: shift target up so bottom of model aligns with bottom of FBO
-  // The target Z is shifted up by half the height (center) + a small margin
-  float aspect = (float)FACE_TEX_W / (float)FACE_TEX_H;
+  float aspect = (float)s_faceScreenW / (float)s_faceScreenH;
   float fovDeg = 10.0f;
   float fov = glm::radians(fovDeg);
 
-  // Compute camera distance to fit the model width (tighter framing)
-  float margin = 1.05f;
+  float margin = 0.92f;
   float fitHeight = height * margin;
   float fitWidth = width * margin;
   float distH = (fitHeight * 0.5f) / tanf(fov * 0.5f);
   float distW = (fitWidth * 0.5f) / (tanf(fov * 0.5f) * aspect);
   float camDist = std::max(distH, distW);
 
-  // Push model DOWN in FBO: camera targets above model center so the
-  // bust renders lower. Combined with UV bottom crop in the display,
-  // the arm stumps get hidden (overflow:hidden effect).
   float modelCenter = (s_faceAABBMin.z + s_faceAABBMax.z) * 0.5f;
-  float pushDown = height * 0.15f;
+  float pushDown = height * 0.12f;
   float targetZ = modelCenter + pushDown;
 
   glm::vec3 camP(0.0f, -camDist, targetZ);
@@ -490,40 +462,48 @@ static void RenderFaceToFBO() {
   glm::mat4 model(1.0f);
   model = glm::rotate(model, angleZ, glm::vec3(0, 0, 1));
 
-  s_modelShader->use();
-  s_modelShader->setMat4("view", faceView);
-  s_modelShader->setMat4("projection", faceProj);
-  s_modelShader->setMat4("model", model);
-  s_modelShader->setFloat("objectAlpha", 1.0f);
-  s_modelShader->setVec3("lightPos", glm::vec3(20.0f, -300.0f, 100.0f));
-  s_modelShader->setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-  s_modelShader->setVec3("viewPos", camP);
-  s_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-  s_modelShader->setFloat("blendMeshLight", 1.0f);
-  s_modelShader->setFloat("luminosity", 1.0f);
-  s_modelShader->setBool("useFog", false);
-  s_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  s_modelShader->setFloat("outlineOffset", 0.0f);
-  s_modelShader->setInt("numPointLights", 0);
-  s_modelShader->setInt("chromeMode", 0);
-  s_modelShader->setVec3("glowColor", glm::vec3(0.0f));
-  s_modelShader->setVec3("baseTint", glm::vec3(1.0f));
+  // Setup BGFX view: render to backbuffer with restricted viewport
+  bgfx::setViewName(FACE_DIRECT_VIEW, "FaceDirect");
+  bgfx::setViewRect(FACE_DIRECT_VIEW, s_faceScreenX, s_faceScreenY,
+                     s_faceScreenW, s_faceScreenH);
+  // Only clear depth in this viewport area (keep scene color intact)
+  bgfx::setViewClear(FACE_DIRECT_VIEW, BGFX_CLEAR_DEPTH, 0, 1.0f, 0);
+  bgfx::setViewFrameBuffer(FACE_DIRECT_VIEW, BGFX_INVALID_HANDLE); // backbuffer
+  bgfx::setViewTransform(FACE_DIRECT_VIEW, glm::value_ptr(faceView),
+                          glm::value_ptr(faceProj));
+  bgfx::touch(FACE_DIRECT_VIEW);
 
-  glDisable(GL_CULL_FACE);
+  // Uniforms: simple flat lighting, no fog, no point lights
+  s_modelShader->setVec4("u_params", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
+  s_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0, 0, 0));
+  s_modelShader->setVec4("u_viewPos", glm::vec4(camP, 0));
+  s_modelShader->setVec4("u_lightPos", glm::vec4(20.0f, -300.0f, 100.0f, 0));
+  s_modelShader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0));
+  s_modelShader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0));
+  s_modelShader->setVec4("u_glowColor", glm::vec4(0));
+  s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 0));
+  s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
+  s_modelShader->setVec4("u_fogParams", glm::vec4(0));
+  s_modelShader->setVec4("u_fogColor", glm::vec4(0));
+  s_modelShader->setVec4("u_shadowParams", glm::vec4(0.0f));
+  s_modelShader->uploadPointLights(0, (CSPointLight *)nullptr);
+
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS;
+
   for (auto &mb : s_faceMeshes) {
     if (mb.indexCount == 0)
       continue;
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, mb.texture);
-    s_modelShader->setInt("texture_diffuse", 0);
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    s_modelShader->setTexture(0, "s_texColor", mb.texture);
+    bgfx::setState(state);
+    bgfx::submit(FACE_DIRECT_VIEW, s_modelShader->program);
   }
-  glEnable(GL_CULL_FACE);
-
-  glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
-  glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
 }
+
 
 static std::vector<ShadowMesh> CreateShadowMeshes(const BMDData *bmd) {
   std::vector<ShadowMesh> meshes;
@@ -540,16 +520,12 @@ static std::vector<ShadowMesh> CreateShadowMeshes(const BMDData *bmd) {
       meshes.push_back(sm);
       continue;
     }
-    glGenVertexArrays(1, &sm.vao);
-    glGenBuffers(1, &sm.vbo);
-    glBindVertexArray(sm.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-    glBufferData(GL_ARRAY_BUFFER, count * sizeof(glm::vec3), nullptr,
-                 GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                          (void *)0);
-    glEnableVertexAttribArray(0);
-    glBindVertexArray(0);
+    bgfx::VertexLayout layout;
+    layout.begin()
+        .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+        .end();
+    sm.vbo = bgfx::createDynamicVertexBuffer(count, layout,
+                                              BGFX_BUFFER_ALLOW_RESIZE);
     meshes.push_back(sm);
   }
   return meshes;
@@ -803,9 +779,11 @@ static void ReskinAttachedItem(const std::vector<BoneWorldMatrix> &charBones,
         verts.push_back(vv);
       }
     }
-    glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    verts.size() * sizeof(ViewerVertex), verts.data());
+    if (mb.isDynamic && bgfx::isValid(mb.dynVbo)) {
+      const bgfx::Memory *mem =
+          bgfx::copy(verts.data(), (uint32_t)(verts.size() * sizeof(ViewerVertex)));
+      bgfx::update(mb.dynVbo, 0, mem);
+    }
   }
 }
 
@@ -1065,9 +1043,30 @@ void Init(const Context &ctx) {
       lantern.objectType = 50; // fire type
       s_pointLights.push_back(lantern);
     }
+    // Background tree-line ambient lights (warm torches behind characters)
+    {
+      struct TreeLineLight { float offRight, offFwd, height; };
+      static constexpr TreeLineLight bgLights[] = {
+          {-600.0f, 700.0f, 250.0f},   // Far left behind trees
+          {-200.0f, 650.0f, 300.0f},   // Left-center
+          { 200.0f, 650.0f, 280.0f},   // Right-center
+          { 600.0f, 700.0f, 250.0f},   // Far right behind trees
+      };
+      for (auto &bg : bgLights) {
+        CSPointLight tl;
+        tl.position = glm::vec3(
+            SCENE_CX + RIGHT_X * bg.offRight + FWD_X * bg.offFwd,
+            bg.height,
+            SCENE_CZ + RIGHT_Z * bg.offRight + FWD_Z * bg.offFwd);
+        tl.color = glm::vec3(1.3f, 0.7f, 0.3f);  // Warm amber torch
+        tl.range = 700.0f;
+        tl.objectType = 50;  // fire type for flickering
+        s_pointLights.push_back(tl);
+      }
+    }
     if ((int)s_pointLights.size() > CS_MAX_POINT_LIGHTS)
       s_pointLights.resize(CS_MAX_POINT_LIGHTS);
-    printf("[CharSelect] Collected %d point lights (incl. slot lanterns)\n",
+    printf("[CharSelect] Collected %d point lights (incl. slot + tree-line)\n",
            (int)s_pointLights.size());
   }
 
@@ -1147,24 +1146,44 @@ void Init(const Context &ctx) {
   // Load model shader (check shaders/ first, fall back to ../shaders/)
   {
     try {
-      s_modelShader = Shader::Load("model.vert", "model.frag");
-      printf("[CharSelect] Model shader loaded\n");
+      s_modelShader = Shader::Load("vs_model.bin", "fs_model.bin");
+      printf("[CharSelect] Model shader loaded (BGFX)\n");
     } catch (...) {
       printf("[CharSelect] WARNING: Failed to load model shader\n");
     }
     try {
-      s_shadowShader = Shader::Load("shadow.vert", "shadow.frag");
+      s_shadowShader = Shader::Load("vs_shadow.bin", "fs_shadow.bin");
     } catch (...) {
       printf("[CharSelect] WARNING: Failed to load shadow shader\n");
+    }
+    // Shadow map FBO + depth shader
+    try {
+      s_depthShader = Shader::Load("vs_depth.bin", "fs_depth.bin");
+    } catch (...) {
+      printf("[CharSelect] WARNING: Failed to load depth shader\n");
+    }
+    {
+      s_shadowColorTex = bgfx::createTexture2D(
+          CS_SHADOW_MAP_SIZE, CS_SHADOW_MAP_SIZE, false, 1,
+          bgfx::TextureFormat::BGRA8,
+          BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+      s_shadowDepthTex = bgfx::createTexture2D(
+          CS_SHADOW_MAP_SIZE, CS_SHADOW_MAP_SIZE, false, 1,
+          bgfx::TextureFormat::D16, BGFX_TEXTURE_RT_WRITE_ONLY);
+      bgfx::TextureHandle atts[] = { s_shadowColorTex, s_shadowDepthTex };
+      s_shadowFB = bgfx::createFrameBuffer(2, atts, false);
+      if (s_depthShader && bgfx::isValid(s_shadowFB))
+        printf("[CharSelect] Shadow map initialized %dx%d\n",
+               CS_SHADOW_MAP_SIZE, CS_SHADOW_MAP_SIZE);
     }
   }
 
   // Selection spotlight — ground glow circle
   {
     try {
-      s_spotlightShader = Shader::Load("leaf.vert", "leaf.frag");
+      s_spotlightShader = Shader::Load("vs_leaf.bin", "fs_leaf.bin");
     } catch (...) {
-      printf("[CharSelect] WARNING: Failed to load spotlight shader\n");
+      printf("[CharSelect] WARNING: Failed to load spotlight shader (BGFX)\n");
     }
     s_spotlightTex = TextureLoader::LoadOZJ(s_ctx.dataPath + "/Effect/Flare01.OZJ");
 
@@ -1221,19 +1240,17 @@ void Init(const Context &ctx) {
 
     s_spotlightIndexCount = (int)indices.size();
 
-    glGenVertexArrays(1, &s_spotlightVAO);
-    glGenBuffers(1, &s_spotlightVBO);
-    glGenBuffers(1, &s_spotlightEBO);
-    glBindVertexArray(s_spotlightVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, s_spotlightVBO);
-    glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, s_spotlightEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
+    bgfx::VertexLayout spotLayout;
+    spotLayout.begin()
+      .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+      .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+      .end();
+    s_spotVBO = bgfx::createVertexBuffer(
+      bgfx::copy(verts.data(), (uint32_t)(verts.size() * sizeof(float))),
+      spotLayout);
+    s_spotEBO = bgfx::createIndexBuffer(
+      bgfx::copy(indices.data(), (uint32_t)(indices.size() * sizeof(uint32_t))),
+      BGFX_BUFFER_INDEX32);
     printf("[CharSelect] Spotlight cylinder initialized (%d segments, h=%.0f, r=%.0f)\n",
            CONE_SEGMENTS, CONE_HEIGHT, CONE_RADIUS);
   }
@@ -1250,10 +1267,9 @@ void Init(const Context &ctx) {
 
 void Shutdown() {
   // Spotlight cleanup
-  if (s_spotlightVAO) { glDeleteVertexArrays(1, &s_spotlightVAO); s_spotlightVAO = 0; }
-  if (s_spotlightVBO) { glDeleteBuffers(1, &s_spotlightVBO); s_spotlightVBO = 0; }
-  if (s_spotlightEBO) { glDeleteBuffers(1, &s_spotlightEBO); s_spotlightEBO = 0; }
-  if (s_spotlightTex) { glDeleteTextures(1, &s_spotlightTex); s_spotlightTex = 0; }
+  if (bgfx::isValid(s_spotVBO)) { bgfx::destroy(s_spotVBO); s_spotVBO = BGFX_INVALID_HANDLE; }
+  if (bgfx::isValid(s_spotEBO)) { bgfx::destroy(s_spotEBO); s_spotEBO = BGFX_INVALID_HANDLE; }
+  if (TexValid(s_spotlightTex)) { TexDestroy(s_spotlightTex); s_spotlightTex = kInvalidTex; }
   s_spotlightShader.reset();
 
   s_boidManager.Cleanup();
@@ -1264,8 +1280,7 @@ void Shutdown() {
     for (int p = 0; p < PART_COUNT; p++) {
       CleanupMeshBuffers(s_slotRender[i].meshes[p]);
       for (auto &sm : s_slotRender[i].shadowMeshes[p]) {
-        if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-        if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+        if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
       }
       s_slotRender[i].shadowMeshes[p].clear();
       s_slotRender[i].partOverrideBmd[p].reset();
@@ -1273,8 +1288,7 @@ void Shutdown() {
     // Weapon cleanup
     CleanupMeshBuffers(s_slotRender[i].weaponMeshes);
     for (auto &sm : s_slotRender[i].weaponShadowMeshes) {
-      if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     s_slotRender[i].weaponShadowMeshes.clear();
     s_slotRender[i].weaponLocalBones.clear();
@@ -1282,16 +1296,14 @@ void Shutdown() {
     // Base head cleanup
     CleanupMeshBuffers(s_slotRender[i].baseHeadMeshes);
     for (auto &sm : s_slotRender[i].baseHeadShadowMeshes) {
-      if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     s_slotRender[i].baseHeadShadowMeshes.clear();
     s_slotRender[i].showBaseHead = false;
     // Shield cleanup
     CleanupMeshBuffers(s_slotRender[i].shieldMeshes);
     for (auto &sm : s_slotRender[i].shieldShadowMeshes) {
-      if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     s_slotRender[i].shieldShadowMeshes.clear();
     s_slotRender[i].shieldLocalBones.clear();
@@ -1299,8 +1311,7 @@ void Shutdown() {
     // Wing cleanup
     CleanupMeshBuffers(s_slotRender[i].wingMeshes);
     for (auto &sm : s_slotRender[i].wingShadowMeshes) {
-      if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     s_slotRender[i].wingShadowMeshes.clear();
     s_slotRender[i].wingLocalBones.clear();
@@ -1312,6 +1323,13 @@ void Shutdown() {
       s_classParts[i].bmd[p].reset();
   s_modelShader.reset();
   s_shadowShader.reset();
+  s_depthShader.reset();
+  if (bgfx::isValid(s_shadowFB)) bgfx::destroy(s_shadowFB);
+  s_shadowFB = BGFX_INVALID_HANDLE;
+  if (bgfx::isValid(s_shadowColorTex)) bgfx::destroy(s_shadowColorTex);
+  s_shadowColorTex = BGFX_INVALID_HANDLE;
+  if (bgfx::isValid(s_shadowDepthTex)) bgfx::destroy(s_shadowDepthTex);
+  s_shadowDepthTex = BGFX_INVALID_HANDLE;
 
   // Face portrait cleanup
   CleanupMeshBuffers(s_faceMeshes);
@@ -1503,6 +1521,15 @@ void Render(int windowWidth, int windowHeight) {
   if (!s_initialized)
     return;
 
+  {
+    static int frameCount = 0;
+    frameCount++;
+    if (frameCount == 1) {
+      std::cout << "[CharSelect] Render() first frame (" << windowWidth << "x"
+                << windowHeight << ")" << std::endl;
+    }
+  }
+
   // Setup projection
   float aspect = (float)windowWidth / (float)std::max(windowHeight, 1);
   s_projMatrix = glm::perspective(glm::radians(35.0f), aspect, 10.0f, 50000.0f);
@@ -1512,226 +1539,119 @@ void Render(int windowWidth, int windowHeight) {
   glm::vec3 camPos = s_camPos;
   s_viewMatrix = glm::lookAt(camPos, s_camTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 
-  // Clear
-  glClearColor(0.04f, 0.04f, 0.04f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-  glEnable(GL_DEPTH_TEST);
-  glDepthFunc(GL_LEQUAL);
+  // ── BGFX rendering path ──
+  // Ensure shadow view (8) renders before main view (0)
+  bgfx::ViewId order[] = { CS_SHADOW_VIEW, 0 };
+  bgfx::setViewOrder(0, 2, order);
 
-  // Sky dome renders first (behind everything, no depth write)
-  s_sky.Render(s_viewMatrix, s_projMatrix, camPos, CS_LUMINOSITY);
+  bgfx::setViewTransform(0, glm::value_ptr(s_viewMatrix),
+                         glm::value_ptr(s_projMatrix));
 
-  // Render terrain
-  if (s_terrainLoaded) {
-    s_terrain.Render(s_viewMatrix, s_projMatrix, s_time, camPos);
-  }
+  // ── Shadow map pass: render character depth from directional light ──
+  if (s_depthShader && bgfx::isValid(s_shadowFB) && s_playerSkeleton) {
+    // Light direction matching sun position (diagonal from front-above)
+    glm::vec3 lightDir = glm::normalize(glm::vec3(-0.3f, -1.0f, -0.15f));
+    float sceneCenterY = s_terrainLoaded ? s_terrain.GetHeight(SCENE_CX, SCENE_CZ) : 0.0f;
+    glm::vec3 sceneCenter(SCENE_CX, sceneCenterY, SCENE_CZ);
+    glm::vec3 lightPos = sceneCenter - lightDir * 2000.0f;
+    glm::vec3 up(0.0f, 0.0f, 1.0f);
+    if (std::abs(glm::dot(lightDir, up)) > 0.99f) up = glm::vec3(1.0f, 0.0f, 0.0f);
+    glm::mat4 lightView = glm::lookAt(lightPos, sceneCenter, up);
+    // Metal uses [0,1] Z clip range; OpenGL uses [-1,1]
+    glm::mat4 lightProj = bgfx::getCaps()->homogeneousDepth
+      ? glm::ortho(-1500.0f, 1500.0f, -1500.0f, 1500.0f, 100.0f, 5000.0f)
+      : glm::orthoRH_ZO(-1500.0f, 1500.0f, -1500.0f, 1500.0f, 100.0f, 5000.0f);
+    s_lightMtx = lightProj * lightView;
 
-  // Render world objects (ruins, columns, trees)
-  if (s_objectRenderer.GetInstanceCount() > 0) {
-    s_objectRenderer.Render(s_viewMatrix, s_projMatrix, camPos, s_time);
-  }
+    bgfx::setViewName(CS_SHADOW_VIEW, "CS_ShadowMap");
+    bgfx::setViewRect(CS_SHADOW_VIEW, 0, 0, CS_SHADOW_MAP_SIZE, CS_SHADOW_MAP_SIZE);
+    bgfx::setViewClear(CS_SHADOW_VIEW, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0xFFFFFFFF, 1.0f, 0);
+    bgfx::setViewFrameBuffer(CS_SHADOW_VIEW, s_shadowFB);
+    bgfx::setViewTransform(CS_SHADOW_VIEW, glm::value_ptr(lightView),
+                            glm::value_ptr(lightProj));
+    bgfx::touch(CS_SHADOW_VIEW);
 
-  // Render grass billboards
-  s_grassRenderer.Render(s_viewMatrix, s_projMatrix, s_time, camPos);
+    // No culling: body part meshes are open (non-closed), culling may discard geometry
+    uint64_t depthState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                        | BGFX_STATE_DEPTH_TEST_LESS;
 
-  // Birds + falling leaves
-  s_boidManager.Render(s_viewMatrix, s_projMatrix, camPos);
-  s_boidManager.RenderLeaves(s_viewMatrix, s_projMatrix);
-
-  // Render drop shadows BEFORE characters so characters draw on top
-  if (s_shadowShader && s_playerSkeleton) {
-    s_shadowShader->use();
-    s_shadowShader->setMat4("projection", s_projMatrix);
-    s_shadowShader->setMat4("view", s_viewMatrix);
-
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
-    glDisable(GL_DEPTH_TEST); // Shadows always on ground, never clipped by character
-    glDisable(GL_CULL_FACE);
-
-    // Stencil: draw each shadow pixel exactly once (prevents overlap darkening).
-    // Body + weapon + shield all share the same stencil → unified single shadow.
-    glEnable(GL_STENCIL_TEST);
-    glStencilMask(0xFF);
-    glStencilFunc(GL_EQUAL, 0, 0xFF);
-    glStencilOp(GL_KEEP, GL_INCR, GL_INCR);
-
-    // Shadow projection: light from front-above so shadow falls behind character
-    const float sx = 0.0f;      // No side offset — centered
-    const float sxY = -2500.0f; // Light in front of character (-Y = toward camera)
-    const float sy = 4000.0f;
-
+    int shadowDraws = 0;
+    // Submit all character slot meshes to shadow map
     for (int i = 0; i < MAX_SLOTS; i++) {
-      if (!s_slots[i].occupied)
-        continue;
-
+      if (!s_slots[i].occupied) continue;
       int ci = ClassToIndex(s_slots[i].classCode);
-      if (!s_classParts[ci].loaded)
-        continue;
-
-      // Clear stencil per character so shadows don't block each other
-      glClear(GL_STENCIL_BUFFER_BIT);
-
+      if (!s_classParts[ci].loaded) continue;
       auto &sp = SLOT_POSITIONS[i];
-      float slotY = s_terrainLoaded ? s_terrain.GetHeight(sp.worldX, sp.worldZ)
-                                    : 0.0f;
+      float slotY = s_terrainLoaded ? s_terrain.GetHeight(sp.worldX, sp.worldZ) : 0.0f;
+      float facing = sp.facingDeg * (3.14159f / 180.0f);
 
-      // Shadow model: no facing rotation (facing baked into vertices)
       glm::mat4 model = glm::translate(glm::mat4(1.0f),
-                                        glm::vec3(sp.worldX, slotY, sp.worldZ));
+                                         glm::vec3(sp.worldX, slotY, sp.worldZ));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-      s_shadowShader->setMat4("model", model);
+      model = glm::rotate(model, facing, glm::vec3(0, 0, 1));
 
-      float facing = sp.facingDeg * (3.14159f / 180.0f);
-      float cosF = cosf(facing);
-      float sinF = sinf(facing);
-
-      // Compute bones for current animation frame (interpolated for smooth shadows)
-      auto bones = ComputeBoneMatricesInterpolated(s_playerSkeleton.get(), 1,
-                                                    s_slotRender[i].animFrame);
-
-      // Lambda: project shadow verts for a BMD using given bone matrices
-      auto projectShadow = [&](const BMDData *bmd,
-                                std::vector<ShadowMesh> &smVec,
-                                const std::vector<BoneWorldMatrix> &boneSet) {
-        for (int mi = 0;
-             mi < (int)bmd->Meshes.size() && mi < (int)smVec.size(); ++mi) {
-          auto &sm = smVec[mi];
-          if (sm.vertexCount == 0 || sm.vao == 0)
-            continue;
-
-          auto &mesh = bmd->Meshes[mi];
-          static std::vector<glm::vec3> shadowVerts;
-          shadowVerts.clear();
-
-          for (int t = 0; t < mesh.NumTriangles; ++t) {
-            auto &tri = mesh.Triangles[t];
-            int steps = (tri.Polygon == 3) ? 3 : 4;
-            for (int v = 0; v < 3; ++v) {
-              auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-              glm::vec3 pos = srcVert.Position;
-              int boneIdx = srcVert.Node;
-              if (boneIdx >= 0 && boneIdx < (int)boneSet.size())
-                pos = MuMath::TransformPoint(
-                    (const float(*)[4])boneSet[boneIdx].data(), pos);
-
-              float rx = pos.x * cosF - pos.y * sinF;
-              float ry = pos.x * sinF + pos.y * cosF;
-              pos.x = rx;
-              pos.y = ry;
-
-              if (pos.z < sy) {
-                float factor = 1.0f / (pos.z - sy);
-                pos.x += pos.z * (pos.x + sx) * factor;
-                pos.y += pos.z * (pos.y + sx) * factor;
-              }
-              pos.z = 5.0f;
-              shadowVerts.push_back(pos);
-            }
-            if (steps == 4) {
-              int qi[3] = {0, 2, 3};
-              for (int v : qi) {
-                auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-                glm::vec3 pos = srcVert.Position;
-                int boneIdx = srcVert.Node;
-                if (boneIdx >= 0 && boneIdx < (int)boneSet.size())
-                  pos = MuMath::TransformPoint(
-                      (const float(*)[4])boneSet[boneIdx].data(), pos);
-
-                float rx = pos.x * cosF - pos.y * sinF;
-                float ry = pos.x * sinF + pos.y * cosF;
-                pos.x = rx;
-                pos.y = ry;
-
-                if (pos.z < sy) {
-                  float factor = 1.0f / (pos.z - sy);
-                  pos.x += pos.z * (pos.x + sx) * factor;
-                  pos.y += pos.z * (pos.y + sxY) * factor;
-                }
-                pos.z = 5.0f;
-                shadowVerts.push_back(pos);
-              }
-            }
-          }
-
-          glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-          glBufferSubData(GL_ARRAY_BUFFER, 0,
-                          shadowVerts.size() * sizeof(glm::vec3),
-                          shadowVerts.data());
-          glBindVertexArray(sm.vao);
-          glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+      auto submitMeshes = [&](const std::vector<MeshBuffers> &meshes) {
+        for (auto &mb : meshes) {
+          if (mb.indexCount == 0 || mb.hidden) continue;
+          if (mb.isDynamic && !bgfx::isValid(mb.dynVbo)) continue;
+          if (!mb.isDynamic && !bgfx::isValid(mb.vbo)) continue;
+          bgfx::setTransform(glm::value_ptr(model));
+          if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+          else bgfx::setVertexBuffer(0, mb.vbo);
+          bgfx::setIndexBuffer(mb.ebo);
+          bgfx::setState(depthState);
+          bgfx::submit(CS_SHADOW_VIEW, s_depthShader->program);
+          shadowDraws++;
         }
       };
 
-      // Body part shadows (use override BMD if present)
-      for (int p = 0; p < PART_COUNT; p++) {
-        BMDData *bmd = s_slotRender[i].partOverrideBmd[p]
-                           ? s_slotRender[i].partOverrideBmd[p].get()
-                           : s_classParts[ci].bmd[p].get();
-        if (!bmd)
-          continue;
-        projectShadow(bmd, s_slotRender[i].shadowMeshes[p], bones);
-      }
+      // Body parts
+      for (int p = 0; p < PART_COUNT; p++)
+        submitMeshes(s_slotRender[i].meshes[p]);
+      // Base head
+      if (s_slotRender[i].showBaseHead)
+        submitMeshes(s_slotRender[i].baseHeadMeshes);
+      // Weapon + shield
+      submitMeshes(s_slotRender[i].weaponMeshes);
+      submitMeshes(s_slotRender[i].shieldMeshes);
+    }
 
-      // Weapon shadow (compute weapon final bones for shadow projection)
-      static constexpr int BONE_BACK = 47;
-      if (s_slotRender[i].weaponBmd && BONE_BACK < (int)bones.size()) {
-        BoneWorldMatrix wOffsetMat = MuMath::BuildWeaponOffsetMatrix(
-            glm::vec3(70.f, 0.f, 90.f), glm::vec3(-20.f, 5.f, 40.f));
-        BoneWorldMatrix wParentMat;
-        MuMath::ConcatTransforms((const float(*)[4])bones[BONE_BACK].data(),
-                                 (const float(*)[4])wOffsetMat.data(),
-                                 (float(*)[4])wParentMat.data());
-        auto &wLocal = s_slotRender[i].weaponLocalBones;
-        std::vector<BoneWorldMatrix> wFinal(wLocal.size());
-        for (int bi = 0; bi < (int)wLocal.size(); ++bi)
-          MuMath::ConcatTransforms((const float(*)[4])wParentMat.data(),
-                                   (const float(*)[4])wLocal[bi].data(),
-                                   (float(*)[4])wFinal[bi].data());
-        projectShadow(s_slotRender[i].weaponBmd.get(),
-                       s_slotRender[i].weaponShadowMeshes, wFinal);
-      }
-
-      // Shield shadow
-      if (s_slotRender[i].shieldBmd && BONE_BACK < (int)bones.size()) {
-        BoneWorldMatrix sOffsetMat = MuMath::BuildWeaponOffsetMatrix(
-            glm::vec3(70.f, 0.f, 90.f), glm::vec3(-10.f, 0.f, 0.f));
-        BoneWorldMatrix sParentMat;
-        MuMath::ConcatTransforms((const float(*)[4])bones[BONE_BACK].data(),
-                                 (const float(*)[4])sOffsetMat.data(),
-                                 (float(*)[4])sParentMat.data());
-        auto &sLocal = s_slotRender[i].shieldLocalBones;
-        std::vector<BoneWorldMatrix> sFinal(sLocal.size());
-        for (int bi = 0; bi < (int)sLocal.size(); ++bi)
-          MuMath::ConcatTransforms((const float(*)[4])sParentMat.data(),
-                                   (const float(*)[4])sLocal[bi].data(),
-                                   (float(*)[4])sFinal[bi].data());
-        projectShadow(s_slotRender[i].shieldBmd.get(),
-                       s_slotRender[i].shieldShadowMeshes, sFinal);
+    // One-time debug log
+    { static bool logged = false;
+      if (!logged && shadowDraws > 0) {
+        printf("[CharSelect] Shadow pass: %d draws, center=(%.0f,%.1f,%.0f)\n",
+               shadowDraws, sceneCenter.x, sceneCenter.y, sceneCenter.z);
+        logged = true;
       }
     }
 
-    glDisable(GL_STENCIL_TEST);
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-    glEnable(GL_CULL_FACE);
+    // Pass shadow map to terrain
+    s_terrain.SetShadowMap(s_shadowColorTex, s_lightMtx);
+    s_terrain.SetShadowDebug(false);
   }
 
-  // Render selection spotlight — tall light cone around selected character
-  if (s_spotlightShader && s_spotlightTex && s_spotlightVAO &&
+  // Environment (subsystem calls — already BGFX-aware)
+  s_sky.Render(s_viewMatrix, s_projMatrix, camPos, CS_LUMINOSITY);
+  if (s_terrainLoaded)
+    s_terrain.Render(s_viewMatrix, s_projMatrix, s_time, camPos);
+  if (s_objectRenderer.GetInstanceCount() > 0)
+    s_objectRenderer.Render(s_viewMatrix, s_projMatrix, camPos, s_time);
+  s_grassRenderer.Render(s_viewMatrix, s_projMatrix, s_time, camPos);
+  s_boidManager.Render(s_viewMatrix, s_projMatrix, camPos);
+  s_boidManager.RenderLeaves(s_viewMatrix, s_projMatrix);
+
+  // Shadows are now handled by shadow mapping (depth pass on view 8, set up above).
+
+  // ── Spotlight ──
+  if (s_spotlightShader && TexValid(s_spotlightTex) && bgfx::isValid(s_spotVBO) &&
       s_selectedSlot >= 0 && s_slots[s_selectedSlot].occupied && !s_createOpen) {
     auto &sp = SLOT_POSITIONS[s_selectedSlot];
     float slotY = s_terrainLoaded ? s_terrain.GetHeight(sp.worldX, sp.worldZ) : 0.0f;
 
-    // Orient cylinder along camera's screen-up so it appears perfectly vertical
-    // Extract camera axes from view matrix
     glm::vec3 camRight(s_viewMatrix[0][0], s_viewMatrix[1][0], s_viewMatrix[2][0]);
     glm::vec3 camUp(s_viewMatrix[0][1], s_viewMatrix[1][1], s_viewMatrix[2][1]);
     glm::vec3 camFwd(s_viewMatrix[0][2], s_viewMatrix[1][2], s_viewMatrix[2][2]);
-
-    // Build orientation: cylinder Y axis → camera up (screen vertical)
     glm::mat4 orient(1.0f);
     orient[0] = glm::vec4(camRight, 0.0f);
     orient[1] = glm::vec4(camUp, 0.0f);
@@ -1741,231 +1661,178 @@ void Render(int windowWidth, int windowHeight) {
                                           glm::vec3(sp.worldX, slotY, sp.worldZ));
     spotModel = spotModel * orient;
 
-    s_spotlightShader->use();
-    s_spotlightShader->setMat4("projection", s_projMatrix);
-    s_spotlightShader->setMat4("view", s_viewMatrix);
-    s_spotlightShader->setInt("leafTexture", 0);
+    uint64_t spotState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                       | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, s_spotlightTex);
+    // Outer cylinder (subtle beam)
+    s_spotlightShader->setVec4("u_leafAlpha", glm::vec4(0.25f, 0, 0, 0));
+    bgfx::setTransform(glm::value_ptr(spotModel));
+    bgfx::setVertexBuffer(0, s_spotVBO);
+    bgfx::setIndexBuffer(s_spotEBO);
+    s_spotlightShader->setTexture(0, "s_texColor", s_spotlightTex);
+    bgfx::setState(spotState);
+    bgfx::submit(0, s_spotlightShader->program);
 
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
-    glDepthMask(GL_FALSE);
-    glDisable(GL_CULL_FACE);
-
-    // Outer cylinder — main beam
-    s_spotlightShader->setMat4("model", spotModel);
-    s_spotlightShader->setFloat("leafAlpha", 0.45f);
-    glBindVertexArray(s_spotlightVAO);
-    glDrawElements(GL_TRIANGLES, s_spotlightIndexCount, GL_UNSIGNED_INT, nullptr);
-
-    // Inner cylinder — brighter core, slightly smaller
+    // Inner cylinder (brighter core, scaled 0.6)
     glm::mat4 innerModel = glm::translate(glm::mat4(1.0f),
                                            glm::vec3(sp.worldX, slotY, sp.worldZ));
     innerModel = innerModel * orient;
     innerModel = glm::scale(innerModel, glm::vec3(0.6f, 1.0f, 0.6f));
-    s_spotlightShader->setMat4("model", innerModel);
-    s_spotlightShader->setFloat("leafAlpha", 0.25f);
-    glDrawElements(GL_TRIANGLES, s_spotlightIndexCount, GL_UNSIGNED_INT, nullptr);
-
-    glBindVertexArray(0);
-    glDepthMask(GL_TRUE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_CULL_FACE);
+    s_spotlightShader->setVec4("u_leafAlpha", glm::vec4(0.12f, 0, 0, 0));
+    bgfx::setTransform(glm::value_ptr(innerModel));
+    bgfx::setVertexBuffer(0, s_spotVBO);
+    bgfx::setIndexBuffer(s_spotEBO);
+    s_spotlightShader->setTexture(0, "s_texColor", s_spotlightTex);
+    bgfx::setState(spotState);
+    bgfx::submit(0, s_spotlightShader->program);
   }
 
-  // Render character models at slot positions
+  // ── Character models ──
   if (s_modelShader) {
-    s_modelShader->use();
-    s_modelShader->setMat4("view", s_viewMatrix);
-    s_modelShader->setMat4("projection", s_projMatrix);
-    s_modelShader->setFloat("objectAlpha", 1.0f);
-    // Elegant directional sunlight from above — warm, high position
-    s_modelShader->setVec3("lightPos", s_sunLightPos);
-    s_modelShader->setVec3("lightColor", CS_SUN_COLOR);
-    s_modelShader->setVec3("viewPos", camPos);
-    s_modelShader->setFloat("blendMeshLight", 1.0f);
-    s_modelShader->setFloat("luminosity", CS_LUMINOSITY);
-    s_modelShader->setBool("useFog", false);
-    s_modelShader->setBool("useSkinning", false);
-    s_modelShader->setFloat("swayPhase", -1.0f);
-    s_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-    s_modelShader->setFloat("outlineOffset", 0.0f);
-    s_modelShader->setInt("chromeMode", 0);
-    s_modelShader->setVec3("glowColor", glm::vec3(0.0f));
-    s_modelShader->setVec3("baseTint", glm::vec3(1.0f));
-
-    // Base point lights from world objects
     int basePL = (int)s_pointLights.size();
 
-    for (int i = 0; i < MAX_SLOTS; i++) {
-      if (!s_slots[i].occupied)
-        continue;
+    uint64_t stAlpha = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                     | BGFX_STATE_DEPTH_TEST_LESS
+                     | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                             BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    uint64_t stAdd = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                   | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
 
+    for (int i = 0; i < MAX_SLOTS; i++) {
+      if (!s_slots[i].occupied) continue;
       auto &sp = SLOT_POSITIONS[i];
       float facing = sp.facingDeg * (3.14159f / 180.0f);
+      float slotY = s_terrainLoaded ? s_terrain.GetHeight(sp.worldX, sp.worldZ) : 0.0f;
 
-      // Get terrain height at slot position for correct Y placement
-      float slotY = s_terrainLoaded ? s_terrain.GetHeight(sp.worldX, sp.worldZ)
-                                    : 0.0f;
-
-      // Upload point lights per-character: add spotlight for selected slot
       bool isSelected = (i == s_selectedSlot);
+
+      // Point lights + spotlight for selected character
       if (isSelected && basePL < CS_MAX_POINT_LIGHTS - 2) {
-        // Strong overhead spotlight — key light on selected character
         CSPointLight spot;
         spot.position = glm::vec3(sp.worldX, slotY + 200.0f, sp.worldZ);
-        spot.color = glm::vec3(1.4f, 1.3f, 1.1f); // Bright warm white
+        spot.color = glm::vec3(1.4f, 1.3f, 1.1f);
         spot.range = 500.0f;
         spot.objectType = 0;
         s_pointLights.push_back(spot);
-        // Subtle rim light from behind — gives edge definition
         CSPointLight rim;
-        rim.position = glm::vec3(sp.worldX + FWD_X * 120.0f,
-                                  slotY + 120.0f,
+        rim.position = glm::vec3(sp.worldX + FWD_X * 120.0f, slotY + 120.0f,
                                   sp.worldZ + FWD_Z * 120.0f);
-        rim.color = glm::vec3(0.5f, 0.6f, 0.8f); // Cool blue rim
+        rim.color = glm::vec3(0.5f, 0.6f, 0.8f);
         rim.range = 300.0f;
         rim.objectType = 0;
         s_pointLights.push_back(rim);
-        s_modelShader->uploadPointLights(basePL + 2, s_pointLights.data());
-        s_pointLights.pop_back();
-        s_pointLights.pop_back();
-      } else {
-        s_modelShader->uploadPointLights(basePL, s_pointLights.data());
       }
+      int plCount = (int)s_pointLights.size();
 
-      // Same model matrix as HeroCharacter (no extra scale needed)
+      glm::vec3 tLight = SampleTerrainLight(sp.worldX, sp.worldZ);
+      if (isSelected) tLight = glm::max(tLight, glm::vec3(0.4f));
+      float brightness = isSelected ? 1.5f : 0.55f;
+      glm::vec3 lightColor = CS_SUN_COLOR * brightness;
+
       glm::mat4 model = glm::translate(glm::mat4(1.0f),
                                         glm::vec3(sp.worldX, slotY, sp.worldZ));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
       model = glm::rotate(model, facing, glm::vec3(0, 0, 1));
 
-      // Terrain lightmap lighting at character position
-      glm::vec3 tLight = SampleTerrainLight(sp.worldX, sp.worldZ);
-      // Boost terrain light for selected character
-      if (isSelected)
-        tLight = glm::max(tLight, glm::vec3(0.4f));
-      s_modelShader->setVec3("terrainLight", tLight);
+      // Uniform setter lambda
+      auto setCSUniforms = [&](float bml, float chromeMode, float chromeTime,
+                               const glm::vec3 &glowColor) {
+        s_modelShader->setVec4("u_params", glm::vec4(1.0f, bml, chromeMode, chromeTime));
+        s_modelShader->setVec4("u_params2", glm::vec4(CS_LUMINOSITY, 0, 0, 0));
+        s_modelShader->setVec4("u_viewPos", glm::vec4(camPos, 0));
+        s_modelShader->setVec4("u_lightPos", glm::vec4(s_sunLightPos, 0));
+        s_modelShader->setVec4("u_lightColor", glm::vec4(lightColor, 0));
+        s_modelShader->setVec4("u_terrainLight", glm::vec4(tLight, 0));
+        s_modelShader->setVec4("u_glowColor", glm::vec4(glowColor, 0));
+        s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 0));
+        s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
+        s_modelShader->setVec4("u_fogParams", glm::vec4(0, 0, 0, 0));
+        s_modelShader->setVec4("u_fogColor", glm::vec4(0));
+        // Shadow map
+        float shadowOn = bgfx::isValid(s_shadowColorTex) ? 1.0f : 0.0f;
+        s_modelShader->setVec4("u_shadowParams", glm::vec4(shadowOn, 0, 0, 0));
+        if (shadowOn > 0.5f)
+          s_modelShader->setMat4("u_lightMtx", s_lightMtx);
+        s_modelShader->uploadPointLights(plCount, s_pointLights.data());
+      };
 
-      // Selected character brighter, non-selected dimmed for clear focus
-      float brightness = isSelected ? 1.5f : 0.55f;
-      s_modelShader->setVec3("lightColor",
-                             CS_SUN_COLOR * brightness);
-      s_modelShader->setMat4("model", model);
+      // Draw helper lambda
+      auto bgfxDraw = [&](MeshBuffers &mb, uint64_t state) {
+        bgfx::setTransform(glm::value_ptr(model));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        s_modelShader->setTexture(0, "s_texColor", mb.texture);
+        if (bgfx::isValid(s_shadowColorTex))
+          s_modelShader->setTexture(1, "s_shadowMap", s_shadowColorTex);
+        bgfx::setState(state);
+        bgfx::submit(0, s_modelShader->program);
+      };
 
-      // Draw all body parts
+      // Body parts
       for (int p = 0; p < PART_COUNT; p++) {
         for (auto &mb : s_slotRender[i].meshes[p]) {
           if (mb.indexCount == 0 || mb.hidden) continue;
-          glActiveTexture(GL_TEXTURE0);
-          glBindTexture(GL_TEXTURE_2D, mb.texture);
-          s_modelShader->setInt("texture_diffuse", 0);
-          glBindVertexArray(mb.vao);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+          setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+          bgfxDraw(mb, mb.bright ? stAdd : stAlpha);
         }
       }
-      // Draw base head (class default face under accessory helm)
+      // Base head
       if (s_slotRender[i].showBaseHead) {
         for (auto &mb : s_slotRender[i].baseHeadMeshes) {
           if (mb.indexCount == 0 || mb.hidden) continue;
-          glActiveTexture(GL_TEXTURE0);
-          glBindTexture(GL_TEXTURE_2D, mb.texture);
-          s_modelShader->setInt("texture_diffuse", 0);
-          glBindVertexArray(mb.vao);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+          setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+          bgfxDraw(mb, stAlpha);
         }
       }
 
-      // Draw weapon (pre-skinned to back bone in ReskinSlot)
+      // Weapon
       {
         int blendIdx = s_slotRender[i].weaponBlendMesh;
         int mi = 0;
         for (auto &mb : s_slotRender[i].weaponMeshes) {
           if (mb.indexCount == 0) { mi++; continue; }
-          glActiveTexture(GL_TEXTURE0);
-          glBindTexture(GL_TEXTURE_2D, mb.texture);
-          s_modelShader->setInt("texture_diffuse", 0);
-          glBindVertexArray(mb.vao);
           if (blendIdx >= 0 && mi == blendIdx) {
             float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
-            s_modelShader->setFloat("blendMeshLight", pulseLight);
-            glBlendFunc(GL_ONE, GL_ONE);
-            glDepthMask(GL_FALSE);
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
-            glDepthMask(GL_TRUE);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            s_modelShader->setFloat("blendMeshLight", 1.0f);
+            setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f));
+            bgfxDraw(mb, stAdd);
           } else {
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+            setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+            bgfxDraw(mb, stAlpha);
           }
           mi++;
         }
       }
 
-      // Draw shield
+      // Shield
       {
         int blendIdx = s_slotRender[i].shieldBlendMesh;
         int mi = 0;
         for (auto &mb : s_slotRender[i].shieldMeshes) {
           if (mb.indexCount == 0) { mi++; continue; }
-          glActiveTexture(GL_TEXTURE0);
-          glBindTexture(GL_TEXTURE_2D, mb.texture);
-          s_modelShader->setInt("texture_diffuse", 0);
-          glBindVertexArray(mb.vao);
           if (blendIdx >= 0 && mi == blendIdx) {
             float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
-            s_modelShader->setFloat("blendMeshLight", pulseLight);
-            glBlendFunc(GL_ONE, GL_ONE);
-            glDepthMask(GL_FALSE);
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
-            glDepthMask(GL_TRUE);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            s_modelShader->setFloat("blendMeshLight", 1.0f);
+            setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f));
+            bgfxDraw(mb, stAdd);
           } else {
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+            setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+            bgfxDraw(mb, stAlpha);
           }
           mi++;
         }
       }
 
-      // Draw wings (pre-skinned in ReskinSlot)
-      // Main 5.2: LightEnable=false for ALL wings — bypass per-vertex lighting.
-      // Wings render with flat BodyLight(1,1,1). Wing05/06 set oscillating
-      // BlendMeshLight in ZzzObject.cpp but have no BlendMesh target (not set),
-      // so the oscillation only affects a non-existent overlay — effectively a no-op.
-      // Use glowColor shader path (chromeMode=0) for flat white lighting.
+      // Wings — flat white lighting via glowColor
       {
-        // glowColor with chromeMode=0 → finalLight = glowColor (bypasses lighting)
-        s_modelShader->setVec3("glowColor", glm::vec3(1.0f));
-        s_modelShader->setInt("chromeMode", 0);
-
-        glDisable(GL_CULL_FACE);
         for (auto &mb : s_slotRender[i].wingMeshes) {
           if (mb.indexCount == 0) continue;
-
-          glActiveTexture(GL_TEXTURE0);
-          glBindTexture(GL_TEXTURE_2D, mb.texture);
-          s_modelShader->setInt("texture_diffuse", 0);
-          glBindVertexArray(mb.vao);
-          if (mb.bright) {
-            glBlendFunc(GL_ONE, GL_ONE);
-            glDepthMask(GL_FALSE);
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
-            glDepthMask(GL_TRUE);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-          } else {
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
-          }
+          setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(1.0f));
+          bgfxDraw(mb, mb.bright ? stAdd : stAlpha);
         }
-        glEnable(GL_CULL_FACE);
-
-        s_modelShader->setVec3("glowColor", glm::vec3(0.0f));
       }
 
-      // ── +7/+9/+11/+13 item glow passes (ChromeGlow module) ──
+      // ChromeGlow (+7/+9/+11/+13 item glow)
       {
         bool anyGlow = false;
         for (int p = 0; p < PART_COUNT; p++) {
@@ -1973,68 +1840,76 @@ void Render(int windowWidth, int windowHeight) {
         }
         if (s_slots[i].equip[0].itemLevel >= 7) anyGlow = true;
 
-        if (anyGlow && ChromeGlow::GetTextures().chrome1) {
+        if (anyGlow && TexValid(ChromeGlow::GetTextures().chrome1)) {
           float t = (float)glfwGetTime();
-          ChromeGlow::BeginGlow();
 
           // Armor body parts glow
           for (int p = 0; p < PART_COUNT; p++) {
             uint8_t lvl = s_slots[i].equip[2 + p].itemLevel;
             if (lvl < 7) continue;
             ChromeGlow::GlowPass passes[3];
-            int n = ChromeGlow::GetGlowPasses(lvl, 7 + p, s_slots[i].equip[2 + p].itemIndex, passes);
+            int n = ChromeGlow::GetGlowPasses(lvl, 7 + p,
+                                               s_slots[i].equip[2 + p].itemIndex, passes);
             for (int gp = 0; gp < n; ++gp) {
-              s_modelShader->setVec3("glowColor", passes[gp].color);
-              s_modelShader->setInt("chromeMode", passes[gp].chromeMode);
-              s_modelShader->setFloat("chromeTime", t);
-              glBindTexture(GL_TEXTURE_2D, passes[gp].texture);
+              setCSUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
               for (auto &mb : s_slotRender[i].meshes[p]) {
                 if (mb.indexCount == 0 || mb.hidden) continue;
-                glBindVertexArray(mb.vao);
-                glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+                s_modelShader->setTexture(0, "s_texColor", passes[gp].texture);
+                bgfx::setTransform(glm::value_ptr(model));
+                if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+                else bgfx::setVertexBuffer(0, mb.vbo);
+                bgfx::setIndexBuffer(mb.ebo);
+                bgfx::setState(stAdd);
+                bgfx::submit(0, s_modelShader->program);
               }
             }
           }
 
-          // Weapon glow (equip[0])
+          // Weapon glow
           uint8_t wlv = s_slots[i].equip[0].itemLevel;
           if (wlv >= 7) {
             ChromeGlow::GlowPass passes[3];
-            int n = ChromeGlow::GetGlowPasses(wlv, s_slots[i].equip[0].category, s_slots[i].equip[0].itemIndex, passes);
-            float wPassScale = 0.7f / (float)n;
+            int n = ChromeGlow::GetGlowPasses(wlv, s_slots[i].equip[0].category,
+                                               s_slots[i].equip[0].itemIndex, passes);
             int wBlend = s_slotRender[i].weaponBlendMesh;
             for (int gp = 0; gp < n; ++gp) {
-              s_modelShader->setVec3("glowColor", passes[gp].color * wPassScale);
-              s_modelShader->setInt("chromeMode", passes[gp].chromeMode);
-              s_modelShader->setFloat("chromeTime", t);
-              glBindTexture(GL_TEXTURE_2D, passes[gp].texture);
+              float wScale = 0.7f / (float)n;
+              setCSUniforms(1.0f, (float)passes[gp].chromeMode, t,
+                            passes[gp].color * wScale);
               int wmi = 0;
               for (auto &mb : s_slotRender[i].weaponMeshes) {
                 if (mb.indexCount == 0 || (wBlend >= 0 && wmi == wBlend)) { wmi++; continue; }
-                glBindVertexArray(mb.vao);
-                glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, nullptr);
+                s_modelShader->setTexture(0, "s_texColor", passes[gp].texture);
+                bgfx::setTransform(glm::value_ptr(model));
+                if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+                else bgfx::setVertexBuffer(0, mb.vbo);
+                bgfx::setIndexBuffer(mb.ebo);
+                bgfx::setState(stAdd);
+                bgfx::submit(0, s_modelShader->program);
                 wmi++;
               }
             }
           }
-
-          ChromeGlow::EndGlow(s_modelShader->ID);
         }
       }
 
+      // Pop temp point lights
+      if (isSelected && basePL < CS_MAX_POINT_LIGHTS - 2) {
+        s_pointLights.pop_back();
+        s_pointLights.pop_back();
+      }
     }
   }
 
-
-  // Render face portrait to FBO (if create window is open)
+  // Render face portrait directly to backbuffer (if create window is open)
   if (s_createOpen && s_faceLoadedClass >= 0) {
-    // Rebuild face meshes if class changed
     int wantIdx = ClassToIndex(s_createClass);
     if (wantIdx != s_faceLoadedClass) {
       RebuildFaceMeshes(wantIdx);
     }
-    RenderFaceToFBO();
+    RenderFaceToBackbuffer();
   }
+
 
   // ── ImGui UI overlay ──
   ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -2057,8 +1932,8 @@ void Render(int windowWidth, int windowHeight) {
                 title);
   }
 
-  // Character name plates (floating labels above each character)
-  for (int i = 0; i < MAX_SLOTS; i++) {
+  // Character name plates (floating labels above each character, hidden during creation)
+  for (int i = 0; i < MAX_SLOTS && !s_createOpen; i++) {
     if (!s_slots[i].occupied)
       continue;
     auto &ch = s_slots[i];
@@ -2190,7 +2065,8 @@ void Render(int windowWidth, int windowHeight) {
   // ── Character slot click areas (invisible buttons over each slot) ──
   // We handle this via OnMouseClick instead of ImGui
 
-  // ── Create character panel: model container above, form container below ──
+  // ── Create character panel (original layout with direct backbuffer face) ──
+  if (!s_createOpen) s_faceScreenValid = false;
   if (s_createOpen) {
     int wantIdx = ClassToIndex(s_createClass);
     if (wantIdx != s_faceLoadedClass) {
@@ -2208,61 +2084,46 @@ void Render(int windowWidth, int windowHeight) {
 
     float W = (float)windowWidth;
     float H = (float)windowHeight;
-
-    // Panel dimensions
     float uiScale = std::min(W / 640.0f, H / 480.0f);
     uiScale = std::max(uiScale, 1.0f);
     float panelW = 454.0f * uiScale;
     panelW = std::min(panelW, W * 0.85f);
 
-    // Form container: description + name input row
     float formH = 90.0f * uiScale;
-
-    // Right-side overlay width (stats + class buttons)
     float statOverlayW = panelW * (130.0f / 454.0f);
-    float statOverlayX = 0.0f; // set after panelX is known
+    float statOverlayX = 0.0f;
 
-    // Compute face display size from panel width — model fills left area
-    // UV crop: hide the bottom 15% of the FBO to crop arm stumps
-    // This makes the model appear bigger than the container (overflow:hidden)
-    float uvCropBottom = 0.25f; // fraction of FBO bottom to hide
-    float uvCropTop = 0.10f;   // fraction of FBO top to hide (empty space above head)
-    float uvVisibleFrac = 1.0f - uvCropBottom - uvCropTop;
-    float fboAspect = (float)FACE_TEX_W / (float)FACE_TEX_H;
-    float croppedAspect = (float)FACE_TEX_W / ((float)FACE_TEX_H * uvVisibleFrac);
+    // Layout: model container height then form below
     float modelAreaW = panelW - statOverlayW;
-    float faceDispW = modelAreaW;
-    float faceDispH = faceDispW / croppedAspect;
-    // Cap model height to 70% of screen
-    float maxModelH = H * 0.70f;
-    if (faceDispH > maxModelH) {
-      faceDispH = maxModelH;
-      faceDispW = faceDispH * croppedAspect;
-    }
-
-    // Model container height = exactly the face display height (no gap)
-    float modelH = faceDispH;
+    float modelH = H * 0.50f;
     float panelH = modelH + formH;
     panelH = std::min(panelH, H * 0.92f);
     modelH = panelH - formH;
-    // Recalculate face if model was clamped
-    if (faceDispH > modelH) {
-      faceDispH = modelH;
-      faceDispW = faceDispH * fboAspect;
-    }
 
     float panelX = (W - panelW) * 0.5f;
     float panelY = (H - panelH) * 0.45f;
     statOverlayX = panelX + panelW - statOverlayW;
+    float formY = panelY + modelH;
 
-    // Zone boundaries
-    float formY = panelY + modelH; // form starts directly after model
+    // Face viewport — shifted left so face is more on the left side
+    float faceX = panelX - panelW * 0.14f;
+    float faceY = panelY;
+    float faceDispW = panelW;
+    float faceDispH = modelH;
 
-    // Center face horizontally in the model area, flush to bottom (= formY)
-    float faceX = panelX + (modelAreaW - faceDispW) * 0.5f;
-    float faceY = panelY; // model fills entire model zone top-to-bottom
+    // Compute face screen rect for direct backbuffer rendering (BGFX)
+    {
+      ImGuiIO &io = ImGui::GetIO();
+      float fbScaleX = io.DisplayFramebufferScale.x;
+      float fbScaleY = io.DisplayFramebufferScale.y;
+      s_faceScreenX = (uint16_t)(faceX * fbScaleX);
+      s_faceScreenY = (uint16_t)(faceY * fbScaleY);
+      s_faceScreenW = (uint16_t)(faceDispW * fbScaleX);
+      s_faceScreenH = (uint16_t)(faceDispH * fbScaleY);
+      s_faceScreenValid = true;
+    }
 
-    // ImGui window for interactive controls
+    // ImGui window for interactive controls (NoBackground — scene shows through)
     ImGui::SetNextWindowPos(ImVec2(panelX - 5, panelY - 5));
     ImGui::SetNextWindowSize(ImVec2(panelW + 10, panelH + 10));
     ImGui::SetNextWindowFocus();
@@ -2271,33 +2132,17 @@ void Render(int windowWidth, int windowHeight) {
 
     ImDrawList *cdl = ImGui::GetWindowDrawList();
 
-    // ── Model container background ──
-    cdl->AddRectFilledMultiColor(ImVec2(panelX, panelY),
+    // ── Model container — full background with opacity, face renders on top (view 31) ──
+    cdl->AddRectFilled(ImVec2(panelX, panelY),
                        ImVec2(panelX + panelW, formY),
-                       IM_COL32(8, 8, 18, 160), IM_COL32(8, 8, 18, 160),
-                       IM_COL32(14, 14, 26, 150), IM_COL32(14, 14, 26, 150));
+                       IM_COL32(10, 10, 20, 160), 2.0f);
     cdl->AddRect(ImVec2(panelX, panelY),
                  ImVec2(panelX + panelW, formY),
-                 IM_COL32(5, 5, 10, 220), 2.0f, 0, 2.0f);
-    cdl->AddRect(ImVec2(panelX + 2, panelY + 2),
-                 ImVec2(panelX + panelW - 2, formY - 2),
-                 IM_COL32(80, 70, 45, 120));
+                 IM_COL32(80, 70, 45, 100), 2.0f);
 
-    // ── Face portrait — anchored to bottom of model container ──
-    if (s_faceColorTex && s_faceLoadedClass >= 0) {
-      ImGui::SetCursorPos(ImVec2(faceX - (panelX - 5), faceY - (panelY - 5)));
-      // UV crop: hide empty space above head (top) and arm stumps (bottom)
-      // OpenGL FBO: UV y=0 is bottom of scene, y=1 is top
-      // Display flip: UV0=(0, 1-cropTop)=top, UV1=(1, cropBottom)=bottom
-      ImGui::Image((ImTextureID)(intptr_t)s_faceColorTex,
-                   ImVec2(faceDispW, faceDispH),
-                   ImVec2(0, 1.0f - uvCropTop), ImVec2(1, uvCropBottom));
-    }
-
-    // ── Stats panel (overlaid, bottom-right of model zone, above class buttons) ──
-    // Anchor to bottom: class buttons at bottom, stats above them
+    // ── Stats panel (overlaid, bottom-right of model zone) ──
     float cbH_pre = 26.0f * uiScale;
-    float cbTotalH = 4.5f * cbH_pre; // 4 buttons + 0.5 gap before MG
+    float cbTotalH = 4.5f * cbH_pre;
     float bottomMargin = 6.0f * uiScale;
     float gapBetween = 4.0f * uiScale;
     {
@@ -2328,99 +2173,77 @@ void Render(int windowWidth, int windowHeight) {
       }
     }
 
-    // ── Class selection buttons (overlaid, right side, anchored to bottom) ──
+    // ── Class selection buttons (overlaid, right side) ──
     {
       float cbAbsX = statOverlayX;
       float cbAbsY = formY - bottomMargin - cbTotalH;
       float cbW = statOverlayW - 4 * uiScale;
       float cbH = cbH_pre;
-      float cbGap = 0.0f;
 
       float cbX = cbAbsX - (panelX - 5);
       float cbY = cbAbsY - (panelY - 5);
 
       ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
       ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                            ImVec4(0.14f, 0.13f, 0.10f, 0.92f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                            ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Border,
-                            ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.13f, 0.10f, 0.92f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
 
       float yAccum = 0.0f;
       for (int i = 0; i < numClasses; i++) {
-        if (i == 3) yAccum += cbH * 0.5f; // gap before MG
-
+        if (i == 3) yAccum += cbH * 0.5f;
         ImGui::SetCursorPos(ImVec2(cbX, cbY + yAccum));
 
         bool isSelected = (classCodes[i] == s_createClass);
         if (isSelected) {
-          ImGui::PushStyleColor(ImGuiCol_Button,
-                                ImVec4(0.16f, 0.14f, 0.08f, 0.92f));
-          ImGui::PushStyleColor(ImGuiCol_Text,
-                                ImVec4(1.0f, 0.88f, 0.55f, 1.0f));
-          ImGui::PushStyleColor(ImGuiCol_Border,
-                                ImVec4(0.70f, 0.63f, 0.35f, 0.8f));
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.14f, 0.08f, 0.92f));
+          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.88f, 0.55f, 1.0f));
+          ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.70f, 0.63f, 0.35f, 0.8f));
         } else {
-          ImGui::PushStyleColor(ImGuiCol_Text,
-                                ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-          ImGui::PushStyleColor(ImGuiCol_Button,
-                                ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
-          ImGui::PushStyleColor(ImGuiCol_Border,
-                                ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
+          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
+          ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
         }
 
-        bool enabled = (classCodes[i] == CLASS_DK || classCodes[i] == CLASS_DW);
+        bool enabled = true; // all classes selectable
         if (!enabled) ImGui::BeginDisabled();
-
         char btnId[32];
         snprintf(btnId, sizeof(btnId), "%s##cls%d", classNames[i], i);
         if (ImGui::Button(btnId, ImVec2(cbW, cbH))) {
           SoundManager::Play(SOUND_CLICK01);
           s_createClass = classCodes[i];
         }
-
         if (!enabled) ImGui::EndDisabled();
         ImGui::PopStyleColor(3);
-        yAccum += cbH + cbGap;
+        yAccum += cbH;
       }
       ImGui::PopStyleColor(4);
       ImGui::PopStyleVar(2);
     }
 
     // ── Form container background (below model) ──
-    cdl->AddRectFilledMultiColor(ImVec2(panelX, formY),
+    cdl->AddRectFilled(ImVec2(panelX, formY),
                        ImVec2(panelX + panelW, panelY + panelH),
-                       IM_COL32(10, 10, 20, 200), IM_COL32(10, 10, 20, 200),
-                       IM_COL32(16, 16, 30, 195), IM_COL32(16, 16, 30, 195));
+                       IM_COL32(10, 10, 20, 200), 0.0f);
     cdl->AddRect(ImVec2(panelX, formY),
                  ImVec2(panelX + panelW, panelY + panelH),
-                 IM_COL32(5, 5, 10, 220), 2.0f, 0, 2.0f);
-    cdl->AddRect(ImVec2(panelX + 2, formY + 2),
-                 ImVec2(panelX + panelW - 2, panelY + panelH - 2),
                  IM_COL32(80, 70, 45, 120));
-    // Divider line between model and form
     cdl->AddLine(ImVec2(panelX + 3, formY),
                  ImVec2(panelX + panelW - 3, formY),
                  IM_COL32(80, 70, 45, 160), 1.0f);
 
-    // ── Class description (below divider, left side) ──
+    // ── Class description ──
     {
       const char *classDescs[] = {
           "Master of the arcane arts. Wields\npowerful magic fueled by Energy\nto devastate foes from afar.",
           "A fearless warrior clad in heavy\narmor. Uses Strength and AG to\ndeliver devastating melee strikes.",
           "A versatile archer and healer.\nSupports allies with healing magic\nand strikes from range.",
           "Combines swordplay and sorcery.\nDraws on both Strength and Energy\nfor a versatile fighting style."};
-
       float descY = formY + 6 * uiScale;
       float descX = panelX + 10 * uiScale;
-      cdl->AddText(ImVec2(descX + 1, descY + 1),
-                   IM_COL32(0, 0, 0, 180), classDescs[classIdx]);
-      cdl->AddText(ImVec2(descX, descY),
-                   IM_COL32(190, 185, 170, 220), classDescs[classIdx]);
+      cdl->AddText(ImVec2(descX + 1, descY + 1), IM_COL32(0,0,0,180), classDescs[classIdx]);
+      cdl->AddText(ImVec2(descX, descY), IM_COL32(190,185,170,220), classDescs[classIdx]);
     }
 
     // ── Name input + Create/Back buttons (bottom row) ──
@@ -2428,26 +2251,19 @@ void Render(int windowWidth, int windowHeight) {
       float rowAbsY = panelY + panelH - 34 * uiScale;
       float nameAbsX = panelX + 10 * uiScale;
       float nameW = panelW * 0.42f;
-
       float nameX = nameAbsX - (panelX - 5);
       float nameY = rowAbsY - (panelY - 5);
 
       ImGui::SetCursorPos(ImVec2(nameX, nameY));
-      ImGui::PushStyleColor(ImGuiCol_FrameBg,
-                            ImVec4(0.05f, 0.04f, 0.02f, 0.9f));
-      ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,
-                            ImVec4(0.12f, 0.09f, 0.05f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Border,
-                            ImVec4(0.45f, 0.38f, 0.22f, 0.7f));
+      ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.05f, 0.04f, 0.02f, 0.9f));
+      ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.12f, 0.09f, 0.05f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.45f, 0.38f, 0.22f, 0.7f));
       ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
       ImGui::SetNextItemWidth(nameW);
-      ImGui::InputTextWithHint("##createName",
-                               "Character name (4-10)",
-                               s_createName, 11);
+      ImGui::InputTextWithHint("##createName", "Character name (4-10)", s_createName, 11);
       ImGui::PopStyleVar();
       ImGui::PopStyleColor(3);
 
-      // Create Character + Back buttons
       float createW = 110.0f * uiScale;
       float backW = 60.0f * uiScale;
       float obH = 26.0f * uiScale;
@@ -2458,18 +2274,11 @@ void Render(int windowWidth, int windowHeight) {
       ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
       ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
 
-      // Create button (gold accent)
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(0.14f, 0.12f, 0.06f, 0.92f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                            ImVec4(0.22f, 0.18f, 0.08f, 0.95f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                            ImVec4(0.30f, 0.24f, 0.10f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Border,
-                            ImVec4(0.55f, 0.48f, 0.25f, 0.8f));
-      ImGui::PushStyleColor(ImGuiCol_Text,
-                            ImVec4(1.0f, 0.88f, 0.55f, 1.0f));
-
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.14f, 0.12f, 0.06f, 0.92f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.18f, 0.08f, 0.95f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.30f, 0.24f, 0.10f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.55f, 0.48f, 0.25f, 0.8f));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.88f, 0.55f, 1.0f));
       ImGui::SetCursorPos(ImVec2(createX, nameY));
       if (ImGui::Button("Create Character", ImVec2(createW, obH))) {
         SoundManager::Play(SOUND_MENU01);
@@ -2478,25 +2287,17 @@ void Render(int windowWidth, int windowHeight) {
           s_ctx.server->SendCharCreate(s_createName, s_createClass);
         } else {
           SoundManager::Play(SOUND_ERROR01);
-          snprintf(s_statusMsg, sizeof(s_statusMsg),
-                   "Name must be 4-10 characters");
+          snprintf(s_statusMsg, sizeof(s_statusMsg), "Name must be 4-10 characters");
           s_statusTimer = 2.0f;
         }
       }
       ImGui::PopStyleColor(5);
 
-      // Back button (neutral)
-      ImGui::PushStyleColor(ImGuiCol_Button,
-                            ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                            ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                            ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Border,
-                            ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
-      ImGui::PushStyleColor(ImGuiCol_Text,
-                            ImVec4(0.86f, 0.84f, 0.78f, 0.94f));
-
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.86f, 0.84f, 0.78f, 0.94f));
       ImGui::SameLine(0.0f, obGap);
       if (ImGui::Button("Back", ImVec2(backW, obH))) {
         SoundManager::Play(SOUND_CLICK01);

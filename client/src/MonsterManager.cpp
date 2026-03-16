@@ -162,9 +162,9 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   m_monsterTexPath = dataPath + "/Monster/";
 
   // Create shaders (same as NPC — model.vert/frag, shadow.vert/frag)
-  m_shader = Shader::Load("model.vert", "model.frag");
-  m_shadowShader = Shader::Load("shadow.vert", "shadow.frag");
-  m_outlineShader = Shader::Load("outline.vert", "outline.frag");
+  m_shader = Shader::Load("vs_model.bin", "fs_model.bin");
+  m_shadowShader = Shader::Load("vs_shadow.bin", "fs_shadow.bin");
+  m_outlineShader = Shader::Load("vs_outline.bin", "fs_outline.bin");
 
   // Bull Fighter: server type 0, Monster01.bmd (CreateMonsterClient: scale 0.8)
   // BBox: (-60,-60,0) to (50,50,150) — default
@@ -768,16 +768,12 @@ void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
       mon.shadowMeshes.push_back(sm);
       continue;
     }
-    glGenVertexArrays(1, &sm.vao);
-    glGenBuffers(1, &sm.vbo);
-    glBindVertexArray(sm.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                 GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                          (void *)0);
-    glEnableVertexAttribArray(0);
-    glBindVertexArray(0);
+    bgfx::VertexLayout shadowLayout;
+    shadowLayout.begin()
+        .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+        .end();
+    sm.vbo = bgfx::createDynamicVertexBuffer(
+        sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
     mon.shadowMeshes.push_back(sm);
   }
 
@@ -812,16 +808,12 @@ void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
           shadowVertCount += (mesh.Triangles[t].Polygon == 4) ? 6 : 3;
         sm.vertexCount = shadowVertCount;
         if (sm.vertexCount > 0) {
-          glGenVertexArrays(1, &sm.vao);
-          glGenBuffers(1, &sm.vbo);
-          glBindVertexArray(sm.vao);
-          glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-          glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3),
-                       nullptr, GL_DYNAMIC_DRAW);
-          glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                                (void *)0);
-          glEnableVertexAttribArray(0);
-          glBindVertexArray(0);
+          bgfx::VertexLayout shadowLayout;
+          shadowLayout.begin()
+              .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+              .end();
+          sm.vbo = bgfx::createDynamicVertexBuffer(
+              sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
         }
         wss.meshes.push_back(sm);
       }
@@ -1344,15 +1336,11 @@ void MonsterManager::ClearMonsters() {
     for (auto &wms : mon.weaponMeshes)
       CleanupMeshBuffers(wms.meshBuffers);
     for (auto &sm : mon.shadowMeshes) {
-      if (sm.vao)
-        glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo)
-        glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     for (auto &wss : mon.weaponShadowMeshes) {
       for (auto &sm : wss.meshes) {
-        if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-        if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+        if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
       }
     }
   }
@@ -1871,15 +1859,11 @@ void MonsterManager::Cleanup() {
     for (auto &wms : mon.weaponMeshes)
       CleanupMeshBuffers(wms.meshBuffers);
     for (auto &sm : mon.shadowMeshes) {
-      if (sm.vao)
-        glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo)
-        glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     for (auto &wss : mon.weaponShadowMeshes) {
       for (auto &sm : wss.meshes) {
-        if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-        if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+        if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
       }
     }
   }

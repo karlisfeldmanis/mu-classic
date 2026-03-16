@@ -15,7 +15,6 @@
 #include "UICoords.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
-#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <cstring>
 #include <glm/glm.hpp>

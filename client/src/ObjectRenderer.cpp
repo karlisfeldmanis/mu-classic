@@ -10,7 +10,7 @@
 // that identifies the "window light" mesh for each object type.
 // Returns -1 if the object type has no BlendMesh.
 // Source: reference ZzzObject.cpp OpenObjectsEnc / CreateObject
-static int GetBlendMeshTexId(int type) {
+static int GetBlendMeshTexId(int type, int mapId = -1) {
   switch (type) {
   case 117:
     return 4; // House03 — window glow (flicker)
@@ -34,7 +34,12 @@ static int GetBlendMeshTexId(int type) {
     return 1; // DungeonGate02 torch — fire glow mesh
   case 42:
     return 1; // DungeonGate03 torch — fire glow mesh
-  // Devias (World3) BlendMesh objects — Main 5.2: ZzzObject.cpp
+  // Devias-only (World3) BlendMesh objects — Main 5.2: ZzzObject.cpp
+  // Types 19/92/93 are aurora curtains on Devias but cannons on Lorencia
+  case 19:
+  case 92:
+  case 93:
+    return (mapId == 2) ? 0 : -1; // Aurora additive only on Devias
   case 54:
     return 1; // Tomb glow
   case 56:
@@ -134,16 +139,10 @@ std::string ObjectRenderer::GetObjectBMDFilename(int type) {
 }
 
 void ObjectRenderer::Init() {
-  // Try project root first (./build/MuRemaster), then build dir (cd build &&
-  // ./MuRemaster)
-  std::ifstream test("shaders/model.vert");
-  if (test.good()) {
-    shader =
-        std::make_unique<Shader>("shaders/model.vert", "shaders/model.frag");
-  } else {
-    shader = std::make_unique<Shader>("../shaders/model.vert",
-                                      "../shaders/model.frag");
-  }
+  shader = Shader::Load("vs_model.bin", "fs_model.bin");
+  skinnedShader = Shader::Load("vs_model_skinned.bin", "fs_model.bin");
+  if (!shader || !skinnedShader)
+    std::cerr << "[ObjectRenderer] Failed to load BGFX shaders" << std::endl;
 }
 
 void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
@@ -151,7 +150,6 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
                                 std::vector<MeshBuffers> &out, bool dynamic,
                                 const std::string &fallbackTexDir) {
   MeshBuffers mb;
-  mb.texture = 0;
 
   struct Vertex {
     glm::vec3 pos;
@@ -159,29 +157,25 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
     glm::vec2 tex;
   };
   std::vector<Vertex> vertices;
-  std::vector<unsigned int> indices;
+  std::vector<uint32_t> indices;
 
   for (int i = 0; i < mesh.NumTriangles; ++i) {
     auto &tri = mesh.Triangles[i];
     int steps = (tri.Polygon == 3) ? 3 : 4;
-    int startIdx = vertices.size();
+    int startIdx = (int)vertices.size();
     for (int v = 0; v < 3; ++v) {
       Vertex vert;
       auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
       auto &srcNorm = mesh.Normals[tri.NormalIndex[v]];
-
       int boneIdx = srcVert.Node;
       if (boneIdx >= 0 && boneIdx < (int)bones.size()) {
         const auto &bm = bones[boneIdx];
-        vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(),
-                                          srcVert.Position);
-        vert.normal =
-            MuMath::RotateVector((const float(*)[4])bm.data(), srcNorm.Normal);
+        vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(), srcVert.Position);
+        vert.normal = MuMath::RotateVector((const float(*)[4])bm.data(), srcNorm.Normal);
       } else {
         vert.pos = srcVert.Position;
         vert.normal = srcNorm.Normal;
       }
-
       vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                            mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
       vertices.push_back(vert);
@@ -193,62 +187,57 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
         Vertex vert;
         auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
         auto &srcNorm = mesh.Normals[tri.NormalIndex[v]];
-
         int boneIdx = srcVert.Node;
         if (boneIdx >= 0 && boneIdx < (int)bones.size()) {
           const auto &bm = bones[boneIdx];
-          vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(),
-                                            srcVert.Position);
-          vert.normal = MuMath::RotateVector((const float(*)[4])bm.data(),
-                                             srcNorm.Normal);
+          vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(), srcVert.Position);
+          vert.normal = MuMath::RotateVector((const float(*)[4])bm.data(), srcNorm.Normal);
         } else {
           vert.pos = srcVert.Position;
           vert.normal = srcNorm.Normal;
         }
-
         vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
         vertices.push_back(vert);
-        indices.push_back(vertices.size() - 1);
+        indices.push_back((uint32_t)vertices.size() - 1);
       }
     }
   }
 
-  mb.indexCount = indices.size();
-  mb.vertexCount = vertices.size();
+  mb.indexCount = (int)indices.size();
+  mb.vertexCount = (int)vertices.size();
   mb.isDynamic = dynamic;
   if (mb.indexCount == 0) {
     out.push_back(mb);
     return;
   }
 
-  GLenum usage = dynamic ? GL_DYNAMIC_DRAW : GL_STATIC_DRAW;
+  static bgfx::VertexLayout s_objLayout;
+  static bool layoutInit = false;
+  if (!layoutInit) {
+    s_objLayout.begin()
+        .add(bgfx::Attrib::Position,  3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::Normal,    3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .end();
+    layoutInit = true;
+  }
 
-  glGenVertexArrays(1, &mb.vao);
-  glGenBuffers(1, &mb.vbo);
-  glGenBuffers(1, &mb.ebo);
+  uint32_t vbSize = (uint32_t)(vertices.size() * sizeof(Vertex));
+  uint32_t ibSize = (uint32_t)(indices.size() * sizeof(uint32_t));
 
-  glBindVertexArray(mb.vao);
-  glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Vertex),
-               vertices.data(), usage);
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mb.ebo);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-               indices.data(), GL_STATIC_DRAW);
-
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void *)0);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                        (void *)(sizeof(float) * 3));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex),
-                        (void *)(sizeof(float) * 6));
-  glEnableVertexAttribArray(2);
+  if (dynamic) {
+    mb.dynVbo = bgfx::createDynamicVertexBuffer(
+        bgfx::copy(vertices.data(), vbSize), s_objLayout, BGFX_BUFFER_ALLOW_RESIZE);
+  } else {
+    mb.vbo = bgfx::createVertexBuffer(
+        bgfx::copy(vertices.data(), vbSize), s_objLayout);
+  }
+  mb.ebo = bgfx::createIndexBuffer(
+      bgfx::copy(indices.data(), ibSize), BGFX_BUFFER_INDEX32);
 
   auto texResult = TextureLoader::ResolveWithInfo(baseDir, mesh.TextureName);
-  // Fallback: if texture not found in primary dir, try fallback dir (e.g. Object1/)
-  if (!texResult.textureID && !fallbackTexDir.empty())
+  if (!TexValid(texResult.textureID) && !fallbackTexDir.empty())
     texResult = TextureLoader::ResolveWithInfo(fallbackTexDir, mesh.TextureName);
   mb.texture = texResult.textureID;
   mb.hasAlpha = texResult.hasAlpha;
@@ -258,8 +247,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
   mb.noneBlend = scriptFlags.noneBlend;
   mb.hidden = scriptFlags.hidden;
   mb.bright = scriptFlags.bright;
-  mb.bmdTextureId =
-      mesh.Texture; // Store BMD texture slot for BlendMesh matching
+  mb.bmdTextureId = mesh.Texture;
 
   out.push_back(mb);
 }
@@ -268,28 +256,28 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
                                            const std::string &baseDir,
                                            std::vector<MeshBuffers> &out) {
   MeshBuffers mb;
-  mb.texture = 0;
 
-  struct SkinnedVertex {
+  struct BgfxSkinnedVertex {
     glm::vec3 pos;
     glm::vec3 normal;
     glm::vec2 tex;
     float boneIndex;
+    float _pad[3];
   };
-  std::vector<SkinnedVertex> vertices;
-  std::vector<unsigned int> indices;
+  std::vector<BgfxSkinnedVertex> vertices;
+  std::vector<uint32_t> indices;
 
   for (int i = 0; i < mesh.NumTriangles; ++i) {
     auto &tri = mesh.Triangles[i];
     int steps = (tri.Polygon == 3) ? 3 : 4;
-    int startIdx = vertices.size();
+    int startIdx = (int)vertices.size();
     for (int v = 0; v < 3; ++v) {
-      SkinnedVertex vert;
+      BgfxSkinnedVertex vert{};
       auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
       auto &srcNorm = mesh.Normals[tri.NormalIndex[v]];
-      vert.pos = srcVert.Position;          // RAW position (no bone transform)
-      vert.normal = srcNorm.Normal;          // RAW normal
-      vert.boneIndex = (float)srcVert.Node;  // Bone index for GPU skinning
+      vert.pos = srcVert.Position;
+      vert.normal = srcNorm.Normal;
+      vert.boneIndex = (float)srcVert.Node;
       vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                            mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
       vertices.push_back(vert);
@@ -298,7 +286,7 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
     if (steps == 4) {
       int quadIndices[3] = {0, 2, 3};
       for (int v : quadIndices) {
-        SkinnedVertex vert;
+        BgfxSkinnedVertex vert{};
         auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
         auto &srcNorm = mesh.Normals[tri.NormalIndex[v]];
         vert.pos = srcVert.Position;
@@ -307,47 +295,38 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
         vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
         vertices.push_back(vert);
-        indices.push_back(vertices.size() - 1);
+        indices.push_back((uint32_t)vertices.size() - 1);
       }
     }
   }
 
-  mb.indexCount = indices.size();
-  mb.vertexCount = vertices.size();
-  mb.isDynamic = false; // Static VBO — animation via shader uniforms
+  mb.indexCount = (int)indices.size();
+  mb.vertexCount = (int)vertices.size();
+  mb.isDynamic = false;
   if (mb.indexCount == 0) {
     out.push_back(mb);
     return;
   }
 
-  glGenVertexArrays(1, &mb.vao);
-  glGenBuffers(1, &mb.vbo);
-  glGenBuffers(1, &mb.ebo);
+  static bgfx::VertexLayout s_objSkinnedLayout;
+  static bool layoutInit = false;
+  if (!layoutInit) {
+    s_objSkinnedLayout.begin()
+        .add(bgfx::Attrib::Position,  3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::Normal,    3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
+        .end();
+    layoutInit = true;
+  }
 
-  glBindVertexArray(mb.vao);
-  glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(SkinnedVertex),
-               vertices.data(), GL_STATIC_DRAW);
+  uint32_t vbSize = (uint32_t)(vertices.size() * sizeof(BgfxSkinnedVertex));
+  uint32_t ibSize = (uint32_t)(indices.size() * sizeof(uint32_t));
 
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mb.ebo);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-               indices.data(), GL_STATIC_DRAW);
-
-  // pos
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex), (void *)0);
-  glEnableVertexAttribArray(0);
-  // normal
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex),
-                        (void *)(sizeof(float) * 3));
-  glEnableVertexAttribArray(1);
-  // tex
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex),
-                        (void *)(sizeof(float) * 6));
-  glEnableVertexAttribArray(2);
-  // boneIndex
-  glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex),
-                        (void *)(sizeof(float) * 8));
-  glEnableVertexAttribArray(3);
+  mb.vbo = bgfx::createVertexBuffer(
+      bgfx::copy(vertices.data(), vbSize), s_objSkinnedLayout);
+  mb.ebo = bgfx::createIndexBuffer(
+      bgfx::copy(indices.data(), ibSize), BGFX_BUFFER_INDEX32);
 
   auto texResult = TextureLoader::ResolveWithInfo(baseDir, mesh.TextureName);
   mb.texture = texResult.textureID;
@@ -387,7 +366,7 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
 
       ModelCache cache;
       cache.boneMatrices = ComputeBoneMatrices(bmd.get());
-      cache.blendMeshTexId = GetBlendMeshTexId(obj.type);
+      cache.blendMeshTexId = GetBlendMeshTexId(obj.type, m_mapId);
 
       // Detect animated models (>1 keyframe in first action)
       auto shouldCPUAnimate = [](int t) {
@@ -622,7 +601,7 @@ void ObjectRenderer::LoadObjectsGeneric(
 
       ModelCache cache;
       cache.boneMatrices = ComputeBoneMatrices(bmd.get());
-      cache.blendMeshTexId = GetBlendMeshTexId(obj.type);
+      cache.blendMeshTexId = GetBlendMeshTexId(obj.type, m_mapId);
 
       // GPU tree sway only for Lorencia (LoadObjects path). Non-Lorencia tree
       // BMDs (ObjectXX.bmd) have different bone/animation structures that the
@@ -638,16 +617,11 @@ void ObjectRenderer::LoadObjectsGeneric(
           UploadMeshGPUSkinned(bmd->Meshes[mi], texDir, cache.meshBuffers);
         }
       } else {
-        // Enable animation for models with multiple keyframes (low instance count)
+        // CPU animation: retransform shared mesh once per type per frame.
+        // Cost is per-type (not per-instance), so no instance count limit needed.
         if (hasAnim) {
-          int instanceCount = 0;
-          for (auto &o : objects)
-            if (o.type == obj.type)
-              instanceCount++;
-          if (instanceCount <= 20) {
-            cache.isAnimated = true;
-            cache.numAnimationKeys = bmd->Actions[0].NumAnimationKeys;
-          }
+          cache.isAnimated = true;
+          cache.numAnimationKeys = bmd->Actions[0].NumAnimationKeys;
         }
 
         for (int mi = 0; mi < (int)bmd->Meshes.size(); ++mi) {
@@ -667,6 +641,8 @@ void ObjectRenderer::LoadObjectsGeneric(
 
       if (cache.isAnimated) {
         cache.bmdData = std::move(bmd);
+        std::cout << "  [CPU-Anim] type " << obj.type
+                  << " keys=" << cache.numAnimationKeys << std::endl;
       }
 
       modelCache[obj.type] = std::move(cache);
@@ -741,12 +717,17 @@ void ObjectRenderer::LoadObjectsGeneric(
       }
     }
 
+    // Collect Devias type 100 positions for lightning sprite effect
+    if (m_mapId == 2 && obj.type == 100) {
+      m_lightningPositions.push_back(worldPos);
+    }
+
     // Register Devias doors with their original transform data
     if (m_mapId == 2 && IsDoorType(obj.type)) {
       DoorState ds;
       ds.instanceIdx = instIdx;
       ds.origPos = worldPos;
-      ds.origAngleDeg = std::fmod(obj.mu_angle_raw.z, 360.0f);
+      ds.origAngleDeg = (float)((int)obj.mu_angle_raw.z % 360);
       ds.currentAngleDeg = ds.origAngleDeg;
       ds.rotRad = obj.rotation;
       ds.scale = obj.scale;
@@ -760,6 +741,30 @@ void ObjectRenderer::LoadObjectsGeneric(
     std::cout << "[ObjectRenderer] Registered " << m_doors.size()
               << " Devias doors" << std::endl;
     m_doorCooldown = 1.5f; // Suppress door sounds for 1.5s after map load
+  }
+  if (!m_lightningPositions.empty()) {
+    std::cout << "[ObjectRenderer] Found " << m_lightningPositions.size()
+              << " type-100 lightning sprite positions" << std::endl;
+    // Load lightning2.OZJ for the sprite effect (Main 5.2: BITMAP_LIGHTNING+1)
+    // Derive Data/ root from objectDir (e.g. "Data/Object3" → "Data")
+    std::string dataRoot = objectDir.substr(0, objectDir.rfind('/'));
+    std::string lightningTexPath = dataRoot + "/Effect/lightning2.OZJ";
+    m_lightningSpriteTex = TextureLoader::LoadOZJ(lightningTexPath);
+    if (!TexValid(m_lightningSpriteTex))
+      std::cerr << "[ObjectRenderer] Failed to load " << lightningTexPath << std::endl;
+    // Billboard shader + quad geometry
+    m_spriteShader = Shader::Load("vs_billboard.bin", "fs_billboard.bin");
+    if (!bgfx::isValid(m_spriteQuadVBO)) {
+      static bgfx::VertexLayout layout;
+      layout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      float qv[] = {-0.5f, -0.5f, 0.0f, 0.5f, -0.5f, 0.0f,
+                      0.5f,  0.5f, 0.0f, -0.5f,  0.5f, 0.0f};
+      uint16_t qi[] = {0, 1, 2, 0, 2, 3};
+      m_spriteQuadVBO = bgfx::createVertexBuffer(bgfx::copy(qv, sizeof(qv)), layout);
+      m_spriteQuadEBO = bgfx::createIndexBuffer(bgfx::copy(qi, sizeof(qi)));
+    }
   }
   std::cout << "[ObjectRenderer] Generic: Loaded " << instances.size()
             << " instances, " << modelCache.size() << " unique models ("
@@ -818,7 +823,7 @@ void ObjectRenderer::SetPointLights(const std::vector<glm::vec3> &positions,
 void ObjectRenderer::RetransformMesh(const Mesh_t &mesh,
                                      const std::vector<BoneWorldMatrix> &bones,
                                      MeshBuffers &mb) {
-  if (!mb.isDynamic || mb.vertexCount == 0 || mb.vbo == 0)
+  if (!mb.isDynamic || mb.vertexCount == 0 || !bgfx::isValid(mb.dynVbo))
     return;
 
   struct Vertex {
@@ -836,19 +841,15 @@ void ObjectRenderer::RetransformMesh(const Mesh_t &mesh,
       Vertex vert;
       auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
       auto &srcNorm = mesh.Normals[tri.NormalIndex[v]];
-
       int boneIdx = srcVert.Node;
       if (boneIdx >= 0 && boneIdx < (int)bones.size()) {
         const auto &bm = bones[boneIdx];
-        vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(),
-                                          srcVert.Position);
-        vert.normal =
-            MuMath::RotateVector((const float(*)[4])bm.data(), srcNorm.Normal);
+        vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(), srcVert.Position);
+        vert.normal = MuMath::RotateVector((const float(*)[4])bm.data(), srcNorm.Normal);
       } else {
         vert.pos = srcVert.Position;
         vert.normal = srcNorm.Normal;
       }
-
       vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                            mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
       vertices.push_back(vert);
@@ -859,19 +860,15 @@ void ObjectRenderer::RetransformMesh(const Mesh_t &mesh,
         Vertex vert;
         auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
         auto &srcNorm = mesh.Normals[tri.NormalIndex[v]];
-
         int boneIdx = srcVert.Node;
         if (boneIdx >= 0 && boneIdx < (int)bones.size()) {
           const auto &bm = bones[boneIdx];
-          vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(),
-                                            srcVert.Position);
-          vert.normal = MuMath::RotateVector((const float(*)[4])bm.data(),
-                                             srcNorm.Normal);
+          vert.pos = MuMath::TransformPoint((const float(*)[4])bm.data(), srcVert.Position);
+          vert.normal = MuMath::RotateVector((const float(*)[4])bm.data(), srcNorm.Normal);
         } else {
           vert.pos = srcVert.Position;
           vert.normal = srcNorm.Normal;
         }
-
         vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
         vertices.push_back(vert);
@@ -879,10 +876,8 @@ void ObjectRenderer::RetransformMesh(const Mesh_t &mesh,
     }
   }
 
-  // Simple buffer update — matches ModelViewer's working approach
-  glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-  glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(Vertex),
-                  vertices.data());
+  bgfx::update(mb.dynVbo, 0,
+               bgfx::copy(vertices.data(), (uint32_t)(vertices.size() * sizeof(Vertex))));
 }
 
 
@@ -895,59 +890,38 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
   glm::mat4 vp = projection * view;
   glm::vec4 frustum[6];
   frustum[0] = glm::vec4(vp[0][3] + vp[0][0], vp[1][3] + vp[1][0],
-                          vp[2][3] + vp[2][0], vp[3][3] + vp[3][0]); // Left
+                          vp[2][3] + vp[2][0], vp[3][3] + vp[3][0]);
   frustum[1] = glm::vec4(vp[0][3] - vp[0][0], vp[1][3] - vp[1][0],
-                          vp[2][3] - vp[2][0], vp[3][3] - vp[3][0]); // Right
+                          vp[2][3] - vp[2][0], vp[3][3] - vp[3][0]);
   frustum[2] = glm::vec4(vp[0][3] + vp[0][1], vp[1][3] + vp[1][1],
-                          vp[2][3] + vp[2][1], vp[3][3] + vp[3][1]); // Bottom
+                          vp[2][3] + vp[2][1], vp[3][3] + vp[3][1]);
   frustum[3] = glm::vec4(vp[0][3] - vp[0][1], vp[1][3] - vp[1][1],
-                          vp[2][3] - vp[2][1], vp[3][3] - vp[3][1]); // Top
+                          vp[2][3] - vp[2][1], vp[3][3] - vp[3][1]);
   frustum[4] = glm::vec4(vp[0][3] + vp[0][2], vp[1][3] + vp[1][2],
-                          vp[2][3] + vp[2][2], vp[3][3] + vp[3][2]); // Near
+                          vp[2][3] + vp[2][2], vp[3][3] + vp[3][2]);
   frustum[5] = glm::vec4(vp[0][3] - vp[0][2], vp[1][3] - vp[1][2],
-                          vp[2][3] - vp[2][2], vp[3][3] - vp[3][2]); // Far
+                          vp[2][3] - vp[2][2], vp[3][3] - vp[3][2]);
   for (int i = 0; i < 6; ++i)
     frustum[i] /= glm::length(glm::vec3(frustum[i]));
 
-  shader->use();
-  glActiveTexture(GL_TEXTURE0);
-  shader->setInt("texture_diffuse", 0);
-  shader->setMat4("projection", projection);
-  shader->setMat4("view", view);
-  // High sun for even world-scale illumination
-  shader->setVec3("lightPos", cameraPos + glm::vec3(0, 8000, 0));
-  shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-  shader->setVec3("viewPos", cameraPos);
-  shader->setBool("useFog", m_fogEnabled);
-  shader->setVec3("uFogColor", m_fogColor);
-  shader->setFloat("uFogNear", m_fogNear);
-  shader->setFloat("uFogFar", m_fogFar);
-  shader->setFloat("blendMeshLight", 1.0f);
-  shader->setFloat("objectAlpha", 1.0f);
-  shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  shader->setFloat("luminosity", m_luminosity);
-  shader->setInt("chromeMode", 0);
-  shader->setFloat("chromeTime", 0.0f);
-  shader->setVec3("baseTint", glm::vec3(1.0f));
-  shader->setVec3("glowColor", glm::vec3(0.0f));
+  // Upload point lights
+  shader->uploadPointLights(plCount, plPositions.data(), plColors.data(), plRanges.data());
 
-  // Set point light uniforms (pre-cached locations)
-  shader->uploadPointLights(plCount, plPositions.data(), plColors.data(),
-                            plRanges.data());
+  // Lazy-init bone matrix uniform handle
+  if (!bgfx::isValid(u_boneMatrices)) {
+    u_boneMatrices = bgfx::createUniform("u_boneMatrices", bgfx::UniformType::Mat4, 48);
+  }
 
   // Advance skeletal animation for animated model types
-  shader->setBool("useSkinning", false); // Default off
   {
-    const float ANIM_SPEED = 4.0f; // keyframes/sec (reference: 0.16 * 25fps)
-    const float TREE_ANIM_SPEED = 8.0f; // Trees: Main 5.2 Velocity=0.4 * 25fps
+    const float ANIM_SPEED = 4.0f;
+    const float TREE_ANIM_SPEED = 8.0f;
     float dt = (lastAnimTime > 0.0f) ? (currentTime - lastAnimTime) : 0.0f;
-    if (dt > 0.0f && dt < 1.0f) { // clamp to avoid huge jumps
+    if (dt > 0.0f && dt < 1.0f) {
       for (auto &[type, cache] : modelCache) {
         if (!cache.bmdData)
           continue;
 
-        // GPU-skinned animation (trees): advance base frame per type
-        // Actual bone matrices computed per-instance during render (with phase offset)
         if (cache.isGPUAnimated) {
           auto &state = animStates[type];
           state.frame += TREE_ANIM_SPEED * dt;
@@ -956,7 +930,6 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           continue;
         }
 
-        // CPU-skinned animation: retransform mesh vertices
         if (!cache.isAnimated)
           continue;
 
@@ -965,87 +938,53 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
         if (state.frame >= (float)cache.numAnimationKeys)
           state.frame = std::fmod(state.frame, (float)cache.numAnimationKeys);
 
-        auto bones = ComputeBoneMatricesInterpolated(cache.bmdData.get(), 0,
-                                                     state.frame);
+        auto bones = ComputeBoneMatricesInterpolated(cache.bmdData.get(), 0, state.frame);
 
-        // StoneWall04/06 flags: reduce bone animation amplitude to prevent
-        // clipping through adjacent walls. Blend animated bones with rest
-        // pose (30% animation, 70% rest). Only affects the animated chain
-        // bones (2-5), not the static root/helpers.
         bool isWallFlag = (type == 72 || type == 74);
         if (isWallFlag) {
           const float blend = 0.3f;
           auto &rest = cache.boneMatrices;
-          for (int bi = 0; bi < (int)bones.size() && bi < (int)rest.size();
-               ++bi) {
+          for (int bi = 0; bi < (int)bones.size() && bi < (int)rest.size(); ++bi) {
             for (int r = 0; r < 3; ++r)
               for (int c = 0; c < 4; ++c)
-                bones[bi][r][c] =
-                    rest[bi][r][c] +
-                    blend * (bones[bi][r][c] - rest[bi][r][c]);
+                bones[bi][r][c] = rest[bi][r][c] + blend * (bones[bi][r][c] - rest[bi][r][c]);
           }
         }
 
         for (int mi = 0; mi < (int)cache.meshBuffers.size() &&
-                         mi < (int)cache.bmdData->Meshes.size();
-             ++mi) {
-          // StoneWall04/06: only animate flag meshes (badge_*), skip
-          // static wall base (tile_01.jpg) to prevent clipping
-          if (isWallFlag &&
-              cache.meshBuffers[mi].textureName.find("badge") ==
-                  std::string::npos) {
+                         mi < (int)cache.bmdData->Meshes.size(); ++mi) {
+          if (isWallFlag && cache.meshBuffers[mi].textureName.find("badge") == std::string::npos)
             continue;
-          }
-          RetransformMesh(cache.bmdData->Meshes[mi], bones,
-                          cache.meshBuffers[mi]);
+          RetransformMesh(cache.bmdData->Meshes[mi], bones, cache.meshBuffers[mi]);
         }
       }
     }
-
-
     lastAnimTime = currentTime;
   }
 
-  // Compute BlendMesh animation state from time
-  // Flicker: random-ish intensity between 0.4 and 0.7 (like original
-  // rand()%4+4)
-  // Layered sines (additive, not multiplicative) — no beat-frequency strobing
+  // BlendMesh flicker + UV scroll (pure math, same as GL)
   float flickerBase = 0.72f + 0.09f * std::sin(currentTime * 4.7f)
                             + 0.07f * std::sin(currentTime * 11.3f + 1.3f)
                             + 0.04f * std::sin(currentTime * 21.7f + 3.7f);
-  // UV scroll: 1-second cycle for animated window meshes
   float uvScroll = -std::fmod(currentTime, 1.0f);
 
-  // Dungeon UV scroll: types 22-24 StreamMesh=1, V = -(WorldTime%1000)*0.001
-  // Main 5.2 ZzzObject.cpp:3964 — 1-second cycle, V-axis only
   float dungeonWaterScroll = 0.0f;
   if (m_mapId == 1) {
     int wt = (int)(currentTime * 1000.0f) % 1000;
     dungeonWaterScroll = -(float)wt * 0.001f;
   }
 
+  // Common uniforms (BGFX uniforms persist within a frame until overwritten)
+  glm::vec3 sunPos = cameraPos + glm::vec3(0, 8000, 0);
+
   for (auto &inst : instances) {
-    // PoseBox (type 133) is an NPC interaction trigger, not a visible object
-    // Light01-03 (types 130-132) are fire/smoke-only emitters (HiddenMesh=-2)
     if (inst.type == 133 || (inst.type >= 130 && inst.type <= 132))
       continue;
-
-    // Dungeon hidden objects (Main 5.2 ZzzObject.cpp:3955 — HiddenMesh=-2)
-    // Types 39=lance trap, 40=blade trap, 51=fire trap (VFX-only)
-    // Type 52: debris spawner (particles only, no mesh)
-    // Type 60: gate trigger (invisible, interaction-only)
-    if (m_mapId == 1 &&
-        (inst.type == 39 || inst.type == 40 || inst.type == 51 ||
+    if (m_mapId == 1 && (inst.type == 39 || inst.type == 40 || inst.type == 51 ||
          inst.type == 52 || inst.type == 60))
       continue;
-
-    // Devias hidden objects (Main 5.2 ZzzObject.cpp:4642-4668 — HiddenMesh=-2)
-    // Type 91: pose trigger volume (CreateOperate + invisible box)
-    // Type 100: lightning crystal effect (effect-only, no mesh)
     if (m_mapId == 2 && (inst.type == 91 || inst.type == 100))
       continue;
-
-    // Type filter: if set, only render specified types
     if (!m_typeFilter.empty()) {
       bool allowed = false;
       for (int t : m_typeFilter)
@@ -1053,50 +992,44 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       if (!allowed) continue;
     }
 
-    // Frustum culling: skip objects outside view frustum
+    // Frustum culling
     {
       glm::vec3 objPos = glm::vec3(inst.modelMatrix[3]);
-      float cullRadius = 500.0f; // Generous radius for buildings/trees
+      float cullRadius = 500.0f;
       bool outside = false;
       for (int p = 0; p < 6; ++p) {
         if (frustum[p].x * objPos.x + frustum[p].y * objPos.y +
-                frustum[p].z * objPos.z + frustum[p].w <
-            -cullRadius) {
+                frustum[p].z * objPos.z + frustum[p].w < -cullRadius) {
           outside = true;
           break;
         }
       }
-      if (outside)
-        continue;
+      if (outside) continue;
     }
 
     auto it = modelCache.find(inst.type);
-    if (it == modelCache.end())
-      continue;
+    if (it == modelCache.end()) continue;
 
-    // Per-type alpha for roof hiding (types 125/126 fade when inside buildings)
     float instAlpha = 1.0f;
     auto alphaIt = typeAlphaMap.find(inst.type);
     if (alphaIt != typeAlphaMap.end()) {
       instAlpha = alphaIt->second;
-      if (instAlpha < 0.01f)
-        continue; // Skip fully invisible objects
+      if (instAlpha < 0.01f) continue;
     }
-    shader->setFloat("objectAlpha", instAlpha);
 
-    shader->setMat4("model", inst.modelMatrix);
-    shader->setVec3("terrainLight", inst.terrainLight);
+    // Determine if this instance uses GPU skinning
+    bool useGPUSkin = it->second.isGPUAnimated && it->second.bmdData;
+    Shader *activeShader = useGPUSkin ? skinnedShader.get() : shader.get();
+    if (!activeShader) continue;
 
-    // GPU skinning: upload bone matrices for GPU-animated types (trees)
-    if (it->second.isGPUAnimated && it->second.bmdData) {
-      // Per-instance bone matrices: base frame + instance phase offset
+    // GPU skinning: compute and upload per-instance bone matrices
+    if (useGPUSkin) {
       auto &state = animStates[inst.type];
       float numKeys = (float)it->second.numAnimationKeys;
       float instFrame = std::fmod(state.frame + inst.animPhaseOffset * numKeys, numKeys);
 
       auto bones = ComputeBoneMatricesInterpolated(it->second.bmdData.get(), 0, instFrame);
       int count = std::min((int)bones.size(), 48);
-      // Convert BoneWorldMatrix (3x4 row-major) to glm::mat4 (column-major)
       static std::vector<glm::mat4> tmpMats;
       tmpMats.resize(count);
       for (int bi = 0; bi < count; ++bi) {
@@ -1106,132 +1039,114 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
         tmpMats[bi][2] = glm::vec4(bm[0][2], bm[1][2], bm[2][2], 0.0f);
         tmpMats[bi][3] = glm::vec4(bm[0][3], bm[1][3], bm[2][3], 1.0f);
       }
-      glUniformMatrix4fv(shader->loc("boneMatrices"), count, GL_FALSE,
-                         glm::value_ptr(tmpMats[0]));
-      shader->setBool("useSkinning", true);
-      // Per-instance sway (additional vertex displacement on top of unique bones)
-      shader->setFloat("swayPhase", inst.animPhaseOffset * 6.2832f);
-      shader->setFloat("swayTime", currentTime);
-    } else {
-      shader->setBool("useSkinning", false);
-      shader->setFloat("swayPhase", -1.0f); // disabled
+      bgfx::setUniform(u_boneMatrices, glm::value_ptr(tmpMats[0]), count);
+      activeShader->setVec4("u_skinParams",
+          glm::vec4(inst.animPhaseOffset * 6.2832f, currentTime, 0.0f, 0.0f));
     }
 
-    // Check if this model type has BlendMesh animation
     bool hasBlendMesh = it->second.blendMeshTexId >= 0;
-    bool hasUVScroll =
-        (inst.type == 118 || inst.type == 119 || inst.type == 105);
-    // Dungeon water objects: types 22-24 with StreamMesh=1 (mesh idx 1 scrolls)
-    bool isDungeonWater =
-        (m_mapId == 1 && inst.type >= 22 && inst.type <= 24);
-
-    // Dungeon coffins/sarcophagi (types 44-46), organic/squid objects (11, 22-24, 53):
-    // disable face culling — thin/double-sided geometry needs both sides visible
+    bool hasUVScroll = (inst.type == 118 || inst.type == 119 || inst.type == 105);
+    bool isDungeonWater = (m_mapId == 1 && inst.type >= 22 && inst.type <= 24);
     bool disableCullForObj = (m_mapId == 1 &&
         ((inst.type >= 44 && inst.type <= 46) ||
          (inst.type >= 22 && inst.type <= 24) ||
          inst.type == 11 || inst.type == 53));
-    if (disableCullForObj)
-      glDisable(GL_CULL_FACE);
 
     int meshIdx = 0;
     for (auto &mb : it->second.meshBuffers) {
-      if (mb.indexCount == 0 || mb.hidden) {
-        ++meshIdx;
-        continue;
-      }
-      if (mb.texture == 0) {
-        ++meshIdx;
-        continue;
-      }
+      if (mb.indexCount == 0 || mb.hidden) { ++meshIdx; continue; }
+      if (!TexValid(mb.texture)) { ++meshIdx; continue; }
 
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
+      bgfx::setTransform(glm::value_ptr(inst.modelMatrix));
 
-      // Dungeon water: StreamMesh=1 — only mesh index 1 gets V-axis UV scroll
-      // Main 5.2: BlendMeshTexCoordV = -(WorldTime%1000)*0.001f
+      // Bind vertex/index buffers
+      if (mb.isDynamic) {
+        bgfx::setVertexBuffer(0, mb.dynVbo);
+      } else {
+        bgfx::setVertexBuffer(0, mb.vbo);
+      }
+      bgfx::setIndexBuffer(mb.ebo);
+
+      // Set texture
+      activeShader->setTexture(0, "s_texColor", mb.texture);
+
+      // Common uniforms for this draw call
+      // u_params: x=objectAlpha, y=blendMeshLight, z=chromeMode, w=chromeTime
+      float blendLight = 1.0f;
+      float useFog = m_fogEnabled ? 1.0f : 0.0f;
+      glm::vec2 texOffset(0.0f);
+
+      // Determine blend state
+      uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                     | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                     | BGFX_STATE_MSAA;
+      bool isAdditive = false;
+
+      // Dungeon water: mesh index 1 gets additive UV scroll
       if (isDungeonWater && meshIdx == 1) {
-        shader->setVec2("texCoordOffset", glm::vec2(0.0f, dungeonWaterScroll));
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDepthMask(GL_FALSE);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-        ++meshIdx;
-        continue;
-      }
-
-      if (mb.isWindowLight && hasBlendMesh) {
+        texOffset = glm::vec2(0.0f, dungeonWaterScroll);
+        state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
+        state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+        isAdditive = true;
+      } else if (mb.isWindowLight && hasBlendMesh) {
         // BlendMesh: additive blending with intensity flicker
         float intensity = flickerBase;
-        // Bonfire has wider flicker range (0.5-0.95)
         if (inst.type == 52)
           intensity = 0.70f + 0.12f * std::sin(currentTime * 6.3f)
                             + 0.08f * std::sin(currentTime * 14.1f + 0.7f)
                             + 0.05f * std::sin(currentTime * 27.3f + 2.1f);
-        // Street light: subtle flicker 0.6-0.8 (Main 5.2: rand()%2+6 * 0.1)
         if (inst.type == 90)
           intensity = 0.7f + 0.1f * std::sin(currentTime * 5.3f);
-        // Static glow for candles, carriages, waterspout
         if (inst.type == 150 || inst.type == 98 || inst.type == 105)
           intensity = 1.0f;
-        // Dungeon torches: warm steady glow with gentle organic flicker
         if (inst.type == 41 || inst.type == 42) {
-          float phase = inst.modelMatrix[3][0] * 0.013f; // per-torch offset
+          float phase = inst.modelMatrix[3][0] * 0.013f;
           intensity = 0.78f + 0.10f * std::sin(currentTime * 3.8f + phase)
                             + 0.06f * std::sin(currentTime * 9.5f + phase * 2.1f);
         }
-
-        shader->setFloat("blendMeshLight", intensity);
+        blendLight = intensity;
         if (hasUVScroll)
-          shader->setVec2("texCoordOffset", glm::vec2(0.0f, uvScroll));
-        else
-          shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDepthMask(GL_FALSE);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        // Reset uniforms for next mesh
-        shader->setFloat("blendMeshLight", 1.0f);
-        shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-      } else if (mb.noneBlend) {
-        glDisable(GL_BLEND);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glEnable(GL_BLEND);
+          texOffset = glm::vec2(0.0f, uvScroll);
+        state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
+        state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+        isAdditive = true;
       } else if (mb.bright) {
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDepthMask(GL_FALSE);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
+        state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+        isAdditive = true;
+      } else if (mb.noneBlend) {
+        // No blending, opaque
+        state |= BGFX_STATE_CULL_CW;
       } else {
-        // Alpha meshes: disable face culling (paper-thin geometry like
-        // fence bars needs both sides visible) and add depth bias to
-        // avoid z-fighting with coplanar opaque meshes.
-        // Depth writes stay ON — shader discards transparent fragments
-        // (texColor.a < 0.1), so opaque parts write depth correctly.
-        if (mb.hasAlpha) {
-          glDisable(GL_CULL_FACE);
-          glEnable(GL_POLYGON_OFFSET_FILL);
-          glPolygonOffset(-1.0f, -1.0f);
+        // Normal mesh: cull backfaces unless alpha or special double-sided
+        if (!mb.hasAlpha && !disableCullForObj) {
+          state |= BGFX_STATE_CULL_CW;
         }
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
         if (mb.hasAlpha) {
-          glDisable(GL_POLYGON_OFFSET_FILL);
-          glEnable(GL_CULL_FACE);
+          state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                          BGFX_STATE_BLEND_INV_SRC_ALPHA);
         }
       }
+
+      // Set uniforms
+      activeShader->setVec4("u_params", glm::vec4(instAlpha, blendLight, 0.0f, 0.0f));
+      activeShader->setVec4("u_params2", glm::vec4(m_luminosity, (float)plCount, 0.0f, 0.0f));
+      activeShader->setVec4("u_lightPos", glm::vec4(sunPos, 0.0f));
+      activeShader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      activeShader->setVec4("u_viewPos", glm::vec4(cameraPos, 0.0f));
+      activeShader->setVec4("u_terrainLight", glm::vec4(inst.terrainLight, 0.0f));
+      activeShader->setVec4("u_glowColor", glm::vec4(0.0f));
+      activeShader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      activeShader->setVec4("u_fogParams", glm::vec4(m_fogNear, m_fogFar, useFog, 0.0f));
+      activeShader->setVec4("u_fogColor", glm::vec4(m_fogColor, 0.0f));
+      activeShader->setVec4("u_texCoordOffset", glm::vec4(texOffset, 0.0f, 0.0f));
+      activeShader->setVec4("u_shadowParams", glm::vec4(0.0f)); // no shadow on world objects
+
+      bgfx::setState(state);
+      bgfx::submit(0, activeShader->program);
       ++meshIdx;
     }
-
-    if (disableCullForObj)
-      glEnable(GL_CULL_FACE);
   }
-
 }
 
 // ── Door animation (Main 5.2: ZzzObject.cpp:3871-3913) ──
@@ -1277,13 +1192,13 @@ void ObjectRenderer::UpdateDoors(const glm::vec3 &heroPos, float deltaTime) {
         // Main 5.2 uses Angle[2] to determine slide direction
         float slideAmount = (200.0f - dist) * 2.0f;
         glm::vec3 newPos = door.origPos;
-        float angleMod = std::fmod(door.origAngleDeg, 360.0f);
+        // Slide direction: MU angle 90/270 -> MU_Y (GL X), 0/180 -> MU_X (GL Z)
+        float angleMod = door.origAngleDeg;
         if (angleMod < 0) angleMod += 360.0f;
-        // Slide direction depends on original facing
-        if (angleMod > 80.0f && angleMod < 100.0f) newPos.z += slideAmount;
-        else if (angleMod > 260.0f && angleMod < 280.0f) newPos.z -= slideAmount;
-        else if (angleMod < 10.0f || angleMod > 350.0f) newPos.x += slideAmount;
-        else if (angleMod > 170.0f && angleMod < 190.0f) newPos.x -= slideAmount;
+        if (angleMod == 90.0f) newPos.x += slideAmount;
+        else if (angleMod == 270.0f) newPos.x -= slideAmount;
+        else if (angleMod == 0.0f) newPos.z += slideAmount;
+        else if (angleMod == 180.0f) newPos.z -= slideAmount;
         inst.modelMatrix[3] = glm::vec4(newPos, 1.0f);
         if (!door.soundPlayed && m_doorCooldown <= 0.0f) {
           SoundManager::Play(SOUND_DOOR02);
@@ -1292,16 +1207,16 @@ void ObjectRenderer::UpdateDoors(const glm::vec3 &heroPos, float deltaTime) {
       } else {
         // Swinging door (types 20,65,88): rotate based on proximity
         float swingAmount = (200.0f - dist) * 0.5f;
-        float angleMod = std::fmod(door.origAngleDeg, 360.0f);
+        float angleMod = door.origAngleDeg;
         if (angleMod < 0) angleMod += 360.0f;
         float newAngle = door.origAngleDeg;
-        if (angleMod > 80.0f && angleMod < 100.0f)
+        if (angleMod == 90.0f)
           newAngle = 30.0f - swingAmount;
-        else if (angleMod > 260.0f && angleMod < 280.0f)
+        else if (angleMod == 270.0f)
           newAngle = 330.0f + swingAmount;
-        else if (angleMod < 10.0f || angleMod > 350.0f)
+        else if (angleMod == 0.0f)
           newAngle = 300.0f - swingAmount;
-        else if (angleMod > 170.0f && angleMod < 190.0f)
+        else if (angleMod == 180.0f)
           newAngle = 240.0f + swingAmount;
         door.currentAngleDeg = newAngle;
         glm::vec3 newRot = door.rotRad;
@@ -1331,27 +1246,96 @@ void ObjectRenderer::UpdateDoors(const glm::vec3 &heroPos, float deltaTime) {
   }
 }
 
+void ObjectRenderer::ResetDoorStates() {
+  for (auto &door : m_doors) {
+    door.soundPlayed = false;
+  }
+  m_doorCooldown = 0.5f;
+}
+
+// ── Devias type 100: rotating lightning sprites (Main 5.2 "northern lights") ──
+
+void ObjectRenderer::RenderLightningSprites(const glm::mat4 &view,
+                                             const glm::mat4 &projection,
+                                             float currentTime) {
+  if (m_lightningPositions.empty() || !m_spriteShader || !TexValid(m_lightningSpriteTex))
+    return;
+
+  // Main 5.2 (ZzzObject.cpp:2816): Rotation = (int)(WorldTime*0.1f) % 360
+  // Blend: EnableAlphaBlend() = pure additive (ONE, ONE)
+  // Color: glColor4f(Lum, Lum, Lum, Lum), alpha irrelevant with ONE,ONE blend
+  float rotDeg = std::fmod(currentTime * 36.0f, 360.0f);
+  float rotRad = glm::radians(rotDeg);
+  float lum = m_luminosity;
+
+  // Build instance data: 2 sprites per position (counter-rotating)
+  uint32_t count = (uint32_t)m_lightningPositions.size() * 2;
+  const uint16_t stride = 48; // 3 × vec4
+
+  uint32_t avail = bgfx::getAvailInstanceDataBuffer(count, stride);
+  if (avail == 0) return;
+  count = std::min(count, avail);
+
+  bgfx::InstanceDataBuffer idb;
+  bgfx::allocInstanceDataBuffer(&idb, count, stride);
+
+  uint8_t *data = idb.data;
+  for (size_t i = 0; i < m_lightningPositions.size(); ++i) {
+    glm::vec3 pos = m_lightningPositions[i];
+    pos.y += 150.0f; // Main 5.2: Vector(0,0,150,p) Z-offset → our Y
+
+    for (int s = 0; s < 2 && (i * 2 + s) < count; ++s) {
+      float *d = (float *)data;
+      d[0] = pos.x; d[1] = pos.y; d[2] = pos.z; // worldPos
+      d[3] = 250.0f;                               // scale (2.5 * TERRAIN_SCALE)
+      d[4] = (s == 0) ? rotRad : -rotRad;          // rotation (counter-rotating)
+      d[5] = -1.0f;                                 // frame < 0 = full texture
+      d[6] = 1.0f;                                  // alpha = 1.0 (ONE,ONE ignores it)
+      d[7] = 0.0f;
+      d[8] = lum; d[9] = lum; d[10] = lum;         // color = white * luminosity
+      d[11] = 0.0f;
+      data += stride;
+    }
+  }
+
+  bgfx::setVertexBuffer(0, m_spriteQuadVBO);
+  bgfx::setIndexBuffer(m_spriteQuadEBO);
+  bgfx::setInstanceDataBuffer(&idb);
+  m_spriteShader->setTexture(0, "s_fireTex", m_lightningSpriteTex);
+
+  // Main 5.2: pure additive blend (ONE, ONE) — alpha channel irrelevant
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                 | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
+                                         BGFX_STATE_BLEND_ONE);
+  bgfx::setState(state);
+  bgfx::submit(0, m_spriteShader->program);
+}
+
 void ObjectRenderer::Cleanup() {
   for (auto &[type, cache] : modelCache) {
     for (auto &mb : cache.meshBuffers) {
-      if (mb.vao)
-        glDeleteVertexArrays(1, &mb.vao);
-      if (mb.vbo)
-        glDeleteBuffers(1, &mb.vbo);
-      if (mb.ebo)
-        glDeleteBuffers(1, &mb.ebo);
-      if (mb.texture)
-        glDeleteTextures(1, &mb.texture);
+      if (bgfx::isValid(mb.vbo)) bgfx::destroy(mb.vbo);
+      if (bgfx::isValid(mb.dynVbo)) bgfx::destroy(mb.dynVbo);
+      if (bgfx::isValid(mb.ebo)) bgfx::destroy(mb.ebo);
+      TexDestroy(mb.texture);
     }
   }
   modelCache.clear();
   instances.clear();
   m_doors.clear();
   m_interactiveObjects.clear();
+  m_lightningPositions.clear();
   m_doorCooldown = 0.0f;
-  if (m_chromeTexture) {
-    glDeleteTextures(1, &m_chromeTexture);
-    m_chromeTexture = 0;
+  if (bgfx::isValid(u_boneMatrices)) {
+    bgfx::destroy(u_boneMatrices);
+    u_boneMatrices = BGFX_INVALID_HANDLE;
   }
+  TexDestroy(m_chromeTexture);
+  TexDestroy(m_lightningSpriteTex);
+  if (bgfx::isValid(m_spriteQuadVBO)) { bgfx::destroy(m_spriteQuadVBO); m_spriteQuadVBO = BGFX_INVALID_HANDLE; }
+  if (bgfx::isValid(m_spriteQuadEBO)) { bgfx::destroy(m_spriteQuadEBO); m_spriteQuadEBO = BGFX_INVALID_HANDLE; }
+  m_spriteShader.reset();
   shader.reset();
+  skinnedShader.reset();
 }

@@ -2,7 +2,7 @@
 #define FIRE_EFFECT_HPP
 
 #include "Shader.hpp"
-#include <GL/glew.h>
+#include "TextureLoader.hpp"
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -74,11 +74,13 @@ private:
   std::vector<Emitter> emitters;
   std::vector<Particle> particles;
 
-  GLuint fireTexture = 0;
-  GLuint waterTexture = 0;
+  TexHandle fireTexture = kInvalidTex;
+  TexHandle waterTexture = kInvalidTex;
   std::unique_ptr<Shader> billboardShader;
-  GLuint quadVAO = 0, quadVBO = 0, quadEBO = 0;
-  GLuint instanceVBO = 0;
+  bgfx::VertexBufferHandle quadVBO = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle quadEBO = BGFX_INVALID_HANDLE;
+  // No instanceVBO — BGFX uses transient InstanceDataBuffer per frame
+  void submitBatch(const std::vector<InstanceData> &batch, TexHandle tex);
 
   static constexpr int MAX_PARTICLES = 4096;
   static constexpr float PARTICLE_LIFETIME = 1.0f;

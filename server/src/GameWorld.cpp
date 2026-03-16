@@ -188,7 +188,7 @@ bool GameWorld::IsWalkable(float worldX, float worldZ) const {
   int gx = (int)(worldZ / 100.0f);
   if (gx < 0 || gz < 0 || gx >= TERRAIN_SIZE || gz >= TERRAIN_SIZE)
     return false;
-  return (m_terrainAttributes[gz * TERRAIN_SIZE + gx] & TW_NOMOVE) == 0;
+  return (m_terrainAttributes[gz * TERRAIN_SIZE + gx] & (TW_NOMOVE | TW_NOGROUND)) == 0;
 }
 
 bool GameWorld::IsSafeZone(float worldX, float worldZ) const {
@@ -205,7 +205,7 @@ bool GameWorld::IsSafeZone(float worldX, float worldZ) const {
 bool GameWorld::IsWalkableGrid(uint8_t gx, uint8_t gy) const {
   if (m_terrainAttributes.empty())
     return true;
-  return (m_terrainAttributes[gy * TERRAIN_SIZE + gx] & TW_NOMOVE) == 0;
+  return (m_terrainAttributes[gy * TERRAIN_SIZE + gx] & (TW_NOMOVE | TW_NOGROUND)) == 0;
 }
 
 bool GameWorld::IsSafeZoneGrid(uint8_t gx, uint8_t gy) const {
@@ -414,6 +414,42 @@ void GameWorld::LoadMonstersFromDB(Database &db, uint8_t mapId) {
       mon.attackMax = 7;
       mon.attackRate = 8;
       mon.level = 4;
+    }
+
+    // Validate spawn position — if on blocked/void tile, relocate to nearest walkable cell
+    if (!IsWalkableGrid(mon.gridX, mon.gridY)) {
+      bool relocated = false;
+      for (int radius = 1; radius <= 10 && !relocated; radius++) {
+        for (int dy = -radius; dy <= radius && !relocated; dy++) {
+          for (int dx = -radius; dx <= radius && !relocated; dx++) {
+            if (std::abs(dx) != radius && std::abs(dy) != radius)
+              continue; // Only check perimeter of current radius ring
+            int nx = (int)mon.gridX + dx;
+            int ny = (int)mon.gridY + dy;
+            if (nx < 0 || ny < 0 || nx >= TERRAIN_SIZE || ny >= TERRAIN_SIZE)
+              continue;
+            if (IsWalkableGrid((uint8_t)nx, (uint8_t)ny) &&
+                !IsSafeZoneGrid((uint8_t)nx, (uint8_t)ny)) {
+              printf("[World] Relocated monster type %d spawn (%d,%d)->(%d,%d)\n",
+                     s.type, mon.gridX, mon.gridY, nx, ny);
+              mon.gridX = (uint8_t)nx;
+              mon.gridY = (uint8_t)ny;
+              mon.spawnGridX = mon.gridX;
+              mon.spawnGridY = mon.gridY;
+              mon.worldX = mon.gridY * 100.0f;
+              mon.worldZ = mon.gridX * 100.0f;
+              mon.spawnX = mon.worldX;
+              mon.spawnZ = mon.worldZ;
+              relocated = true;
+            }
+          }
+        }
+      }
+      if (!relocated) {
+        printf("[World] WARNING: Cannot relocate monster type %d at (%d,%d) — skipping\n",
+               s.type, s.posX, s.posY);
+        continue; // Skip this monster entirely
+      }
     }
 
     // Stagger initial idle timers so all monsters don't move at once
@@ -740,7 +776,7 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
         int ny = (int)target->gridY + dy8[i];
         if (nx < 0 || ny < 0 || nx >= TERRAIN_SIZE || ny >= TERRAIN_SIZE)
           continue;
-        if (m_terrainAttributes[ny * TERRAIN_SIZE + nx] & TW_NOMOVE)
+        if (m_terrainAttributes[ny * TERRAIN_SIZE + nx] & (TW_NOMOVE | TW_NOGROUND))
           continue;
         int dist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
                                              (uint8_t)nx, (uint8_t)ny);

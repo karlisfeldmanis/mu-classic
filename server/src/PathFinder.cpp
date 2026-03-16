@@ -168,7 +168,7 @@ PathFinder::FindPath(GridPoint start, GridPoint end,
   // Lambda: check walkability for a terrain cell (caller ensures in-bounds)
   auto isWalkable = [&](uint8_t x, uint8_t y) -> bool {
     uint8_t attr = terrainAttribs[(int)y * TERRAIN_SIZE + (int)x];
-    if (attr & TW_NOMOVE)
+    if (attr & (TW_NOMOVE | TW_NOGROUND))
       return false;
     if (!canEnterSafeZone && (attr & TW_SAFEZONE))
       return false;

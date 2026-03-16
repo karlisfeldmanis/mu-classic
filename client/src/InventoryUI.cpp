@@ -6,7 +6,6 @@
 #include "TextureLoader.hpp"
 #include "UITexture.hpp"
 #include "imgui.h"
-#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cmath>
@@ -40,9 +39,12 @@ static const EquipSlotRect g_equipLayoutRects[] = {
 };
 
 // Slot background textures
-static GLuint g_slotBackgrounds[12] = {0};
+static TexHandle g_slotBackgrounds[12] = {
+    kInvalidTex, kInvalidTex, kInvalidTex, kInvalidTex,
+    kInvalidTex, kInvalidTex, kInvalidTex, kInvalidTex,
+    kInvalidTex, kInvalidTex, kInvalidTex, kInvalidTex};
 static UITexture g_texInventoryBg;
-GLuint g_texSkillIcons = 0; // Skill.OZJ sprite sheet (shared)
+TexHandle g_texSkillIcons = kInvalidTex; // Skill.OZJ sprite sheet (shared)
 
 // Render queue for deferred 3D item rendering
 static std::vector<ItemRenderJob> g_renderQueue;
@@ -153,7 +155,7 @@ static constexpr float REGION_FADEOUT_SPEED = 2.0f;  // ~0.5s fade out
 static constexpr float REGION_SHOW_TIME = 2.0f;      // 2 seconds hold
 // Main 5.2: UIMN_IMG_WIDTH=166, UIMN_IMG_HEIGHT=90 (OZT pre-rendered map name
 // image)
-static GLuint s_mapNameTexture = 0;
+static TexHandle s_mapNameTexture = kInvalidTex;
 static int s_mapNameTexW = 0, s_mapNameTexH = 0;
 
 // ─── Shared helpers (external linkage — declared in InventoryUI_Internal.hpp)
@@ -322,7 +324,7 @@ static void DrawCloseButton(ImDrawList *dl, const UICoords &c, float px,
 static void DrawPanelImage(ImDrawList *dl, const UICoords &c,
                            const UITexture &tex, float px, float py, float relX,
                            float relY, float vw, float vh) {
-  if (tex.id == 0)
+  if (!TexValid(tex.id))
     return;
   float vx = px + relX * g_uiPanelScale;
   float vy = py + relY * g_uiPanelScale;
@@ -336,7 +338,7 @@ static void DrawPanelImage(ImDrawList *dl, const UICoords &c,
     uvMin.y = 1.0f;
     uvMax.y = 0.0f;
   } // V-flip for OZT
-  dl->AddImage((ImTextureID)(uintptr_t)tex.id, pMin, pMax, uvMin, uvMax);
+  dl->AddImage((ImTextureID)TexImID(tex.id), pMin, pMax, uvMin, uvMax);
 }
 
 // Helper: draw text with shadow (handles scaling)
@@ -533,17 +535,10 @@ void Init(const InventoryUIContext &ctx) {
   s_ctx = &s_ctxStore;
 
   // Load map name OZT images (Main 5.2: Local/[Language]/ImgsMapName/)
-  if (s_mapNameTexture == 0) {
+  if (!TexValid(s_mapNameTexture)) {
     s_mapNameTexture =
         TextureLoader::LoadOZT("Data/Local/Eng/ImgsMapName/lorencia.OZT");
-    if (s_mapNameTexture) {
-      glBindTexture(GL_TEXTURE_2D, s_mapNameTexture);
-      glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH,
-                               &s_mapNameTexW);
-      glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT,
-                               &s_mapNameTexH);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (TexValid(s_mapNameTexture)) {
       std::cout << "[UI] Loaded map name image: " << s_mapNameTexW << "x"
                 << s_mapNameTexH << std::endl;
     }
@@ -825,19 +820,16 @@ void ShowRegionName(const char *name) {
         "Data/Local/Eng/ImgsMapName/dungeun.OZT"; // Original typo in assets
 
   if (oztFile) {
-    if (s_mapNameTexture) {
-      glDeleteTextures(1, &s_mapNameTexture);
-      s_mapNameTexture = 0;
+    if (TexValid(s_mapNameTexture)) {
+      TexDestroy(s_mapNameTexture);
     }
     s_mapNameTexture = TextureLoader::LoadOZT(oztFile);
-    if (s_mapNameTexture) {
-      glBindTexture(GL_TEXTURE_2D, s_mapNameTexture);
-      glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH,
-                               &s_mapNameTexW);
-      glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT,
-                               &s_mapNameTexH);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    if (TexValid(s_mapNameTexture)) {
+      // Get dimensions by re-loading raw data (lightweight, only on map enter)
+      int tw = 0, th = 0;
+      TextureLoader::LoadOZTRaw(oztFile, tw, th);
+      s_mapNameTexW = tw;
+      s_mapNameTexH = th;
     }
   }
 }
@@ -881,7 +873,7 @@ void UpdateAndRenderRegionName(float deltaTime) {
   ImVec2 displaySize = ImGui::GetIO().DisplaySize;
   uint8_t a = (uint8_t)(s_regionAlpha * 255);
 
-  if (s_mapNameTexture && s_mapNameTexW > 0 && s_mapNameTexH > 0) {
+  if (TexValid(s_mapNameTexture) && s_mapNameTexW > 0 && s_mapNameTexH > 0) {
     // Main 5.2: UIMN_IMG_WIDTH=166, UIMN_IMG_HEIGHT=90
     float scale = displaySize.x / 1400.0f;
     float imgW = (float)s_mapNameTexW * scale;
@@ -891,7 +883,7 @@ void UpdateAndRenderRegionName(float deltaTime) {
     float py = displaySize.y * 0.80f - imgH;
 
     ImVec4 tintCol(1.0f, 1.0f, 1.0f, s_regionAlpha);
-    dl->AddImage((ImTextureID)(intptr_t)s_mapNameTexture, ImVec2(px, py),
+    dl->AddImage((ImTextureID)TexImID(s_mapNameTexture), ImVec2(px, py),
                  ImVec2(px + imgW, py + imgH), ImVec2(0, 0), ImVec2(1, 1),
                  ImGui::ColorConvertFloat4ToU32(tintCol));
   } else {
@@ -1192,8 +1184,8 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
 
     // Always draw slot background fill and silhouette (visible behind 3D items)
     dl->AddRectFilled(sMin, sMax, colSlotBg, 3.0f);
-    if (g_slotBackgrounds[ep.slot] != 0) {
-      dl->AddImage((ImTextureID)(intptr_t)g_slotBackgrounds[ep.slot], sMin,
+    if (TexValid(g_slotBackgrounds[ep.slot])) {
+      dl->AddImage((ImTextureID)TexImID(g_slotBackgrounds[ep.slot]), sMin,
                    sMax, ImVec2(0, 0), ImVec2(1, 1),
                    IM_COL32(255, 255, 255, 200));
     }
@@ -1206,12 +1198,12 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
     if (s_ctx->equipSlots[ep.slot].equipped && !isBeingDragged) {
       std::string modelName = s_ctx->equipSlots[ep.slot].modelFile;
       if (!modelName.empty()) {
-        int winH = (int)ImGui::GetIO().DisplaySize.y;
         int16_t defIdx = ItemDatabase::GetDefIndexFromCategory(
             s_ctx->equipSlots[ep.slot].category,
             s_ctx->equipSlots[ep.slot].itemIndex);
+        int slotY = (int)sMin.y; // BGFX: top-left origin
         g_renderQueue.push_back({modelName, defIdx, (int)sMin.x,
-                                 winH - (int)sMax.y, (int)(sMax.x - sMin.x),
+                                 slotY, (int)(sMax.x - sMin.x),
                                  (int)(sMax.y - sMin.y), hoverSlot,
                                  s_ctx->equipSlots[ep.slot].itemLevel});
       }
@@ -1287,9 +1279,9 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
                                         s_ctx->inventory[slot].defIndex)
                                   : def.modelFile.c_str();
           if (model && model[0]) {
-            int winH = (int)ImGui::GetIO().DisplaySize.y;
+            int slotY = (int)iMin.y;
             g_renderQueue.push_back({model, s_ctx->inventory[slot].defIndex,
-                                     (int)iMin.x, winH - (int)iMax.y,
+                                     (int)iMin.x, slotY,
                                      (int)(iMax.x - iMin.x),
                                      (int)(iMax.y - iMin.y), hoverItem,
                                      s_ctx->inventory[slot].itemLevel});
@@ -1386,9 +1378,9 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
 
       dl->AddRectFilled(iMin, iMax, IM_COL32(30, 30, 50, 180), 3.0f);
       // Queue 3D render for dragged item
-      int winH = (int)ImGui::GetIO().DisplaySize.y;
+      int dragY = (int)iMin.y;
       g_renderQueue.push_back({def.modelFile, g_dragDefIndex, (int)iMin.x,
-                               winH - (int)iMax.y, (int)dw, (int)dh, false,
+                               dragY, (int)dw, (int)dh, false,
                                g_dragItemLevel});
 
       if (g_dragItemLevel > 0)
@@ -1545,10 +1537,10 @@ void RenderShopPanel(ImDrawList *dl, const UICoords &c) {
                 ? ItemDatabase::GetDropModelName(s_shopGrid[slot].defIndex)
                 : def.modelFile.c_str();
         if (model && model[0]) {
-          int winH = (int)ImGui::GetIO().DisplaySize.y;
+          int slotY = (int)iMin.y;
           g_renderQueue.push_back(
               {model, s_shopGrid[slot].defIndex, (int)iMin.x,
-               winH - (int)iMax.y, (int)(iMax.x - iMin.x),
+               slotY, (int)(iMax.x - iMin.x),
                (int)(iMax.y - iMin.y), hoverItem, s_shopGrid[slot].itemLevel});
         }
       }
@@ -1762,8 +1754,8 @@ bool HandlePanelClick(float vx, float vy) {
   }
 
   // Quickbar (HUD area) - bottom center
-  int winW, winH;
-  glfwGetWindowSize(glfwGetCurrentContext(), &winW, &winH);
+  int winW = (int)ImGui::GetIO().DisplaySize.x;
+  int winH = (int)ImGui::GetIO().DisplaySize.y;
   // Use shared Diablo-style HUD layout constants
   using namespace HudLayout;
 
@@ -2579,14 +2571,8 @@ void LoadSlotBackgrounds(const std::string &dataPath) {
 
   // Skill icon sprite sheet (25 icons per row, 20x28px each on 512x512)
   g_texSkillIcons = TextureLoader::LoadOZJ(dataPath + "/Interface/Skill.OZJ");
-  if (g_texSkillIcons) {
-    // LINEAR for smooth upscaling, CLAMP_TO_EDGE to reduce edge bleed
-    glBindTexture(GL_TEXTURE_2D, g_texSkillIcons);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    printf("[UI] Loaded Skill.OZJ icon sheet (tex=%u)\n", g_texSkillIcons);
+  if (TexValid(g_texSkillIcons)) {
+    printf("[UI] Loaded Skill.OZJ icon sheet (tex=%zu)\n", (size_t)TexImID(g_texSkillIcons));
   }
 }
 

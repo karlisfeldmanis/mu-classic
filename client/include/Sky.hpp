@@ -2,7 +2,7 @@
 #define SKY_HPP
 
 #include "Shader.hpp"
-#include <GL/glew.h>
+#include "TextureLoader.hpp"
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -16,13 +16,16 @@ public:
 
 private:
   std::unique_ptr<Shader> shader;
-  GLuint VAO = 0, VBO = 0, EBO = 0;
-  GLuint texture = 0;
   int indexCount = 0;
 
+  bgfx::VertexBufferHandle vbo = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle ebo = BGFX_INVALID_HANDLE;
+  TexHandle texture = kInvalidTex;
+
   // Sun billboard
-  GLuint sunVAO = 0, sunVBO = 0, sunEBO = 0;
-  GLuint sunTexture = 0;
+  bgfx::VertexBufferHandle sunVbo = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle sunEbo = BGFX_INVALID_HANDLE;
+  TexHandle sunTexture = kInvalidTex;
 
   static constexpr int SEGMENTS = 36;
   static constexpr float RADIUS = 3200.0f;

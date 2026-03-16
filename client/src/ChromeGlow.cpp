@@ -239,46 +239,25 @@ glm::vec3 GetPartObjectColor2(int category, int itemIndex) {
 }
 
 void LoadTextures(const std::string &dataPath) {
-  if (s_tex.chrome1) return; // Already loaded
-  // Main 5.2 ZzzOpenData.cpp:5040-5083: per-texture filter/wrap settings
+  if (TexValid(s_tex.chrome1)) return;
   s_tex.chrome1 = TextureLoader::LoadOZJ(dataPath + "/Effect/Chrome01.OZJ");
-  if (s_tex.chrome1) {
-    glBindTexture(GL_TEXTURE_2D, s_tex.chrome1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  }
   s_tex.chrome2 = TextureLoader::LoadOZJ(dataPath + "/Effect/Chrome02.OZJ");
-  if (s_tex.chrome2) {
-    glBindTexture(GL_TEXTURE_2D, s_tex.chrome2);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  }
-  s_tex.shiny = TextureLoader::LoadOZJ(dataPath + "/Effect/Shiny01.OZJ");
-  if (s_tex.shiny) {
-    glBindTexture(GL_TEXTURE_2D, s_tex.shiny);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  }
-  std::cout << "[ChromeGlow] Textures loaded: chrome1=" << s_tex.chrome1
-            << " chrome2=" << s_tex.chrome2 << " shiny=" << s_tex.shiny
-            << std::endl;
+  s_tex.shiny   = TextureLoader::LoadOZJ(dataPath + "/Effect/Shiny01.OZJ");
+  std::cout << "[ChromeGlow] Textures loaded: chrome1="
+            << (TexValid(s_tex.chrome1) ? 1 : 0)
+            << " chrome2=" << (TexValid(s_tex.chrome2) ? 1 : 0)
+            << " shiny=" << (TexValid(s_tex.shiny) ? 1 : 0) << std::endl;
 }
 
 void DeleteTextures() {
-  if (s_tex.chrome1) { glDeleteTextures(1, &s_tex.chrome1); s_tex.chrome1 = 0; }
-  if (s_tex.chrome2) { glDeleteTextures(1, &s_tex.chrome2); s_tex.chrome2 = 0; }
-  if (s_tex.shiny)   { glDeleteTextures(1, &s_tex.shiny);   s_tex.shiny = 0; }
+  TexDestroy(s_tex.chrome1);
+  TexDestroy(s_tex.chrome2);
+  TexDestroy(s_tex.shiny);
 }
 
 const Textures &GetTextures() { return s_tex; }
 
-static GLuint TextureForMode(int chromeMode) {
+static TexHandle TextureForMode(int chromeMode) {
   if (chromeMode == 2 || chromeMode == 4) return s_tex.chrome2;
   if (chromeMode == 3) return s_tex.shiny;
   return s_tex.chrome1;
@@ -286,7 +265,7 @@ static GLuint TextureForMode(int chromeMode) {
 
 int GetGlowPasses(int enhanceLevel, int category, int itemIndex,
                   GlowPass *outPasses) {
-  if (enhanceLevel < 7 || !s_tex.chrome1) return 0;
+  if (enhanceLevel < 7 || !TexValid(s_tex.chrome1)) return 0;
 
   // Main 5.2 ZzzObject.cpp RenderPartObjectEffect:
   // +7:  1 pass  = CHROME  (Chrome01.OZJ)
@@ -313,21 +292,6 @@ int GetGlowPasses(int enhanceLevel, int category, int itemIndex,
     n = 1;
   }
   return n;
-}
-
-void BeginGlow() {
-  glBlendFunc(GL_ONE, GL_ONE); // Additive
-  glDepthMask(GL_FALSE);
-  glDisable(GL_CULL_FACE);
-}
-
-void EndGlow(GLuint shaderProgram) {
-  glEnable(GL_CULL_FACE);
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  // Reset shader uniforms
-  glUniform3f(glGetUniformLocation(shaderProgram, "glowColor"), 0, 0, 0);
-  glUniform1i(glGetUniformLocation(shaderProgram, "chromeMode"), 0);
 }
 
 } // namespace ChromeGlow

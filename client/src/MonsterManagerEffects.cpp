@@ -2,6 +2,7 @@
 #include "TerrainUtils.hpp"
 #include <cmath>
 #include <cstdlib>
+#include <glm/gtc/type_ptr.hpp>
 
 void MonsterManager::spawnDebris(int modelIdx, const glm::vec3 &pos,
                                  int count) {
@@ -60,26 +61,17 @@ void MonsterManager::renderDebris(const glm::mat4 &view,
   if (m_debris.empty() || !m_shader)
     return;
 
-  m_shader->use();
-  m_shader->setMat4("view", view);
-  m_shader->setMat4("projection", projection);
-  m_shader->setFloat("luminosity", m_luminosity);
-  m_shader->setFloat("blendMeshLight", 1.0f);
-  m_shader->setInt("numPointLights", 0);
-  m_shader->setBool("useFog", true);
+  glm::vec4 fogParams, fogColor;
   if (m_mapId == 1) {
-    m_shader->setVec3("uFogColor", glm::vec3(0.0f, 0.0f, 0.0f));
-    m_shader->setFloat("uFogNear", 800.0f);
-    m_shader->setFloat("uFogFar", 2500.0f);
+    fogColor = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    fogParams = glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f);
   } else {
-    m_shader->setVec3("uFogColor", glm::vec3(0.117f, 0.078f, 0.039f));
-    m_shader->setFloat("uFogNear", 1500.0f);
-    m_shader->setFloat("uFogFar", 3500.0f);
+    fogColor = glm::vec4(0.117f, 0.078f, 0.039f, 0.0f);
+    fogParams = glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f);
   }
-  m_shader->setVec3("viewPos", camPos);
-  // We need camPos if we want fog to work correctly, passing it via Render
-  // For now let's assume viewPos is already set or passed.
-  // I'll update Render() to pass camPos to renderDebris.
+  uint64_t normalState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                        | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                        | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
 
   for (const auto &d : m_debris) {
     auto &mdl = m_models[d.modelIdx];
@@ -89,25 +81,29 @@ void MonsterManager::renderDebris(const glm::mat4 &view,
     model = glm::rotate(model, glm::radians(d.rotation.y), glm::vec3(0, 1, 0));
     model = glm::rotate(model, glm::radians(d.rotation.x), glm::vec3(1, 0, 0));
     model = glm::scale(model, glm::vec3(d.scale));
-    m_shader->setMat4("model", model);
 
-    // Get terrain light
     glm::vec3 light = sampleTerrainLightAt(d.position);
-    m_shader->setVec3("terrainLight", light);
-
-    // Debris fade out
     float alpha = std::min(1.0f, d.lifetime * 2.0f);
-    m_shader->setFloat("objectAlpha", alpha);
 
-    // Draw pre-uploaded mesh buffers
     for (size_t i = 0; i < mdl.meshBuffers.size(); ++i) {
       auto &mb = mdl.meshBuffers[i];
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      m_shader->setTexture(0, "s_texColor", mb.texture);
+      m_shader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0.0f, 0.0f));
+      m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+      m_shader->setVec4("u_terrainLight", glm::vec4(light, 0.0f));
+      m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+      m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_fogParams", fogParams);
+      m_shader->setVec4("u_fogColor", fogColor);
+      bgfx::setState(normalState);
+      bgfx::submit(0, m_shader->program);
     }
   }
-  glBindVertexArray(0);
 }
 
 void MonsterManager::SpawnArrow(const glm::vec3 &from, const glm::vec3 &to,
@@ -157,60 +153,47 @@ void MonsterManager::renderArrows(const glm::mat4 &view,
   if (mdl.meshBuffers.empty())
     return;
 
-  m_shader->use();
-  m_shader->setMat4("view", view);
-  m_shader->setMat4("projection", projection);
-  m_shader->setFloat("luminosity", m_luminosity);
-  m_shader->setFloat("blendMeshLight", 1.0f);
-  m_shader->setInt("numPointLights", 0);
-  m_shader->setBool("useFog", true);
+  glm::vec4 fogParams, fogColor;
   if (m_mapId == 1) {
-    m_shader->setVec3("uFogColor", glm::vec3(0.0f, 0.0f, 0.0f));
-    m_shader->setFloat("uFogNear", 800.0f);
-    m_shader->setFloat("uFogFar", 2500.0f);
+    fogColor = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    fogParams = glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f);
   } else {
-    m_shader->setVec3("uFogColor", glm::vec3(0.117f, 0.078f, 0.039f));
-    m_shader->setFloat("uFogNear", 1500.0f);
-    m_shader->setFloat("uFogFar", 3500.0f);
+    fogColor = glm::vec4(0.117f, 0.078f, 0.039f, 0.0f);
+    fogParams = glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f);
   }
-  m_shader->setVec3("viewPos", camPos);
+  uint64_t normalState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                        | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                        | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint64_t additiveState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                          | BGFX_STATE_DEPTH_TEST_LESS
+                          | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
 
   for (const auto &a : m_arrows) {
-    // Arrow model matrix: position, then rotate to face direction, then scale
-    // Main 5.2: Arrow uses angle-based rotation (yaw from direction, pitch from
-    // gravity)
     glm::mat4 model = glm::translate(glm::mat4(1.0f), a.position);
-    // Standard BMD rotation base
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-    // Arrow heading (yaw) and pitch
     model = glm::rotate(model, a.yaw, glm::vec3(0, 0, 1));
     model = glm::rotate(model, a.pitch, glm::vec3(1, 0, 0));
     model = glm::scale(model, glm::vec3(a.scale));
 
-    m_shader->setMat4("model", model);
-    m_shader->setVec3("terrainLight", glm::vec3(1.0f));
-    m_shader->setFloat("objectAlpha", 1.0f);
-
-    // Main 5.2: BlendMesh=1 — mesh 0 (arrow shaft) renders normally,
-    // mesh 1 (fire glow) renders with additive blend
     for (int mi = 0; mi < (int)mdl.meshBuffers.size(); ++mi) {
       auto &mb = mdl.meshBuffers[mi];
-      if (mb.indexCount == 0)
-        continue;
-      bool isGlowMesh = (mb.bmdTextureId == 1); // BlendMesh=1
-      if (isGlowMesh) {
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        glDepthMask(GL_FALSE);
-      }
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-      if (isGlowMesh) {
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      }
+      if (mb.indexCount == 0) continue;
+      bool isGlowMesh = (mb.bmdTextureId == 1);
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      m_shader->setTexture(0, "s_texColor", mb.texture);
+      m_shader->setVec4("u_params", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
+      m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+      m_shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+      m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_fogParams", fogParams);
+      m_shader->setVec4("u_fogColor", fogColor);
+      bgfx::setState(isGlowMesh ? additiveState : normalState);
+      bgfx::submit(0, m_shader->program);
     }
   }
-  glBindVertexArray(0);
 }

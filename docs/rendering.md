@@ -1,5 +1,15 @@
 # Rendering Pipeline
 
+## Graphics Backend: BGFX
+
+The renderer has been migrated from raw OpenGL 3.3 to **BGFX** (cross-platform rendering library). BGFX abstracts over Metal, OpenGL, Vulkan, and D3D backends — on macOS it uses **Metal** by default.
+
+- **Shaders**: BGFX shader files in `client/shaders/bgfx/` (`.sc` format), compiled to platform-specific binaries (`.bin`) via `shaderc`. Old GLSL shaders (`client/shaders/*.vert`/`.frag`) have been removed.
+- **Uniforms**: BGFX uses `vec4`-padded uniforms (e.g., `u_terrainParams` packs time, debugMode, luminosity into one `vec4`).
+- **Vertex/Index buffers**: Use `bgfx::createVertexBuffer`/`bgfx::createIndexBuffer` with `bgfx::copy()`. Dynamic buffers use `bgfx::createDynamicVertexBuffer` with `BGFX_BUFFER_ALLOW_RESIZE`.
+- **Texture arrays**: Terrain tile textures use `bgfx::createTexture2D` layered into a `SAMPLER2DARRAY`.
+- **Shadow mapping**: Uses a separate BGFX view with framebuffer for depth-only pass, sampled in terrain/model shaders.
+
 ## Coordinate System
 - MU Online uses Z-up right-handed: X-right, Y-forward, Z-up
 - OpenGL uses Y-up right-handed: X-right, Y-up, Z-backward

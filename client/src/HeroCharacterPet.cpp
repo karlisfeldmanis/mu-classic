@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
 // ── Pet companion rendering (Guardian Angel / Imp) ──────────────────────────
@@ -310,80 +311,55 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
     petModel = glm::rotate(petModel, m_pet.facing, glm::vec3(0, 0, 1));
     petModel = glm::scale(petModel, glm::vec3(petScale));
 
-    m_shader->setMat4("model", petModel);
-    m_shader->setFloat("objectAlpha", m_pet.alpha);
-    m_shader->setFloat("blendMeshLight", 1.0f);
 
     // Self-illumination — brighter than surroundings for ethereal glow
     glm::vec3 petTLight = sampleTerrainLightAt(m_pet.pos);
     petTLight = glm::clamp(petTLight * 2.0f, 0.5f, 1.5f);
-    m_shader->setVec3("terrainLight", petTLight);
 
-    glDisable(GL_CULL_FACE); // Double-sided wing meshes
+    auto petDrawMesh = [&](MeshBuffers &mb, float bml, uint64_t state) {
+      bgfx::setTransform(glm::value_ptr(petModel));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      m_shader->setTexture(0, "s_texColor", mb.texture);
+      m_shader->setVec4("u_params", glm::vec4(m_pet.alpha, bml, 0.0f, 0.0f));
+      m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+      m_shader->setVec4("u_terrainLight", glm::vec4(petTLight, 0.0f));
+      m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+      m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_fogParams", glm::vec4(0.0f));
+      m_shader->setVec4("u_fogColor", glm::vec4(0.0f));
+      bgfx::setState(state);
+      bgfx::submit(0, m_shader->program);
+    };
 
-    // Render body mesh first (normal alpha blend), then wings (additive)
-    // Main 5.2: BlendMesh compares mesh's Texture index, not mesh array index
+    uint64_t normalState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                         | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                         | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    uint64_t additiveState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                           | BGFX_STATE_DEPTH_TEST_LESS
+                           | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+
+    // Pass 1: Body meshes (normal blend)
     for (int mi = 0; mi < (int)m_pet.meshBuffers.size() &&
                      mi < (int)m_pet.bmd->Meshes.size(); ++mi) {
       auto &mb = m_pet.meshBuffers[mi];
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-
-      bool isBlendMesh = (m_pet.bmd->Meshes[mi].Texture == m_pet.blendMesh)
-                         || mb.bright;
-      if (isBlendMesh)
-        continue;
-
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bool isBlendMesh = (m_pet.bmd->Meshes[mi].Texture == m_pet.blendMesh) || mb.bright;
+      if (isBlendMesh) continue;
+      petDrawMesh(mb, 1.0f, normalState);
     }
-
-    // Second pass: wing meshes — standard alpha blend with brightness boost
-    // Additive (GL_ONE) washes out brights while leaving darks invisible;
-    // standard blend gives consistent opacity from texture alpha.
+    // Pass 2: Wing meshes
     for (int mi = 0; mi < (int)m_pet.meshBuffers.size() &&
                      mi < (int)m_pet.bmd->Meshes.size(); ++mi) {
       auto &mb = m_pet.meshBuffers[mi];
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-
-      bool isBlendMesh = (m_pet.bmd->Meshes[mi].Texture == m_pet.blendMesh)
-                         || mb.bright;
-      if (!isBlendMesh)
-        continue;
-
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDepthMask(GL_FALSE);
-      if (m_pet.itemIndex == 0) {
-        // Angel: additive blend for ethereal transparent wings
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        m_shader->setFloat("blendMeshLight", m_pet.alpha);
-      } else {
-        // Imp: standard alpha blend with brightness boost
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        m_shader->setFloat("blendMeshLight", 1.5f * m_pet.alpha);
-      }
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-      glDepthMask(GL_TRUE);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      m_shader->setFloat("blendMeshLight", 1.0f);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bool isBlendMesh = (m_pet.bmd->Meshes[mi].Texture == m_pet.blendMesh) || mb.bright;
+      if (!isBlendMesh) continue;
+      float bml = (m_pet.itemIndex == 0) ? m_pet.alpha : 1.5f * m_pet.alpha;
+      uint64_t wingState = (m_pet.itemIndex == 0) ? additiveState : normalState;
+      petDrawMesh(mb, bml, wingState);
     }
-
-    glEnable(GL_CULL_FACE);
-
-    // Restore shader state
-    m_shader->setFloat("objectAlpha", 1.0f);
-    m_shader->setVec3("terrainLight", tLight);
-    glm::mat4 restoreModel = glm::translate(glm::mat4(1.0f), m_pos);
-    restoreModel = glm::rotate(restoreModel, glm::radians(-90.0f),
-                               glm::vec3(0, 0, 1));
-    restoreModel = glm::rotate(restoreModel, glm::radians(-90.0f),
-                               glm::vec3(0, 1, 0));
-    restoreModel = glm::rotate(restoreModel, m_facing, glm::vec3(0, 0, 1));
-    m_shader->setMat4("model", restoreModel);
   }
 }
 
@@ -420,11 +396,11 @@ void HeroCharacter::EquipPet(uint8_t itemIndex) {
 
     // Check if the just-uploaded mesh buffer got a valid texture
     auto &mb = m_pet.meshBuffers.back();
-    if (mb.texture == 0) {
+    if (!TexValid(mb.texture)) {
       // Fallback: resolve THIS mesh's texture from Item/ directory
       auto texInfo = TextureLoader::ResolveWithInfo(
           m_dataPath + "/Item/", mesh.TextureName);
-      if (texInfo.textureID) {
+      if (TexValid(texInfo.textureID)) {
         mb.texture = texInfo.textureID;
         std::cout << "[Hero] Pet mesh " << mi << ": texture '"
                   << mesh.TextureName << "' resolved from Item/" << std::endl;

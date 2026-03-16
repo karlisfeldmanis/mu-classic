@@ -7,9 +7,12 @@
 #include "ViewerCommon.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-#include <GL/glew.h>
+#include "imgui_impl_bgfx.h"
+#include <bgfx/bgfx.h>
+#include <bgfx/platform.h>
+#define GLFW_EXPOSE_NATIVE_COCOA
 #include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -19,6 +22,7 @@
 #endif
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 #include <vector>
 
@@ -427,12 +431,15 @@ public:
       return;
 
     ActivateMacOSApp();
-    InitImGui(window);
 
-    shader = Shader::Load("model.vert", "model.frag");
+    // Init ImGui with BGFX backend
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui_ImplGlfw_InitForOther(window, true);
+    ImGui_ImplBgfx_Init(30, "shaders"); // view ID 30 for ImGui
 
-    axes.Init();
-    debugLines.Init();
+    shader = Shader::Load("vs_model.bin", "fs_model.bin");
+
     animCategories = BuildAnimCategories(currentClass);
 
     // Load skeleton + default class
@@ -440,7 +447,9 @@ public:
     if (!skeleton) {
       std::cerr << "[CharViewer] Failed to load Player.bmd skeleton"
                 << std::endl;
-      ShutdownImGui();
+      ImGui_ImplBgfx_Shutdown();
+      ImGui_ImplGlfw_Shutdown();
+      ImGui::DestroyContext();
       glfwDestroyWindow(window);
       glfwTerminate();
       return;
@@ -452,9 +461,10 @@ public:
     if (autoScreenshot) {
       RunAutoScreenshots();
       UnloadParts();
-      axes.Cleanup();
-      debugLines.Cleanup();
-      ShutdownImGui();
+      ImGui_ImplBgfx_Shutdown();
+      ImGui_ImplGlfw_Shutdown();
+      ImGui::DestroyContext();
+      bgfx::shutdown();
       glfwDestroyWindow(window);
       glfwTerminate();
       return;
@@ -469,13 +479,14 @@ public:
       RenderScene();
       Screenshot::TickRecording(window);
       RenderUI();
-      glfwSwapBuffers(window);
+      bgfx::frame();
     }
 
     UnloadParts();
-    axes.Cleanup();
-    debugLines.Cleanup();
-    ShutdownImGui();
+    ImGui_ImplBgfx_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+    bgfx::shutdown();
     glfwDestroyWindow(window);
     glfwTerminate();
   }
@@ -511,11 +522,8 @@ private:
   // Animation categories
   std::vector<AnimCategory> animCategories;
 
-  // Orbit camera + axes + debug overlays
+  // Orbit camera
   OrbitCamera camera;
-  DebugAxes axes;
-  DebugLines debugLines;
-  bool showWeaponDebug = true; // weapon bone axes + blade direction
 
   // Mouse
   bool dragging = false;
@@ -549,27 +557,47 @@ private:
     if (!glfwInit())
       return false;
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#ifdef __APPLE__
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
+    // BGFX manages the GPU — no OpenGL context
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
     window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "MU Character Viewer",
                               nullptr, nullptr);
     if (!window)
       return false;
 
-    glfwMakeContextCurrent(window);
-    glfwSwapInterval(1);
+    // Initialize BGFX
+    bgfx::renderFrame(); // Single-threaded mode: call before bgfx::init
 
-    if (glewInit() != GLEW_OK)
+    bgfx::Init init;
+    init.type = bgfx::RendererType::Metal;
+#ifdef __APPLE__
+    init.platformData.nwh = glfwGetCocoaWindow(window);
+#endif
+
+    int initW, initH;
+    glfwGetFramebufferSize(window, &initW, &initH);
+    init.resolution.width = initW;
+    init.resolution.height = initH;
+    init.resolution.reset = BGFX_RESET_VSYNC | BGFX_RESET_MSAA_X4;
+
+    if (!bgfx::init(init)) {
+      std::cerr << "[CharViewer] Failed to initialize BGFX" << std::endl;
+      glfwDestroyWindow(window);
+      glfwTerminate();
       return false;
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+
+    bgfx::setDebug(BGFX_DEBUG_NONE);
+    bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH,
+                        0x262E38FF, 1.0f, 0);
+    bgfx::setViewRect(0, 0, 0, uint16_t(initW), uint16_t(initH));
+    bgfx::setViewMode(0, bgfx::ViewMode::Sequential);
+
+    // Prime the Metal backbuffer
+    for (int i = 0; i < 3; ++i) {
+      bgfx::touch(0);
+      bgfx::frame();
+    }
 
     glfwSetWindowUserPointer(window, this);
     glfwSetScrollCallback(window, ScrollCallback);
@@ -722,9 +750,6 @@ private:
     camera.distance = radius * 2.6f;
     camera.yaw = 180.0f;
     camera.pitch = -15.0f;
-
-    axes.length = radius * 0.3f;
-    axes.UpdateGeometry();
   }
 
   void SetAction(int action) {
@@ -861,11 +886,59 @@ private:
     AutoSwitchWeaponAction(category);
   }
 
+  // --- Helper: set all model uniforms before a bgfx::submit ---
+  void SetModelUniforms(const glm::vec3 &eye) {
+    shader->setVec4("u_params", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));       // objectAlpha, blendMeshLight
+    shader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));      // luminosity, pointLights(0)
+    shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 200, 0), 0.0f));
+    shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_fogParams", glm::vec4(0.0f));
+    shader->setVec4("u_fogColor", glm::vec4(0.0f));
+    shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+  }
+
+  // --- Helper: submit a single MeshBuffers draw ---
+  void SubmitMesh(const MeshBuffers &mb, const glm::mat4 &modelMat, const glm::vec3 &eye) {
+    bgfx::setTransform(glm::value_ptr(modelMat));
+
+    if (mb.isDynamic)
+      bgfx::setVertexBuffer(0, mb.dynVbo);
+    else
+      bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+
+    shader->setTexture(0, "s_texColor", mb.texture);
+    SetModelUniforms(eye);
+
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                   | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                   | BGFX_STATE_MSAA;
+
+    if (mb.noneBlend) {
+      // No blending, opaque
+    } else if (mb.bright) {
+      state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
+      state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+    } else if (mb.hasAlpha) {
+      state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    }
+
+    bgfx::setState(state);
+    bgfx::submit(0, shader->program);
+  }
+
   // --- Rendering ---
 
   void RenderScene() {
-    glClearColor(0.15f, 0.18f, 0.22f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    int fbWidth, fbHeight;
+    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+    bgfx::setViewRect(0, 0, 0, uint16_t(fbWidth), uint16_t(fbHeight));
+    bgfx::touch(0);
 
     // Advance animation
     if (animPlaying && currentNumKeys > 1) {
@@ -890,63 +963,32 @@ private:
       }
     }
 
-    shader->use();
-
-    int fbWidth, fbHeight, winW_, winH_;
-    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+    int winW_, winH_;
     glfwGetWindowSize(window, &winW_, &winH_);
     float dpiScale = (winW_ > 0) ? (float)fbWidth / (float)winW_ : 1.0f;
     int panelPx = (int)(280.0f * dpiScale);
     int sceneW = fbWidth - panelPx;
     if (sceneW < 1) sceneW = 1;
-    glViewport(panelPx, 0, sceneW, fbHeight);
 
     glm::mat4 projection = glm::perspective(
         glm::radians(45.0f), (float)sceneW / (float)fbHeight, 0.1f,
         100000.0f);
     glm::mat4 view = camera.GetViewMatrix();
     // MU Z-up → GL Y-up
-    glm::mat4 model = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
+    glm::mat4 modelMat = glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
                                   glm::vec3(1.0f, 0.0f, 0.0f));
 
-    shader->setMat4("projection", projection);
-    shader->setMat4("view", view);
-    shader->setMat4("model", model);
+    bgfx::setViewRect(0, uint16_t(panelPx), 0, uint16_t(sceneW), uint16_t(fbHeight));
+    bgfx::setViewTransform(0, glm::value_ptr(view), glm::value_ptr(projection));
 
     glm::vec3 eye = camera.GetEyePosition();
-    shader->setVec3("lightPos", eye + glm::vec3(0, 200, 0));
-    shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-    shader->setVec3("viewPos", eye);
-    shader->setBool("useFog", false);
-    shader->setFloat("blendMeshLight", 1.0f);
-    shader->setFloat("objectAlpha", 1.0f);
-    shader->setVec3("terrainLight", 1.0f, 1.0f, 1.0f);
-    shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-    shader->setInt("numPointLights", 0);
-    shader->setFloat("luminosity", 1.0f);
 
     // Draw all body parts
     for (int p = 0; p < PART_COUNT; ++p) {
       for (auto &mb : parts[p].meshBuffers) {
         if (mb.indexCount == 0 || mb.hidden)
           continue;
-
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-
-        if (mb.noneBlend) {
-          glDisable(GL_BLEND);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-          glEnable(GL_BLEND);
-        } else if (mb.bright) {
-          glBlendFunc(GL_ONE, GL_ONE);
-          glDepthMask(GL_FALSE);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-          glDepthMask(GL_TRUE);
-          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        } else {
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        }
+        SubmitMesh(mb, modelMat, eye);
       }
     }
 
@@ -1028,93 +1070,18 @@ private:
           }
         }
 
-        glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                        verts.size() * sizeof(ViewerVertex), verts.data());
+        // Update dynamic VBO with re-skinned weapon vertices
+        bgfx::update(mb.dynVbo, 0,
+                      bgfx::copy(verts.data(),
+                                 (uint32_t)(verts.size() * sizeof(ViewerVertex))));
 
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        SubmitMesh(mb, modelMat, eye);
       }
     }
-
-    // Debug overlays (weapon bone axes + blade direction)
-    glm::mat4 mvp = projection * view * model;
-
-    if (showWeaponDebug && weaponBmd && weaponBone >= 0 &&
-        weaponBone < (int)bones.size()) {
-      debugLines.Clear();
-
-      // Bone attachment point origin (in MU space)
-      auto &bm = bones[weaponBone];
-      glm::vec3 boneOrigin(bm[0][3], bm[1][3], bm[2][3]);
-      float axisLen = 30.0f;
-
-      // Bone X axis (Red)
-      glm::vec3 boneX(bm[0][0], bm[1][0], bm[2][0]);
-      debugLines.AddLine(boneOrigin, boneOrigin + boneX * axisLen,
-                          {1, 0, 0});
-      // Bone Y axis (Green)
-      glm::vec3 boneY(bm[0][1], bm[1][1], bm[2][1]);
-      debugLines.AddLine(boneOrigin, boneOrigin + boneY * axisLen,
-                          {0, 1, 0});
-      // Bone Z axis (Blue)
-      glm::vec3 boneZ(bm[0][2], bm[1][2], bm[2][2]);
-      debugLines.AddLine(boneOrigin, boneOrigin + boneZ * axisLen,
-                          {0, 0, 1});
-
-      // Blade direction line (Yellow) - trace blade tip and handle through
-      // full weapon transform chain
-      if (!weaponMeshBuffers.empty()) {
-        BoneWorldMatrix oMat =
-            MuMath::BuildWeaponOffsetMatrix(weaponRot, weaponOffset);
-        BoneWorldMatrix pMat;
-        MuMath::ConcatTransforms((const float(*)[4])bm.data(),
-                                  (const float(*)[4])oMat.data(),
-                                  (float(*)[4])pMat.data());
-        auto wLocal = ComputeBoneMatrices(weaponBmd.get());
-        BoneWorldMatrix wFinal;
-        if (!wLocal.empty()) {
-          MuMath::ConcatTransforms((const float(*)[4])pMat.data(),
-                                    (const float(*)[4])wLocal[0].data(),
-                                    (float(*)[4])wFinal.data());
-        } else {
-          wFinal = pMat;
-        }
-        glm::vec3 bladeTip =
-            MuMath::TransformPoint((const float(*)[4])wFinal.data(),
-                                    glm::vec3(0, 0, 64.7f));
-        glm::vec3 handle =
-            MuMath::TransformPoint((const float(*)[4])wFinal.data(),
-                                    glm::vec3(0, 0, -10));
-        // Yellow line from handle to blade tip
-        debugLines.AddLine(handle, bladeTip, {1, 1, 0});
-        // White dot at blade tip (short cross)
-        float d = 3.0f;
-        debugLines.AddLine(bladeTip - glm::vec3(d, 0, 0),
-                            bladeTip + glm::vec3(d, 0, 0), {1, 1, 1});
-        debugLines.AddLine(bladeTip - glm::vec3(0, d, 0),
-                            bladeTip + glm::vec3(0, d, 0), {1, 1, 1});
-        debugLines.AddLine(bladeTip - glm::vec3(0, 0, d),
-                            bladeTip + glm::vec3(0, 0, d), {1, 1, 1});
-      }
-
-      debugLines.Upload();
-      glDisable(GL_DEPTH_TEST);
-      debugLines.Draw(mvp);
-      glEnable(GL_DEPTH_TEST);
-    }
-
-    axes.Draw(mvp);
   }
 
   void RenderUI() {
-    // Restore full viewport for ImGui
-    int fbW_, fbH_;
-    glfwGetFramebufferSize(window, &fbW_, &fbH_);
-    glViewport(0, 0, fbW_, fbH_);
-
-    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplBgfx_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
@@ -1250,7 +1217,6 @@ private:
           weaponBone = cfg.bone;
           selectedPreset = 0;
         }
-        ImGui::Checkbox("Show Debug Lines", &showWeaponDebug);
         ImGui::TreePop();
       }
     }
@@ -1350,7 +1316,7 @@ private:
 
     ImGui::End();
     ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    ImGui_ImplBgfx_RenderDrawData(ImGui::GetDrawData());
   }
 
   // --- GLFW Callbacks ---
@@ -1566,13 +1532,13 @@ private:
     animPlaying = false;
     animFrame = 0.0f;
 
-    // Warm up a few frames to let GL state settle
+    // Warm up a few frames to let BGFX state settle
     for (int i = 0; i < 5; ++i) {
       glfwPollEvents();
       deltaTime = 0.016f;
       RenderScene();
       RenderUI();
-      glfwSwapBuffers(window);
+      bgfx::frame();
     }
 
     for (auto &shot : shots) {
@@ -1587,7 +1553,7 @@ private:
           deltaTime = 0.016f;
           RenderScene();
           RenderUI();
-          glfwSwapBuffers(window);
+          bgfx::frame();
         }
       }
 
@@ -1602,7 +1568,7 @@ private:
         deltaTime = 0.016f;
         RenderScene();
         RenderUI();
-        glfwSwapBuffers(window);
+        bgfx::frame();
       }
 
       std::string fname =

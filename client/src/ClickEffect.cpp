@@ -31,30 +31,19 @@ void ClickEffect::drawGroundQuad(float cx, float cz, float halfSize,
   verts[2].tex = {1, 1};
   verts[3].tex = {0, 1};
 
-  glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-  glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-  glBindVertexArray(m_vao);
-  glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-  glBindVertexArray(0);
+  bgfx::update(m_dynVbo, 0, bgfx::copy(verts, sizeof(verts)));
 }
 
 void ClickEffect::Init() {
-  glGenVertexArrays(1, &m_vao);
-  glGenBuffers(1, &m_vbo);
-  glBindVertexArray(m_vao);
-  glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-  glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(ViewerVertex), nullptr,
-               GL_DYNAMIC_DRAW);
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(ViewerVertex),
-                        (void *)0);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(ViewerVertex),
-                        (void *)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(ViewerVertex),
-                        (void *)(6 * sizeof(float)));
-  glEnableVertexAttribArray(2);
-  glBindVertexArray(0);
+  bgfx::VertexLayout layout;
+  layout.begin()
+      .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+      .add(bgfx::Attrib::Normal, 3, bgfx::AttribType::Float)
+      .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+      .end();
+  m_dynVbo = bgfx::createDynamicVertexBuffer(4, layout, BGFX_BUFFER_ALLOW_RESIZE);
+  uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+  m_quadEbo = bgfx::createIndexBuffer(bgfx::copy(indices, sizeof(indices)));
 }
 
 void ClickEffect::LoadAssets(const std::string &dataPath) {
@@ -72,9 +61,11 @@ void ClickEffect::LoadAssets(const std::string &dataPath) {
     AABB aabb;
     UploadMeshWithBones(m_bmd->Meshes[0], effectDir, idBones,
                         m_modelBuffers, aabb, true);
-    std::cout << "[ClickEffect] Loaded: BMD + " << (m_ringTex ? 1 : 0)
-              << " ring, " << (m_waveTex ? 1 : 0) << " wave, "
-              << (m_glowTex ? 1 : 0) << " glow textures" << std::endl;
+    std::cout << "[ClickEffect] Loaded: BMD + "
+              << (TexValid(m_ringTex) ? 1 : 0) << " ring, "
+              << (TexValid(m_waveTex) ? 1 : 0) << " wave, "
+              << (TexValid(m_glowTex) ? 1 : 0) << " glow textures"
+              << std::endl;
   } else {
     std::cerr << "[ClickEffect] Failed to load MoveTargetPosEffect.bmd"
               << std::endl;
@@ -168,53 +159,51 @@ void ClickEffect::Render(const glm::mat4 &view, const glm::mat4 &proj,
   float cx = m_pos.x, cz = m_pos.z;
   glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
 
-  // Common shader state for ground bitmaps
-  shader->use();
-  shader->setMat4("projection", proj);
-  shader->setMat4("view", view);
-  shader->setMat4("model", glm::mat4(1.0f));
-  shader->setVec3("lightPos", eye + glm::vec3(0, 500, 0));
-  shader->setVec3("viewPos", eye);
-  shader->setFloat("objectAlpha", 1.0f);
-  shader->setBool("useFog", false);
-  shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  shader->setVec3("terrainLight", glm::vec3(1.0f));
-  shader->setInt("numPointLights", 0);
+  glm::mat4 identity(1.0f);
+  uint64_t groundState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                       | BGFX_STATE_DEPTH_TEST_LESS
+                       | BGFX_STATE_BLEND_ADD;
+  // No WRITE_Z (depth mask false), no CULL (two-sided)
 
-  // Additive blending for all cursor effects
-  glBlendFunc(GL_ONE, GL_ONE);
-  glDepthMask(GL_FALSE);
-  glDisable(GL_CULL_FACE);
-  glActiveTexture(GL_TEXTURE0);
+  // Helper: submit a ground quad pass with BGFX
+  auto submitGroundQuad = [&](TexHandle tex, float halfSize, float hOff,
+                              const glm::vec3 &lightColor, float blendLight) {
+    drawGroundQuad(cx, cz, halfSize, hOff);
+    bgfx::setTransform(glm::value_ptr(identity));
+    bgfx::setVertexBuffer(0, m_dynVbo);
+    bgfx::setIndexBuffer(m_quadEbo);
+    shader->setTexture(0, "s_texColor", tex);
+    shader->setVec4("u_params", glm::vec4(1.0f, blendLight, 0.0f, 0.0f));
+    shader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    shader->setVec4("u_lightColor", glm::vec4(lightColor, 0.0f));
+    shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    shader->setVec4("u_fogParams", glm::vec4(0.0f));
+    shader->setVec4("u_fogColor", glm::vec4(0.0f));
+    bgfx::setState(groundState);
+    bgfx::submit(0, shader->program);
+  };
 
   // Pass 1: Ground glow (Magic_Ground1)
-  if (m_glowTex) {
-    shader->setVec3("lightColor", 0.7f * fadeMul, 0.5f * fadeMul,
-                    0.2f * fadeMul);
-    shader->setFloat("blendMeshLight", fadeMul);
-    glBindTexture(GL_TEXTURE_2D, m_glowTex);
-    drawGroundQuad(cx, cz, 50.0f, 1.5f);
-  }
+  if (TexValid(m_glowTex))
+    submitGroundQuad(m_glowTex, 50.0f, 1.5f,
+                     glm::vec3(0.7f, 0.5f, 0.2f) * fadeMul, fadeMul);
 
   // Pass 2: Pulsing ring (cursorpin02)
-  if (m_ringTex) {
-    shader->setVec3("lightColor", 1.0f * fadeMul, 0.7f * fadeMul,
-                    0.3f * fadeMul);
-    shader->setFloat("blendMeshLight", fadeMul);
-    glBindTexture(GL_TEXTURE_2D, m_ringTex);
-    float halfSize = m_scale * 30.0f;
-    drawGroundQuad(cx, cz, halfSize, 2.0f);
-  }
+  if (TexValid(m_ringTex))
+    submitGroundQuad(m_ringTex, m_scale * 30.0f, 2.0f,
+                     glm::vec3(1.0f, 0.7f, 0.3f) * fadeMul, fadeMul);
 
   // Pass 3: Expanding wave rings (cursorpin01)
-  if (m_waveTex && !m_waves.empty()) {
-    glBindTexture(GL_TEXTURE_2D, m_waveTex);
+  if (TexValid(m_waveTex) && !m_waves.empty()) {
     for (auto &w : m_waves) {
       float a = w.alpha * fadeMul;
-      shader->setVec3("lightColor", 1.0f * a, 0.7f * a, 0.3f * a);
-      shader->setFloat("blendMeshLight", a);
-      float halfSize = w.scale * 30.0f;
-      drawGroundQuad(cx, cz, halfSize, 2.5f);
+      submitGroundQuad(m_waveTex, w.scale * 30.0f, 2.5f,
+                       glm::vec3(1.0f, 0.7f, 0.3f) * a, a);
     }
   }
 
@@ -229,37 +218,36 @@ void ClickEffect::Render(const glm::mat4 &view, const glm::mat4 &proj,
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(0.35f));
 
-    shader->setMat4("model", model);
-    shader->setVec3("lightColor", 1.0f * fadeMul, 0.7f * fadeMul,
-                    0.3f * fadeMul);
-    shader->setFloat("blendMeshLight", fadeMul);
-
     auto &mb = m_modelBuffers[0];
-    glBindTexture(GL_TEXTURE_2D, mb.texture);
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-    glBindVertexArray(0);
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    shader->setTexture(0, "s_texColor", mb.texture);
+    shader->setVec4("u_params", glm::vec4(1.0f, fadeMul, 0.0f, 0.0f));
+    shader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    shader->setVec4("u_lightColor", glm::vec4(fadeMul, 0.7f * fadeMul, 0.3f * fadeMul, 0.0f));
+    shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    shader->setVec4("u_fogParams", glm::vec4(0.0f));
+    shader->setVec4("u_fogColor", glm::vec4(0.0f));
+    bgfx::setState(groundState);
+    bgfx::submit(0, shader->program);
   }
-
-  // Restore state
-  glEnable(GL_CULL_FACE);
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void ClickEffect::Cleanup() {
-  if (m_vao) {
-    glDeleteVertexArrays(1, &m_vao);
-    glDeleteBuffers(1, &m_vbo);
-    m_vao = m_vbo = 0;
-  }
+  if (bgfx::isValid(m_dynVbo)) bgfx::destroy(m_dynVbo);
+  if (bgfx::isValid(m_quadEbo)) bgfx::destroy(m_quadEbo);
+  m_dynVbo = BGFX_INVALID_HANDLE;
+  m_quadEbo = BGFX_INVALID_HANDLE;
   CleanupMeshBuffers(m_modelBuffers);
   m_bmd.reset();
-  if (m_ringTex)
-    glDeleteTextures(1, &m_ringTex);
-  if (m_waveTex)
-    glDeleteTextures(1, &m_waveTex);
-  if (m_glowTex)
-    glDeleteTextures(1, &m_glowTex);
-  m_ringTex = m_waveTex = m_glowTex = 0;
+  TexDestroy(m_ringTex);
+  TexDestroy(m_waveTex);
+  TexDestroy(m_glowTex);
 }

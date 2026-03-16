@@ -1,12 +1,26 @@
 #ifndef TEXTURE_LOADER_HPP
 #define TEXTURE_LOADER_HPP
 
-#include <GL/glew.h>
+#include <bgfx/bgfx.h>
 #include <string>
 #include <vector>
 
+// Unified texture handle type for BGFX backend
+using TexHandle = bgfx::TextureHandle;
+inline bool TexValid(TexHandle h) { return bgfx::isValid(h); }
+inline void TexDestroy(TexHandle &h) {
+  if (bgfx::isValid(h)) {
+    bgfx::destroy(h);
+    h = BGFX_INVALID_HANDLE;
+  }
+}
+inline constexpr TexHandle kInvalidTex = BGFX_INVALID_HANDLE;
+
+// Convert TexHandle to integer suitable for (ImTextureID) cast
+inline uintptr_t TexImID(TexHandle h) { return (uintptr_t)h.idx; }
+
 struct TextureLoadResult {
-  GLuint textureID = 0;
+  TexHandle textureID = kInvalidTex;
   bool hasAlpha = false; // true if RGBA/32-bit
 };
 
@@ -20,19 +34,19 @@ struct TextureScriptFlags {
 
 class TextureLoader {
 public:
-  static GLuint LoadOZJ(const std::string &path);
+  static TexHandle LoadOZJ(const std::string &path);
   static std::vector<unsigned char> LoadOZJRaw(const std::string &path,
                                                int &width, int &height);
-  static GLuint LoadOZT(const std::string &path);
+  static TexHandle LoadOZT(const std::string &path);
   static std::vector<unsigned char> LoadOZTRaw(const std::string &path,
                                                int &width, int &height);
 
   // Load texture by extension (OZJ/JPG -> LoadOZJ, OZT/TGA -> LoadOZT)
-  static GLuint LoadByExtension(const std::string &path);
+  static TexHandle LoadByExtension(const std::string &path);
 
   // Resolve a BMD texture name to an actual file and load it.
   // Handles path prefixes, extension variants, and case-insensitive lookup.
-  static GLuint Resolve(const std::string &directory,
+  static TexHandle Resolve(const std::string &directory,
                         const std::string &bmdTextureName);
 
   // Resolve and return alpha info alongside the texture handle.

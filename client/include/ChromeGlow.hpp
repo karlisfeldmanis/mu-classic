@@ -1,6 +1,6 @@
 #pragma once
 
-#include <GL/glew.h>
+#include "TextureLoader.hpp" // TexHandle, TexValid, TexDestroy
 #include <glm/glm.hpp>
 #include <string>
 
@@ -11,14 +11,14 @@
 namespace ChromeGlow {
 
 struct Textures {
-  GLuint chrome1 = 0; // Effect/Chrome01.OZJ (BITMAP_CHROME)
-  GLuint chrome2 = 0; // Effect/Chrome02.OZJ (BITMAP_CHROME2)
-  GLuint shiny = 0;   // Effect/Shiny01.OZJ  (BITMAP_SHINY)
+  TexHandle chrome1 = kInvalidTex;
+  TexHandle chrome2 = kInvalidTex;
+  TexHandle shiny   = kInvalidTex;
 };
 
 struct GlowPass {
   int chromeMode; // 1=CHROME, 2=CHROME2, 3=METAL, 4=CHROME4
-  GLuint texture;
+  TexHandle texture = kInvalidTex;
   glm::vec3 color;
 };
 
@@ -37,10 +37,5 @@ glm::vec3 GetPartObjectColor2(int category, int itemIndex);
 // Each pass has chromeMode, texture, and color already resolved.
 int GetGlowPasses(int enhanceLevel, int category, int itemIndex,
                   GlowPass *outPasses);
-
-// GL state: additive blend, depth write off, cull off
-void BeginGlow();
-// Restore: alpha blend, depth write on, cull on, reset shader uniforms
-void EndGlow(GLuint shaderProgram);
 
 } // namespace ChromeGlow

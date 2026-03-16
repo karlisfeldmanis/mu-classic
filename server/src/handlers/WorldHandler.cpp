@@ -43,9 +43,10 @@ void HandleMove(Session &session, const std::vector<uint8_t> &packet,
     return;
   const auto *move = reinterpret_cast<const PMSG_MOVE_RECV *>(packet.data());
 
-  // NOTE: Do NOT update session.worldX/worldZ here — move->x/y is the
-  // click-to-move DESTINATION, not the player's current position.
-  // HandlePrecisePosition (D7) provides the actual current position.
+  // Update session world position to match destination (prevents autosave race).
+  // MU coordinate mapping: grid X → worldZ, grid Y → worldX
+  session.worldX = move->y * 100.0f;
+  session.worldZ = move->x * 100.0f;
 
   // Player started walking — reset idle regen timer
   session.idleTimer = 0.0f;

@@ -1,7 +1,7 @@
 #ifndef SHADER_HPP
 #define SHADER_HPP
 
-#include <GL/glew.h>
+#include <cstdio>
 #include <fstream>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -11,163 +11,169 @@
 #include <string>
 #include <unordered_map>
 
-class Shader {
+#include <bgfx/bgfx.h>
+
+// BGFX shader program wrapper — loads pre-compiled .bin shaders,
+// caches uniform handles, and provides GLM-compatible setters.
+class BgfxShader {
 public:
-  GLuint ID;
+  bgfx::ProgramHandle program = BGFX_INVALID_HANDLE;
 
-  Shader(const char *vertexPath, const char *fragmentPath) {
-    std::string vertexCode;
-    std::string fragmentCode;
-    std::ifstream vShaderFile;
-    std::ifstream fShaderFile;
-    vShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    fShaderFile.exceptions(std::ifstream::failbit | std::ifstream::badbit);
-    try {
-      vShaderFile.open(vertexPath);
-      fShaderFile.open(fragmentPath);
-      std::stringstream vShaderStream, fShaderStream;
-      vShaderStream << vShaderFile.rdbuf();
-      fShaderStream << fShaderFile.rdbuf();
-      vShaderFile.close();
-      fShaderFile.close();
-      vertexCode = vShaderStream.str();
-      fragmentCode = fShaderStream.str();
-    } catch (std::ifstream::failure &e) {
-      std::cerr << "ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " << e.what()
-                << std::endl;
+  // Load pre-compiled vertex + fragment shader binaries
+  bool load(const char *vsPath, const char *fsPath) {
+    bgfx::ShaderHandle vsh = loadBin(vsPath);
+    bgfx::ShaderHandle fsh = loadBin(fsPath);
+    if (!bgfx::isValid(vsh) || !bgfx::isValid(fsh)) {
+      if (bgfx::isValid(vsh)) bgfx::destroy(vsh);
+      if (bgfx::isValid(fsh)) bgfx::destroy(fsh);
+      return false;
     }
-    const char *vShaderCode = vertexCode.c_str();
-    const char *fShaderCode = fragmentCode.c_str();
-
-    GLuint vertex, fragment;
-    int success;
-    char infoLog[512];
-
-    vertex = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertex, 1, &vShaderCode, NULL);
-    glCompileShader(vertex);
-    glGetShaderiv(vertex, GL_COMPILE_STATUS, &success);
-    if (!success) {
-      glGetShaderInfoLog(vertex, 512, NULL, infoLog);
-      std::cerr << "ERROR::SHADER::VERTEX::COMPILATION_FAILED\n"
-                << infoLog << std::endl;
+    program = bgfx::createProgram(vsh, fsh, true); // destroyShaders=true
+    if (!bgfx::isValid(program)) {
+      fprintf(stderr, "[BgfxShader] Failed to create program: %s + %s\n", vsPath, fsPath);
+      return false;
     }
-
-    fragment = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragment, 1, &fShaderCode, NULL);
-    glCompileShader(fragment);
-    glGetShaderiv(fragment, GL_COMPILE_STATUS, &success);
-    if (!success) {
-      glGetShaderInfoLog(fragment, 512, NULL, infoLog);
-      std::cerr << "ERROR::SHADER::FRAGMENT::COMPILATION_FAILED\n"
-                << infoLog << std::endl;
-    }
-
-    ID = glCreateProgram();
-    glAttachShader(ID, vertex);
-    glAttachShader(ID, fragment);
-    glLinkProgram(ID);
-    glGetProgramiv(ID, GL_LINK_STATUS, &success);
-    if (!success) {
-      glGetProgramInfoLog(ID, 512, NULL, infoLog);
-      std::cerr << "ERROR::SHADER::PROGRAM::LINKING_FAILED\n"
-                << infoLog << std::endl;
-    }
-    glDeleteShader(vertex);
-    glDeleteShader(fragment);
+    return true;
   }
 
-  // Factory: resolves shaders/ vs ../shaders/ path and returns unique_ptr
-  static std::unique_ptr<Shader> Load(const std::string &vertName,
-                                      const std::string &fragName) {
-    std::ifstream test("shaders/" + vertName);
+  // Factory: resolves shaders/ vs ../shaders/ path
+  static std::unique_ptr<BgfxShader> Load(const std::string &vsName,
+                                           const std::string &fsName) {
+    std::ifstream test("shaders/" + vsName);
     std::string prefix = test.good() ? "shaders/" : "../shaders/";
-    return std::make_unique<Shader>((prefix + vertName).c_str(),
-                                   (prefix + fragName).c_str());
+    auto s = std::make_unique<BgfxShader>();
+    if (!s->load((prefix + vsName).c_str(), (prefix + fsName).c_str()))
+      return nullptr;
+    return s;
   }
 
-  void use() { glUseProgram(ID); }
-
-  GLint loc(const std::string &name) const {
-    auto it = m_uniformCache.find(name);
-    if (it != m_uniformCache.end())
-      return it->second;
-    GLint l = glGetUniformLocation(ID, name.c_str());
-    m_uniformCache[name] = l;
-    return l;
+  void destroy() {
+    for (auto &[name, handle] : m_uniformCache) {
+      if (bgfx::isValid(handle))
+        bgfx::destroy(handle);
+    }
+    m_uniformCache.clear();
+    if (bgfx::isValid(program)) {
+      bgfx::destroy(program);
+      program = BGFX_INVALID_HANDLE;
+    }
   }
 
-  void setBool(const std::string &name, bool value) const {
-    glUniform1i(loc(name), (int)value);
-  }
-  void setInt(const std::string &name, int value) const {
-    glUniform1i(loc(name), value);
-  }
-  void setFloat(const std::string &name, float value) const {
-    glUniform1f(loc(name), value);
-  }
-  void setVec2(const std::string &name, const glm::vec2 &value) const {
-    glUniform2fv(loc(name), 1, &value[0]);
-  }
-  void setVec3(const std::string &name, const glm::vec3 &value) const {
-    glUniform3fv(loc(name), 1, &value[0]);
-  }
-  void setVec3(const std::string &name, float x, float y, float z) const {
-    glUniform3f(loc(name), x, y, z);
-  }
-  void setMat4(const std::string &name, const glm::mat4 &mat) const {
-    glUniformMatrix4fv(loc(name), 1, GL_FALSE, &mat[0][0]);
+  // No use() — BGFX binds program at submit() time
+
+  // Uniform setters — BGFX minimum granularity is vec4
+  void setFloat(const char *name, float v) {
+    float val[4] = {v, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(getOrCreate(name, bgfx::UniformType::Vec4), val);
   }
 
-  // Point light uniform upload — pre-cached locations, zero string allocs
+  void setVec2(const char *name, const glm::vec2 &v) {
+    float val[4] = {v.x, v.y, 0.0f, 0.0f};
+    bgfx::setUniform(getOrCreate(name, bgfx::UniformType::Vec4), val);
+  }
+
+  void setVec3(const char *name, const glm::vec3 &v) {
+    float val[4] = {v.x, v.y, v.z, 0.0f};
+    bgfx::setUniform(getOrCreate(name, bgfx::UniformType::Vec4), val);
+  }
+
+  void setVec4(const char *name, const glm::vec4 &v) {
+    bgfx::setUniform(getOrCreate(name, bgfx::UniformType::Vec4), glm::value_ptr(v));
+  }
+
+  void setMat3(const char *name, const glm::mat3 &m) {
+    bgfx::setUniform(getOrCreate(name, bgfx::UniformType::Mat3), glm::value_ptr(m));
+  }
+
+  void setMat4(const char *name, const glm::mat4 &m) {
+    bgfx::setUniform(getOrCreate(name, bgfx::UniformType::Mat4), glm::value_ptr(m));
+  }
+
+  void setTexture(uint8_t stage, const char *name, bgfx::TextureHandle tex) {
+    bgfx::setTexture(stage, getOrCreate(name, bgfx::UniformType::Sampler), tex);
+  }
+
+  // Point lights: pack as vec4 arrays (position.xyz + range in w, color.xyz + 0 in w)
   static constexpr int MAX_POINT_LIGHTS = 64;
 
-  // Struct-based overload: any T with .position, .color, .range members
   template <typename T>
   void uploadPointLights(int count, const T *lights) {
-    ensurePLCached();
-    glUniform1i(m_plCount, count);
-    for (int i = 0; i < count; ++i) {
-      glUniform3fv(m_plPos[i], 1, &lights[i].position[0]);
-      glUniform3fv(m_plColor[i], 1, &lights[i].color[0]);
-      glUniform1f(m_plRange[i], lights[i].range);
+    // Pack positions (xyz) + range (w) into vec4 array
+    float posData[MAX_POINT_LIGHTS * 4] = {};
+    float colData[MAX_POINT_LIGHTS * 4] = {};
+    for (int i = 0; i < count && i < MAX_POINT_LIGHTS; ++i) {
+      posData[i * 4 + 0] = lights[i].position.x;
+      posData[i * 4 + 1] = lights[i].position.y;
+      posData[i * 4 + 2] = lights[i].position.z;
+      posData[i * 4 + 3] = lights[i].range;
+      colData[i * 4 + 0] = lights[i].color.x;
+      colData[i * 4 + 1] = lights[i].color.y;
+      colData[i * 4 + 2] = lights[i].color.z;
+      colData[i * 4 + 3] = 0.0f;
     }
+    int n = (count > 0) ? count : 1; // BGFX requires num >= 1
+    bgfx::setUniform(getOrCreate("u_lightPosRange", bgfx::UniformType::Vec4, MAX_POINT_LIGHTS),
+                     posData, n);
+    bgfx::setUniform(getOrCreate("u_lightColorArr", bgfx::UniformType::Vec4, MAX_POINT_LIGHTS),
+                     colData, n);
+    float countVec[4] = {(float)count, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(getOrCreate("u_lightCount", bgfx::UniformType::Vec4), countVec);
   }
 
   void uploadPointLights(int count, const glm::vec3 *positions,
                          const glm::vec3 *colors, const float *ranges) {
-    ensurePLCached();
-    glUniform1i(m_plCount, count);
-    for (int i = 0; i < count; ++i) {
-      glUniform3fv(m_plPos[i], 1, &positions[i][0]);
-      glUniform3fv(m_plColor[i], 1, &colors[i][0]);
-      glUniform1f(m_plRange[i], ranges[i]);
+    float posData[MAX_POINT_LIGHTS * 4] = {};
+    float colData[MAX_POINT_LIGHTS * 4] = {};
+    for (int i = 0; i < count && i < MAX_POINT_LIGHTS; ++i) {
+      posData[i * 4 + 0] = positions[i].x;
+      posData[i * 4 + 1] = positions[i].y;
+      posData[i * 4 + 2] = positions[i].z;
+      posData[i * 4 + 3] = ranges[i];
+      colData[i * 4 + 0] = colors[i].x;
+      colData[i * 4 + 1] = colors[i].y;
+      colData[i * 4 + 2] = colors[i].z;
+      colData[i * 4 + 3] = 0.0f;
     }
+    int n = (count > 0) ? count : 1;
+    bgfx::setUniform(getOrCreate("u_lightPosRange", bgfx::UniformType::Vec4, MAX_POINT_LIGHTS),
+                     posData, n);
+    bgfx::setUniform(getOrCreate("u_lightColorArr", bgfx::UniformType::Vec4, MAX_POINT_LIGHTS),
+                     colData, n);
+    float countVec[4] = {(float)count, 0.0f, 0.0f, 0.0f};
+    bgfx::setUniform(getOrCreate("u_lightCount", bgfx::UniformType::Vec4), countVec);
   }
 
 private:
-  void ensurePLCached() {
-    if (!m_plCached) {
-      for (int i = 0; i < MAX_POINT_LIGHTS; ++i) {
-        char buf[48];
-        snprintf(buf, sizeof(buf), "pointLightPos[%d]", i);
-        m_plPos[i] = glGetUniformLocation(ID, buf);
-        snprintf(buf, sizeof(buf), "pointLightColor[%d]", i);
-        m_plColor[i] = glGetUniformLocation(ID, buf);
-        snprintf(buf, sizeof(buf), "pointLightRange[%d]", i);
-        m_plRange[i] = glGetUniformLocation(ID, buf);
-      }
-      m_plCount = glGetUniformLocation(ID, "numPointLights");
-      m_plCached = true;
+  static bgfx::ShaderHandle loadBin(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+      fprintf(stderr, "[BgfxShader] Failed to open: %s\n", path);
+      return BGFX_INVALID_HANDLE;
     }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    const bgfx::Memory *mem = bgfx::alloc(size + 1);
+    fread(mem->data, 1, size, f);
+    mem->data[size] = '\0';
+    fclose(f);
+    return bgfx::createShader(mem);
   }
-  mutable std::unordered_map<std::string, GLint> m_uniformCache;
-  // Pre-cached point light uniform locations
-  GLint m_plPos[MAX_POINT_LIGHTS]{};
-  GLint m_plColor[MAX_POINT_LIGHTS]{};
-  GLint m_plRange[MAX_POINT_LIGHTS]{};
-  GLint m_plCount = -1;
-  bool m_plCached = false;
+
+  bgfx::UniformHandle getOrCreate(const char *name, bgfx::UniformType::Enum type,
+                                   uint16_t num = 1) {
+    auto it = m_uniformCache.find(name);
+    if (it != m_uniformCache.end())
+      return it->second;
+    bgfx::UniformHandle h = bgfx::createUniform(name, type, num);
+    m_uniformCache[name] = h;
+    return h;
+  }
+
+  std::unordered_map<std::string, bgfx::UniformHandle> m_uniformCache;
 };
 
-#endif
+// Type alias so game code can use "Shader" in both paths
+using Shader = BgfxShader;
+
+#endif // SHADER_HPP

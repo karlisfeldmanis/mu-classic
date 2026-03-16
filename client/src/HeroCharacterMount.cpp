@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 // ─── Mount Rendering ─────────────────────────────────────────────────────────
 
@@ -143,53 +144,52 @@ void HeroCharacter::renderMountModel(const glm::mat4 &view, const glm::mat4 &pro
       // (0.9 during CreateMountSub, but 1.0 in RenderMount for all non-Fenrir mounts)
       mountModel = glm::scale(mountModel, glm::vec3(1.0f));
 
-      m_shader->setMat4("model", mountModel);
-      m_shader->setFloat("objectAlpha", m_mount.alpha);
-      m_shader->setFloat("blendMeshLight", 1.0f);
-      m_shader->setVec3("terrainLight", tLight);
 
-      glDisable(GL_CULL_FACE);
-      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      // BGFX: per-submit uniforms and state
+      auto mountDrawMesh = [&](MeshBuffers &mb, float bml, uint64_t state) {
+        bgfx::setTransform(glm::value_ptr(mountModel));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        m_shader->setTexture(0, "s_texColor", mb.texture);
+        m_shader->setVec4("u_params", glm::vec4(m_mount.alpha, bml, 0.0f, 0.0f));
+        m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+        m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+        m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+        m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+        m_shader->setVec4("u_fogParams", glm::vec4(0.0f));
+        m_shader->setVec4("u_fogColor", glm::vec4(0.0f));
+        bgfx::setState(state);
+        bgfx::submit(0, m_shader->program);
+      };
 
-      // Pass 1: Normal (non-blend) meshes
+      uint64_t normalState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                           | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                           | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+      uint64_t additiveState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                             | BGFX_STATE_DEPTH_TEST_LESS
+                             | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+
+      // Pass 1: Normal meshes
       for (int mi = 0; mi < (int)m_mount.meshBuffers.size() &&
                        mi < (int)m_mount.bmd->Meshes.size(); ++mi) {
         auto &mb = m_mount.meshBuffers[mi];
         if (mb.indexCount == 0 || mb.hidden) continue;
         int bmdTex = m_mount.bmd->Meshes[mi].Texture;
         if (bmdTex == m_mount.blendMesh || mb.bright) continue;
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        mountDrawMesh(mb, 1.0f, normalState);
       }
-
-      // Pass 2: Additive blend meshes (glow/wings)
+      // Pass 2: Additive blend meshes
       if (m_mount.blendMesh >= 0) {
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        m_shader->setFloat("blendMeshLight", 1.5f);
         for (int mi = 0; mi < (int)m_mount.meshBuffers.size() &&
                          mi < (int)m_mount.bmd->Meshes.size(); ++mi) {
           auto &mb = m_mount.meshBuffers[mi];
           if (mb.indexCount == 0 || mb.hidden) continue;
           int bmdTex = m_mount.bmd->Meshes[mi].Texture;
           if (bmdTex != m_mount.blendMesh && !mb.bright) continue;
-          glBindTexture(GL_TEXTURE_2D, mb.texture);
-          glBindVertexArray(mb.vao);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+          mountDrawMesh(mb, 1.5f, additiveState);
         }
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        m_shader->setFloat("blendMeshLight", 1.0f);
       }
-
-      glEnable(GL_CULL_FACE);
-
-      // Restore shader state for subsequent rendering
-      m_shader->setFloat("objectAlpha", 1.0f);
-      glm::mat4 restoreModel = glm::translate(glm::mat4(1.0f), m_pos);
-      restoreModel = glm::rotate(restoreModel, glm::radians(-90.0f), glm::vec3(0, 0, 1));
-      restoreModel = glm::rotate(restoreModel, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-      restoreModel = glm::rotate(restoreModel, m_facing, glm::vec3(0, 0, 1));
-      m_shader->setMat4("model", restoreModel);
     }
 
     // ── Mount VFX: dust particles while running ──
@@ -281,12 +281,12 @@ void HeroCharacter::EquipMount(uint8_t itemIndex) {
                         m_mount.meshBuffers, mountAABB, true);
 
     auto &mb = m_mount.meshBuffers.back();
-    if (mb.texture == 0) {
+    if (!TexValid(mb.texture)) {
       // Fallback: try the other directory
       std::string fallbackDir = m_dataPath +
           ((itemIndex == 2) ? "/Skill/" : "/Item/");
       auto texInfo = TextureLoader::ResolveWithInfo(fallbackDir, mesh.TextureName);
-      if (texInfo.textureID) {
+      if (TexValid(texInfo.textureID)) {
         mb.texture = texInfo.textureID;
       }
     }
@@ -305,16 +305,12 @@ void HeroCharacter::EquipMount(uint8_t itemIndex) {
         meshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       meshes.push_back(sm);
     }
     return meshes;
@@ -352,8 +348,7 @@ void HeroCharacter::UnequipMount() {
   SoundManager::Play(SOUND_INTERFACE01);
   CleanupMeshBuffers(m_mount.meshBuffers);
   for (auto &sm : m_mount.shadowMeshes) {
-    if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-    if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+    if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
   }
   m_mount.shadowMeshes.clear();
   m_mount.cachedBones.clear();

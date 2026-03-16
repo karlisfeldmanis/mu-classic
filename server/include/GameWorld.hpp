@@ -41,10 +41,11 @@ inline int CalculateXP(int playerLevel, int monsterLevel) {
   if (monsterLevel >= 65)
     baseXP += (double)(monsterLevel - 64) * ((double)monsterLevel / 4.0);
 
-  // Progressive reduction: 100% at same level, down to ~5% beyond gray threshold
+  // Progressive reduction: 100% at same level, minimum 15% beyond gray threshold
   if (levelDiff > 0) {
-    double scale = 1.0 - (double)levelDiff / (double)grayThreshold;
-    if (scale < 0.05) scale = 0.05; // Minimum 5% XP for very low mobs
+    double ratio = (double)levelDiff / (double)grayThreshold;
+    if (ratio > 1.0) ratio = 1.0;
+    double scale = 1.0 - ratio * ratio * 0.85; // Quadratic curve, floors at 15%
     baseXP *= scale;
   }
 

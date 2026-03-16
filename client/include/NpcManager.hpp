@@ -6,7 +6,6 @@
 #include "MeshBuffers.hpp"
 #include "Shader.hpp"
 #include "TerrainParser.hpp"
-#include <GL/glew.h>
 #include <glm/glm.hpp>
 #include <memory>
 #include <string>
@@ -53,7 +52,8 @@ public:
   void Render(const glm::mat4 &view, const glm::mat4 &proj,
               const glm::vec3 &camPos, float deltaTime);
   void RenderShadows(const glm::mat4 &view, const glm::mat4 &proj);
-  void RenderSilhouetteOutline(int npcIndex, const glm::mat4 &view, const glm::mat4 &proj);
+  void RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram);
+  void SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx);
   void RenderLabels(ImDrawList *dl, const glm::mat4 &view, const glm::mat4 &proj,
                     int winW, int winH, const glm::vec3 &camPos, int hoveredNpc);
   int PickLabel(float screenX, float screenY, const glm::mat4 &view,
@@ -130,7 +130,7 @@ private:
 
     // Shadow
     struct ShadowMesh {
-      GLuint vao = 0, vbo = 0;
+      bgfx::DynamicVertexBufferHandle vbo = BGFX_INVALID_HANDLE;
       int vertexCount = 0;
     };
     std::vector<ShadowMesh> shadowMeshes;
@@ -148,6 +148,10 @@ private:
   std::unique_ptr<Shader> m_shader;
   std::unique_ptr<Shader> m_shadowShader;
   std::unique_ptr<Shader> m_outlineShader;
+
+  // Shadow map state
+  bgfx::TextureHandle m_shadowMapTex = BGFX_INVALID_HANDLE;
+  glm::mat4 m_lightMtx{1.0f};
 
   // Path to NPC textures and data root
   std::string m_npcTexPath;

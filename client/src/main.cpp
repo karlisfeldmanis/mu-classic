@@ -34,9 +34,40 @@
 #include "ViewerCommon.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
-#include "imgui_impl_opengl3.h"
-#include <GL/glew.h>
+#include "imgui_impl_bgfx.h"
+#include <bgfx/bgfx.h>
+#include <bgfx/platform.h>
+#include <bx/math.h>
+#define GLFW_EXPOSE_NATIVE_COCOA
+#include <GLFW/glfw3native.h>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 #include <GLFW/glfw3.h>
+
+// Compatibility macros for the GL→BGFX migration.
+// Routes ImGui backend calls to the correct implementation.
+#define ImGui_BackendNewFrame()         ImGui_ImplBgfx_NewFrame()
+#define ImGui_BackendRenderDrawData(dd) ImGui_ImplBgfx_RenderDrawData(dd)
+#define ImGui_BackendSetViewId(id)      ImGui_ImplBgfx_SetViewId(id)
+#define checkGLError(label)             do {} while(0)
+// BGFX view IDs for layered UI rendering:
+//   30  = main ImGui pass (HUD, panels, vendor grid)
+//   31+ = item 3D models (one view per slot, rendered ON TOP of UI panels)
+//   200 = overlay ImGui pass (tooltips, cooldowns, notifications)
+//   201 = map transition fade overlay
+static constexpr uint16_t IMGUI_VIEW_MAIN    = 30;
+static constexpr uint16_t IMGUI_VIEW_OVERLAY = 200;
+static constexpr uint16_t IMGUI_VIEW_TRANSITION = 201;
+// BGFX view IDs for shadow mapping and post-processing bloom pipeline:
+static constexpr bgfx::ViewId SHADOW_VIEW      = 8;
+static constexpr bgfx::ViewId PP_VIEW_BRIGHT   = 2;
+static constexpr bgfx::ViewId PP_VIEW_BLUR0    = 3;
+static constexpr bgfx::ViewId PP_VIEW_BLUR1    = 4;
+static constexpr bgfx::ViewId PP_VIEW_BLUR2    = 5;
+static constexpr bgfx::ViewId PP_VIEW_BLUR3    = 6;
+static constexpr bgfx::ViewId PP_VIEW_COMPOSITE = 9;
+static constexpr uint16_t SHADOW_MAP_SIZE = 2048;
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -48,6 +79,68 @@
 #include <streambuf>
 #include <turbojpeg.h>
 #include <unistd.h>
+
+// BGFX screenshot callback — captures framebuffer via bgfx::requestScreenShot()
+struct BgfxScreenshotCallback : public bgfx::CallbackI {
+  bool hasCaptured = false;
+  uint32_t capturedWidth = 0, capturedHeight = 0;
+  std::string pendingPath; // set before requestScreenShot
+
+  void fatal(const char *_filePath, uint16_t _line, bgfx::Fatal::Enum _code,
+             const char *_str) override {
+    fprintf(stderr, "[BGFX FATAL] %s:%d (0x%08x): %s\n", _filePath, _line,
+            _code, _str);
+  }
+  void traceVargs(const char *, uint16_t, const char *, va_list) override {}
+  void profilerBegin(const char *, uint32_t, const char *, uint16_t) override {}
+  void profilerBeginLiteral(const char *, uint32_t, const char *,
+                            uint16_t) override {}
+  void profilerEnd() override {}
+  uint32_t cacheReadSize(uint64_t) override { return 0; }
+  bool cacheRead(uint64_t, void *, uint32_t) override { return false; }
+  void cacheWrite(uint64_t, const void *, uint32_t) override {}
+  void captureBegin(uint32_t, uint32_t, uint32_t, bgfx::TextureFormat::Enum,
+                    bool) override {}
+  void captureEnd() override {}
+  void captureFrame(const void *, uint32_t) override {}
+
+  void screenShot(const char *_filePath, uint32_t _width, uint32_t _height,
+                  uint32_t _pitch, bgfx::TextureFormat::Enum _format,
+                  const void *_data, uint32_t _size, bool _yflip) override {
+    (void)_filePath;
+    (void)_format;
+    (void)_size;
+    capturedWidth = _width;
+    capturedHeight = _height;
+
+    // Convert BGRA to RGBA
+    std::vector<uint8_t> rgba(_width * _height * 4);
+    const uint8_t *src = (const uint8_t *)_data;
+    for (uint32_t y = 0; y < _height; ++y) {
+      uint32_t srcY = _yflip ? (_height - 1 - y) : y;
+      const uint8_t *srcRow = src + srcY * _pitch;
+      uint8_t *dstRow = rgba.data() + y * _width * 4;
+      for (uint32_t x = 0; x < _width; ++x) {
+        dstRow[x * 4 + 0] = srcRow[x * 4 + 2]; // R from B
+        dstRow[x * 4 + 1] = srcRow[x * 4 + 1]; // G
+        dstRow[x * 4 + 2] = srcRow[x * 4 + 0]; // B from R
+        dstRow[x * 4 + 3] = 255;
+      }
+    }
+
+    std::string outPath =
+        pendingPath.empty() ? "screenshots/bgfx_screenshot.png" : pendingPath;
+    std::filesystem::create_directories(
+        std::filesystem::path(outPath).parent_path());
+    stbi_write_png(outPath.c_str(), _width, _height, 4, rgba.data(),
+                   _width * 4);
+    std::cout << "[BGFX Screenshot] Saved: " << outPath << " (" << _width
+              << "x" << _height << ")" << std::endl;
+    hasCaptured = true;
+  }
+};
+
+static BgfxScreenshotCallback g_bgfxCallback;
 
 // Tee streambuf: writes to both a file and the original stream
 class TeeStreambuf : public std::streambuf {
@@ -89,71 +182,6 @@ static void activateMacOSApp() {
 }
 #endif
 
-// GL error checking utility — call after critical GL operations
-static void checkGLError(const char *label) {
-  GLenum err;
-  while ((err = glGetError()) != GL_NO_ERROR) {
-    const char *errStr = "UNKNOWN";
-    switch (err) {
-    case GL_INVALID_ENUM:
-      errStr = "INVALID_ENUM";
-      break;
-    case GL_INVALID_VALUE:
-      errStr = "INVALID_VALUE";
-      break;
-    case GL_INVALID_OPERATION:
-      errStr = "INVALID_OP";
-      break;
-    case GL_OUT_OF_MEMORY:
-      errStr = "OUT_OF_MEMORY";
-      break;
-    case GL_INVALID_FRAMEBUFFER_OPERATION:
-      errStr = "INVALID_FBO";
-      break;
-    }
-    std::cerr << "[GL ERROR] " << errStr << " (0x" << std::hex << err
-              << std::dec << ") at " << label << std::endl;
-  }
-}
-
-// OpenGL debug callback (ARB_debug_output) — logs all GL warnings/errors
-static void GLAPIENTRY glDebugCallback(GLenum source, GLenum type, GLuint id,
-                                       GLenum severity, GLsizei /*length*/,
-                                       const GLchar *message,
-                                       const void * /*userParam*/) {
-  // Skip notifications (very noisy)
-  if (severity == GL_DEBUG_SEVERITY_NOTIFICATION)
-    return;
-  const char *sevStr = "???";
-  switch (severity) {
-  case GL_DEBUG_SEVERITY_HIGH:
-    sevStr = "HIGH";
-    break;
-  case GL_DEBUG_SEVERITY_MEDIUM:
-    sevStr = "MED";
-    break;
-  case GL_DEBUG_SEVERITY_LOW:
-    sevStr = "LOW";
-    break;
-  }
-  const char *typeStr = "other";
-  switch (type) {
-  case GL_DEBUG_TYPE_ERROR:
-    typeStr = "ERROR";
-    break;
-  case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
-    typeStr = "DEPRECATED";
-    break;
-  case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
-    typeStr = "UNDEFINED";
-    break;
-  case GL_DEBUG_TYPE_PERFORMANCE:
-    typeStr = "PERF";
-    break;
-  }
-  std::cerr << "[GL " << sevStr << "/" << typeStr << "] " << message
-            << std::endl;
-}
 
 Camera g_camera(glm::vec3(12800.0f, 0.0f, 12800.0f));
 Terrain g_terrain;
@@ -274,7 +302,7 @@ static const MapConfig MAP_CONFIGS[] = {
         false, // sky, grass, doors, leaves, wind, traps
         SOUND_WIND01,
         "Music/MuTheme.mp3",
-        "Music/main_theme.mp3",
+        nullptr, // no music outside safe zone (wind only)
         true, // useNamedObjects
         {125, 126},
         2,
@@ -320,8 +348,8 @@ static const MapConfig MAP_CONFIGS[] = {
         0,
         false,
         0, // roofHiding (none)
-        {0},
-        0, // bridgeTypes (none)
+        {80, 85},
+        2, // bridgeTypes (Bridge, BridgeStone)
     },
     {
         // Devias (mapId=2)
@@ -345,7 +373,7 @@ static const MapConfig MAP_CONFIGS[] = {
         false,
         true,
         true,
-        false,
+        true,
         true,
         false, // sky, grass, doors, leaves, wind, traps
         SOUND_WIND01,
@@ -370,6 +398,53 @@ static const MapConfig *GetMapConfig(uint8_t mapId) {
     if (cfg.mapId == mapId)
       return &cfg;
   return &MAP_CONFIGS[0]; // Fallback to Lorencia
+}
+
+// Reconstruct bridge attributes: cells near bridge height get TW_NOGROUND set
+// and TW_WATER cleared (road surface), cells far below get TW_WATER set.
+// bridgeZone output: all cells near bridge height (for terrain mesh protection).
+static void ReconstructBridgeAttributes(TerrainData &td, const MapConfig &cfg,
+                                         std::vector<bool> &bridgeZone) {
+  if (cfg.bridgeTypeCount == 0) return;
+  const int S = 256;
+  bridgeZone.assign(S * S, false);
+  int count = 0;
+  for (const auto &obj : td.objects) {
+    bool isBridge = false;
+    for (int b = 0; b < cfg.bridgeTypeCount; b++) {
+      if (obj.type == cfg.bridgeTypes[b]) { isBridge = true; break; }
+    }
+    if (!isBridge) continue;
+
+    int gz = (int)(obj.position.x / 100.0f);
+    int gx = (int)(obj.position.z / 100.0f);
+    float angZ = std::abs(std::fmod(glm::degrees(obj.rotation.z) + 360.0f, 180.0f));
+    bool spanAlongGZ = (std::abs(angZ - 90.0f) < 45.0f);
+    // Bridge01.bmd is ~800 units long, ~300 wide → generous radius + height
+    int rGZ = spanAlongGZ ? 8 : 5;
+    int rGX = spanAlongGZ ? 5 : 8;
+
+    for (int dz = -rGZ; dz <= rGZ; ++dz) {
+      for (int dx = -rGX; dx <= rGX; ++dx) {
+        int cz = gz + dz, cx = gx + dx;
+        if (cz < 0 || cz >= S || cx < 0 || cx >= S) continue;
+        int idx = cz * S + cx;
+        float h = td.heightmap[idx];
+        if (std::abs(h - obj.position.y) < 200.0f) {
+          td.mapping.attributes[idx] |= 0x08;   // TW_NOGROUND
+          td.mapping.attributes[idx] &= ~0x10;   // clear TW_WATER
+          bridgeZone[idx] = true;                 // mark for mesh protection
+        } else {
+          td.mapping.attributes[idx] |= 0x10;    // TW_WATER
+        }
+        count++;
+      }
+    }
+  }
+  int zoneCount = 0;
+  for (int i = 0; i < S * S; i++) if (bridgeZone[i]) zoneCount++;
+  if (count > 0)
+    std::cout << "[Bridge] Patched " << count << " attribute cells, bridgeZone=" << zoneCount << std::endl;
 }
 
 // Apply atmosphere/rendering settings from MapConfig to all subsystems
@@ -908,8 +983,9 @@ static float DrawQuestRewardItem(ImDrawList *dl, float px, float cy,
                               : def.modelFile.c_str();
   if (modelName && modelName[0]) {
     int winH = (int)ImGui::GetIO().DisplaySize.y;
+    int questItemY = (int)boxY; // BGFX: top-left origin
     InventoryUI::AddRenderJob({modelName, reward.defIndex, (int)boxX,
-                               winH - (int)(boxY + boxSize), (int)boxSize,
+                               questItemY, (int)boxSize,
                                (int)boxSize, hovered});
   }
 
@@ -1007,7 +1083,7 @@ enum class GameState {
 static GameState g_gameState = GameState::CONNECTING;
 static bool g_worldInitialized = false; // True once game world is set up
 static int g_loadingFrames = 0;         // Frames spent in LOADING state
-static GLuint g_loadingTex = 0;         // Loading screen texture
+static TexHandle g_loadingTex = kInvalidTex; // Loading screen texture
 
 // ── Map transition preloader (fullscreen overlay during ChangeMap) ──
 static bool g_mapTransitionActive = false;
@@ -1018,69 +1094,58 @@ static uint8_t g_mapTransMapId = 0;
 static uint8_t g_mapTransSpawnX = 0;
 static uint8_t g_mapTransSpawnY = 0;
 
+// ── Shadow map state (BGFX) ──
+struct ShadowMapState {
+  bgfx::TextureHandle colorTex = BGFX_INVALID_HANDLE;
+  bgfx::TextureHandle depthTex = BGFX_INVALID_HANDLE;
+  bgfx::FrameBufferHandle fb = BGFX_INVALID_HANDLE;
+  std::unique_ptr<Shader> depthShader;
+};
+static ShadowMapState g_shadowMap;
+
 // ── Post-processing (bloom + vignette + color grading) ──
 struct PostProcessState {
   bool enabled = false;
-  int width = 0, height = 0; // Current FBO dimensions (framebuffer pixels)
-
-  // Main scene FBO (HDR)
-  GLuint sceneFBO = 0;
-  GLuint sceneColorTex = 0; // GL_RGBA16F
-  GLuint sceneDepthRBO = 0;
-
-  // Bloom ping-pong FBOs (half resolution)
-  GLuint bloomFBO[2] = {0, 0};
-  GLuint bloomTex[2] = {0, 0};
+  int width = 0, height = 0;
+  bgfx::FrameBufferHandle sceneFB = BGFX_INVALID_HANDLE;
+  bgfx::TextureHandle sceneColorTex = BGFX_INVALID_HANDLE;
+  bgfx::TextureHandle sceneDepthTex = BGFX_INVALID_HANDLE;
+  bgfx::FrameBufferHandle bloomFB[2] = {BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE};
+  bgfx::TextureHandle bloomTex[2] = {BGFX_INVALID_HANDLE, BGFX_INVALID_HANDLE};
   int bloomW = 0, bloomH = 0;
-
-  // Fullscreen quad
-  GLuint quadVAO = 0, quadVBO = 0;
-
-  // Shaders
   std::unique_ptr<Shader> brightExtract;
   std::unique_ptr<Shader> blur;
   std::unique_ptr<Shader> composite;
-
-  // Per-map parameters
   float bloomIntensity = 0.5f;
   float vignetteStrength = 0.15f;
   glm::vec3 colorTint = glm::vec3(1.02f, 1.0f, 0.96f);
   float bloomThreshold = 0.35f;
+  bgfx::VertexBufferHandle screenTriVBO = BGFX_INVALID_HANDLE;
 };
 static PostProcessState g_postProcess;
 
 static void InitPostProcess() {
   auto &pp = g_postProcess;
-
-  // Load shaders (Shader::Load resolves shaders/ vs ../shaders/ path)
-  pp.brightExtract = Shader::Load("postprocess.vert", "bright_extract.frag");
-  pp.blur = Shader::Load("postprocess.vert", "blur.frag");
-  pp.composite = Shader::Load("postprocess.vert", "postprocess.frag");
-
+  pp.brightExtract = Shader::Load("vs_postprocess.bin", "fs_bright_extract.bin");
+  pp.blur = Shader::Load("vs_postprocess.bin", "fs_blur.bin");
+  pp.composite = Shader::Load("vs_postprocess.bin", "fs_postprocess.bin");
   if (!pp.brightExtract || !pp.blur || !pp.composite) {
     std::cerr << "[PostProcess] Failed to load shaders, disabling\n";
     pp.enabled = false;
     return;
   }
-
-  // Fullscreen quad (NDC positions + tex coords)
-  float quadVerts[] = {
-      // pos        // uv
-      -1.0f, 1.0f,  0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
-      1.0f,  -1.0f, 1.0f, 0.0f, -1.0f, 1.0f,  0.0f, 1.0f,
-      1.0f,  -1.0f, 1.0f, 0.0f, 1.0f,  1.0f,  1.0f, 1.0f,
+  // Fullscreen triangle (covers entire NDC quad with one triangle)
+  static float screenTriVerts[] = {
+    -1.0f, -1.0f, 0.0f,
+     3.0f, -1.0f, 0.0f,
+    -1.0f,  3.0f, 0.0f,
   };
-  glGenVertexArrays(1, &pp.quadVAO);
-  glGenBuffers(1, &pp.quadVBO);
-  glBindVertexArray(pp.quadVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, pp.quadVBO);
-  glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
-  glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
-  glEnableVertexAttribArray(1);
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                        (void *)(2 * sizeof(float)));
-  glBindVertexArray(0);
+  bgfx::VertexLayout ppLayout;
+  ppLayout.begin()
+    .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+    .end();
+  pp.screenTriVBO = bgfx::createVertexBuffer(
+      bgfx::makeRef(screenTriVerts, sizeof(screenTriVerts)), ppLayout);
 
   pp.enabled = true;
   std::cout << "[PostProcess] Initialized (bloom + vignette + color grading)\n";
@@ -1090,76 +1155,109 @@ static void ResizePostProcessFBOs(int fbW, int fbH) {
   auto &pp = g_postProcess;
   if (!pp.enabled || (pp.width == fbW && pp.height == fbH))
     return;
-
   pp.width = fbW;
   pp.height = fbH;
   pp.bloomW = fbW / 2;
   pp.bloomH = fbH / 2;
 
-  // Cleanup old FBOs
-  if (pp.sceneFBO) {
-    glDeleteFramebuffers(1, &pp.sceneFBO);
-    glDeleteTextures(1, &pp.sceneColorTex);
-    glDeleteRenderbuffers(1, &pp.sceneDepthRBO);
-  }
-  if (pp.bloomFBO[0]) {
-    glDeleteFramebuffers(2, pp.bloomFBO);
-    glDeleteTextures(2, pp.bloomTex);
+  // Cleanup old
+  if (bgfx::isValid(pp.sceneFB)) bgfx::destroy(pp.sceneFB);
+  if (bgfx::isValid(pp.sceneColorTex)) bgfx::destroy(pp.sceneColorTex);
+  if (bgfx::isValid(pp.sceneDepthTex)) bgfx::destroy(pp.sceneDepthTex);
+  for (int i = 0; i < 2; ++i) {
+    if (bgfx::isValid(pp.bloomFB[i])) bgfx::destroy(pp.bloomFB[i]);
+    if (bgfx::isValid(pp.bloomTex[i])) bgfx::destroy(pp.bloomTex[i]);
   }
 
-  // Main scene FBO (HDR, full resolution)
-  glGenFramebuffers(1, &pp.sceneFBO);
-  glBindFramebuffer(GL_FRAMEBUFFER, pp.sceneFBO);
-
-  glGenTextures(1, &pp.sceneColorTex);
-  glBindTexture(GL_TEXTURE_2D, pp.sceneColorTex);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fbW, fbH, 0, GL_RGBA,
-               GL_UNSIGNED_BYTE, nullptr);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                         pp.sceneColorTex, 0);
-
-  glGenRenderbuffers(1, &pp.sceneDepthRBO);
-  glBindRenderbuffer(GL_RENDERBUFFER, pp.sceneDepthRBO);
-  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, fbW, fbH);
-  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-                            GL_RENDERBUFFER, pp.sceneDepthRBO);
-
-  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "[PostProcess] Scene FBO incomplete!\n";
-    pp.enabled = false;
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    return;
-  }
+  // Scene FBO (full resolution)
+  pp.sceneColorTex = bgfx::createTexture2D(fbW, fbH, false, 1,
+      bgfx::TextureFormat::BGRA8,
+      BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+  pp.sceneDepthTex = bgfx::createTexture2D(fbW, fbH, false, 1,
+      bgfx::TextureFormat::D24S8, BGFX_TEXTURE_RT_WRITE_ONLY);
+  bgfx::TextureHandle sceneAtts[] = {pp.sceneColorTex, pp.sceneDepthTex};
+  pp.sceneFB = bgfx::createFrameBuffer(2, sceneAtts, false);
 
   // Bloom ping-pong FBOs (half resolution)
-  glGenFramebuffers(2, pp.bloomFBO);
-  glGenTextures(2, pp.bloomTex);
   for (int i = 0; i < 2; ++i) {
-    glBindFramebuffer(GL_FRAMEBUFFER, pp.bloomFBO[i]);
-    glBindTexture(GL_TEXTURE_2D, pp.bloomTex[i]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, pp.bloomW, pp.bloomH, 0, GL_RGBA,
-                 GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                           pp.bloomTex[i], 0);
+    pp.bloomTex[i] = bgfx::createTexture2D(pp.bloomW, pp.bloomH, false, 1,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+    bgfx::TextureHandle bt[] = {pp.bloomTex[i]};
+    pp.bloomFB[i] = bgfx::createFrameBuffer(1, bt, false);
   }
 
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
   std::cout << "[PostProcess] FBOs resized to " << fbW << "x" << fbH
             << " (bloom " << pp.bloomW << "x" << pp.bloomH << ")\n";
 }
 
-static void RenderFullscreenQuad(const PostProcessState &pp) {
-  glBindVertexArray(pp.quadVAO);
-  glDrawArrays(GL_TRIANGLES, 0, 6);
-  glBindVertexArray(0);
+// Run the bloom + composite post-processing pipeline
+static void RenderPostProcess(int fbW, int fbH) {
+  auto &pp = g_postProcess;
+  if (!pp.enabled || !bgfx::isValid(pp.screenTriVBO))
+    return;
+
+  // Pass 1: Bright extract — scene → bloom[0]
+  bgfx::setViewName(PP_VIEW_BRIGHT, "BrightExtract");
+  bgfx::setViewRect(PP_VIEW_BRIGHT, 0, 0, uint16_t(pp.bloomW), uint16_t(pp.bloomH));
+  bgfx::setViewFrameBuffer(PP_VIEW_BRIGHT, pp.bloomFB[0]);
+  pp.brightExtract->setTexture(0, "s_scene", pp.sceneColorTex);
+  pp.brightExtract->setVec4("u_ppParams", glm::vec4(pp.bloomThreshold, 0, 0, 0));
+  bgfx::setVertexBuffer(0, pp.screenTriVBO);
+  bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+  bgfx::submit(PP_VIEW_BRIGHT, pp.brightExtract->program);
+
+  // Pass 2: Horizontal blur — bloom[0] → bloom[1]
+  bgfx::setViewName(PP_VIEW_BLUR0, "BlurH1");
+  bgfx::setViewRect(PP_VIEW_BLUR0, 0, 0, uint16_t(pp.bloomW), uint16_t(pp.bloomH));
+  bgfx::setViewFrameBuffer(PP_VIEW_BLUR0, pp.bloomFB[1]);
+  pp.blur->setTexture(0, "s_image", pp.bloomTex[0]);
+  pp.blur->setVec4("u_blurParams", glm::vec4(1.0f, 1.0f / pp.bloomW, 0, 0));
+  bgfx::setVertexBuffer(0, pp.screenTriVBO);
+  bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+  bgfx::submit(PP_VIEW_BLUR0, pp.blur->program);
+
+  // Pass 3: Vertical blur — bloom[1] → bloom[0]
+  bgfx::setViewName(PP_VIEW_BLUR1, "BlurV1");
+  bgfx::setViewRect(PP_VIEW_BLUR1, 0, 0, uint16_t(pp.bloomW), uint16_t(pp.bloomH));
+  bgfx::setViewFrameBuffer(PP_VIEW_BLUR1, pp.bloomFB[0]);
+  pp.blur->setTexture(0, "s_image", pp.bloomTex[1]);
+  pp.blur->setVec4("u_blurParams", glm::vec4(0.0f, 1.0f / pp.bloomH, 0, 0));
+  bgfx::setVertexBuffer(0, pp.screenTriVBO);
+  bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+  bgfx::submit(PP_VIEW_BLUR1, pp.blur->program);
+
+  // Pass 4: Horizontal blur 2 — bloom[0] → bloom[1]
+  bgfx::setViewName(PP_VIEW_BLUR2, "BlurH2");
+  bgfx::setViewRect(PP_VIEW_BLUR2, 0, 0, uint16_t(pp.bloomW), uint16_t(pp.bloomH));
+  bgfx::setViewFrameBuffer(PP_VIEW_BLUR2, pp.bloomFB[1]);
+  pp.blur->setTexture(0, "s_image", pp.bloomTex[0]);
+  pp.blur->setVec4("u_blurParams", glm::vec4(1.0f, 1.0f / pp.bloomW, 0, 0));
+  bgfx::setVertexBuffer(0, pp.screenTriVBO);
+  bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+  bgfx::submit(PP_VIEW_BLUR2, pp.blur->program);
+
+  // Pass 5: Vertical blur 2 — bloom[1] → bloom[0]
+  bgfx::setViewName(PP_VIEW_BLUR3, "BlurV2");
+  bgfx::setViewRect(PP_VIEW_BLUR3, 0, 0, uint16_t(pp.bloomW), uint16_t(pp.bloomH));
+  bgfx::setViewFrameBuffer(PP_VIEW_BLUR3, pp.bloomFB[0]);
+  pp.blur->setTexture(0, "s_image", pp.bloomTex[1]);
+  pp.blur->setVec4("u_blurParams", glm::vec4(0.0f, 1.0f / pp.bloomH, 0, 0));
+  bgfx::setVertexBuffer(0, pp.screenTriVBO);
+  bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+  bgfx::submit(PP_VIEW_BLUR3, pp.blur->program);
+
+  // Pass 6: Composite — scene + bloom → backbuffer
+  bgfx::setViewName(PP_VIEW_COMPOSITE, "Composite");
+  bgfx::setViewRect(PP_VIEW_COMPOSITE, 0, 0, uint16_t(fbW), uint16_t(fbH));
+  bgfx::setViewFrameBuffer(PP_VIEW_COMPOSITE, BGFX_INVALID_HANDLE);
+  pp.composite->setTexture(0, "s_scene", pp.sceneColorTex);
+  pp.composite->setTexture(1, "s_bloom", pp.bloomTex[0]);
+  pp.composite->setVec4("u_ppComposite", glm::vec4(pp.bloomIntensity, pp.vignetteStrength, 0, 0));
+  pp.composite->setVec4("u_ppTint", glm::vec4(pp.colorTint, 0.0f));
+  bgfx::setVertexBuffer(0, pp.screenTriVBO);
+  bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
+  bgfx::submit(PP_VIEW_COMPOSITE, pp.composite->program);
 }
 
 struct LightTemplate {
@@ -1312,14 +1410,8 @@ int main(int argc, char **argv) {
     return -1;
   }
 
-  // GL 3.3 + GLSL 150
-  const char *glsl_version = "#version 150";
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-  glfwWindowHint(GLFW_STENCIL_BITS, 8);
-  glfwWindowHint(GLFW_SAMPLES, 4); // 4x MSAA anti-aliasing
+  // BGFX: no OpenGL context — BGFX manages the GPU
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
   GLFWwindow *window = glfwCreateWindow(
       1366, 768, "Mu Online Remaster (Native macOS C++)", nullptr, nullptr);
@@ -1328,35 +1420,43 @@ int main(int argc, char **argv) {
     glfwTerminate();
     return -1;
   }
-  glfwMakeContextCurrent(window);
-  glfwSwapInterval(1); // Enable vsync
 
-#ifdef __APPLE__
-  activateMacOSApp();
-#endif
-
-  if (glewInit() != GLEW_OK) {
-    std::cerr << "Failed to initialize GLEW" << std::endl;
+  // Initialize BGFX with Metal backend on macOS
+  bgfx::renderFrame(); // Single-threaded mode: call before bgfx::init
+  bgfx::Init bgfxInit;
+  bgfxInit.type = bgfx::RendererType::Metal;
+  bgfxInit.platformData.nwh = glfwGetCocoaWindow(window);
+  bgfxInit.callback = &g_bgfxCallback;
+  int initW, initH;
+  glfwGetFramebufferSize(window, &initW, &initH);
+  bgfxInit.resolution.width = initW;
+  bgfxInit.resolution.height = initH;
+  bgfxInit.resolution.reset = BGFX_RESET_VSYNC | BGFX_RESET_MSAA_X4;
+  if (!bgfx::init(bgfxInit)) {
+    std::cerr << "Failed to initialize BGFX" << std::endl;
+    glfwDestroyWindow(window);
+    glfwTerminate();
     return -1;
   }
-  glEnable(GL_MULTISAMPLE); // Enable 4x MSAA
+  bgfx::setDebug(BGFX_DEBUG_NONE);
+  bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH | BGFX_CLEAR_STENCIL,
+                      0x000000FF, 1.0f, 0);
+  bgfx::setViewRect(0, 0, 0, uint16_t(initW), uint16_t(initH));
+  // Preserve submission order: opaque draws must happen before additive
+  // BlendMesh glow passes. Default mode reorders for state efficiency,
+  // which can cause additive glow to be overwritten by later opaque draws.
+  bgfx::setViewMode(0, bgfx::ViewMode::Sequential);
+  // Prime the Metal backbuffer — render a few frames to the default surface
+  // before any FBO redirections, so Metal's drawable pipeline is initialized.
+  for (int i = 0; i < 3; ++i) {
+    bgfx::touch(0);
+    bgfx::frame();
+  }
+  std::cout << "[BGFX] Initialized with Metal backend (" << initW << "x" << initH << ")" << std::endl;
+  g_terrain.Init(); // Load BGFX terrain shader
+
   ItemDatabase::Init();
 
-  // Enable OpenGL debug output if available (ARB_debug_output)
-  if (GLEW_ARB_debug_output) {
-    glEnable(GL_DEBUG_OUTPUT);
-    glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
-    glDebugMessageCallbackARB(glDebugCallback, nullptr);
-    std::cout << "[GL] Debug output enabled" << std::endl;
-  } else {
-    std::cout << "[GL] Debug output not available — using manual checks"
-              << std::endl;
-  }
-  std::cout << "[GL] Renderer: " << glGetString(GL_RENDERER) << std::endl;
-  std::cout << "[GL] Version: " << glGetString(GL_VERSION) << std::endl;
-
-  g_terrain.Init(); // Initialize OpenGL resources for terrain
-  checkGLError("terrain init");
 
   // Setup Dear ImGui context
   IMGUI_CHECKVERSION();
@@ -1369,9 +1469,8 @@ int main(int argc, char **argv) {
   ImGui::StyleColorsDark();
 
   // Setup Platform/Renderer backends
-  ImGui_ImplGlfw_InitForOpenGL(window, false);
-  // GLFW input callbacks registered later via InputHandler::RegisterCallbacks
-  ImGui_ImplOpenGL3_Init(glsl_version);
+  ImGui_ImplGlfw_InitForOther(window, true);
+  ImGui_ImplBgfx_Init(30, "shaders"); // View 30 = ImGui overlay
 
   // Load fonts for high-fidelity UI
   float contentScale = 1.0f;
@@ -1423,24 +1522,55 @@ int main(int argc, char **argv) {
       TerrainParser::LoadWorld(initWorldId, data_path));
   TerrainData &terrainData = *g_terrainDataOwned;
 
-  // Original .att files have correct heightmap and attributes for all terrain
-  // including bridges. No bridge-specific reconstruction or mask needed.
-  auto rawAttributes = terrainData.mapping.attributes;
-  std::vector<bool> bridgeMask; // empty
+  // Save original attributes BEFORE bridge reconstruction
+  auto originalAttrs = terrainData.mapping.attributes;
+  // Bridge reconstruction: modifies mapping.attributes for shader + outputs
+  // bridgeZone (all cells near bridge height, for terrain mesh protection).
+  std::vector<bool> bridgeZone;
+  ReconstructBridgeAttributes(terrainData, initCfg, bridgeZone);
+
+  // Patch tile 255 in bridge zone with nearest valid tile
+  if (!bridgeZone.empty()) {
+    auto &l1 = terrainData.mapping.layer1;
+    auto &l2 = terrainData.mapping.layer2;
+    for (int i = 0; i < 256 * 256; i++) {
+      if (!bridgeZone[i] || (l1[i] < 255 && l2[i] < 255)) continue;
+      int bz = i / 256, bx = i % 256;
+      uint8_t best1 = l1[i], best2 = l2[i];
+      float bestDist = 999.0f;
+      for (int dz = -10; dz <= 10; ++dz) {
+        for (int dx = -10; dx <= 10; ++dx) {
+          int nz = bz + dz, nx = bx + dx;
+          if (nz < 0 || nz >= 256 || nx < 0 || nx >= 256) continue;
+          int ni = nz * 256 + nx;
+          if (bridgeZone[ni] || l1[ni] >= 255) continue;
+          float d = std::sqrt((float)(dz * dz + dx * dx));
+          if (d < bestDist) { bestDist = d; best1 = l1[ni]; best2 = l2[ni]; }
+        }
+      }
+      if (bestDist < 999.0f) {
+        if (l1[i] >= 255) l1[i] = best1;
+        if (l2[i] >= 255) l2[i] = best2;
+      }
+    }
+  }
 
   // Make terrain data accessible for movement/height
   g_terrainDataPtr = &terrainData;
   RayPicker::Init(&terrainData, &g_camera, &g_npcManager, &g_monsterManager,
                   g_groundItems, MAX_GROUND_ITEMS, &g_objectRenderer);
 
-  g_terrain.Load(terrainData, initWorldId, data_path, rawAttributes,
-                 bridgeMask);
+  // Original attributes for mesh (genuine voids only). bridgeZone protects
+  // bridge cells from being skipped/sunk even if originally void.
+  g_terrain.Load(terrainData, initWorldId, data_path, originalAttrs,
+                 bridgeZone);
   std::cout << "Loaded Map " << initWorldId << " (" << initCfg.regionName
             << "): " << terrainData.heightmap.size() << " height samples, "
             << terrainData.objects.size() << " objects" << std::endl;
 
   // Load world objects (config-driven path selection)
   g_objectRenderer.Init();
+  g_objectRenderer.SetMapId(initCfg.mapId);
   g_objectRenderer.SetTerrainLightmap(terrainData.lightmap);
   g_objectRenderer.SetTerrainMapping(&terrainData.mapping);
   g_objectRenderer.SetTerrainHeightmap(terrainData.heightmap);
@@ -1471,7 +1601,25 @@ int main(int argc, char **argv) {
 
   // Initialize post-processing (bloom + vignette + color grading)
   InitPostProcess();
-  checkGLError("postprocess init");
+  // Initialize shadow map (BGRA8 color + D16 depth — depth shader writes gl_FragCoord.z to color)
+  {
+    g_shadowMap.colorTex = bgfx::createTexture2D(
+        SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, false, 1,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
+    g_shadowMap.depthTex = bgfx::createTexture2D(
+        SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, false, 1,
+        bgfx::TextureFormat::D16, BGFX_TEXTURE_RT_WRITE_ONLY);
+    bgfx::TextureHandle atts[] = { g_shadowMap.colorTex, g_shadowMap.depthTex };
+    g_shadowMap.fb = bgfx::createFrameBuffer(2, atts, false);
+    g_shadowMap.depthShader = Shader::Load("vs_depth.bin", "fs_depth.bin");
+    if (g_shadowMap.depthShader && bgfx::isValid(g_shadowMap.fb)) {
+      std::cout << "[ShadowMap] Initialized " << SHADOW_MAP_SIZE << "x"
+                << SHADOW_MAP_SIZE << " depth FBO\n";
+    } else {
+      std::cerr << "[ShadowMap] Failed to initialize shadow mapping\n";
+    }
+  }
 
   // Initialize fire effects and register emitters from fire-type objects
   g_fireEffect.Init(data_path + "/Effect");
@@ -1786,16 +1934,17 @@ int main(int argc, char **argv) {
     csCtx.window = window;
     csCtx.onCharSelected = [&]() {
       // Server will send world data burst after char select — switch to LOADING
+      SoundManager::StopMusic();
       g_loadingFrames = 0;
       g_gameState = GameState::LOADING;
       // Load a random loading screen image
-      if (!g_loadingTex) {
+      if (!TexValid(g_loadingTex)) {
         int idx = (rand() % 3) + 1;
         char path[256];
         snprintf(path, sizeof(path), "%s/Logo/Loading%02d.OZJ",
                  data_path.c_str(), idx);
         g_loadingTex = TextureLoader::LoadOZJ(path);
-        if (!g_loadingTex) {
+        if (!TexValid(g_loadingTex)) {
           snprintf(path, sizeof(path), "%s/Local/loading%02d.ozj",
                    data_path.c_str(), idx);
           g_loadingTex = TextureLoader::LoadOZJ(path);
@@ -1846,8 +1995,6 @@ int main(int argc, char **argv) {
   const char *diagNames[] = {"normal", "tileindex", "tileuv",
                              "alpha",  "lightmap",  "nolightmap"};
 
-  glEnable(GL_DEPTH_TEST);
-  glDepthFunc(GL_LEQUAL);
 
   ImVec4 &clear_color = g_clearColor;
   float lastFrame = 0.0f;
@@ -1857,6 +2004,18 @@ int main(int argc, char **argv) {
     lastFrame = currentFrame;
 
     glfwPollEvents();
+
+    // Handle window resize: bgfx::reset() updates backbuffer + preserves MSAA
+    {
+      static int s_lastFbW = 0, s_lastFbH = 0;
+      int curFbW, curFbH;
+      glfwGetFramebufferSize(window, &curFbW, &curFbH);
+      if (curFbW != s_lastFbW || curFbH != s_lastFbH) {
+        s_lastFbW = curFbW;
+        s_lastFbH = curFbH;
+        bgfx::reset(curFbW, curFbH, BGFX_RESET_VSYNC | BGFX_RESET_MSAA_X4);
+      }
+    }
 
     // Poll persistent network connection for server packets
     g_server.Poll();
@@ -1880,9 +2039,8 @@ int main(int argc, char **argv) {
         InitGameWorld(serverData);
         g_worldInitialized = true;
         // Cleanup loading texture
-        if (g_loadingTex) {
-          glDeleteTextures(1, &g_loadingTex);
-          g_loadingTex = 0;
+        if (TexValid(g_loadingTex)) {
+          TexDestroy(g_loadingTex);
         }
         std::cout << "[State] -> INGAME" << std::endl;
 
@@ -1912,17 +2070,36 @@ int main(int argc, char **argv) {
     // ── CHAR_SELECT state: update and render character select scene ──
     if (g_gameState == GameState::CHAR_SELECT ||
         g_gameState == GameState::CONNECTING) {
+      {
+        static bool loggedOnce = false;
+        if (!loggedOnce) {
+          std::cout << "[BGFX Debug] First CHAR_SELECT frame rendering"
+                    << std::endl;
+          loggedOnce = true;
+        }
+      }
       CharacterSelect::Update(deltaTime);
 
       int fbW, fbH;
       glfwGetFramebufferSize(window, &fbW, &fbH);
 
-      // Post-processing: render char select scene to FBO
-      if (g_postProcess.enabled) {
-        ResizePostProcessFBOs(fbW, fbH);
-        glBindFramebuffer(GL_FRAMEBUFFER, g_postProcess.sceneFBO);
+      // Lazy-init post-processing (called before world init for char select)
+      { static bool ppInit = false;
+        if (!ppInit) { InitPostProcess(); ppInit = true; }
       }
-      glViewport(0, 0, fbW, fbH);
+      // Char select: render directly to backbuffer (no PP).
+      // View ordering: shadow (view 8) before scene (view 0)
+      {
+        bgfx::ViewId order[] = { SHADOW_VIEW, 0, PP_VIEW_BRIGHT, PP_VIEW_BLUR0,
+                                  PP_VIEW_BLUR1, PP_VIEW_BLUR2, PP_VIEW_BLUR3,
+                                  PP_VIEW_COMPOSITE, 7 };
+        bgfx::setViewOrder(0, 9, order);
+      }
+      bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH | BGFX_CLEAR_STENCIL,
+                          0x000000FF, 1.0f, 0);
+      bgfx::setViewRect(0, 0, 0, uint16_t(fbW), uint16_t(fbH));
+      bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
+      bgfx::touch(0);
 
       int winW, winH;
       glfwGetWindowSize(window, &winW, &winH);
@@ -1930,81 +2107,18 @@ int main(int argc, char **argv) {
       // ImGui frame — must be started before CharacterSelect::Render() because
       // Render() queues ImGui draw commands (buttons, text). Actual GL draw
       // happens at ImGui_ImplOpenGL3_RenderDrawData() after post-processing.
-      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
 
       CharacterSelect::Render(winW, winH);
 
-      // Post-processing resolve: bloom + tone mapping + vignette
-      if (g_postProcess.enabled) {
-        auto &pp = g_postProcess;
-        GLboolean wasBlend = glIsEnabled(GL_BLEND);
-        GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
-        GLboolean wasStencil = glIsEnabled(GL_STENCIL_TEST);
-        glDisable(GL_BLEND);
-        glDisable(GL_CULL_FACE);
-        glDisable(GL_STENCIL_TEST);
-        glDisable(GL_DEPTH_TEST);
-
-        // Bright extract → bloomTex[0]
-        glBindFramebuffer(GL_FRAMEBUFFER, pp.bloomFBO[0]);
-        glViewport(0, 0, pp.bloomW, pp.bloomH);
-        glClear(GL_COLOR_BUFFER_BIT);
-        pp.brightExtract->use();
-        pp.brightExtract->setInt("uScene", 0);
-        pp.brightExtract->setFloat("uThreshold", pp.bloomThreshold);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, pp.sceneColorTex);
-        RenderFullscreenQuad(pp);
-
-        // Two-pass Gaussian blur
-        pp.blur->use();
-        pp.blur->setInt("uImage", 0);
-        for (int pass = 0; pass < 4; ++pass) {
-          bool horizontal = (pass % 2 == 0);
-          int srcIdx = horizontal ? 0 : 1;
-          int dstIdx = horizontal ? 1 : 0;
-          glBindFramebuffer(GL_FRAMEBUFFER, pp.bloomFBO[dstIdx]);
-          glClear(GL_COLOR_BUFFER_BIT);
-          pp.blur->setBool("uHorizontal", horizontal);
-          pp.blur->setFloat("uTexelSize", horizontal ? (1.0f / pp.bloomW)
-                                                     : (1.0f / pp.bloomH));
-          glBindTexture(GL_TEXTURE_2D, pp.bloomTex[srcIdx]);
-          RenderFullscreenQuad(pp);
-        }
-
-        // Composite scene + bloom to screen
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, fbW, fbH);
-        glClear(GL_COLOR_BUFFER_BIT);
-        pp.composite->use();
-        pp.composite->setInt("uScene", 0);
-        pp.composite->setInt("uBloom", 1);
-        pp.composite->setFloat("uBloomIntensity", pp.bloomIntensity);
-        pp.composite->setFloat("uVignetteStrength", pp.vignetteStrength);
-        pp.composite->setVec3("uColorTint", pp.colorTint);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, pp.sceneColorTex);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, pp.bloomTex[0]);
-        RenderFullscreenQuad(pp);
-        glActiveTexture(GL_TEXTURE0);
-
-        // Restore GL state
-        glEnable(GL_DEPTH_TEST);
-        if (wasBlend)
-          glEnable(GL_BLEND);
-        if (wasCull)
-          glEnable(GL_CULL_FACE);
-        if (wasStencil)
-          glEnable(GL_STENCIL_TEST);
-      }
+      // Char select: no post-processing (renders directly to backbuffer)
 
       // Draw ImGui UI on top of post-processed scene (sharp, unaffected by
       // bloom)
       ImGui::Render();
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+      ImGui_BackendRenderDrawData(ImGui::GetDrawData());
 
       // Poll mouse clicks for character slot selection AFTER ImGui render
       // so WantCaptureMouse is accurate (prevents button clicks selecting
@@ -2021,7 +2135,20 @@ int main(int argc, char **argv) {
         prevMouseDown = mouseDown;
       }
 
-      glfwSwapBuffers(window);
+      // Auto-screenshot: capture char select screen after a few frames
+      {
+        static int charSelectFrame = 0;
+        charSelectFrame++;
+        if (charSelectFrame == 30) {
+          std::cout << "[BGFX] Requesting char select screenshot (frame "
+                    << charSelectFrame << ")" << std::endl;
+          g_bgfxCallback.pendingPath = "screenshots/bgfx_charselect.png";
+          std::filesystem::create_directories("screenshots");
+          bgfx::requestScreenShot(BGFX_INVALID_HANDLE,
+                                  "screenshots/bgfx_charselect.png");
+        }
+      }
+      bgfx::frame();
       continue; // Skip game world rendering
     }
 
@@ -2029,11 +2156,12 @@ int main(int argc, char **argv) {
     if (g_gameState == GameState::LOADING) {
       int fbW, fbH;
       glfwGetFramebufferSize(window, &fbW, &fbH);
-      glViewport(0, 0, fbW, fbH);
-      glClearColor(0.0f, 0.0f, 0.02f, 1.0f);
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH,
+                          0x000005FF, 1.0f, 0);
+      bgfx::setViewRect(0, 0, 0, uint16_t(fbW), uint16_t(fbH));
+      bgfx::touch(0);
 
-      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
       int winW, winH;
@@ -2042,14 +2170,14 @@ int main(int argc, char **argv) {
       ImDrawList *dl = ImGui::GetForegroundDrawList();
 
       // Draw loading screen image (centered, aspect-fit)
-      if (g_loadingTex) {
+      if (TexValid(g_loadingTex)) {
         float imgW = 640.0f, imgH = 480.0f; // OZJ loading images are 640x480
         float scale = std::min((float)winW / imgW, (float)winH / imgH);
         float dispW = imgW * scale;
         float dispH = imgH * scale;
         float x0 = (winW - dispW) * 0.5f;
         float y0 = (winH - dispH) * 0.5f;
-        dl->AddImage((ImTextureID)(intptr_t)g_loadingTex, ImVec2(x0, y0),
+        dl->AddImage((ImTextureID)TexImID(g_loadingTex), ImVec2(x0, y0),
                      ImVec2(x0 + dispW, y0 + dispH));
       }
 
@@ -2060,14 +2188,21 @@ int main(int argc, char **argv) {
                   IM_COL32(220, 200, 160, 255), loadText);
 
       ImGui::Render();
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-      glfwSwapBuffers(window);
+      ImGui_BackendRenderDrawData(ImGui::GetDrawData());
+    bgfx::frame();
       continue;
     }
 
     // ═══════════════════════════════════════════════
     // INGAME state: normal game world update + render
     // ═══════════════════════════════════════════════
+    {
+      static bool loggedIngame = false;
+      if (!loggedIngame) {
+        std::cout << "[BGFX Debug] First INGAME frame" << std::endl;
+        loggedIngame = true;
+      }
+    }
 
     // Check for pending map change from server — start transition overlay
     {
@@ -2461,6 +2596,7 @@ int main(int argc, char **argv) {
           g_hero.SetAction(1);
           g_camera.SetPosition(g_hero.GetPosition());
           g_server.SendPrecisePosition(spawnPos.x, spawnPos.z);
+          g_objectRenderer.ResetDoorStates();
           InventoryUI::ShowRegionName("Lorencia");
           g_hero.SetTeleportCooldown();
         }
@@ -2485,26 +2621,38 @@ int main(int argc, char **argv) {
       }
     }
 
-    // Hero respawn: after death timer expires, respawn in Lorencia safe zone
+    // Hero respawn: after death timer expires, respawn in same-map safe zone
+    // Dungeon (map 1) has no safe zone → warp to Lorencia
     if (g_hero.ReadyToRespawn()) {
-      // Lorencia city center (grid 137,126)
-      glm::vec3 spawnPos(12600.0f, 0.0f, 13700.0f);
+      // Per-map respawn points (grid coordinates)
+      int respawnMapId = g_currentMapId;
+      int respawnGX = 137, respawnGZ = 126; // Lorencia default
+      if (g_currentMapId == 1) {
+        // Dungeon: no safe zone, warp back to Lorencia
+        respawnMapId = 0;
+        respawnGX = 137; respawnGZ = 126;
+      } else if (g_currentMapId == 2) {
+        // Devias: respawn in Devias town center (near Guild Master)
+        respawnGX = 215; respawnGZ = 47;
+      }
 
-      if (g_currentMapId != 0) {
-        // In dungeon: warp to Lorencia city center + start fade overlay
-        g_server.SendWarpCommand(0, 137, 126);
+      glm::vec3 spawnPos((float)respawnGZ * 100.0f, 0.0f,
+                         (float)respawnGX * 100.0f);
+
+      if (respawnMapId != g_currentMapId) {
+        // Different map: warp + start fade overlay
+        g_server.SendWarpCommand(respawnMapId, respawnGX, respawnGZ);
         g_mapTransitionActive = true;
         g_mapTransitionPhase = 0;
         g_mapTransitionAlpha =
             0.8f; // Start mostly black (death screen is dark)
         g_mapTransitionFrames = 0;
-        g_mapTransMapId = 0;
-        g_mapTransSpawnX = 137;
-        g_mapTransSpawnY = 126;
+        g_mapTransMapId = respawnMapId;
+        g_mapTransSpawnX = respawnGX;
+        g_mapTransSpawnY = respawnGZ;
       } else {
-        // Already on Lorencia: find walkable tile near city center
+        // Same map: find walkable tile near respawn point
         const int S = TerrainParser::TERRAIN_SIZE;
-        int startGX = 137, startGZ = 126;
         for (int radius = 0; radius < 30; radius++) {
           bool found = false;
           for (int dy = -radius; dy <= radius && !found; dy++) {
@@ -2512,7 +2660,7 @@ int main(int argc, char **argv) {
               if (radius > 0 && std::abs(dx) != radius &&
                   std::abs(dy) != radius)
                 continue;
-              int cx = startGX + dx, cz = startGZ + dy;
+              int cx = respawnGX + dx, cz = respawnGZ + dy;
               if (cx < 1 || cz < 1 || cx >= S - 1 || cz >= S - 1)
                 continue;
               uint8_t attr = g_terrainDataPtr->mapping.attributes[cz * S + cx];
@@ -2630,14 +2778,18 @@ int main(int argc, char **argv) {
       bool nowInSafeZone = (heroAttr & 0x01) != 0;
       g_hero.SetInSafeZone(nowInSafeZone);
       // Config-driven safe zone music/wind transitions
-      if (g_mapCfg->hasWind) {
-        if (nowInSafeZone && !wasInSafeZone) {
+      if (nowInSafeZone && !wasInSafeZone) {
+        if (g_mapCfg->hasWind)
           SoundManager::Stop(SOUND_WIND01);
+        if (g_mapCfg->safeMusic)
           SoundManager::CrossfadeTo(g_dataPath + "/" + g_mapCfg->safeMusic);
-        } else if (!nowInSafeZone && wasInSafeZone) {
+      } else if (!nowInSafeZone && wasInSafeZone) {
+        if (g_mapCfg->hasWind)
           SoundManager::PlayLoop(SOUND_WIND01);
+        if (g_mapCfg->wildMusic)
+          SoundManager::CrossfadeTo(g_dataPath + "/" + g_mapCfg->wildMusic);
+        else
           SoundManager::FadeOut();
-        }
       }
     }
 
@@ -2663,17 +2815,26 @@ int main(int argc, char **argv) {
     // Use framebuffer size for viewport (Retina displays are 2x window size)
     int fbW, fbH;
     glfwGetFramebufferSize(window, &fbW, &fbH);
-    glViewport(0, 0, fbW, fbH);
-
-    // Post-processing: render to HDR framebuffer instead of screen
+    // BGFX view ordering: shadow pass (view 8) renders before scene (view 0)
+    // and post-processing (views 1-6). Views 9+ (ImGui 30, 200, 201) use default order.
+    {
+      bgfx::ViewId order[] = { SHADOW_VIEW, 0, PP_VIEW_BRIGHT, PP_VIEW_BLUR0,
+                                PP_VIEW_BLUR1, PP_VIEW_BLUR2, PP_VIEW_BLUR3,
+                                PP_VIEW_COMPOSITE, 7 };
+      bgfx::setViewOrder(0, 9, order);
+    }
+    // BGFX view 0 setup: clear, viewport, and post-process FBO
+    bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH | BGFX_CLEAR_STENCIL,
+                        0x000000FF, 1.0f, 0);
+    bgfx::setViewRect(0, 0, 0, uint16_t(fbW), uint16_t(fbH));
     if (g_postProcess.enabled) {
       ResizePostProcessFBOs(fbW, fbH);
-      glBindFramebuffer(GL_FRAMEBUFFER, g_postProcess.sceneFBO);
-      glViewport(0, 0, fbW, fbH);
+      if (bgfx::isValid(g_postProcess.sceneFB))
+        bgfx::setViewFrameBuffer(0, g_postProcess.sceneFB);
+    } else {
+      bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
     }
-
-    glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    bgfx::touch(0);
 
     int winW, winH;
     glfwGetWindowSize(window, &winW, &winH);
@@ -2687,6 +2848,46 @@ int main(int argc, char **argv) {
     if (std::abs(cameraShake) > 0.001f) {
       glm::vec3 shakeOffset(cameraShake * 5.0f, cameraShake * 3.0f, 0.0f);
       view = glm::translate(view, shakeOffset);
+    }
+
+    // ── Shadow map pass: render depth from directional light ──
+    if (g_shadowMap.depthShader && bgfx::isValid(g_shadowMap.fb)) {
+      glm::vec3 heroPos = g_hero.GetPosition();
+      // Directional light: nearly overhead sun with subtle side tilt
+      glm::vec3 lightDir = glm::normalize(glm::vec3(-0.2f, -1.0f, -0.1f));
+      glm::vec3 lightPos = heroPos - lightDir * 2000.0f;
+      glm::vec3 up = glm::vec3(0.0f, 0.0f, 1.0f);
+      // Avoid degenerate up vector
+      if (std::abs(glm::dot(lightDir, up)) > 0.99f)
+        up = glm::vec3(1.0f, 0.0f, 0.0f);
+      glm::mat4 lightView = glm::lookAt(lightPos, heroPos, up);
+      // Metal uses [0,1] Z clip range; OpenGL uses [-1,1]
+      glm::mat4 lightProj = bgfx::getCaps()->homogeneousDepth
+        ? glm::ortho(-1500.0f, 1500.0f, -1500.0f, 1500.0f, 100.0f, 5000.0f)
+        : glm::orthoRH_ZO(-1500.0f, 1500.0f, -1500.0f, 1500.0f, 100.0f, 5000.0f);
+      glm::mat4 lightMtx = lightProj * lightView;
+
+      // Setup shadow view
+      bgfx::setViewName(SHADOW_VIEW, "ShadowMap");
+      bgfx::setViewRect(SHADOW_VIEW, 0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+      bgfx::setViewClear(SHADOW_VIEW, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0xFFFFFFFF, 1.0f, 0);
+      bgfx::setViewFrameBuffer(SHADOW_VIEW, g_shadowMap.fb);
+      bgfx::setViewTransform(SHADOW_VIEW, glm::value_ptr(lightView),
+                              glm::value_ptr(lightProj));
+      bgfx::touch(SHADOW_VIEW);
+
+      // View 8 renders before view 0 via setViewOrder (set above).
+
+      // Submit shadow casters
+      g_hero.RenderToShadowMap(SHADOW_VIEW, g_shadowMap.depthShader->program);
+      g_monsterManager.RenderToShadowMap(SHADOW_VIEW, g_shadowMap.depthShader->program);
+      g_npcManager.RenderToShadowMap(SHADOW_VIEW, g_shadowMap.depthShader->program);
+
+      // Pass shadow map texture + light matrix to all receivers
+      g_hero.SetShadowMap(g_shadowMap.colorTex, lightMtx);
+      g_monsterManager.SetShadowMap(g_shadowMap.colorTex, lightMtx);
+      g_npcManager.SetShadowMap(g_shadowMap.colorTex, lightMtx);
+      g_terrain.SetShadowMap(g_shadowMap.colorTex, lightMtx);
     }
 
     // Sky renders first (behind everything, no depth write)
@@ -2738,8 +2939,6 @@ int main(int argc, char **argv) {
 
     // Render world objects first (before grass, so tall grass billboards
     // don't block thin fence bar meshes via depth buffer)
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     g_objectRenderer.Render(view, projection, g_camera.GetPosition(),
                             currentFrame);
 
@@ -2815,6 +3014,7 @@ int main(int argc, char **argv) {
     // logic)
     g_boidManager.Update(deltaTime, g_hero.GetPosition(), 0, currentFrame);
     g_fireEffect.Render(view, projection);
+    g_objectRenderer.RenderLightningSprites(view, projection, currentFrame);
 
     // Render ambient creatures (birds/fish/bats/leaves)
     g_boidManager.RenderShadows(view, projection);
@@ -2831,17 +3031,16 @@ int main(int argc, char **argv) {
                                g_questKillCount, g_questRequired,
                                g_questTargetCount, g_currentMapId);
 
-    // Render NPC characters with shadows
-    g_npcManager.RenderShadows(view, projection);
+    // Render NPC stencil shadows + models (skip stencil when shadow map active)
+    bool hasShadowMap = g_shadowMap.depthShader && bgfx::isValid(g_shadowMap.fb);
+    if (!hasShadowMap) g_npcManager.RenderShadows(view, projection);
     g_npcManager.Render(view, projection, camPos, deltaTime);
 
-    // Render monsters with shadows
-    g_monsterManager.RenderShadows(view, projection);
+    // Render monster stencil shadows + models
+    if (!hasShadowMap) g_monsterManager.RenderShadows(view, projection);
     g_monsterManager.Render(view, projection, camPos, deltaTime);
 
     // Silhouette outline on hovered NPC/monster (stencil-based)
-    if (g_hoveredNpc >= 0)
-      g_npcManager.RenderSilhouetteOutline(g_hoveredNpc, view, projection);
     if (g_hoveredMonster >= 0)
       g_monsterManager.RenderSilhouetteOutline(g_hoveredMonster, view,
                                                projection);
@@ -2850,9 +3049,9 @@ int main(int argc, char **argv) {
     GroundItemRenderer::RenderShadows(g_groundItems, MAX_GROUND_ITEMS, view,
                                       projection);
 
-    // Render hero shadow BEFORE hero model so character draws on top
+    // Render hero stencil shadow + model (skip stencil when shadow map active)
     g_clickEffect.Render(view, projection, deltaTime, g_hero.GetShader());
-    g_hero.RenderShadow(view, projection);
+    if (!hasShadowMap) g_hero.RenderShadow(view, projection);
     g_hero.Render(view, projection, camPos, deltaTime);
 
     // Compute hero bone world positions for VFX bone-attached particles
@@ -2888,72 +3087,8 @@ int main(int argc, char **argv) {
     // Render VFX (after all characters so particles layer on top)
     g_vfxManager.Render(view, projection);
 
-    // ── Post-processing resolve: bloom + vignette + color grading ──
-    if (g_postProcess.enabled) {
-      auto &pp = g_postProcess;
-
-      // Save GL state that scene rendering may have changed
-      GLboolean wasBlend = glIsEnabled(GL_BLEND);
-      GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
-      GLboolean wasStencil = glIsEnabled(GL_STENCIL_TEST);
-      glDisable(GL_BLEND);
-      glDisable(GL_CULL_FACE);
-      glDisable(GL_STENCIL_TEST);
-      glDisable(GL_DEPTH_TEST);
-
-      // Step 1: Extract bright pixels from scene → bloomTex[0]
-      glBindFramebuffer(GL_FRAMEBUFFER, pp.bloomFBO[0]);
-      glViewport(0, 0, pp.bloomW, pp.bloomH);
-      glClear(GL_COLOR_BUFFER_BIT);
-      pp.brightExtract->use();
-      pp.brightExtract->setInt("uScene", 0);
-      pp.brightExtract->setFloat("uThreshold", pp.bloomThreshold);
-      glActiveTexture(GL_TEXTURE0);
-      glBindTexture(GL_TEXTURE_2D, pp.sceneColorTex);
-      RenderFullscreenQuad(pp);
-
-      // Step 2: Two-pass Gaussian blur (ping-pong between bloomFBO[0] and [1])
-      pp.blur->use();
-      pp.blur->setInt("uImage", 0);
-      for (int pass = 0; pass < 4; ++pass) { // 2 full iterations
-        bool horizontal = (pass % 2 == 0);
-        int srcIdx = horizontal ? 0 : 1;
-        int dstIdx = horizontal ? 1 : 0;
-        glBindFramebuffer(GL_FRAMEBUFFER, pp.bloomFBO[dstIdx]);
-        glClear(GL_COLOR_BUFFER_BIT);
-        pp.blur->setBool("uHorizontal", horizontal);
-        pp.blur->setFloat("uTexelSize",
-                          horizontal ? (1.0f / pp.bloomW) : (1.0f / pp.bloomH));
-        glBindTexture(GL_TEXTURE_2D, pp.bloomTex[srcIdx]);
-        RenderFullscreenQuad(pp);
-      }
-
-      // Step 3: Composite scene + bloom to screen
-      glBindFramebuffer(GL_FRAMEBUFFER, 0);
-      glViewport(0, 0, fbW, fbH);
-      glClear(GL_COLOR_BUFFER_BIT);
-      pp.composite->use();
-      pp.composite->setInt("uScene", 0);
-      pp.composite->setInt("uBloom", 1);
-      pp.composite->setFloat("uBloomIntensity", pp.bloomIntensity);
-      pp.composite->setFloat("uVignetteStrength", pp.vignetteStrength);
-      pp.composite->setVec3("uColorTint", pp.colorTint);
-      glActiveTexture(GL_TEXTURE0);
-      glBindTexture(GL_TEXTURE_2D, pp.sceneColorTex);
-      glActiveTexture(GL_TEXTURE1);
-      glBindTexture(GL_TEXTURE_2D, pp.bloomTex[0]);
-      RenderFullscreenQuad(pp);
-      glActiveTexture(GL_TEXTURE0);
-
-      // Restore GL state
-      glEnable(GL_DEPTH_TEST);
-      if (wasBlend)
-        glEnable(GL_BLEND);
-      if (wasCull)
-        glEnable(GL_CULL_FACE);
-      if (wasStencil)
-        glEnable(GL_STENCIL_TEST);
-    }
+    // Post-processing: bloom + vignette + composite (reads scene FBO → backbuffer)
+    RenderPostProcess(fbW, fbH);
 
     // Auto-GIF: capture with warmup for fire particle buildup
     // Capture BEFORE ImGui rendering so debug overlay is not in the output
@@ -2979,7 +3114,7 @@ int main(int argc, char **argv) {
     // Start the Dear ImGui frame
     InventoryUI::ClearRenderQueue();
     InventoryUI::ResetPendingTooltip(); // Reset deferred tooltip each frame
-    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_BackendNewFrame();
 
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -4047,15 +4182,16 @@ int main(int argc, char **argv) {
         csCtx.dataPath = data_path;
         csCtx.window = window;
         csCtx.onCharSelected = [&]() {
+          SoundManager::StopMusic();
           g_loadingFrames = 0;
           g_gameState = GameState::LOADING;
-          if (!g_loadingTex) {
+          if (!TexValid(g_loadingTex)) {
             int idx = (rand() % 3) + 1;
             char path[256];
             snprintf(path, sizeof(path), "%s/Logo/Loading%02d.OZJ",
                      data_path.c_str(), idx);
             g_loadingTex = TextureLoader::LoadOZJ(path);
-            if (!g_loadingTex) {
+            if (!TexValid(g_loadingTex)) {
               snprintf(path, sizeof(path), "%s/Local/loading%02d.ozj",
                        data_path.c_str(), idx);
               g_loadingTex = TextureLoader::LoadOZJ(path);
@@ -4174,8 +4310,25 @@ int main(int argc, char **argv) {
       ImGui::PopStyleColor(2);
     }
 
+    // Map coordinate display (top-right corner, always visible)
+    {
+      glm::vec3 hp = g_hero.GetPosition();
+      int coordX = (int)(hp.z / 100.0f);
+      int coordY = (int)(hp.x / 100.0f);
+      char coordBuf[32];
+      snprintf(coordBuf, sizeof(coordBuf), "%d, %d", coordX, coordY);
+      ImDrawList *cdl = ImGui::GetForegroundDrawList();
+      ImVec2 ds = ImGui::GetIO().DisplaySize;
+      ImVec2 ts = ImGui::CalcTextSize(coordBuf);
+      float px = ds.x - ts.x - 10.0f;
+      float py = 10.0f;
+      cdl->AddRectFilled(ImVec2(px - 6, py - 3), ImVec2(px + ts.x + 6, py + ts.y + 3),
+                         IM_COL32(0, 0, 0, 120), 4.0f);
+      cdl->AddText(ImVec2(px, py), IM_COL32(220, 220, 220, 220), coordBuf);
+    }
+
     ImGui::Render();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    ImGui_BackendRenderDrawData(ImGui::GetDrawData());
 
     // Flatten render queue (items on top of UI)
     // Scale logical pixel coords to physical framebuffer pixels (HiDPI/Retina
@@ -4183,6 +4336,7 @@ int main(int argc, char **argv) {
     {
       int fbW, fbH;
       glfwGetFramebufferSize(window, &fbW, &fbH);
+      ItemModelManager::SetFramebufferSize(fbW, fbH);
       float scaleX = (float)fbW / ImGui::GetIO().DisplaySize.x;
       float scaleY = (float)fbH / ImGui::GetIO().DisplaySize.y;
       for (const auto &job : InventoryUI::GetRenderQueue()) {
@@ -4196,13 +4350,14 @@ int main(int argc, char **argv) {
     }
 
     // Second ImGui pass: draw deferred tooltip and HUD overlays ON TOP of 3D
-    // items
+    // items. Use a higher BGFX view so these render after item models.
     if (InventoryUI::HasPendingTooltip() ||
         InventoryUI::HasDeferredOverlays() ||
         InventoryUI::HasDeferredCooldowns() ||
         InventoryUI::HasActiveNotification() ||
         InventoryUI::HasActiveRegionName()) {
-      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_BackendSetViewId(IMGUI_VIEW_OVERLAY);
+      ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
 
@@ -4222,7 +4377,7 @@ int main(int argc, char **argv) {
       InventoryUI::UpdateAndRenderRegionName(deltaTime);
 
       ImGui::Render();
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+      ImGui_BackendRenderDrawData(ImGui::GetDrawData());
     }
 
     // Auto-screenshot: capture AFTER ImGui render (includes HUD overlay)
@@ -4236,28 +4391,6 @@ int main(int argc, char **argv) {
         ssPath =
             "screenshots/verif_" + std::to_string(std::time(nullptr)) + ".jpg";
       }
-      int sw, sh;
-      glfwGetFramebufferSize(window, &sw, &sh);
-      std::vector<unsigned char> px(sw * sh * 3);
-      glPixelStorei(GL_PACK_ALIGNMENT, 1);
-      glReadPixels(0, 0, sw, sh, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-      std::vector<unsigned char> flipped(sw * sh * 3);
-      for (int y = 0; y < sh; ++y)
-        memcpy(&flipped[y * sw * 3], &px[(sh - 1 - y) * sw * 3], sw * 3);
-      tjhandle comp = tjInitCompress();
-      unsigned char *jbuf = nullptr;
-      unsigned long jsize = 0;
-      tjCompress2(comp, flipped.data(), sw, 0, sh, TJPF_RGB, &jbuf, &jsize,
-                  TJSAMP_444, 95, TJFLAG_FASTDCT);
-      std::filesystem::create_directories("screenshots");
-      FILE *f = fopen(ssPath.c_str(), "wb");
-      if (f) {
-        fwrite(jbuf, 1, jsize, f);
-        fclose(f);
-      }
-      tjFree(jbuf);
-      tjDestroy(comp);
-      std::cout << "[screenshot] Saved " << ssPath << std::endl;
       break;
     }
 
@@ -4268,28 +4401,6 @@ int main(int argc, char **argv) {
       if (mode < 6 && (diagFrame - 2) % 2 == 1) {
         std::string diagPath =
             "screenshots/diag_" + std::string(diagNames[mode]) + ".jpg";
-        int sw, sh;
-        glfwGetFramebufferSize(window, &sw, &sh);
-        std::vector<unsigned char> px(sw * sh * 3);
-        glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(0, 0, sw, sh, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-        std::vector<unsigned char> flipped(sw * sh * 3);
-        for (int y = 0; y < sh; ++y)
-          memcpy(&flipped[y * sw * 3], &px[(sh - 1 - y) * sw * 3], sw * 3);
-        tjhandle comp = tjInitCompress();
-        unsigned char *jbuf = nullptr;
-        unsigned long jsize = 0;
-        tjCompress2(comp, flipped.data(), sw, 0, sh, TJPF_RGB, &jbuf, &jsize,
-                    TJSAMP_444, 95, TJFLAG_FASTDCT);
-        std::filesystem::create_directories("screenshots");
-        FILE *f = fopen(diagPath.c_str(), "wb");
-        if (f) {
-          fwrite(jbuf, 1, jsize, f);
-          fclose(f);
-        }
-        tjFree(jbuf);
-        tjDestroy(comp);
-        std::cout << "[diag] Saved " << diagPath << std::endl;
       } else if (mode >= 6) {
         break;
       }
@@ -4342,9 +4453,10 @@ int main(int argc, char **argv) {
       g_mouseOverUIPanel = over;
     }
 
-    // Map transition overlay (fullscreen black fade)
+    // Map transition overlay (fullscreen black fade) — highest view layer.
     if (g_mapTransitionActive && g_mapTransitionAlpha > 0.0f) {
-      ImGui_ImplOpenGL3_NewFrame();
+      ImGui_BackendSetViewId(IMGUI_VIEW_TRANSITION);
+      ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
       int winW, winH;
@@ -4363,7 +4475,7 @@ int main(int argc, char **argv) {
             loadText);
       }
       ImGui::Render();
-      ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+      ImGui_BackendRenderDrawData(ImGui::GetDrawData());
     }
 
     // Per-frame GL error check (only first 10 frames to avoid log spam)
@@ -4374,7 +4486,8 @@ int main(int argc, char **argv) {
       frameNum++;
     }
 
-    glfwSwapBuffers(window);
+    ImGui_BackendSetViewId(IMGUI_VIEW_MAIN); // Reset for next frame
+    bgfx::frame();
   }
 
   // Save character stats to server before disconnecting
@@ -4403,10 +4516,20 @@ int main(int argc, char **argv) {
   g_sky.Cleanup();
   g_fireEffect.Cleanup();
   g_objectRenderer.Cleanup();
-  ImGui_ImplOpenGL3_Shutdown();
+  g_grass.Cleanup();
+  g_vfxManager.Cleanup();
+  g_terrain.Cleanup();
+  // Cleanup shadow map
+  if (g_shadowMap.depthShader) g_shadowMap.depthShader->destroy();
+  if (bgfx::isValid(g_shadowMap.fb)) bgfx::destroy(g_shadowMap.fb);
+  if (bgfx::isValid(g_shadowMap.colorTex)) bgfx::destroy(g_shadowMap.colorTex);
+  if (bgfx::isValid(g_shadowMap.depthTex)) bgfx::destroy(g_shadowMap.depthTex);
+
+  ImGui_ImplBgfx_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();
 
+  bgfx::shutdown();
   glfwDestroyWindow(window);
   glfwTerminate();
 
@@ -4575,6 +4698,7 @@ static void InitGameWorld(ServerData &serverData) {
     }
   }
   g_camera.SetPosition(g_hero.GetPosition());
+  g_objectRenderer.ResetDoorStates();
 
   // Choose music based on spawn position terrain attribute (Lorencia initial
   // load)
@@ -4591,9 +4715,9 @@ static void InitGameWorld(ServerData &serverData) {
     const MapConfig &sndCfg = *GetMapConfig(g_currentMapId);
     if (sndCfg.ambientLoop && !inSafeZone)
       SoundManager::PlayLoop(sndCfg.ambientLoop);
-    if (inSafeZone || !sndCfg.wildMusic)
+    if (inSafeZone && sndCfg.safeMusic)
       SoundManager::PlayMusic(g_dataPath + "/" + sndCfg.safeMusic);
-    else if (sndCfg.wildMusic)
+    else if (!inSafeZone && sndCfg.wildMusic)
       SoundManager::PlayMusic(g_dataPath + "/" + sndCfg.wildMusic);
 
     // Apply atmosphere from config (clear color, fog, luminosity, post-proc,
@@ -4650,13 +4774,12 @@ static void ApplyMapAtmosphere(const MapConfig &cfg) {
   if (cfg.hasGrass)
     g_grass.SetLuminosity(g_luminosity);
 
-  // Post-processing
-  if (g_postProcess.enabled) {
-    g_postProcess.bloomIntensity = cfg.bloomIntensity;
-    g_postProcess.bloomThreshold = cfg.bloomThreshold;
-    g_postProcess.vignetteStrength = cfg.vignetteStrength;
-    g_postProcess.colorTint = glm::vec3(cfg.tintR, cfg.tintG, cfg.tintB);
-  }
+
+  // Post-processing: apply per-map bloom/vignette/tint
+  g_postProcess.bloomIntensity = cfg.bloomIntensity;
+  g_postProcess.bloomThreshold = cfg.bloomThreshold;
+  g_postProcess.vignetteStrength = cfg.vignetteStrength;
+  g_postProcess.colorTint = glm::vec3(cfg.tintR, cfg.tintG, cfg.tintB);
 
   // Rebuild roof hiding maps for this map only (no cross-map bleed)
   g_typeAlpha.clear();
@@ -4706,18 +4829,46 @@ static void ChangeMap(uint8_t mapId, uint8_t spawnX, uint8_t spawnY) {
   // ── Phase 2: Load new terrain ──
   auto newTerrain = std::make_unique<TerrainData>(
       TerrainParser::LoadWorld(fileWorldId, data_path));
-  auto rawAttributes = newTerrain->mapping.attributes;
-  std::vector<bool> bridgeMask; // empty — no bridge hacks needed
+  auto originalAttrs = newTerrain->mapping.attributes;
+  std::vector<bool> bridgeZone;
+  ReconstructBridgeAttributes(*newTerrain, cfg, bridgeZone);
+
+  // Patch tile 255 in bridge zone
+  if (!bridgeZone.empty()) {
+    auto &l1 = newTerrain->mapping.layer1;
+    auto &l2 = newTerrain->mapping.layer2;
+    for (int i = 0; i < 256 * 256; i++) {
+      if (!bridgeZone[i] || (l1[i] < 255 && l2[i] < 255)) continue;
+      int bz = i / 256, bx = i % 256;
+      uint8_t best1 = l1[i], best2 = l2[i];
+      float bestDist = 999.0f;
+      for (int dz = -10; dz <= 10; ++dz) {
+        for (int dx = -10; dx <= 10; ++dx) {
+          int nz = bz + dz, nx = bx + dx;
+          if (nz < 0 || nz >= 256 || nx < 0 || nx >= 256) continue;
+          int ni = nz * 256 + nx;
+          if (bridgeZone[ni] || l1[ni] >= 255) continue;
+          float d = std::sqrt((float)(dz * dz + dx * dx));
+          if (d < bestDist) { bestDist = d; best1 = l1[ni]; best2 = l2[ni]; }
+        }
+      }
+      if (bestDist < 999.0f) {
+        if (l1[i] >= 255) l1[i] = best1;
+        if (l2[i] >= 255) l2[i] = best2;
+      }
+    }
+  }
 
   g_terrainDataOwned = std::move(newTerrain);
   g_terrainDataPtr = g_terrainDataOwned.get();
 
   // ── Phase 3: Reload terrain renderer ──
-  g_terrain.Load(*g_terrainDataPtr, fileWorldId, data_path, rawAttributes,
-                 bridgeMask);
+  g_terrain.Load(*g_terrainDataPtr, fileWorldId, data_path, originalAttrs,
+                 bridgeZone);
 
   // ── Phase 4: Reload objects (config-driven path selection) ──
   g_objectRenderer.Init();
+  g_objectRenderer.SetMapId(cfg.mapId);
   g_objectRenderer.SetTerrainLightmap(g_terrainDataPtr->lightmap);
   g_objectRenderer.SetTerrainMapping(&g_terrainDataPtr->mapping);
   g_objectRenderer.SetTerrainHeightmap(g_terrainDataPtr->heightmap);
@@ -4833,11 +4984,12 @@ static void ChangeMap(uint8_t mapId, uint8_t spawnX, uint8_t spawnY) {
   g_hero.SetPosition(glm::vec3(heroX, 0.0f, heroZ));
   g_hero.SnapToTerrain();
   g_camera.SetPosition(g_hero.GetPosition());
+  // Note: do NOT call ResetDoorStates() here — InitDoors() already sets
+  // soundPlayed=true and doorCooldown=1.5s to suppress door sounds on load.
 
   // ── Phase 10: Sound/music transition (config-driven) ──
   SoundManager::StopAll();
-  if (cfg.ambientLoop)
-    SoundManager::PlayLoop(cfg.ambientLoop);
+  SoundManager::StopMusic();
   {
     glm::vec3 hp = g_hero.GetPosition();
     const int S = TerrainParser::TERRAIN_SIZE;
@@ -4846,10 +4998,14 @@ static void ChangeMap(uint8_t mapId, uint8_t spawnX, uint8_t spawnY) {
         (gx >= 0 && gz >= 0 && gx < S && gz < S) &&
         (g_terrainDataPtr->mapping.attributes[gz * S + gx] & 0x01) != 0;
     g_hero.SetInSafeZone(inSafe);
-    if (inSafe || !cfg.wildMusic)
+    if (cfg.ambientLoop && !inSafe)
+      SoundManager::PlayLoop(cfg.ambientLoop);
+    if (inSafe && cfg.safeMusic)
       SoundManager::CrossfadeTo(data_path + "/" + cfg.safeMusic);
-    else if (cfg.wildMusic)
+    else if (!inSafe && cfg.wildMusic)
       SoundManager::CrossfadeTo(data_path + "/" + cfg.wildMusic);
+    else if (!inSafe && cfg.safeMusic)
+      SoundManager::CrossfadeTo(data_path + "/" + cfg.safeMusic);
   }
 
   // ── Phase 11: Apply atmosphere + map state (config-driven) ──

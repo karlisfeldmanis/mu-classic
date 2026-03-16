@@ -69,75 +69,39 @@ void VFXManager::updateWeaponTrail(float dt) {
 void VFXManager::renderWeaponTrail(const glm::mat4 &view,
                                     const glm::mat4 &projection) {
   auto &t = m_weaponTrail;
-  if (t.numPoints < 2 || !m_lineShader)
-    return;
-
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
-
-  // Main 5.2: blur trail — trailMode with optional texture modulation
-  // BlurMapping 2 (skill) → motion_blur_r.OZJ, BlurMapping 0 (normal) → blur01.OZJ
-  GLuint blurTex = t.isSkill ? m_motionBlurTexture : m_blurTexture;
-  bool hasTexture = (blurTex != 0);
-
-  m_lineShader->setBool("beamMode", false);
-  m_lineShader->setBool("trailMode", true);      // Always use procedural trail fade
-  m_lineShader->setBool("useTexture", hasTexture); // Texture modulates if available
-  m_lineShader->setVec3("color", t.color);
-
-  // Fade alpha during fade-out phase
-  float baseAlpha = t.fading
-      ? std::max(0.0f, t.fadeTimer / WeaponTrail::MAX_FADE_TIME)
-      : 1.0f;
-  m_lineShader->setFloat("alpha", baseAlpha);
-
-  // Main 5.2: blur trails use additive blend for glow effect
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-  if (hasTexture) {
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, blurTex);
-    m_lineShader->setInt("ribbonTex", 0);
-  }
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-  glDisable(GL_CULL_FACE);
-  glDepthMask(GL_FALSE);
-
-  // Build quad strip from tip/base point pairs
-  // Main 5.2: U = age-based fade (0=newest/brightest, 1=oldest/dimmest)
-  // V = 0 at base, 1 at tip (across blade width)
+  if (t.numPoints < 2 || !m_lineShader) return;
+  TexHandle blurTex = t.isSkill ? m_motionBlurTexture : m_blurTexture;
+  bool hasTexture = TexValid(blurTex);
+  m_lineShader->setVec4("u_lineMode", glm::vec4(hasTexture ? 1.0f : 0.0f, 0.0f, 1.0f, 0.0f)); // trailMode=true
+  float baseAlpha = t.fading ? std::max(0.0f, t.fadeTimer / WeaponTrail::MAX_FADE_TIME) : 1.0f;
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
   std::vector<RibbonVertex> verts;
   verts.reserve(t.numPoints * 6);
-
   for (int j = 0; j < t.numPoints - 1; ++j) {
     float u0 = (float)j / (float)(t.numPoints - 1);
     float u1 = (float)(j + 1) / (float)(t.numPoints - 1);
-
     RibbonVertex v;
-    // Tri 1: tip[j] → base[j] → base[j+1]
     v.pos = t.tip[j];      v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
     v.pos = t.base[j];     v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
     v.pos = t.base[j + 1]; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
-    // Tri 2: tip[j] → base[j+1] → tip[j+1]
     v.pos = t.tip[j];      v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
     v.pos = t.base[j + 1]; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
     v.pos = t.tip[j + 1];  v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
   }
-
   if (!verts.empty()) {
-    glBufferSubData(GL_ARRAY_BUFFER, 0,
-                    verts.size() * sizeof(RibbonVertex), verts.data());
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)verts.size());
+    uint32_t nv = (uint32_t)verts.size();
+    bgfx::TransientVertexBuffer tvb;
+    if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) >= nv) {
+      bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+      memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+      m_lineShader->setVec4("u_lineColor", glm::vec4(t.color, baseAlpha));
+      if (hasTexture) m_lineShader->setTexture(0, "s_ribbonTex", blurTex);
+      bgfx::setVertexBuffer(0, &tvb);
+      bgfx::setState(state);
+      bgfx::submit(0, m_lineShader->program);
+    }
   }
-
-  m_lineShader->setBool("trailMode", false);
-  m_lineShader->setBool("useTexture", false);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Restore default blend
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -478,65 +442,43 @@ void VFXManager::updateEarthQuakeCracks(float dt) {
 
 void VFXManager::renderEarthQuakeCracks(const glm::mat4 &view,
                                          const glm::mat4 &projection) {
-  if (m_earthQuakeCracks.empty() || !m_modelShader)
-    return;
-
+  if (m_earthQuakeCracks.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-  // Additive blend for glowing ground cracks (Main 5.2: RENDER_BRIGHT)
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-  glDepthMask(GL_FALSE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
   for (const auto &eq : m_earthQuakeCracks) {
     int t = eq.eqType;
     if (t < 1 || t > 8) continue;
     int meshIdx = (t == 6) ? 4 : t;
     const auto &meshes = m_eqMeshes[meshIdx];
     if (meshes.empty()) continue;
-
-    m_modelShader->setFloat("objectAlpha", eq.blendMeshLight);
-    m_modelShader->setFloat("blendMeshLight", eq.blendMeshLight);
-    m_modelShader->setVec2("texCoordOffset", glm::vec2(eq.texCoordU, 0.0f));
-
-    // Standard BMD rotation + Z rotation (angle in degrees) + scale
+    m_modelShader->setVec4("u_params", glm::vec4(eq.blendMeshLight, eq.blendMeshLight, 0, 0));
+    m_modelShader->setVec4("u_texCoordOffset", glm::vec4(eq.texCoordU, 0, 0, 0));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), eq.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::rotate(model, glm::radians(eq.angle), glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(eq.scale));
-    m_modelShader->setMat4("model", model);
-
     for (const auto &mb : meshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-
-  // Reset tex coord offset
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
 }
 
 void VFXManager::updateStoneDebris(float dt) {
@@ -574,61 +516,42 @@ void VFXManager::updateStoneDebris(float dt) {
 
 void VFXManager::renderStoneDebris(const glm::mat4 &view,
                                     const glm::mat4 &projection) {
-  if (m_stoneDebris.empty() || !m_modelShader)
-    return;
-  if (m_stone1Meshes.empty() && m_stone2Meshes.empty())
-    return;
-
+  if (m_stoneDebris.empty() || !m_modelShader) return;
+  if (m_stone1Meshes.empty() && m_stone2Meshes.empty()) return;
   glm::mat4 invView = glm::inverse(view);
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setFloat("blendMeshLight", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-  // Normal alpha blend — solid stone pieces
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_TRUE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
   for (const auto &s : m_stoneDebris) {
-    float alpha = std::min(1.0f, s.lifetime * 2.0f); // Fade near end
-    m_modelShader->setFloat("objectAlpha", alpha);
-
-    // Position + tumble rotations + scale
+    float alpha = std::min(1.0f, s.lifetime * 2.0f);
+    m_modelShader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0, 0));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), s.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::rotate(model, s.angleX, glm::vec3(1, 0, 0));
     model = glm::rotate(model, s.angleY, glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(s.scale));
-    m_modelShader->setMat4("model", model);
-
     const auto &meshes = s.useStone2 ? m_stone2Meshes : m_stone1Meshes;
     for (const auto &mb : meshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 // ============================================================================
@@ -947,192 +870,120 @@ void VFXManager::updateDeathStabShocks(float dt) {
 
 void VFXManager::renderDeathStabShocks(const glm::mat4 &view,
                                         const glm::mat4 &projection) {
-  if (m_deathStabArcs.empty() || !m_lineShader)
-    return;
-
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
-
-  // Bind JointThunder01 texture
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_lightningTexture);
-  m_lineShader->setInt("ribbonTex", 0);
-  m_lineShader->setBool("useTexture", m_lightningTexture != 0);
-
-  // Additive blend for lightning glow
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-  glDisable(GL_CULL_FACE);
-
-  // Main 5.2: SubType 7 light = (0.5, 0.5, 1.0) — cyan/blue
-  m_lineShader->setVec3("color", glm::vec3(0.5f, 0.5f, 1.0f));
-  m_lineShader->setFloat("alpha", 0.7f);
+  if (m_deathStabArcs.empty() || !m_lineShader) return;
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+  m_lineShader->setVec4("u_lineMode", glm::vec4(TexValid(m_lightningTexture) ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f));
 
   std::vector<RibbonVertex> verts;
-  verts.reserve(m_deathStabArcs.size() * 18); // 3 segments × 6 verts × face
-
+  verts.reserve(m_deathStabArcs.size() * 24);
   for (const auto &arc : m_deathStabArcs) {
     glm::vec3 seg = arc.end - arc.start;
     float segLen = glm::length(seg);
-    if (segLen < 5.0f)
-      continue;
-
-    // Main 5.2: 3-segment curved trail (MaxTails=3) with MoveHumming
-    // We approximate the curve with a midpoint offset for a zigzag shape
+    if (segLen < 5.0f) continue;
     glm::vec3 mid = (arc.start + arc.end) * 0.5f;
-    // Random perpendicular offset for curve (MoveHumming randomization)
     glm::vec3 fwd = seg / segLen;
     glm::vec3 worldUp(0, 1, 0);
-    if (std::abs(glm::dot(fwd, worldUp)) > 0.95f)
-      worldUp = glm::vec3(1, 0, 0);
+    if (std::abs(glm::dot(fwd, worldUp)) > 0.95f) worldUp = glm::vec3(1, 0, 0);
     glm::vec3 perp = glm::normalize(glm::cross(fwd, worldUp));
     glm::vec3 perp2 = glm::normalize(glm::cross(fwd, perp));
-    float curveAmt = segLen * 0.3f; // ~30% of length as curve offset
+    float curveAmt = segLen * 0.3f;
     mid += perp * ((float)(rand() % 200 - 100) / 100.0f * curveAmt);
     mid += perp2 * ((float)(rand() % 200 - 100) / 100.0f * curveAmt * 0.5f);
-
-    // 3 points: start → mid → end (3 segments = 2 quads)
     glm::vec3 pts[3] = { arc.start, mid, arc.end };
-
     float scale = arc.scale;
-
     for (int s = 0; s < 2; ++s) {
       glm::vec3 segDir = pts[s + 1] - pts[s];
       float sLen = glm::length(segDir);
-      if (sLen < 1.0f)
-        continue;
+      if (sLen < 1.0f) continue;
       glm::vec3 sFwd = segDir / sLen;
-
       glm::vec3 wUp(0, 1, 0);
-      if (std::abs(glm::dot(sFwd, wUp)) > 0.95f)
-        wUp = glm::vec3(1, 0, 0);
+      if (std::abs(glm::dot(sFwd, wUp)) > 0.95f) wUp = glm::vec3(1, 0, 0);
       glm::vec3 right = glm::normalize(glm::cross(sFwd, wUp)) * scale;
       glm::vec3 up = glm::normalize(glm::cross(right, sFwd)) * scale;
-
-      // Main 5.2: bTileMapping = TRUE — UV tiles along length
-      float u0 = (float)s * 0.5f;
-      float u1 = (float)(s + 1) * 0.5f;
-
+      float u0 = (float)s * 0.5f, u1 = (float)(s + 1) * 0.5f;
       RibbonVertex v;
-
-      // Face 1: horizontal
-      v.pos = pts[s] - right;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = pts[s] + right;   v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
-      v.pos = pts[s+1] + right; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = pts[s] - right;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = pts[s+1] + right; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = pts[s+1] - right; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
-
-      // Face 2: vertical
-      v.pos = pts[s] - up;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = pts[s] + up;   v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
-      v.pos = pts[s+1] + up; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = pts[s] - up;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = pts[s+1] + up; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = pts[s+1] - up; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
+      v.pos = pts[s] - right;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = pts[s] + right;   v.uv = glm::vec2(u0, 1); verts.push_back(v);
+      v.pos = pts[s+1] + right; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = pts[s] - right;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = pts[s+1] + right; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = pts[s+1] - right; v.uv = glm::vec2(u1, 0); verts.push_back(v);
+      v.pos = pts[s] - up;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = pts[s] + up;   v.uv = glm::vec2(u0, 1); verts.push_back(v);
+      v.pos = pts[s+1] + up; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = pts[s] - up;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = pts[s+1] + up; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = pts[s+1] - up; v.uv = glm::vec2(u1, 0); verts.push_back(v);
     }
   }
-
   if (!verts.empty()) {
-    if ((int)verts.size() > MAX_RIBBON_VERTS)
-      verts.resize(MAX_RIBBON_VERTS);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(RibbonVertex),
-                    verts.data());
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)verts.size());
+    if ((int)verts.size() > MAX_RIBBON_VERTS) verts.resize(MAX_RIBBON_VERTS);
+    uint32_t nv = (uint32_t)verts.size();
+    bgfx::TransientVertexBuffer tvb;
+    if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) >= nv) {
+      bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+      memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+      m_lineShader->setVec4("u_lineColor", glm::vec4(0.5f, 0.5f, 1.0f, 0.7f));
+      if (TexValid(m_lightningTexture)) m_lineShader->setTexture(0, "s_ribbonTex", m_lightningTexture);
+      bgfx::setVertexBuffer(0, &tvb);
+      bgfx::setState(state);
+      bgfx::submit(0, m_lineShader->program);
+    }
   }
-
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_CULL_FACE);
 }
 
 void VFXManager::renderDeathStabSpirals(const glm::mat4 &view,
                                          const glm::mat4 &projection) {
-  if (m_deathStabSpirals.empty() || !m_lineShader)
-    return;
-
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
-
-  // Bind BITMAP_FLARE_FORCE (NSkill.OZJ) texture
-  glActiveTexture(GL_TEXTURE0);
-  GLuint tex = m_flareForceTexture ? m_flareForceTexture : m_energyTexture;
-  glBindTexture(GL_TEXTURE_2D, tex);
-  m_lineShader->setInt("ribbonTex", 0);
-  m_lineShader->setBool("useTexture", tex != 0);
-
-  // Main 5.2: red tint (1.0, 0.3, 0.3) with additive blend
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-  glDisable(GL_CULL_FACE);
-
-  // Main 5.2: Light = (1.0, 0.3, 0.3), alpha from LifeTime * 0.05
-  m_lineShader->setVec3("color", glm::vec3(1.0f, 0.3f, 0.3f));
-  m_lineShader->setFloat("alpha", 1.0f);
+  if (m_deathStabSpirals.empty() || !m_lineShader) return;
+  TexHandle tex = TexValid(m_flareForceTexture) ? m_flareForceTexture : m_energyTexture;
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+  m_lineShader->setVec4("u_lineMode", glm::vec4(TexValid(tex) ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f));
 
   std::vector<RibbonVertex> verts;
   verts.reserve(m_deathStabSpirals.size() * DeathStabSpiral::MAX_TAILS * 12);
-
   for (const auto &sp : m_deathStabSpirals) {
-    if (sp.numTails < 2)
-      continue;
-
-    // Main 5.2: quad half-width = Scale * 0.5, uniform across all segments
+    if (sp.numTails < 2) continue;
     float hw = sp.scale * 0.5f;
-
     for (int j = 0; j < sp.numTails - 1; ++j) {
       glm::vec3 segDir = sp.tails[j + 1] - sp.tails[j];
       float sLen = glm::length(segDir);
-      if (sLen < 1.0f)
-        continue;
+      if (sLen < 1.0f) continue;
       glm::vec3 sFwd = segDir / sLen;
-
       glm::vec3 wUp(0, 1, 0);
-      if (std::abs(glm::dot(sFwd, wUp)) > 0.95f)
-        wUp = glm::vec3(1, 0, 0);
+      if (std::abs(glm::dot(sFwd, wUp)) > 0.95f) wUp = glm::vec3(1, 0, 0);
       glm::vec3 right0 = glm::normalize(glm::cross(sFwd, wUp));
       glm::vec3 up0 = glm::normalize(glm::cross(right0, sFwd));
-
-      // Main 5.2 UV: Light1 = (NumTails-j)/(MaxTails-1), head=1.0 tail=0.0
       float u0 = (float)(sp.numTails - j) / (float)(DeathStabSpiral::MAX_TAILS - 1);
       float u1 = (float)(sp.numTails - (j + 1)) / (float)(DeathStabSpiral::MAX_TAILS - 1);
-
       RibbonVertex v;
-
-      // Face 1: horizontal cross-section (tails[][2] and tails[][3])
-      v.pos = sp.tails[j] - right0 * hw;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = sp.tails[j] + right0 * hw;   v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
-      v.pos = sp.tails[j+1] + right0 * hw; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = sp.tails[j] - right0 * hw;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = sp.tails[j+1] + right0 * hw; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = sp.tails[j+1] - right0 * hw; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
-
-      // Face 2: vertical cross-section (tails[][0] and tails[][1])
-      v.pos = sp.tails[j] - up0 * hw;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = sp.tails[j] + up0 * hw;   v.uv = glm::vec2(u0, 1.0f); verts.push_back(v);
-      v.pos = sp.tails[j+1] + up0 * hw; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = sp.tails[j] - up0 * hw;   v.uv = glm::vec2(u0, 0.0f); verts.push_back(v);
-      v.pos = sp.tails[j+1] + up0 * hw; v.uv = glm::vec2(u1, 1.0f); verts.push_back(v);
-      v.pos = sp.tails[j+1] - up0 * hw; v.uv = glm::vec2(u1, 0.0f); verts.push_back(v);
+      v.pos = sp.tails[j] - right0 * hw;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = sp.tails[j] + right0 * hw;   v.uv = glm::vec2(u0, 1); verts.push_back(v);
+      v.pos = sp.tails[j+1] + right0 * hw; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = sp.tails[j] - right0 * hw;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = sp.tails[j+1] + right0 * hw; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = sp.tails[j+1] - right0 * hw; v.uv = glm::vec2(u1, 0); verts.push_back(v);
+      v.pos = sp.tails[j] - up0 * hw;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = sp.tails[j] + up0 * hw;   v.uv = glm::vec2(u0, 1); verts.push_back(v);
+      v.pos = sp.tails[j+1] + up0 * hw; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = sp.tails[j] - up0 * hw;   v.uv = glm::vec2(u0, 0); verts.push_back(v);
+      v.pos = sp.tails[j+1] + up0 * hw; v.uv = glm::vec2(u1, 1); verts.push_back(v);
+      v.pos = sp.tails[j+1] - up0 * hw; v.uv = glm::vec2(u1, 0); verts.push_back(v);
     }
   }
-
   if (!verts.empty()) {
-    static constexpr int MAX_RIBBON_VERTS = 4096;
-    if ((int)verts.size() > MAX_RIBBON_VERTS)
-      verts.resize(MAX_RIBBON_VERTS);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(RibbonVertex),
-                    verts.data());
-    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)verts.size());
+    if ((int)verts.size() > 4096) verts.resize(4096);
+    uint32_t nv = (uint32_t)verts.size();
+    bgfx::TransientVertexBuffer tvb;
+    if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) >= nv) {
+      bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+      memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+      m_lineShader->setVec4("u_lineColor", glm::vec4(1.0f, 0.3f, 0.3f, 1.0f));
+      if (TexValid(tex)) m_lineShader->setTexture(0, "s_ribbonTex", tex);
+      bgfx::setVertexBuffer(0, &tvb);
+      bgfx::setState(state);
+      bgfx::submit(0, m_lineShader->program);
+    }
   }
-
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glEnable(GL_CULL_FACE);
 }

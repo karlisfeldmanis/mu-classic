@@ -9,31 +9,72 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-static GLuint LoadPNG(const std::string &path) {
+static TexHandle LoadPNG(const std::string &path, int &outW, int &outH) {
   int w, h, channels;
   unsigned char *data =
       stbi_load(path.c_str(), &w, &h, &channels, 4); // force RGBA
   if (!data) {
     printf("[UITexture] Failed to load PNG: %s (%s)\n", path.c_str(),
            stbi_failure_reason());
-    return 0;
+    return kInvalidTex;
   }
 
-  GLuint tex;
-  glGenTextures(1, &tex);
-  glBindTexture(GL_TEXTURE_2D, tex);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE,
-               data);
-  glGenerateMipmap(GL_TEXTURE_2D);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-                  GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  outW = w;
+  outH = h;
 
+  auto tex = bgfx::createTexture2D(
+      (uint16_t)w, (uint16_t)h, false, 1,
+      bgfx::TextureFormat::RGBA8,
+      BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP,
+      bgfx::copy(data, w * h * 4));
   stbi_image_free(data);
-  printf("[UITexture] PNG %s: %dx%d (id=%d)\n", path.c_str(), w, h, tex);
+  printf("[UITexture] PNG %s: %dx%d (idx=%d)\n", path.c_str(), w, h, tex.idx);
   return tex;
+}
+
+// Helper: get OZT bpp from file header (for hasAlpha detection)
+static int GetOZTBpp(const std::string &path) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file)
+    return 0;
+  unsigned char hdr[48];
+  file.read(reinterpret_cast<char *>(hdr), sizeof(hdr));
+  auto bytesRead = file.gcount();
+  if (bytesRead < 24)
+    return 0;
+  size_t offset = 0;
+  if (bytesRead > 24) {
+    if (hdr[4 + 2] == 2 || hdr[4 + 2] == 10)
+      offset = 4;
+    else if (bytesRead > 48 && (hdr[24 + 2] == 2 || hdr[24 + 2] == 10))
+      offset = 24;
+  }
+  if (offset + 16 < (size_t)bytesRead)
+    return hdr[offset + 16]; // bpp field
+  return 0;
+}
+
+// Helper: get OZT/OZJ dimensions from file header
+static void GetOZTDimensions(const std::string &path, int &w, int &h) {
+  std::ifstream file(path, std::ios::binary);
+  if (!file)
+    return;
+  unsigned char hdr[48];
+  file.read(reinterpret_cast<char *>(hdr), sizeof(hdr));
+  auto bytesRead = file.gcount();
+  if (bytesRead < 24)
+    return;
+  size_t offset = 0;
+  if (bytesRead > 24) {
+    if (hdr[4 + 2] == 2 || hdr[4 + 2] == 10)
+      offset = 4;
+    else if (bytesRead > 48 && (hdr[24 + 2] == 2 || hdr[24 + 2] == 10))
+      offset = 24;
+  }
+  if (offset + 15 < (size_t)bytesRead) {
+    w = hdr[offset + 12] | (hdr[offset + 13] << 8);
+    h = hdr[offset + 14] | (hdr[offset + 15] << 8);
+  }
 }
 
 UITexture UITexture::Load(const std::string &path) {
@@ -49,8 +90,8 @@ UITexture UITexture::Load(const std::string &path) {
   bool isPNG = lower.ends_with(".png");
 
   if (isPNG) {
-    tex.id = LoadPNG(path);
-    tex.isOZT = false; // PNG has correct orientation for ImGui
+    tex.id = LoadPNG(path, tex.width, tex.height);
+    tex.isOZT = false;
     tex.hasAlpha = true;
   } else if (isOZJ) {
     tex.id = TextureLoader::LoadOZJ(path);
@@ -58,32 +99,35 @@ UITexture UITexture::Load(const std::string &path) {
     tex.hasAlpha = false;
   } else if (isOZT) {
     tex.id = TextureLoader::LoadOZT(path);
-    tex.isOZT = true; // V-flipped by loader, needs flip back for ImGui
-    // Check if RGBA
-    if (tex.id) {
-      GLint internalFormat;
-      glBindTexture(GL_TEXTURE_2D, tex.id);
-      glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_INTERNAL_FORMAT,
-                               &internalFormat);
-      tex.hasAlpha = (internalFormat == GL_RGBA || internalFormat == GL_RGBA8);
-    }
+    tex.isOZT = true;
+    if (TexValid(tex.id))
+      tex.hasAlpha = (GetOZTBpp(path) == 32);
   } else {
     printf("[UITexture] Unknown format: %s\n", path.c_str());
     return tex;
   }
 
-  // Query dimensions
-  if (tex.id) {
-    glBindTexture(GL_TEXTURE_2D, tex.id);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tex.width);
-    glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &tex.height);
-    // UI textures should clamp
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  // Get dimensions
+  if (TexValid(tex.id)) {
+    // For BGFX, query dimensions from file header (no GPU query available)
+    if (!isPNG) {
+      if (isOZJ) {
+        int w = 0, h = 0;
+        auto raw = TextureLoader::LoadOZJRaw(path, w, h);
+        tex.width = w;
+        tex.height = h;
+      } else {
+        GetOZTDimensions(path, tex.width, tex.height);
+      }
+    }
+    // Set clamp wrap mode — already set during creation for PNG
+    // For OZJ/OZT loaded via TextureLoader, they use default repeat wrap.
+    // UI textures need clamp, but BGFX doesn't support changing sampler
+    // state after creation. This is handled at draw time via sampler flags.
 
-    if (!isPNG) // already logged for PNG
-      printf("[UITexture] %s %s: %dx%d (id=%d)\n", isOZT ? "OZT" : "OZJ",
-             path.c_str(), tex.width, tex.height, tex.id);
+    if (!isPNG)
+      printf("[UITexture] %s %s: %dx%d (idx=%d)\n", isOZT ? "OZT" : "OZJ",
+             path.c_str(), tex.width, tex.height, tex.id.idx);
   } else {
     printf("[UITexture] FAILED to load: %s\n", path.c_str());
   }
@@ -92,8 +136,5 @@ UITexture UITexture::Load(const std::string &path) {
 }
 
 void UITexture::Destroy() {
-  if (id) {
-    glDeleteTextures(1, &id);
-    id = 0;
-  }
+  TexDestroy(id);
 }

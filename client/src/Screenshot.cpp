@@ -36,8 +36,6 @@ void Screenshot::Capture(GLFWwindow *window,
   glfwGetFramebufferSize(window, &width, &height);
 
   std::vector<unsigned char> pixels(width * height * 3);
-  glPixelStorei(GL_PACK_ALIGNMENT, 1);
-  glReadPixels(0, 0, width, height, GL_RGB, GL_UNSIGNED_BYTE, pixels.data());
 
   // Flip the image vertically (OpenGL Y=0 is bottom)
   std::vector<unsigned char> flipped_pixels(width * height * 3);
@@ -117,9 +115,6 @@ void Screenshot::AddGifFrame(GLFWwindow *window) {
   glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
 
   std::vector<unsigned char> pixels(fbWidth * fbHeight * 3);
-  glPixelStorei(GL_PACK_ALIGNMENT, 1);
-  glReadPixels(0, 0, fbWidth, fbHeight, GL_RGB, GL_UNSIGNED_BYTE,
-               pixels.data());
 
   int targetW = (int)(fbWidth * gifScale);
   int targetH = (int)(fbHeight * gifScale);

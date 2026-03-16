@@ -3,7 +3,6 @@
 #include "ItemDatabase.hpp"
 #include "ItemModelManager.hpp"
 #include "imgui.h"
-#include <GL/glew.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -305,38 +304,6 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
 
 void RenderShadows(GroundItem *items, int maxItems, const glm::mat4 &view,
                    const glm::mat4 &proj) {
-  // GL state for shadow pass (same as hero — depth test OFF so shadow renders on terrain)
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE);
-  glDisable(GL_DEPTH_TEST);
-  glDisable(GL_CULL_FACE);
-  glEnable(GL_STENCIL_TEST);
-
-  for (int i = 0; i < maxItems; ++i) {
-    auto &gi = items[i];
-    if (!gi.active)
-      continue;
-
-    const char *modelFile = ItemDatabase::GetDropModelName(gi.defIndex);
-    if (!modelFile)
-      continue; // Skip Zen piles (no shadow needed for scattered coins)
-
-    // Stencil: prevent overlap darkening per item
-    glClear(GL_STENCIL_BUFFER_BIT);
-    glStencilFunc(GL_EQUAL, 0, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-
-    ItemModelManager::RenderItemWorldShadow(modelFile, gi.position, view, proj,
-                                            gi.scale, gi.angle, gi.defIndex);
-  }
-
-  // Restore GL state
-  glBindVertexArray(0);
-  glDisable(GL_STENCIL_TEST);
-  glEnable(GL_DEPTH_TEST);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
 }
 
 } // namespace GroundItemRenderer

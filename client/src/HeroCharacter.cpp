@@ -415,16 +415,12 @@ void HeroCharacter::Init(const std::string &dataPath) {
         meshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       meshes.push_back(sm);
     }
     return meshes;
@@ -448,7 +444,7 @@ void HeroCharacter::Init(const std::string &dataPath) {
   }
 
   // Create shader (same model.vert/frag as ObjectRenderer)
-  m_shader = Shader::Load("model.vert", "model.frag");
+  m_shader = Shader::Load("vs_model.bin", "fs_model.bin");
 
   // Cache root bone index and log walk animation info
   if (m_skeleton) {
@@ -475,7 +471,7 @@ void HeroCharacter::Init(const std::string &dataPath) {
     }
   }
   // Create shadow shader
-  m_shadowShader = Shader::Load("shadow.vert", "shadow.frag");
+  m_shadowShader = Shader::Load("vs_shadow.bin", "fs_shadow.bin");
 
   // Compute initial stats from DK formulas
   RecalcStats();
@@ -743,40 +739,73 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
   model = glm::rotate(model, m_facing, glm::vec3(0, 0, 1));
 
-  m_shader->use();
-  m_shader->setMat4("projection", proj);
-  m_shader->setMat4("view", view);
-  m_shader->setMat4("model", model);
-
   glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
-  m_shader->setVec3("lightPos", eye + glm::vec3(0, 500, 0));
-  m_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-  m_shader->setVec3("viewPos", eye);
-  m_shader->setBool("useFog", true);
-  if (m_mapId == 1) {
-    m_shader->setVec3("uFogColor", glm::vec3(0.0f, 0.0f, 0.0f));
-    m_shader->setFloat("uFogNear", 800.0f);
-    m_shader->setFloat("uFogFar", 2500.0f);
-  } else {
-    m_shader->setVec3("uFogColor", glm::vec3(0.117f, 0.078f, 0.039f));
-    m_shader->setFloat("uFogNear", 1500.0f);
-    m_shader->setFloat("uFogFar", 3500.0f);
-  }
-  m_shader->setFloat("blendMeshLight", 1.0f);
-  m_shader->setFloat("objectAlpha", 1.0f);
-  m_shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_shader->setFloat("luminosity", m_luminosity);
-  m_shader->setInt("chromeMode", 0);
-  m_shader->setVec3("glowColor", glm::vec3(0.0f));
-  m_shader->setVec3("baseTint", glm::vec3(1.0f));
 
   // Terrain lightmap at hero position
   glm::vec3 tLight = sampleTerrainLightAt(m_pos);
-  m_shader->setVec3("terrainLight", tLight);
 
   // Point lights (pre-cached locations)
   int plCount = std::min((int)m_pointLights.size(), MAX_POINT_LIGHTS);
-  m_shader->uploadPointLights(plCount, m_pointLights.data());
+
+  // BGFX: no shader->use() — program bound at submit time
+  // View/proj set via bgfx::setViewTransform() in caller
+  float fogNear, fogFar;
+  float useFog = 1.0f;
+  glm::vec3 fogColor;
+  if (m_mapId == 1) {
+    fogColor = glm::vec3(0.0f);
+    fogNear = 800.0f;
+    fogFar = 2500.0f;
+  } else {
+    fogColor = glm::vec3(0.117f, 0.078f, 0.039f);
+    fogNear = 1500.0f;
+    fogFar = 3500.0f;
+  }
+
+  // Helper lambda: set all per-submit uniforms (BGFX consumes per submit)
+  auto setHeroUniforms = [&](float bml, float chromeMode, float chromeTime,
+                             const glm::vec3 &glowColor,
+                             const glm::vec3 &baseTint = glm::vec3(1.0f),
+                             float objAlpha = 1.0f) {
+    m_shader->setVec4("u_params", glm::vec4(objAlpha, bml, chromeMode, chromeTime));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(glowColor, 0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_fogParams", glm::vec4(fogNear, fogFar, useFog, 0.0f));
+    m_shader->setVec4("u_fogColor", glm::vec4(fogColor, 0.0f));
+    m_shader->uploadPointLights(plCount, m_pointLights.data());
+    // Shadow map uniforms
+    float shadowEnabled = bgfx::isValid(m_shadowMapTex) ? 1.0f : 0.0f;
+    m_shader->setVec4("u_shadowParams", glm::vec4(shadowEnabled, 0.0f, 0.0f, 0.0f));
+    if (shadowEnabled > 0.5f)
+      m_shader->setMat4("u_lightMtx", m_lightMtx);
+  };
+
+  // BGFX draw helper
+  auto bgfxDrawMesh = [&](MeshBuffers &mb, uint64_t state) {
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    m_shader->setTexture(0, "s_texColor", mb.texture);
+    if (bgfx::isValid(m_shadowMapTex))
+      m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
+  };
+
+  uint64_t stateAlpha = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                       | BGFX_STATE_DEPTH_TEST_LESS
+                       | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint64_t stateAdditive = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                          | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD;
+  uint64_t stateNone = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
+
 
   // Draw all body part meshes
   // Main 5.2: base body tinting (+3/+5) and dimming (+7/+9/+11)
@@ -784,14 +813,13 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   float g_Lum = 0.8f + 0.2f * sinf((float)glfwGetTime() * 2.0f);
   for (int p = 0; p < PART_COUNT; ++p) {
     // +3/+5 base color tinting (Main 5.2 ZzzObject.cpp:10183-10196)
+    glm::vec3 partTint(1.0f);
     bool hasTint = false;
     if (m_partLevels[p] >= 5 && m_partLevels[p] < 7) {
-      // +5/+6: cool blue tint
-      m_shader->setVec3("baseTint", glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum));
+      partTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
       hasTint = true;
     } else if (m_partLevels[p] >= 3 && m_partLevels[p] < 7) {
-      // +3/+4: warm red tint
-      m_shader->setVec3("baseTint", glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f));
+      partTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
       hasTint = true;
     }
 
@@ -799,40 +827,22 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     float partDim = 1.0f;
     if (m_partLevels[p] >= 9) partDim = 0.9f;
     else if (m_partLevels[p] >= 7) partDim = 0.8f;
-    if (partDim < 1.0f) m_shader->setFloat("blendMeshLight", partDim);
 
     for (auto &mb : m_parts[p].meshBuffers) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-
-      if (mb.noneBlend) {
-        glDisable(GL_BLEND);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glEnable(GL_BLEND);
-      } else if (mb.bright) {
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDepthMask(GL_FALSE);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      } else {
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-      }
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      setHeroUniforms(partDim, 0.0f, 0.0f, glm::vec3(0.0f),
+                      hasTint ? partTint : glm::vec3(1.0f));
+      uint64_t st = mb.noneBlend ? stateNone : (mb.bright ? stateAdditive : stateAlpha);
+      bgfxDrawMesh(mb, st);
     }
-    if (partDim < 1.0f) m_shader->setFloat("blendMeshLight", 1.0f);
-    if (hasTint) m_shader->setVec3("baseTint", glm::vec3(1.0f));
   }
   // Draw base head for accessory helms (face visible underneath helm)
   if (m_showBaseHead) {
     for (auto &mb : m_baseHead.meshBuffers) {
       if (mb.indexCount == 0 || mb.hidden)
         continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+      bgfxDrawMesh(mb, stateAlpha);
     }
   }
 
@@ -847,26 +857,26 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     for (int p = 0; p < PART_COUNT; ++p) {
       if (m_partLevels[p] >= 7) { anyGlow = true; break; }
     }
-    if (anyGlow && ChromeGlow::GetTextures().chrome1) {
+    if (anyGlow && TexValid(ChromeGlow::GetTextures().chrome1)) {
       float t = (float)glfwGetTime();
-      ChromeGlow::BeginGlow();
       for (int p = 0; p < PART_COUNT; ++p) {
         if (m_partLevels[p] < 7) continue;
         ChromeGlow::GlowPass passes[3];
         int n = ChromeGlow::GetGlowPasses(m_partLevels[p], 7 + p, m_partItemIndices[p], passes);
         for (int gp = 0; gp < n; ++gp) {
-          m_shader->setVec3("glowColor", passes[gp].color);
-          m_shader->setInt("chromeMode", passes[gp].chromeMode);
-          m_shader->setFloat("chromeTime", t);
-          glBindTexture(GL_TEXTURE_2D, passes[gp].texture);
           for (auto &mb : m_parts[p].meshBuffers) {
             if (mb.indexCount == 0 || mb.hidden) continue;
-            glBindVertexArray(mb.vao);
-            glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+            setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+            bgfx::setTransform(glm::value_ptr(model));
+            if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+            else bgfx::setVertexBuffer(0, mb.vbo);
+            bgfx::setIndexBuffer(mb.ebo);
+            m_shader->setTexture(0, "s_texColor", passes[gp].texture);
+            bgfx::setState(stateAdditive);
+            bgfx::submit(0, m_shader->program);
           }
         }
       }
-      ChromeGlow::EndGlow(m_shader->ID);
     }
   }
 
@@ -969,69 +979,48 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         }
       }
 
-      // Upload to GPU via glBufferSubData
-      glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-      glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(ViewerVertex),
-                      verts.data());
+      // Upload re-skinned vertices to GPU
+      RetransformMeshWithBones(mesh, wFinalBones, mb);
 
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
+      // +3/+5 weapon tinting + +7 dimming
+      uint8_t wlvl = m_weaponInfo.itemLevel;
+      glm::vec3 wTint(1.0f);
+      float wDim = 1.0f;
+      if (wlvl >= 5 && wlvl < 7) wTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
+      else if (wlvl >= 3 && wlvl < 7) wTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
+      if (wlvl >= 9) wDim = 0.9f;
+      else if (wlvl >= 7) wDim = 0.8f;
 
-      // +3/+5 weapon tinting + +7 dimming (set once before mesh loop)
-      if (mi == 0) {
-        uint8_t wlvl = m_weaponInfo.itemLevel;
-        if (wlvl >= 5 && wlvl < 7) {
-          m_shader->setVec3("baseTint", glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum));
-        } else if (wlvl >= 3 && wlvl < 7) {
-          m_shader->setVec3("baseTint", glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f));
-        }
-        if (wlvl >= 9) m_shader->setFloat("blendMeshLight", 0.9f);
-        else if (wlvl >= 7) m_shader->setFloat("blendMeshLight", 0.8f);
-      }
-
-      // Main 5.2: ItemLight — glow mesh renders additively with pulsing brightness
       if (m_weaponBlendMesh >= 0 && mi == m_weaponBlendMesh) {
         float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
-        m_shader->setFloat("blendMeshLight", pulseLight);
-        glBlendFunc(GL_ONE, GL_ONE); // Additive
-        glDepthMask(GL_FALSE);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        m_shader->setFloat("blendMeshLight", 1.0f);
+        setHeroUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
+        bgfxDrawMesh(mb, stateAdditive);
       } else {
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        setHeroUniforms(wDim, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
+        bgfxDrawMesh(mb, stateAlpha);
       }
-    }
-    // Reset weapon +3/+5 tint and +7 dimming
-    {
-      uint8_t wlvl = m_weaponInfo.itemLevel;
-      if (wlvl >= 3 && wlvl < 7)
-        m_shader->setVec3("baseTint", glm::vec3(1.0f));
-      if (wlvl >= 7)
-        m_shader->setFloat("blendMeshLight", 1.0f);
     }
 
     // ── +7/+9/+11/+13 weapon glow passes (ChromeGlow module) ──
-    if (m_weaponInfo.itemLevel >= 7 && ChromeGlow::GetTextures().chrome1) {
+    if (m_weaponInfo.itemLevel >= 7 && TexValid(ChromeGlow::GetTextures().chrome1)) {
       float t = (float)glfwGetTime();
       ChromeGlow::GlowPass passes[3];
       int n = ChromeGlow::GetGlowPasses(m_weaponInfo.itemLevel, m_weaponInfo.category, m_weaponInfo.itemIndex, passes);
-      ChromeGlow::BeginGlow();
       for (int gp = 0; gp < n; ++gp) {
-        m_shader->setVec3("glowColor", passes[gp].color);
-        m_shader->setInt("chromeMode", passes[gp].chromeMode);
-        m_shader->setFloat("chromeTime", t);
-        glBindTexture(GL_TEXTURE_2D, passes[gp].texture);
         for (int mi2 = 0; mi2 < (int)m_weaponMeshBuffers.size(); ++mi2) {
           auto &mb2 = m_weaponMeshBuffers[mi2];
           if (mb2.indexCount == 0) continue;
           if (m_weaponBlendMesh >= 0 && mi2 == m_weaponBlendMesh) continue;
-          glBindVertexArray(mb2.vao);
-          glDrawElements(GL_TRIANGLES, mb2.indexCount, GL_UNSIGNED_INT, 0);
+          setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+          bgfx::setTransform(glm::value_ptr(model));
+          if (mb2.isDynamic) bgfx::setVertexBuffer(0, mb2.dynVbo);
+          else bgfx::setVertexBuffer(0, mb2.vbo);
+          bgfx::setIndexBuffer(mb2.ebo);
+          m_shader->setTexture(0, "s_texColor", passes[gp].texture);
+          bgfx::setState(stateAdditive);
+          bgfx::submit(0, m_shader->program);
         }
       }
-      ChromeGlow::EndGlow(m_shader->ID);
     }
 
   }
@@ -1078,100 +1067,46 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     for (int mi = 0; mi < (int)m_shieldMeshBuffers.size() &&
                      mi < (int)m_shieldBmd->Meshes.size();
          ++mi) {
-      auto &mesh = m_shieldBmd->Meshes[mi];
       auto &mb = m_shieldMeshBuffers[mi];
-      if (mb.indexCount == 0)
-        continue;
-
-      std::vector<ViewerVertex> verts;
-      verts.reserve(mesh.NumTriangles * 3);
-      for (int ti = 0; ti < mesh.NumTriangles; ++ti) {
-        auto &tri = mesh.Triangles[ti];
-        for (int v = 0; v < 3; ++v) {
-          ViewerVertex vv;
-          auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-          glm::vec3 srcPos = srcVert.Position;
-          glm::vec3 srcNorm = (tri.NormalIndex[v] < mesh.NumNormals)
-                                  ? mesh.Normals[tri.NormalIndex[v]].Normal
-                                  : glm::vec3(0, 0, 1);
-
-          int boneIdx = srcVert.Node;
-          if (boneIdx >= 0 && boneIdx < (int)sFinalBones.size()) {
-            vv.pos = MuMath::TransformPoint(
-                (const float(*)[4])sFinalBones[boneIdx].data(), srcPos);
-            vv.normal = MuMath::RotateVector(
-                (const float(*)[4])sFinalBones[boneIdx].data(), srcNorm);
-          } else {
-            vv.pos = MuMath::TransformPoint(
-                (const float(*)[4])shieldParentMat.data(), srcPos);
-            vv.normal = MuMath::RotateVector(
-                (const float(*)[4])shieldParentMat.data(), srcNorm);
-          }
-          vv.tex =
-              (tri.TexCoordIndex[v] < mesh.NumTexCoords)
-                  ? glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
-                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV)
-                  : glm::vec2(0);
-          verts.push_back(vv);
-        }
-      }
-
-      glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      verts.size() * sizeof(ViewerVertex), verts.data());
+      if (mb.indexCount == 0) continue;
+      RetransformMeshWithBones(m_shieldBmd->Meshes[mi], sFinalBones, mb);
     }
+
     // +3/+5 shield base tinting & +7/+9 dimming (Main 5.2)
-    {
-      uint8_t slvl = m_shieldInfo.itemLevel;
-      if (slvl >= 5 && slvl < 7) {
-        float g_Lum = 0.8f + 0.2f * sinf((float)glfwGetTime() * 2.0f);
-        m_shader->setVec3("baseTint", glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum));
-      } else if (slvl >= 3 && slvl < 5) {
-        float g_Lum = 0.8f + 0.2f * sinf((float)glfwGetTime() * 2.0f);
-        m_shader->setVec3("baseTint", glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f));
-      }
-      if (slvl >= 9)
-        m_shader->setFloat("blendMeshLight", 0.9f);
-      else if (slvl >= 7)
-        m_shader->setFloat("blendMeshLight", 0.8f);
-    }
+    uint8_t slvl = m_shieldInfo.itemLevel;
+    glm::vec3 sTint(1.0f);
+    float sDim = 1.0f;
+    if (slvl >= 5 && slvl < 7)
+      sTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
+    else if (slvl >= 3 && slvl < 5)
+      sTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
+    if (slvl >= 9) sDim = 0.9f;
+    else if (slvl >= 7) sDim = 0.8f;
 
-    // Draw shield meshes
     for (auto &mb : m_shieldMeshBuffers) {
-      if (mb.indexCount == 0)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-    }
-
-    // Reset shield +3/+5 tint and +7 dimming
-    {
-      uint8_t slvl = m_shieldInfo.itemLevel;
-      if (slvl >= 3 && slvl < 7)
-        m_shader->setVec3("baseTint", glm::vec3(1.0f));
-      if (slvl >= 7)
-        m_shader->setFloat("blendMeshLight", 1.0f);
+      if (mb.indexCount == 0) continue;
+      setHeroUniforms(sDim, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
+      bgfxDrawMesh(mb, stateAlpha);
     }
 
     // ── +7/+9/+11/+13 shield glow passes (ChromeGlow module) ──
-    if (m_shieldInfo.itemLevel >= 7 && ChromeGlow::GetTextures().chrome1) {
+    if (m_shieldInfo.itemLevel >= 7 && TexValid(ChromeGlow::GetTextures().chrome1)) {
       float t = (float)glfwGetTime();
       ChromeGlow::GlowPass passes[3];
       int n = ChromeGlow::GetGlowPasses(m_shieldInfo.itemLevel, 6, m_shieldInfo.itemIndex, passes);
-      ChromeGlow::BeginGlow();
       for (int gp = 0; gp < n; ++gp) {
-        m_shader->setVec3("glowColor", passes[gp].color);
-        m_shader->setInt("chromeMode", passes[gp].chromeMode);
-        m_shader->setFloat("chromeTime", t);
-        glBindTexture(GL_TEXTURE_2D, passes[gp].texture);
         for (auto &mb : m_shieldMeshBuffers) {
           if (mb.indexCount == 0) continue;
-          glBindVertexArray(mb.vao);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+          setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+          bgfx::setTransform(glm::value_ptr(model));
+          if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+          else bgfx::setVertexBuffer(0, mb.vbo);
+          bgfx::setIndexBuffer(mb.ebo);
+          m_shader->setTexture(0, "s_texColor", passes[gp].texture);
+          bgfx::setState(stateAdditive);
+          bgfx::submit(0, m_shader->program);
         }
       }
-      ChromeGlow::EndGlow(m_shader->ID);
     }
   }
 
@@ -1260,77 +1195,20 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     for (int mi = 0; mi < (int)m_wingMeshBuffers.size() &&
                      mi < (int)m_wingBmd->Meshes.size();
          ++mi) {
-      auto &mesh = m_wingBmd->Meshes[mi];
       auto &mb = m_wingMeshBuffers[mi];
-      if (mb.indexCount == 0)
-        continue;
-
-      std::vector<ViewerVertex> verts;
-      verts.reserve(mesh.NumTriangles * 3);
-      for (int ti = 0; ti < mesh.NumTriangles; ++ti) {
-        auto &tri = mesh.Triangles[ti];
-        for (int v = 0; v < 3; ++v) {
-          ViewerVertex vv;
-          auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-          glm::vec3 srcPos = srcVert.Position;
-          glm::vec3 srcNorm = (tri.NormalIndex[v] < mesh.NumNormals)
-                                  ? mesh.Normals[tri.NormalIndex[v]].Normal
-                                  : glm::vec3(0, 0, 1);
-
-          int boneIdx = srcVert.Node;
-          if (boneIdx >= 0 && boneIdx < (int)wFinalBones.size()) {
-            vv.pos = MuMath::TransformPoint(
-                (const float(*)[4])wFinalBones[boneIdx].data(), srcPos);
-            vv.normal = MuMath::RotateVector(
-                (const float(*)[4])wFinalBones[boneIdx].data(), srcNorm);
-          } else {
-            // Fallback: identity transform
-            vv.pos = srcPos;
-            vv.normal = srcNorm;
-          }
-          vv.tex =
-              (tri.TexCoordIndex[v] < mesh.NumTexCoords)
-                  ? glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
-                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV)
-                  : glm::vec2(0);
-          verts.push_back(vv);
-        }
-      }
-
-      glBindBuffer(GL_ARRAY_BUFFER, mb.vbo);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      verts.size() * sizeof(ViewerVertex), verts.data());
+      if (mb.indexCount == 0) continue;
+      RetransformMeshWithBones(m_wingBmd->Meshes[mi], wFinalBones, mb);
     }
 
     // Wing rendering: Main 5.2 LightEnable=false for ALL wings — bypass
     // per-vertex lighting. Wings render with flat BodyLight(1,1,1).
     // Use glowColor shader path (chromeMode=0) for flat white lighting.
-    {
-      // glowColor with chromeMode=0 → finalLight = glowColor (bypasses lighting)
-      m_shader->setVec3("glowColor", glm::vec3(1.0f));
-      m_shader->setInt("chromeMode", 0);
-
-      glDisable(GL_CULL_FACE);
-      for (int mi = 0; mi < (int)m_wingMeshBuffers.size(); ++mi) {
-        auto &mb = m_wingMeshBuffers[mi];
-        if (mb.indexCount == 0)
-          continue;
-
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-        if (mb.bright) {
-          glBlendFunc(GL_ONE, GL_ONE);
-          glDepthMask(GL_FALSE);
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-          glDepthMask(GL_TRUE);
-          glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        } else {
-          glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        }
-      }
-      glEnable(GL_CULL_FACE);
-
-      m_shader->setVec3("glowColor", glm::vec3(0.0f));
+    // BGFX: no cull face state — set per-submit via state flags (omit BGFX_STATE_CULL_*)
+    for (auto &mb : m_wingMeshBuffers) {
+      if (mb.indexCount == 0) continue;
+      setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(1.0f)); // glowColor=(1,1,1) flat lit
+      uint64_t st = mb.bright ? stateAdditive : stateAlpha;
+      bgfxDrawMesh(mb, st);
     }
   }
 
@@ -1382,9 +1260,6 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
   // ── Twisting Slash: render ghost weapon copies orbiting the hero ──
   if (m_twistingSlashActive && !m_ghostWeaponMeshBuffers.empty()) {
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive blend for ghostly glow
-    glDepthMask(GL_FALSE);
-
     for (int i = 0; i < MAX_WHEEL_GHOSTS; ++i) {
       const auto &g = m_wheelGhosts[i];
       if (!g.active)
@@ -1396,55 +1271,35 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
           m_pos + glm::vec3(sinf(orbitRad) * 150.0f, 100.0f,
                             cosf(orbitRad) * 150.0f);
 
-      // Build model matrix:
-      // 1. Translate to ghost position
-      // 2. Standard BMD coordinate conversion (-90Z, -90Y)
-      // 3. Face along orbit tangent (orbitAngle + 90°)
-      // 4. Horizontal tilt (weapon blade parallel to ground)
-      // 5. Self-spin (accelerating rotation)
       glm::mat4 ghostModel = glm::translate(glm::mat4(1.0f), ghostPos);
       ghostModel = glm::rotate(ghostModel, glm::radians(-90.0f),
                                 glm::vec3(0, 0, 1));
       ghostModel = glm::rotate(ghostModel, glm::radians(-90.0f),
                                 glm::vec3(0, 1, 0));
-      // Orbital facing: tangent direction
       ghostModel = glm::rotate(ghostModel, glm::radians(g.orbitAngle),
                                 glm::vec3(0, 0, 1));
-      // Main 5.2: Angle[1] = 90 → horizontal tilt
       ghostModel = glm::rotate(ghostModel, glm::radians(90.0f),
                                 glm::vec3(0, 1, 0));
-      // Accelerating self-spin
       ghostModel = glm::rotate(ghostModel, glm::radians(g.spinAngle),
                                 glm::vec3(0, 0, 1));
-      // Main 5.2: ItemObjectAttribute sets Scale=0.8 for weapon items
       ghostModel = glm::scale(ghostModel, glm::vec3(0.8f));
 
-      m_shader->setMat4("model", ghostModel);
-      m_shader->setFloat("objectAlpha", g.alpha);
-      m_shader->setFloat("blendMeshLight", 1.0f);
-
+      uint64_t ghostState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                           | BGFX_STATE_DEPTH_TEST_LESS
+                           | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
       for (auto &mb : m_ghostWeaponMeshBuffers) {
-        if (mb.indexCount == 0)
-          continue;
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        if (mb.indexCount == 0) continue;
+        bgfx::setTransform(glm::value_ptr(ghostModel));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        m_shader->setTexture(0, "s_texColor", mb.texture);
+        setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f), glm::vec3(1.0f), g.alpha);
+        bgfx::setState(ghostState);
+        bgfx::submit(0, m_shader->program);
       }
     }
 
-    glDepthMask(GL_TRUE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    // Restore the character's model matrix and objectAlpha for subsequent renders
-    m_shader->setFloat("objectAlpha", 1.0f);
-    glm::mat4 charModel = glm::translate(glm::mat4(1.0f), renderPos);
-    charModel = glm::rotate(charModel, glm::radians(-90.0f),
-                             glm::vec3(0, 0, 1));
-    charModel = glm::rotate(charModel, glm::radians(-90.0f),
-                             glm::vec3(0, 1, 0));
-    charModel =
-        glm::rotate(charModel, m_facing, glm::vec3(0, 0, 1));
-    m_shader->setMat4("model", charModel);
   }
 
 
@@ -1466,28 +1321,21 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
 
-  m_shadowShader->use();
-  m_shadowShader->setMat4("projection", proj);
-  m_shadowShader->setMat4("view", view);
-  m_shadowShader->setMat4("model", model);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE);
-  glDisable(GL_DEPTH_TEST);
-  glDisable(GL_CULL_FACE);
-
-  // Stencil: draw each shadow pixel exactly once — body + weapon + shield
-  // merge into one unified shadow silhouette.
-  glEnable(GL_STENCIL_TEST);
-  glStencilMask(0xFF);
-  glClear(GL_STENCIL_BUFFER_BIT);
-  glStencilFunc(GL_EQUAL, 0, 0xFF);
-  glStencilOp(GL_KEEP, GL_INCR, GL_INCR);
+  // BGFX: stencil-based shadow merging — draw each pixel at most once.
+  // Stencil buffer is cleared to 0 at frame start (setViewClear).
+  uint64_t shadowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                       | BGFX_STATE_DEPTH_TEST_LESS
+                       | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint32_t shadowStencil = BGFX_STENCIL_TEST_EQUAL
+                         | BGFX_STENCIL_FUNC_REF(0)
+                         | BGFX_STENCIL_FUNC_RMASK(0xFF)
+                         | BGFX_STENCIL_OP_FAIL_S_KEEP
+                         | BGFX_STENCIL_OP_FAIL_Z_KEEP
+                         | BGFX_STENCIL_OP_PASS_Z_INCR;
 
   // Shadow projection constants (from ZzzBMD.cpp RenderBodyShadow)
-  const float sx = 2000.0f;
-  const float sy = 4000.0f;
+  const float sx = 300.0f;   // Gentle side offset for natural angle
+  const float sy = 3500.0f;  // Ground plane — compact shadow
 
   // Pre-compute facing rotation in MU-local space (around MU Z = height axis)
   float cosF = cosf(m_facing);
@@ -1502,7 +1350,7 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
     for (int mi = 0;
          mi < (int)bmd->Meshes.size() && mi < (int)shadowMeshes.size(); ++mi) {
       auto &sm = shadowMeshes[mi];
-      if (sm.vertexCount == 0 || sm.vao == 0)
+      if (sm.vertexCount == 0 || !bgfx::isValid(sm.vbo))
         continue;
 
       auto &mesh = bmd->Meshes[mi];
@@ -1591,12 +1439,15 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
         }
       }
 
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      shadowVerts.size() * sizeof(glm::vec3),
-                      shadowVerts.data());
-      glBindVertexArray(sm.vao);
-      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+      if (!shadowVerts.empty()) {
+        bgfx::update(sm.vbo, 0,
+                     bgfx::copy(shadowVerts.data(), shadowVerts.size() * sizeof(glm::vec3)));
+        bgfx::setTransform(glm::value_ptr(model));
+        bgfx::setVertexBuffer(0, sm.vbo, 0, (uint32_t)shadowVerts.size());
+        bgfx::setState(shadowState);
+        bgfx::setStencil(shadowStencil);
+        bgfx::submit(0, m_shadowShader->program);
+      }
     }
   };
 
@@ -1701,7 +1552,7 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
     for (int mi = 0;
          mi < (int)m_mount.bmd->Meshes.size() && mi < (int)m_mount.shadowMeshes.size(); ++mi) {
       auto &sm = m_mount.shadowMeshes[mi];
-      if (sm.vertexCount == 0 || sm.vao == 0)
+      if (sm.vertexCount == 0 || !bgfx::isValid(sm.vbo))
         continue;
       auto &mesh = m_mount.bmd->Meshes[mi];
       static std::vector<glm::vec3> shadowVerts;
@@ -1750,20 +1601,111 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
           }
         }
       }
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      shadowVerts.size() * sizeof(glm::vec3),
-                      shadowVerts.data());
-      glBindVertexArray(sm.vao);
-      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+      if (!shadowVerts.empty()) {
+        bgfx::update(sm.vbo, 0,
+                     bgfx::copy(shadowVerts.data(), shadowVerts.size() * sizeof(glm::vec3)));
+        bgfx::setTransform(glm::value_ptr(model));
+        bgfx::setVertexBuffer(0, sm.vbo, 0, (uint32_t)shadowVerts.size());
+        bgfx::setState(shadowState);
+        bgfx::setStencil(shadowStencil);
+        bgfx::submit(0, m_shadowShader->program);
+      }
     }
   }
 
-  glBindVertexArray(0);
-  glDisable(GL_STENCIL_TEST);
-  glEnable(GL_DEPTH_TEST);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
+}
+
+void HeroCharacter::SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx) {
+  m_shadowMapTex = tex;
+  m_lightMtx = lightMtx;
+}
+
+void HeroCharacter::RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram) {
+  if (!m_skeleton || m_cachedBones.empty())
+    return;
+
+  // Model matrix: same as normal render
+  glm::mat4 model = glm::translate(glm::mat4(1.0f), m_pos);
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+  model = glm::rotate(model, m_facing, glm::vec3(0, 0, 1));
+
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_CULL_CCW;
+
+  // Submit body parts
+  for (int p = 0; p < PART_COUNT; ++p) {
+    if (!m_parts[p].bmd) continue;
+    for (auto &mb : m_parts[p].meshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+  }
+  // Base head (accessory helms)
+  if (m_showBaseHead && m_baseHead.bmd) {
+    for (auto &mb : m_baseHead.meshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+  }
+  // Weapon
+  if (m_weaponBmd) {
+    for (auto &mb : m_weaponMeshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+  }
+  // Shield
+  if (m_shieldBmd) {
+    for (auto &mb : m_shieldMeshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+  }
+  // Wings
+  if (m_wingBmd) {
+    for (auto &mb : m_wingMeshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+  }
+  // Mount
+  if (m_mount.active && m_mount.bmd && m_mount.alpha > 0.0f) {
+    for (auto &mb : m_mount.meshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+  }
 }
 
 void HeroCharacter::ProcessMovement(float deltaTime) {
@@ -1923,10 +1865,7 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
   CleanupMeshBuffers(m_weaponMeshBuffers);
   CleanupMeshBuffers(m_ghostWeaponMeshBuffers);
   for (auto &sm : m_weaponShadowMeshes) {
-    if (sm.vao)
-      glDeleteVertexArrays(1, &sm.vao);
-    if (sm.vbo)
-      glDeleteBuffers(1, &sm.vbo);
+    if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
   }
   m_weaponShadowMeshes.clear();
   m_twistingSlashActive = false;
@@ -1950,14 +1889,14 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
   AABB weaponAABB{};
   for (auto &mesh : bmd->Meshes) {
     UploadMeshWithBones(mesh, m_dataPath + "/Item/", {}, m_weaponMeshBuffers,
-                        weaponAABB, false);
+                        weaponAABB, true);
   }
 
   // Ghost weapon mesh buffers for Twisting Slash VFX (static bind-pose copy)
   AABB ghostAABB{};
   for (auto &mesh : bmd->Meshes) {
     UploadMeshWithBones(mesh, m_dataPath + "/Item/", {}, m_ghostWeaponMeshBuffers,
-                        ghostAABB, false);
+                        ghostAABB, true);
   }
 
   // Shadow meshes for weapon
@@ -1973,16 +1912,12 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
         meshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       meshes.push_back(sm);
     }
     return meshes;
@@ -2018,10 +1953,7 @@ void HeroCharacter::EquipShield(const WeaponEquipInfo &shield) {
   // Cleanup old shield
   CleanupMeshBuffers(m_shieldMeshBuffers);
   for (auto &sm : m_shieldShadowMeshes) {
-    if (sm.vao)
-      glDeleteVertexArrays(1, &sm.vao);
-    if (sm.vbo)
-      glDeleteBuffers(1, &sm.vbo);
+    if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
   }
   m_shieldShadowMeshes.clear();
 
@@ -2059,16 +1991,12 @@ void HeroCharacter::EquipShield(const WeaponEquipInfo &shield) {
         meshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       meshes.push_back(sm);
     }
     return meshes;
@@ -2139,16 +2067,12 @@ void HeroCharacter::EquipWings(const WeaponEquipInfo &wing) {
         meshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       meshes.push_back(sm);
     }
     return meshes;
@@ -2196,8 +2120,7 @@ void HeroCharacter::EquipWings(const WeaponEquipInfo &wing) {
 void HeroCharacter::UnequipWings() {
   CleanupMeshBuffers(m_wingMeshBuffers);
   for (auto &sm : m_wingShadowMeshes) {
-    if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-    if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+    if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
   }
   m_wingShadowMeshes.clear();
   m_wingBmd.reset();
@@ -2251,10 +2174,7 @@ void HeroCharacter::EquipBodyPart(int partIndex, const std::string &modelFile,
   // Cleanup old meshes
   CleanupMeshBuffers(m_parts[partIndex].meshBuffers);
   for (auto &sm : m_parts[partIndex].shadowMeshes) {
-    if (sm.vao)
-      glDeleteVertexArrays(1, &sm.vao);
-    if (sm.vbo)
-      glDeleteBuffers(1, &sm.vbo);
+    if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
   }
   m_parts[partIndex].shadowMeshes.clear();
 
@@ -2280,16 +2200,12 @@ void HeroCharacter::EquipBodyPart(int partIndex, const std::string &modelFile,
         meshes.push_back(sm);
         continue;
       }
-      glGenVertexArrays(1, &sm.vao);
-      glGenBuffers(1, &sm.vbo);
-      glBindVertexArray(sm.vao);
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferData(GL_ARRAY_BUFFER, sm.vertexCount * sizeof(glm::vec3), nullptr,
-                   GL_DYNAMIC_DRAW);
-      glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3),
-                            (void *)0);
-      glEnableVertexAttribArray(0);
-      glBindVertexArray(0);
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin()
+          .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+          .end();
+      sm.vbo = bgfx::createDynamicVertexBuffer(
+          sm.vertexCount, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
       meshes.push_back(sm);
     }
     return meshes;
@@ -2304,8 +2220,7 @@ void HeroCharacter::EquipBodyPart(int partIndex, const std::string &modelFile,
     // Cleanup old base head
     CleanupMeshBuffers(m_baseHead.meshBuffers);
     for (auto &sm : m_baseHead.shadowMeshes) {
-      if (sm.vao) glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo) glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     m_baseHead.shadowMeshes.clear();
     m_baseHead.bmd.reset();
@@ -3324,10 +3239,7 @@ void HeroCharacter::SetAction(int newAction) {
 void HeroCharacter::Cleanup() {
   auto cleanupShadows = [](std::vector<ShadowMesh> &shadowMeshes) {
     for (auto &sm : shadowMeshes) {
-      if (sm.vao)
-        glDeleteVertexArrays(1, &sm.vao);
-      if (sm.vbo)
-        glDeleteBuffers(1, &sm.vbo);
+      if (bgfx::isValid(sm.vbo)) bgfx::destroy(sm.vbo);
     }
     shadowMeshes.clear();
   };

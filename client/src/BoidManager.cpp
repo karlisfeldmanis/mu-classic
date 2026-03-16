@@ -86,8 +86,8 @@ void BoidManager::alphaFade(float &alpha, float target, float dt) {
 
 void BoidManager::Init(const std::string &dataPath) {
   // Load shaders (same as NPC/Monster managers)
-  m_shader = Shader::Load("model.vert", "model.frag");
-  m_shadowShader = Shader::Load("shadow.vert", "shadow.frag");
+  m_shader = Shader::Load("vs_model.bin", "fs_model.bin");
+  m_shadowShader = Shader::Load("vs_shadow.bin", "fs_shadow.bin");
 
   // Load bird model: Data/Object1/Bird01.bmd + bird.ozt
   std::string birdPath = dataPath + "/Object1/Bird01.bmd";
@@ -108,15 +108,10 @@ void BoidManager::Init(const std::string &dataPath) {
         totalVerts += (mesh.Triangles[i].Polygon == 4) ? 6 : 3;
       }
     }
-    glGenVertexArrays(1, &m_birdShadow.vao);
-    glGenBuffers(1, &m_birdShadow.vbo);
-    glBindVertexArray(m_birdShadow.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, m_birdShadow.vbo);
-    glBufferData(GL_ARRAY_BUFFER, totalVerts * sizeof(glm::vec3), nullptr,
-                 GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void *)0);
-    glEnableVertexAttribArray(0);
-    glBindVertexArray(0);
+    bgfx::VertexLayout shadowLayout;
+    shadowLayout.begin().add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float).end();
+    m_birdShadow.vbo = bgfx::createDynamicVertexBuffer(
+        totalVerts, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
     m_birdShadow.vertexCount = totalVerts;
 
     std::cout << "[Boid] Loaded Bird01.bmd (" << m_birdBmd->Bones.size()
@@ -145,15 +140,12 @@ void BoidManager::Init(const std::string &dataPath) {
         totalVerts += (mesh.Triangles[i].Polygon == 4) ? 6 : 3;
       }
     }
-    glGenVertexArrays(1, &m_batShadow.vao);
-    glGenBuffers(1, &m_batShadow.vbo);
-    glBindVertexArray(m_batShadow.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, m_batShadow.vbo);
-    glBufferData(GL_ARRAY_BUFFER, totalVerts * sizeof(glm::vec3), nullptr,
-                 GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void *)0);
-    glEnableVertexAttribArray(0);
-    glBindVertexArray(0);
+    {
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin().add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float).end();
+      m_batShadow.vbo = bgfx::createDynamicVertexBuffer(
+          totalVerts, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
+    }
     m_batShadow.vertexCount = totalVerts;
 
     std::cout << "[Boid] Loaded Bat01.bmd (" << m_batBmd->Bones.size()
@@ -182,15 +174,12 @@ void BoidManager::Init(const std::string &dataPath) {
         totalVerts += (mesh.Triangles[i].Polygon == 4) ? 6 : 3;
       }
     }
-    glGenVertexArrays(1, &m_fishShadow.vao);
-    glGenBuffers(1, &m_fishShadow.vbo);
-    glBindVertexArray(m_fishShadow.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, m_fishShadow.vbo);
-    glBufferData(GL_ARRAY_BUFFER, totalVerts * sizeof(glm::vec3), nullptr,
-                 GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (void *)0);
-    glEnableVertexAttribArray(0);
-    glBindVertexArray(0);
+    {
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin().add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float).end();
+      m_fishShadow.vbo = bgfx::createDynamicVertexBuffer(
+          totalVerts, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
+    }
     m_fishShadow.vertexCount = totalVerts;
 
     std::cout << "[Boid] Loaded Fish01.bmd (" << m_fishBmd->Bones.size()
@@ -213,45 +202,37 @@ void BoidManager::Init(const std::string &dataPath) {
     f.live = false;
 
   // ── Falling leaves (Main 5.2: ZzzEffectFireLeave.cpp) ──────────────
-  m_leafShader = Shader::Load("leaf.vert", "leaf.frag");
+  m_leafShader = Shader::Load("vs_leaf.bin", "fs_leaf.bin");
 
   // Load leaf texture (OZT for alpha, fallback to OZJ)
   std::string leafPath = dataPath + "/World1/leaf01.OZT";
   m_leafTexture = TextureLoader::LoadOZT(leafPath);
-  if (!m_leafTexture) {
+  if (!TexValid(m_leafTexture)) {
     leafPath = dataPath + "/World1/leaf01.OZJ";
     m_leafTexture = TextureLoader::LoadOZJ(leafPath);
   }
 
-  if (m_leafTexture) {
-    // Create leaf quad VAO (3x3 unit quad in XZ plane, matching Main 5.2
-    // RenderPlane3D(3,3))
-    float quadVerts[] = {
-        // pos(x,y,z),       uv(u,v)
-        -3.0f, 0.0f, -3.0f, 0.0f, 0.0f, //
-        3.0f,  0.0f, -3.0f, 1.0f, 0.0f,  //
-        3.0f,  0.0f, 3.0f,  1.0f, 1.0f,  //
-        -3.0f, 0.0f, 3.0f,  0.0f, 1.0f,  //
+  if (TexValid(m_leafTexture)) {
+    // Create leaf quad (3x3 unit quad in XZ plane)
+    struct LeafVert { float x, y, z, u, v; };
+    LeafVert quadVerts[] = {
+        {-3.0f, 0.0f, -3.0f, 0.0f, 0.0f},
+        { 3.0f, 0.0f, -3.0f, 1.0f, 0.0f},
+        { 3.0f, 0.0f,  3.0f, 1.0f, 1.0f},
+        {-3.0f, 0.0f,  3.0f, 0.0f, 1.0f},
     };
-    unsigned int quadIndices[] = {0, 1, 2, 0, 2, 3};
+    uint16_t quadIndices[] = {0, 1, 2, 0, 2, 3};
 
-    glGenVertexArrays(1, &m_leafVAO);
-    glGenBuffers(1, &m_leafVBO);
-    glGenBuffers(1, &m_leafEBO);
-    glBindVertexArray(m_leafVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, m_leafVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVerts), quadVerts, GL_STATIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_leafEBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(quadIndices), quadIndices,
-                 GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
-                          (void *)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
-                          (void *)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-    glBindVertexArray(0);
-    std::cout << "[Boid] Leaf texture loaded" << std::endl;
+    bgfx::VertexLayout leafLayout;
+    leafLayout.begin()
+        .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .end();
+    m_leafVBO = bgfx::createVertexBuffer(
+        bgfx::copy(quadVerts, sizeof(quadVerts)), leafLayout);
+    m_leafEBO = bgfx::createIndexBuffer(
+        bgfx::copy(quadIndices, sizeof(quadIndices)));
+    std::cout << "[Boid] Leaf texture loaded (BGFX)" << std::endl;
   }
 
   for (auto &leaf : m_leaves)
@@ -772,7 +753,7 @@ void BoidManager::spawnLeaf(LeafParticle &leaf, const glm::vec3 &heroPos) {
 }
 
 void BoidManager::updateLeaves(float dt, const glm::vec3 &heroPos) {
-  if (!m_leafTexture)
+  if (!TexValid(m_leafTexture))
     return;
 
   for (int i = 0; i < MAX_LEAVES; ++i) {
@@ -858,16 +839,32 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
   model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
-  m_shader->setMat4("model", model);
-  m_shader->setFloat("objectAlpha", b.alpha);
-  m_shader->setVec3("terrainLight", sampleTerrainLight(b.position));
-
+  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
+  glm::vec3 tLight = sampleTerrainLight(b.position);
+  m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (auto &mb : m_birdMeshes) {
-    if (mb.indexCount == 0 || mb.hidden)
-      continue;
-    glBindTexture(GL_TEXTURE_2D, mb.texture);
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    if (mb.indexCount == 0 || mb.hidden) continue;
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    m_shader->setTexture(0, "s_texColor", mb.texture);
+    m_shader->setVec4("u_params", glm::vec4(b.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_fogParams", glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_fogColor", glm::vec4(0.117f, 0.078f, 0.039f, 0.0f));
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                   | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
+                   | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
   }
 }
 
@@ -888,16 +885,31 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
   model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
-  m_shader->setMat4("model", model);
-  m_shader->setFloat("objectAlpha", b.alpha);
-  m_shader->setVec3("terrainLight", sampleTerrainLight(b.position));
-
+  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
+  glm::vec3 tLight = sampleTerrainLight(b.position);
   for (auto &mb : m_batMeshes) {
-    if (mb.indexCount == 0 || mb.hidden)
-      continue;
-    glBindTexture(GL_TEXTURE_2D, mb.texture);
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    if (mb.indexCount == 0 || mb.hidden) continue;
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    m_shader->setTexture(0, "s_texColor", mb.texture);
+    m_shader->setVec4("u_params", glm::vec4(b.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_fogParams", glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_fogColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                   | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
+                   | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
   }
 }
 
@@ -922,16 +934,31 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
   model = glm::rotate(model, glm::radians(f.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(f.scale));
 
-  m_shader->setMat4("model", model);
-  m_shader->setFloat("objectAlpha", f.alpha);
-  m_shader->setVec3("terrainLight", sampleTerrainLight(f.position));
-
+  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
+  glm::vec3 tLight = sampleTerrainLight(f.position);
   for (auto &mb : m_fishMeshes) {
-    if (mb.indexCount == 0 || mb.hidden)
-      continue;
-    glBindTexture(GL_TEXTURE_2D, mb.texture);
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+    if (mb.indexCount == 0 || mb.hidden) continue;
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    m_shader->setTexture(0, "s_texColor", mb.texture);
+    m_shader->setVec4("u_params", glm::vec4(f.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_fogParams", glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_fogColor", glm::vec4(0.117f, 0.078f, 0.039f, 0.0f));
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                   | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
+                   | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
   }
 }
 
@@ -940,74 +967,38 @@ void BoidManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   if (!m_shader)
     return;
 
-  m_shader->use();
-  m_shader->setMat4("projection", proj);
-  m_shader->setMat4("view", view);
-
-  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
-  m_shader->setVec3("lightPos", eye + glm::vec3(0, 500, 0));
-  m_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-  m_shader->setVec3("viewPos", eye);
-  m_shader->setBool("useFog", true);
-  if (m_mapId == 1) {
-    m_shader->setVec3("uFogColor", glm::vec3(0.0f, 0.0f, 0.0f));
-    m_shader->setFloat("uFogNear", 800.0f);
-    m_shader->setFloat("uFogFar", 2500.0f);
-  } else {
-    m_shader->setVec3("uFogColor", glm::vec3(0.117f, 0.078f, 0.039f));
-    m_shader->setFloat("uFogNear", 1500.0f);
-    m_shader->setFloat("uFogFar", 3500.0f);
-  }
-  m_shader->setFloat("blendMeshLight", 1.0f);
-  m_shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_shader->setFloat("luminosity", m_luminosity);
-
-  // Point lights (pre-cached locations)
-  int plCount = std::min((int)m_pointLights.size(), MAX_POINT_LIGHTS);
-  m_shader->uploadPointLights(plCount, m_pointLights.data());
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-  // Render birds (Lorencia) or bats (Dungeon)
+  // BGFX: uniforms are set per-submit in renderBoid/renderBat/renderFish
   if (m_mapId == 0) {
-    for (int i = 0; i < MAX_BOIDS; ++i) {
+    for (int i = 0; i < MAX_BOIDS; ++i)
       renderBoid(m_boids[i], view, proj);
-    }
-    // Render fish
-    for (int i = 0; i < MAX_FISHS; ++i) {
+    for (int i = 0; i < MAX_FISHS; ++i)
       renderFish(m_fishs[i], view, proj);
-    }
   } else if (m_mapId == 1) {
-    for (int i = 0; i < MAX_BATS; ++i) {
+    for (int i = 0; i < MAX_BATS; ++i)
       renderBat(m_bats[i], view, proj);
-    }
   }
-
-  // Reset objectAlpha
-  m_shader->setFloat("objectAlpha", 1.0f);
 }
 
 void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
   if (!m_shadowShader)
     return;
 
-  m_shadowShader->use();
-  m_shadowShader->setMat4("projection", proj);
-  m_shadowShader->setMat4("view", view);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE);
-  glEnable(GL_POLYGON_OFFSET_FILL);
-  glPolygonOffset(-1.0f, -1.0f);
-  glDisable(GL_CULL_FACE);
 
   const float sx = 2000.0f;
   const float sy = 4000.0f;
 
+  uint64_t shadowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                       | BGFX_STATE_DEPTH_TEST_LESS
+                       | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint32_t shadowStencil = BGFX_STENCIL_TEST_EQUAL
+                         | BGFX_STENCIL_FUNC_REF(0)
+                         | BGFX_STENCIL_FUNC_RMASK(0xFF)
+                         | BGFX_STENCIL_OP_FAIL_S_KEEP
+                         | BGFX_STENCIL_OP_FAIL_Z_KEEP
+                         | BGFX_STENCIL_OP_PASS_Z_INCR;
+
   // Bird shadows
-  if (m_birdBmd && m_birdShadow.vao) {
+  if (m_birdBmd && bgfx::isValid(m_birdShadow.vbo)) {
     for (int i = 0; i < MAX_BOIDS; ++i) {
       const Boid &b = m_boids[i];
       if (!b.live || b.alpha <= 0.001f)
@@ -1020,7 +1011,6 @@ void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
       model = glm::scale(model, glm::vec3(b.scale));
-      m_shadowShader->setMat4("model", model);
 
       float facingRad = glm::radians(b.angle.z + 90.0f);
       float cosF = std::cos(facingRad);
@@ -1076,18 +1066,19 @@ void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
       }
 
       if (!shadowVerts.empty()) {
-        glBindBuffer(GL_ARRAY_BUFFER, m_birdShadow.vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                        shadowVerts.size() * sizeof(glm::vec3),
-                        shadowVerts.data());
-        glBindVertexArray(m_birdShadow.vao);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+        bgfx::update(m_birdShadow.vbo, 0,
+                      bgfx::copy(shadowVerts.data(), shadowVerts.size() * sizeof(glm::vec3)));
+        bgfx::setTransform(glm::value_ptr(model));
+        bgfx::setVertexBuffer(0, m_birdShadow.vbo, 0, (uint32_t)shadowVerts.size());
+        bgfx::setState(shadowState);
+        bgfx::setStencil(shadowStencil);
+        bgfx::submit(0, m_shadowShader->program);
       }
     }
   }
 
   // Fish shadows (similar but using fish mesh)
-  if (m_fishBmd && m_fishShadow.vao) {
+  if (m_fishBmd && bgfx::isValid(m_fishShadow.vbo)) {
     for (int i = 0; i < MAX_FISHS; ++i) {
       const Fish &f = m_fishs[i];
       if (!f.live || f.alpha <= 0.001f)
@@ -1100,7 +1091,6 @@ void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
       model = glm::scale(model, glm::vec3(f.scale));
-      m_shadowShader->setMat4("model", model);
 
       float facingRad = glm::radians(f.angle.z + 90.0f);
       float cosF = std::cos(facingRad);
@@ -1156,89 +1146,72 @@ void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
       }
 
       if (!shadowVerts.empty()) {
-        glBindBuffer(GL_ARRAY_BUFFER, m_fishShadow.vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                        shadowVerts.size() * sizeof(glm::vec3),
-                        shadowVerts.data());
-        glBindVertexArray(m_fishShadow.vao);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+        bgfx::update(m_fishShadow.vbo, 0,
+                      bgfx::copy(shadowVerts.data(), shadowVerts.size() * sizeof(glm::vec3)));
+        bgfx::setTransform(glm::value_ptr(model));
+        bgfx::setVertexBuffer(0, m_fishShadow.vbo, 0, (uint32_t)shadowVerts.size());
+        bgfx::setState(shadowState);
+        bgfx::setStencil(shadowStencil);
+        bgfx::submit(0, m_shadowShader->program);
       }
     }
   }
 
-  glBindVertexArray(0);
-  glDisable(GL_POLYGON_OFFSET_FILL);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
 }
 
 // ── Render Leaves ────────────────────────────────────────────────────
 
 void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj) {
-  if (!m_leafShader || !m_leafTexture || !m_leafVAO)
+  if (!m_leafShader || !TexValid(m_leafTexture) || !bgfx::isValid(m_leafVBO))
     return;
 
-  m_leafShader->use();
-  m_leafShader->setMat4("projection", proj);
-  m_leafShader->setMat4("view", view);
-
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_leafTexture);
-  m_leafShader->setInt("leafTexture", 0);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDisable(GL_CULL_FACE); // Leaves visible from both sides
-
-  glBindVertexArray(m_leafVAO);
+  uint64_t leafState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                     | BGFX_STATE_DEPTH_TEST_LESS
+                     | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  // No cull — leaves visible from both sides
 
   for (int i = 0; i < MAX_LEAVES; ++i) {
     const LeafParticle &leaf = m_leaves[i];
     if (!leaf.live || leaf.alpha <= 0.0f)
       continue;
 
-    // Model matrix: translate + rotate by Euler angles
     glm::mat4 model = glm::translate(glm::mat4(1.0f), leaf.position);
     model = glm::rotate(model, glm::radians(leaf.angle.y), glm::vec3(0, 1, 0));
     model = glm::rotate(model, glm::radians(leaf.angle.x), glm::vec3(1, 0, 0));
     model = glm::rotate(model, glm::radians(leaf.angle.z), glm::vec3(0, 0, 1));
 
-    m_leafShader->setMat4("model", model);
-    m_leafShader->setFloat("leafAlpha", leaf.alpha);
-
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    bgfx::setTransform(glm::value_ptr(model));
+    bgfx::setVertexBuffer(0, m_leafVBO);
+    bgfx::setIndexBuffer(m_leafEBO);
+    m_leafShader->setTexture(0, "s_texColor", m_leafTexture);
+    m_leafShader->setVec4("u_params", glm::vec4(leaf.alpha, 0.0f, 0.0f, 0.0f));
+    bgfx::setState(leafState);
+    bgfx::submit(0, m_leafShader->program);
   }
-
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 // ── Cleanup ──────────────────────────────────────────────────────────
 
 void BoidManager::Cleanup() {
   CleanupMeshBuffers(m_birdMeshes);
+  CleanupMeshBuffers(m_batMeshes);
   CleanupMeshBuffers(m_fishMeshes);
 
-  if (m_birdShadow.vao)
-    glDeleteVertexArrays(1, &m_birdShadow.vao);
-  if (m_birdShadow.vbo)
-    glDeleteBuffers(1, &m_birdShadow.vbo);
-  if (m_fishShadow.vao)
-    glDeleteVertexArrays(1, &m_fishShadow.vao);
-  if (m_fishShadow.vbo)
-    glDeleteBuffers(1, &m_fishShadow.vbo);
+  if (bgfx::isValid(m_birdShadow.vbo)) bgfx::destroy(m_birdShadow.vbo);
+  if (bgfx::isValid(m_batShadow.vbo)) bgfx::destroy(m_batShadow.vbo);
+  if (bgfx::isValid(m_fishShadow.vbo)) bgfx::destroy(m_fishShadow.vbo);
+  m_birdShadow.vbo = BGFX_INVALID_HANDLE;
+  m_batShadow.vbo = BGFX_INVALID_HANDLE;
+  m_fishShadow.vbo = BGFX_INVALID_HANDLE;
 
-  // Leaf resources
-  if (m_leafTexture)
-    glDeleteTextures(1, &m_leafTexture);
-  if (m_leafVAO)
-    glDeleteVertexArrays(1, &m_leafVAO);
-  if (m_leafVBO)
-    glDeleteBuffers(1, &m_leafVBO);
-  if (m_leafEBO)
-    glDeleteBuffers(1, &m_leafEBO);
+  if (bgfx::isValid(m_leafVBO)) bgfx::destroy(m_leafVBO);
+  if (bgfx::isValid(m_leafEBO)) bgfx::destroy(m_leafEBO);
+  m_leafVBO = BGFX_INVALID_HANDLE;
+  m_leafEBO = BGFX_INVALID_HANDLE;
+  TexDestroy(m_leafTexture);
 
   m_birdBmd.reset();
+  m_batBmd.reset();
   m_fishBmd.reset();
   m_shader.reset();
   m_shadowShader.reset();

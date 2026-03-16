@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <glm/gtc/type_ptr.hpp>
 
 void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
                             const glm::vec3 &camPos, float deltaTime) {
@@ -28,38 +29,53 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   for (int i = 0; i < 6; ++i)
     frustum[i] /= glm::length(glm::vec3(frustum[i]));
 
-  m_shader->use();
-  m_shader->setMat4("projection", proj);
-  m_shader->setMat4("view", view);
-
   glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
-  m_shader->setVec3("lightPos", eye + glm::vec3(0, 500, 0));
-  m_shader->setVec3("lightColor", 1.0f, 1.0f, 1.0f);
-  m_shader->setVec3("viewPos", eye);
-  m_shader->setBool("useFog", true);
-  if (m_mapId == 1) { // Dungeon: black fog
-    m_shader->setVec3("uFogColor", glm::vec3(0.0f));
-    m_shader->setFloat("uFogNear", 800.0f);
-    m_shader->setFloat("uFogFar", 2500.0f);
-  } else { // Lorencia: warm brown fog
-    m_shader->setVec3("uFogColor", glm::vec3(0.117f, 0.078f, 0.039f));
-    m_shader->setFloat("uFogNear", 1500.0f);
-    m_shader->setFloat("uFogFar", 3500.0f);
+
+  // BGFX: fog params for per-submit uniforms
+  glm::vec4 fogParams, fogColor;
+  if (m_mapId == 1) {
+    fogColor = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    fogParams = glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f);
+  } else {
+    fogColor = glm::vec4(0.117f, 0.078f, 0.039f, 0.0f);
+    fogParams = glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f);
   }
-  m_shader->setFloat("blendMeshLight", 1.0f);
-  m_shader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_shader->setFloat("luminosity", m_luminosity);
-  m_shader->setVec3("baseTint", glm::vec3(1.0f));
-  m_shader->setVec3("glowColor", glm::vec3(0.0f));
-  m_shader->setInt("chromeMode", 0);
 
-  // Point lights (pre-cached locations)
-  int plCount = std::min((int)m_pointLights.size(), MAX_POINT_LIGHTS);
-  m_shader->uploadPointLights(plCount, m_pointLights.data());
+  // Helper: set all per-submit uniforms and draw a mesh buffer
+  auto monDrawMesh = [&](const glm::mat4 &modelMat, MeshBuffers &mb,
+                         float objAlpha, float bml, const glm::vec3 &tLight,
+                         uint64_t state) {
+    bgfx::setTransform(glm::value_ptr(modelMat));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    m_shader->setTexture(0, "s_texColor", mb.texture);
+    m_shader->setVec4("u_params", glm::vec4(objAlpha, bml, 0.0f, 0.0f));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_fogParams", fogParams);
+    m_shader->setVec4("u_fogColor", fogColor);
+    // Shadow map
+    float shadowEnabled = bgfx::isValid(m_shadowMapTex) ? 1.0f : 0.0f;
+    m_shader->setVec4("u_shadowParams", glm::vec4(shadowEnabled, 0.0f, 0.0f, 0.0f));
+    if (shadowEnabled > 0.5f) {
+      m_shader->setMat4("u_lightMtx", m_lightMtx);
+      m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
+    }
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
+  };
 
-  // Disable face culling — spider legs are thin planar geometry visible from
-  // both sides
-  glDisable(GL_CULL_FACE);
+  uint64_t normalState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                        | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                        | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint64_t additiveState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                          | BGFX_STATE_DEPTH_TEST_LESS
+                          | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+  uint64_t noneBlendState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                           | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
 
   for (auto &mon : m_monsters) {
     // Skip fully faded corpses
@@ -461,8 +477,6 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     model = glm::rotate(model, mon.facing, glm::vec3(0, 0, 1));
     model = glm::scale(model, glm::vec3(mon.scale));
 
-    m_shader->setMat4("model", model);
-
     // Terrain lightmap at monster position
     glm::vec3 tLight = sampleTerrainLightAt(mon.position);
     // Elite Bull Fighter (type 4): darker skin tone (Main 5.2 visual reference)
@@ -474,7 +488,6 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       tLight *= glm::vec3(0.5f, 0.9f, 0.5f);
     else if (mon.monsterType == 11) // Ghost: spectral blue tint, darken skin
       tLight *= glm::vec3(0.3f, 0.4f, 0.6f);
-    m_shader->setVec3("terrainLight", tLight);
 
     // Spawn fade-in (0->1 over ~0.4s)
     if (mon.spawnAlpha < 1.0f) {
@@ -485,7 +498,6 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
     // Combined alpha: corpse fade * spawn fade-in * per-type alpha
     float renderAlpha = mon.corpseAlpha * mon.spawnAlpha * mdl.typeAlpha;
-    m_shader->setFloat("objectAlpha", renderAlpha);
 
     // BlendMesh UV scroll (Main 5.2: Lich — texCoordV scrolls over time)
     // -(float)((int)(WorldTime)%2000)*0.0005f
@@ -503,44 +515,26 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       blendMeshLightVal = 0.4f + 0.5f * (0.5f + 0.5f * std::sin(phase));
     }
 
-    // Draw all meshes
+    // Draw all meshes (BGFX path)
     for (auto &mb : mon.meshBuffers) {
       if (mb.indexCount == 0 || mb.hidden)
         continue;
-      // Main 5.2 HiddenMesh: skip mesh with matching Texture index
       if (mdl.hiddenMesh >= 0 && mb.bmdTextureId == mdl.hiddenMesh)
         continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
 
-      // Main 5.2 BlendMesh: mesh with Texture==blendMesh renders additive
       bool isBlendMesh = hasBlendMesh && (mb.bmdTextureId == mdl.blendMesh);
       if (isBlendMesh) {
-        m_shader->setFloat("blendMeshLight", blendMeshLightVal);
-        m_shader->setVec2("texCoordOffset", glm::vec2(0.0f, blendMeshUVOffset));
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDepthMask(GL_FALSE);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        m_shader->setFloat("blendMeshLight", 1.0f);
-        m_shader->setVec2("texCoordOffset", glm::vec2(0.0f));
+        monDrawMesh(model, mb, renderAlpha, blendMeshLightVal, tLight, additiveState);
       } else if (mb.noneBlend) {
-        glDisable(GL_BLEND);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glEnable(GL_BLEND);
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, noneBlendState);
       } else if (mb.bright) {
-        glBlendFunc(GL_ONE, GL_ONE);
-        glDepthMask(GL_FALSE);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, additiveState);
       } else {
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState);
       }
     }
 
-    // Draw weapons (skeleton types: sword, shield, bow on Player.bmd bones)
+    // Draw weapons (skeleton types)
     for (int wi = 0;
          wi < (int)mdl.weaponDefs.size() && wi < (int)mon.weaponMeshes.size();
          ++wi) {
@@ -551,19 +545,13 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       if (wd.attachBone >= (int)bones.size())
         continue;
 
-      // Parent matrix: character bone * weapon local transform
-      // Main 5.2: ParentMatrix = BoneTransform[LinkBone] * AngleMatrix(rot) +
-      // offset
       const auto &parentBone = bones[wd.attachBone];
       BoneWorldMatrix weaponLocal =
           MuMath::BuildWeaponOffsetMatrix(wd.rot, wd.offset);
-
       BoneWorldMatrix parentMat;
       MuMath::ConcatTransforms((const float(*)[4])parentBone.data(),
                                (const float(*)[4])weaponLocal.data(),
                                (float(*)[4])parentMat.data());
-
-      // Use cached weapon local bones (static bind-pose, computed once at load)
       const auto &wLocalBones = wd.cachedLocalBones;
       std::vector<BoneWorldMatrix> wFinalBones(wLocalBones.size());
       for (int bi = 0; bi < (int)wLocalBones.size(); ++bi) {
@@ -571,8 +559,6 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
                                  (const float(*)[4])wLocalBones[bi].data(),
                                  (float(*)[4])wFinalBones[bi].data());
       }
-
-      // Re-skin and draw each weapon mesh
       for (int mi = 0;
            mi < (int)wms.meshBuffers.size() && mi < (int)wd.bmd->Meshes.size();
            ++mi) {
@@ -581,16 +567,11 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         auto &mb = wms.meshBuffers[mi];
         if (mb.indexCount == 0)
           continue;
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState);
       }
     }
   }
 
-  // Restore state
-  glEnable(GL_CULL_FACE);
-  m_shader->setFloat("objectAlpha", 1.0f);
 
   renderDebris(view, proj, camPos);
   renderArrows(view, proj, camPos);
@@ -601,219 +582,197 @@ void MonsterManager::RenderShadows(const glm::mat4 &view,
   if (!m_shadowShader || m_monsters.empty())
     return;
 
-  m_shadowShader->use();
-  m_shadowShader->setMat4("projection", proj);
-  m_shadowShader->setMat4("view", view);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE);
-  glEnable(GL_POLYGON_OFFSET_FILL);
-  glPolygonOffset(-1.0f, -1.0f);
-  glDisable(GL_CULL_FACE);
-  glEnable(GL_STENCIL_TEST);
-
   const float sx = 2000.0f;
   const float sy = 4000.0f;
 
-  for (auto &mon : m_monsters) {
-    if (mon.cachedBones.empty())
-      continue;
-    // Skip faded corpses
-    if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f)
-      continue;
-
-    auto &mdl = m_models[mon.modelIdx];
-
-    // Shadow model matrix
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
-    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
-    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-    model = glm::scale(model, glm::vec3(mon.scale));
-
-    m_shadowShader->setMat4("model", model);
-
-    // Clear stencil for this monster
-    glClear(GL_STENCIL_BUFFER_BIT);
-    glStencilFunc(GL_EQUAL, 0, 0xFF);
-    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
-
-    float cosF = cosf(mon.facing);
-    float sinF = sinf(mon.facing);
-
-    for (int mi = 0;
-         mi < (int)mdl.bmd->Meshes.size() && mi < (int)mon.shadowMeshes.size();
-         ++mi) {
-      auto &sm = mon.shadowMeshes[mi];
-      if (sm.vertexCount == 0 || sm.vao == 0)
-        continue;
-
-      auto &mesh = mdl.bmd->Meshes[mi];
-      static std::vector<glm::vec3> shadowVerts;
-      shadowVerts.clear();
-
-      for (int i = 0; i < mesh.NumTriangles; ++i) {
-        auto &tri = mesh.Triangles[i];
-        int steps = (tri.Polygon == 3) ? 3 : 4;
-        for (int v = 0; v < 3; ++v) {
+  // Lambda: project shadow vertices for a mesh using cached bones
+  auto buildShadowVerts = [&](const Mesh_t &mesh,
+                              const std::vector<BoneWorldMatrix> &cachedBones,
+                              float scale, float cosF, float sinF,
+                              std::vector<glm::vec3> &out) {
+    out.clear();
+    for (int i = 0; i < mesh.NumTriangles; ++i) {
+      auto &tri = mesh.Triangles[i];
+      int steps = (tri.Polygon == 3) ? 3 : 4;
+      for (int v = 0; v < 3; ++v) {
+        auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
+        glm::vec3 pos = srcVert.Position;
+        int boneIdx = srcVert.Node;
+        if (boneIdx >= 0 && boneIdx < (int)cachedBones.size())
+          pos = MuMath::TransformPoint(
+              (const float(*)[4])cachedBones[boneIdx].data(), pos);
+        pos *= scale;
+        float rx = pos.x * cosF - pos.y * sinF;
+        float ry = pos.x * sinF + pos.y * cosF;
+        pos.x = rx; pos.y = ry;
+        if (pos.z < sy) {
+          float factor = 1.0f / (pos.z - sy);
+          pos.x += pos.z * (pos.x + sx) * factor;
+          pos.y += pos.z * (pos.y + sx) * factor;
+        }
+        pos.z = 5.0f;
+        out.push_back(pos);
+      }
+      if (steps == 4) {
+        int quadIndices[3] = {0, 2, 3};
+        for (int v : quadIndices) {
           auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
           glm::vec3 pos = srcVert.Position;
           int boneIdx = srcVert.Node;
-          if (boneIdx >= 0 && boneIdx < (int)mon.cachedBones.size()) {
+          if (boneIdx >= 0 && boneIdx < (int)cachedBones.size())
             pos = MuMath::TransformPoint(
-                (const float(*)[4])mon.cachedBones[boneIdx].data(), pos);
-          }
-          pos *= mon.scale;
+                (const float(*)[4])cachedBones[boneIdx].data(), pos);
+          pos *= scale;
           float rx = pos.x * cosF - pos.y * sinF;
           float ry = pos.x * sinF + pos.y * cosF;
-          pos.x = rx;
-          pos.y = ry;
+          pos.x = rx; pos.y = ry;
           if (pos.z < sy) {
             float factor = 1.0f / (pos.z - sy);
             pos.x += pos.z * (pos.x + sx) * factor;
             pos.y += pos.z * (pos.y + sx) * factor;
           }
           pos.z = 5.0f;
-          shadowVerts.push_back(pos);
-        }
-        if (steps == 4) {
-          int quadIndices[3] = {0, 2, 3};
-          for (int v : quadIndices) {
-            auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-            glm::vec3 pos = srcVert.Position;
-            int boneIdx = srcVert.Node;
-            if (boneIdx >= 0 && boneIdx < (int)mon.cachedBones.size()) {
-              pos = MuMath::TransformPoint(
-                  (const float(*)[4])mon.cachedBones[boneIdx].data(), pos);
-            }
-            pos *= mon.scale;
-            float rx = pos.x * cosF - pos.y * sinF;
-            float ry = pos.x * sinF + pos.y * cosF;
-            pos.x = rx;
-            pos.y = ry;
-            if (pos.z < sy) {
-              float factor = 1.0f / (pos.z - sy);
-              pos.x += pos.z * (pos.x + sx) * factor;
-              pos.y += pos.z * (pos.y + sx) * factor;
-            }
-            pos.z = 5.0f;
-            shadowVerts.push_back(pos);
-          }
+          out.push_back(pos);
         }
       }
+    }
+  };
 
-      glBindBuffer(GL_ARRAY_BUFFER, sm.vbo);
-      glBufferSubData(GL_ARRAY_BUFFER, 0,
-                      shadowVerts.size() * sizeof(glm::vec3),
-                      shadowVerts.data());
-      glBindVertexArray(sm.vao);
-      glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+  // BGFX: stencil-based shadow merging — draw each pixel at most once
+  uint64_t shadowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                        | BGFX_STATE_DEPTH_TEST_LESS
+                        | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint32_t shadowStencil = BGFX_STENCIL_TEST_EQUAL
+                         | BGFX_STENCIL_FUNC_REF(0)
+                         | BGFX_STENCIL_FUNC_RMASK(0xFF)
+                         | BGFX_STENCIL_OP_FAIL_S_KEEP
+                         | BGFX_STENCIL_OP_FAIL_Z_KEEP
+                         | BGFX_STENCIL_OP_PASS_Z_INCR;
+
+  static std::vector<glm::vec3> shadowVerts;
+
+  for (auto &mon : m_monsters) {
+    if (mon.cachedBones.empty()) continue;
+    if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f) continue;
+
+    auto &mdl = m_models[mon.modelIdx];
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::scale(model, glm::vec3(mon.scale));
+
+    float cosF = cosf(mon.facing);
+    float sinF = sinf(mon.facing);
+
+    // Body mesh shadows
+    for (int mi = 0;
+         mi < (int)mdl.bmd->Meshes.size() && mi < (int)mon.shadowMeshes.size();
+         ++mi) {
+      auto &sm = mon.shadowMeshes[mi];
+      if (sm.vertexCount == 0 || !bgfx::isValid(sm.vbo)) continue;
+
+      buildShadowVerts(mdl.bmd->Meshes[mi], mon.cachedBones, mon.scale,
+                       cosF, sinF, shadowVerts);
+      if (shadowVerts.empty()) continue;
+
+      bgfx::update(sm.vbo, 0,
+          bgfx::copy(shadowVerts.data(), (uint32_t)(shadowVerts.size() * sizeof(glm::vec3))));
+      bgfx::setTransform(glm::value_ptr(model));
+      bgfx::setVertexBuffer(0, sm.vbo, 0, (uint32_t)shadowVerts.size());
+      bgfx::setState(shadowState);
+      bgfx::setStencil(shadowStencil);
+      bgfx::submit(0, m_shadowShader->program);
     }
 
-    // Render weapon shadows (skeleton/lich types)
+    // Weapon shadows
     for (int wi = 0;
-         wi < (int)mdl.weaponDefs.size() &&
-         wi < (int)mon.weaponShadowMeshes.size();
+         wi < (int)mdl.weaponDefs.size() && wi < (int)mon.weaponShadowMeshes.size();
          ++wi) {
       auto &wd = mdl.weaponDefs[wi];
       auto &wss = mon.weaponShadowMeshes[wi];
-      if (!wd.bmd || wss.meshes.empty())
-        continue;
-      if (wd.attachBone >= (int)mon.cachedBones.size())
-        continue;
+      if (!wd.bmd || wss.meshes.empty()) continue;
+      if (wd.attachBone >= (int)mon.cachedBones.size()) continue;
 
-      // Compute weapon final bones (same as normal render)
       const auto &parentBone = mon.cachedBones[wd.attachBone];
-      BoneWorldMatrix weaponLocal =
-          MuMath::BuildWeaponOffsetMatrix(wd.rot, wd.offset);
+      BoneWorldMatrix weaponLocal = MuMath::BuildWeaponOffsetMatrix(wd.rot, wd.offset);
       BoneWorldMatrix parentMat;
       MuMath::ConcatTransforms((const float(*)[4])parentBone.data(),
                                (const float(*)[4])weaponLocal.data(),
                                (float(*)[4])parentMat.data());
       const auto &wLocalBones = wd.cachedLocalBones;
       std::vector<BoneWorldMatrix> wFinalBones(wLocalBones.size());
-      for (int bi = 0; bi < (int)wLocalBones.size(); ++bi) {
+      for (int bi = 0; bi < (int)wLocalBones.size(); ++bi)
         MuMath::ConcatTransforms((const float(*)[4])parentMat.data(),
                                  (const float(*)[4])wLocalBones[bi].data(),
                                  (float(*)[4])wFinalBones[bi].data());
-      }
 
       for (int wmi = 0;
            wmi < (int)wd.bmd->Meshes.size() && wmi < (int)wss.meshes.size();
            ++wmi) {
         auto &wsm = wss.meshes[wmi];
-        if (wsm.vertexCount == 0 || wsm.vao == 0)
-          continue;
+        if (wsm.vertexCount == 0 || !bgfx::isValid(wsm.vbo)) continue;
 
-        auto &mesh = wd.bmd->Meshes[wmi];
-        static std::vector<glm::vec3> shadowVerts;
-        shadowVerts.clear();
+        buildShadowVerts(wd.bmd->Meshes[wmi], wFinalBones, mon.scale,
+                         cosF, sinF, shadowVerts);
+        if (shadowVerts.empty()) continue;
 
-        for (int i = 0; i < mesh.NumTriangles; ++i) {
-          auto &tri = mesh.Triangles[i];
-          int steps = (tri.Polygon == 3) ? 3 : 4;
-          for (int v = 0; v < 3; ++v) {
-            auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-            glm::vec3 pos = srcVert.Position;
-            int boneIdx = srcVert.Node;
-            if (boneIdx >= 0 && boneIdx < (int)wFinalBones.size()) {
-              pos = MuMath::TransformPoint(
-                  (const float(*)[4])wFinalBones[boneIdx].data(), pos);
-            }
-            pos *= mon.scale;
-            float rx = pos.x * cosF - pos.y * sinF;
-            float ry = pos.x * sinF + pos.y * cosF;
-            pos.x = rx;
-            pos.y = ry;
-            if (pos.z < sy) {
-              float factor = 1.0f / (pos.z - sy);
-              pos.x += pos.z * (pos.x + sx) * factor;
-              pos.y += pos.z * (pos.y + sx) * factor;
-            }
-            pos.z = 5.0f;
-            shadowVerts.push_back(pos);
-          }
-          if (steps == 4) {
-            int quadIndices[3] = {0, 2, 3};
-            for (int v : quadIndices) {
-              auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-              glm::vec3 pos = srcVert.Position;
-              int boneIdx = srcVert.Node;
-              if (boneIdx >= 0 && boneIdx < (int)wFinalBones.size()) {
-                pos = MuMath::TransformPoint(
-                    (const float(*)[4])wFinalBones[boneIdx].data(), pos);
-              }
-              pos *= mon.scale;
-              float rx = pos.x * cosF - pos.y * sinF;
-              float ry = pos.x * sinF + pos.y * cosF;
-              pos.x = rx;
-              pos.y = ry;
-              if (pos.z < sy) {
-                float factor = 1.0f / (pos.z - sy);
-                pos.x += pos.z * (pos.x + sx) * factor;
-                pos.y += pos.z * (pos.y + sx) * factor;
-              }
-              pos.z = 5.0f;
-              shadowVerts.push_back(pos);
-            }
-          }
-        }
-
-        glBindBuffer(GL_ARRAY_BUFFER, wsm.vbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                        shadowVerts.size() * sizeof(glm::vec3),
-                        shadowVerts.data());
-        glBindVertexArray(wsm.vao);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)shadowVerts.size());
+        bgfx::update(wsm.vbo, 0,
+            bgfx::copy(shadowVerts.data(), (uint32_t)(shadowVerts.size() * sizeof(glm::vec3))));
+        bgfx::setTransform(glm::value_ptr(model));
+        bgfx::setVertexBuffer(0, wsm.vbo, 0, (uint32_t)shadowVerts.size());
+        bgfx::setState(shadowState);
+        bgfx::setStencil(shadowStencil);
+        bgfx::submit(0, m_shadowShader->program);
       }
     }
   }
+}
 
-  glBindVertexArray(0);
-  glDisable(GL_STENCIL_TEST);
-  glDisable(GL_POLYGON_OFFSET_FILL);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
+void MonsterManager::SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx) {
+  m_shadowMapTex = tex;
+  m_lightMtx = lightMtx;
+}
+
+void MonsterManager::RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram) {
+  if (m_monsters.empty()) return;
+
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_CULL_CCW;
+
+  for (auto &mon : m_monsters) {
+    if (mon.cachedBones.empty()) continue;
+    if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f) continue;
+
+    auto &mdl = m_models[mon.modelIdx];
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, mon.facing, glm::vec3(0, 0, 1));
+    model = glm::scale(model, glm::vec3(mon.scale));
+
+    // Body meshes
+    for (auto &mb : mon.meshBuffers) {
+      if (mb.hidden || mb.indexCount == 0) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(viewId, depthProgram);
+    }
+    // Weapon meshes (skeleton/lich types)
+    for (auto &wms : mon.weaponMeshes) {
+      for (auto &mb : wms.meshBuffers) {
+        if (mb.hidden || mb.indexCount == 0) continue;
+        bgfx::setTransform(glm::value_ptr(model));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        bgfx::setState(state);
+        bgfx::submit(viewId, depthProgram);
+      }
+    }
+  }
 }
 
 void MonsterManager::RenderSilhouetteOutline(int monsterIndex,
@@ -829,99 +788,88 @@ void MonsterManager::RenderSilhouetteOutline(int monsterIndex,
 
   auto &mdl = m_models[mon.modelIdx];
 
-  // Build model matrix at normal scale (outline uses normal extrusion, not scale)
+  // Build model matrix
   glm::mat4 baseModel = glm::translate(glm::mat4(1.0f), mon.position);
   baseModel = glm::rotate(baseModel, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   baseModel = glm::rotate(baseModel, glm::radians(-90.0f), glm::vec3(0, 1, 0));
   baseModel = glm::rotate(baseModel, mon.facing, glm::vec3(0, 0, 1));
-
   glm::mat4 stencilModel = glm::scale(baseModel, glm::vec3(mon.scale));
 
-  m_outlineShader->use();
-  m_outlineShader->setMat4("projection", proj);
-  m_outlineShader->setMat4("view", view);
+  // Per-pass state captured by lambda
+  uint32_t stencilFront = 0, stencilBack = 0;
+  uint64_t state = 0;
+  glm::vec4 outlineParams(0.0f);
+  glm::vec4 outlineColor(0.0f);
 
-  glDisable(GL_CULL_FACE);
-
-  // === Pass 1: Write COMPLETE silhouette to stencil ===
-  // Depth test OFF so ALL mesh pixels get stenciled (no gaps between parts)
-  glEnable(GL_STENCIL_TEST);
-  glStencilFunc(GL_ALWAYS, 1, 0xFF);
-  glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
-  glStencilMask(0xFF);
-  glClear(GL_STENCIL_BUFFER_BIT);
-  glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-  glDepthMask(GL_FALSE);
-  glDisable(GL_DEPTH_TEST);
-
-  m_outlineShader->setMat4("model", stencilModel);
-  m_outlineShader->setFloat("outlineThickness", 0.0f);
-
-  for (auto &mb : mon.meshBuffers) {
-    if (mb.indexCount == 0 || mb.hidden)
-      continue;
-    glBindVertexArray(mb.vao);
-    glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-  }
-  for (int wi = 0;
-       wi < (int)mdl.weaponDefs.size() && wi < (int)mon.weaponMeshes.size();
-       ++wi) {
-    for (auto &mb : mon.weaponMeshes[wi].meshBuffers) {
-      if (mb.indexCount == 0)
-        continue;
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-    }
-  }
-
-  // === Pass 2: Multi-layer soft glow where stencil != 1 ===
-  glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-  glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-  glStencilMask(0x00);
-
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-  m_outlineShader->setVec3("outlineColor", 0.8f, 0.4f, 0.15f);
-
-  // Render multiple layers from outermost (faint) to innermost (bright)
-  // for smooth soft glow falloff — normal extrusion for uniform width
-  constexpr float thicknesses[] = {5.0f, 3.5f, 2.0f};
-  constexpr float alphas[] = {0.08f, 0.18f, 0.35f};
-
-  m_outlineShader->setMat4("model", stencilModel);
-
-  for (int layer = 0; layer < 3; ++layer) {
-    m_outlineShader->setFloat("outlineThickness", thicknesses[layer]);
-    m_outlineShader->setFloat("outlineAlpha", alphas[layer]);
-
+  // Helper to submit all monster meshes (body + weapons)
+  auto submitMonsterMeshes = [&]() {
     for (auto &mb : mon.meshBuffers) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(stencilModel));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setStencil(stencilFront, stencilBack);
+      bgfx::setState(state);
+      m_outlineShader->setVec4("u_outlineParams", outlineParams);
+      m_outlineShader->setVec4("u_outlineColor", outlineColor);
+      bgfx::submit(0, m_outlineShader->program);
     }
     for (int wi = 0;
          wi < (int)mdl.weaponDefs.size() && wi < (int)mon.weaponMeshes.size();
          ++wi) {
       for (auto &mb : mon.weaponMeshes[wi].meshBuffers) {
-        if (mb.indexCount == 0)
-          continue;
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+        if (mb.indexCount == 0) continue;
+        bgfx::setTransform(glm::value_ptr(stencilModel));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        bgfx::setStencil(stencilFront, stencilBack);
+        bgfx::setState(state);
+        m_outlineShader->setVec4("u_outlineParams", outlineParams);
+        m_outlineShader->setVec4("u_outlineColor", outlineColor);
+        bgfx::submit(0, m_outlineShader->program);
       }
     }
-  }
+  };
 
-  // Restore state
-  glStencilMask(0xFF);
-  glStencilFunc(GL_ALWAYS, 0, 0xFF);
-  glDisable(GL_STENCIL_TEST);
-  glEnable(GL_DEPTH_TEST);
-  glDepthMask(GL_TRUE);
-  glEnable(GL_CULL_FACE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glBindVertexArray(0);
+  // === Pass 1: Write monster silhouette to stencil ===
+  // No color write, no depth write, no depth test — write stencil ref=1
+  stencilFront =
+      BGFX_STENCIL_TEST_ALWAYS
+    | BGFX_STENCIL_FUNC_REF(1)
+    | BGFX_STENCIL_FUNC_RMASK(0xFF)
+    | BGFX_STENCIL_OP_FAIL_S_KEEP
+    | BGFX_STENCIL_OP_FAIL_Z_KEEP
+    | BGFX_STENCIL_OP_PASS_Z_REPLACE;
+  stencilBack = stencilFront; // double-sided
+  state = BGFX_STATE_MSAA; // no color/depth write, no depth test
+  outlineParams = glm::vec4(0.0f); // thickness=0 (no extrusion)
+  outlineColor = glm::vec4(0.0f);  // invisible (stencil write only)
+  submitMonsterMeshes();
+
+  // === Pass 2: Multi-layer soft glow where stencil != 1 ===
+  stencilFront =
+      BGFX_STENCIL_TEST_NOTEQUAL
+    | BGFX_STENCIL_FUNC_REF(1)
+    | BGFX_STENCIL_FUNC_RMASK(0xFF)
+    | BGFX_STENCIL_OP_FAIL_S_KEEP
+    | BGFX_STENCIL_OP_FAIL_Z_KEEP
+    | BGFX_STENCIL_OP_PASS_Z_KEEP;
+  stencilBack = stencilFront;
+  state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+    | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                             BGFX_STATE_BLEND_INV_SRC_ALPHA)
+    | BGFX_STATE_MSAA;
+
+  constexpr float thicknesses[] = {5.0f, 3.5f, 2.0f};
+  constexpr float alphas[] = {0.08f, 0.18f, 0.35f};
+
+  for (int layer = 0; layer < 3; ++layer) {
+    outlineParams = glm::vec4(thicknesses[layer], 0.0f, 0.0f, 0.0f);
+    outlineColor = glm::vec4(0.8f, 0.4f, 0.15f, alphas[layer]);
+    submitMonsterMeshes();
+  }
 }
 
 void MonsterManager::RenderNameplates(ImDrawList *dl, ImFont *font,

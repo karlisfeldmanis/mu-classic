@@ -1,15 +1,17 @@
 #ifndef MESH_BUFFERS_HPP
 #define MESH_BUFFERS_HPP
 
-#include <GL/glew.h>
+#include "TextureLoader.hpp" // TexHandle, TexValid, kInvalidTex
 #include <string>
 
 struct MeshBuffers {
-  GLuint vao = 0, vbo = 0, ebo = 0;
+  bgfx::VertexBufferHandle        vbo    = BGFX_INVALID_HANDLE; // Static meshes
+  bgfx::DynamicVertexBufferHandle dynVbo = BGFX_INVALID_HANDLE; // Animated meshes
+  bgfx::IndexBufferHandle         ebo    = BGFX_INVALID_HANDLE;
   int indexCount = 0;
   int vertexCount = 0;    // For dynamic VBO re-upload sizing
-  bool isDynamic = false;  // True if VBO uses GL_DYNAMIC_DRAW
-  GLuint texture = 0;
+  bool isDynamic = false;  // True = uses dynVbo for per-frame bone animation
+  TexHandle texture = kInvalidTex;
 
   // Per-mesh rendering flags (parsed from texture name suffixes)
   bool hasAlpha = false;  // Texture has alpha channel (32-bit TGA / RGBA)

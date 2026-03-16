@@ -1,4 +1,5 @@
 #include "SystemMessageLog.hpp"
+#include "SoundManager.hpp"
 #include <cstdarg>
 #include <cstdio>
 #include <deque>
@@ -80,6 +81,13 @@ void Log(MessageCategory cat, ImU32 color, const char *fmt, ...) {
 
   // Reset activity timer — makes log visible
   s_activityTimer = 0.0f;
+
+  // Play error sound for red-tinted error messages (R>=200, G<120, B<120)
+  uint8_t r = (color >> 0) & 0xFF;
+  uint8_t g = (color >> 8) & 0xFF;
+  uint8_t b = (color >> 16) & 0xFF;
+  if (r >= 200 && g < 120 && b < 120 && cat != 1)
+    SoundManager::Play(SOUND_ERROR01);
 }
 
 void LogSilent(MessageCategory cat, ImU32 color, const char *fmt, ...) {

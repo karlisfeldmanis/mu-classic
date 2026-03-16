@@ -6,113 +6,6 @@
 #include <iostream>
 #include <vector>
 
-// --- Embedded shaders ---
-
-static const char *grassVertexShaderSource = R"(
-#version 330 core
-layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoord;
-layout (location = 2) in float aWindWeight;
-layout (location = 3) in float aGridX;
-layout (location = 4) in vec3 aColor;
-layout (location = 5) in float aTexLayer;
-
-out vec2 TexCoord;
-out vec3 VertColor;
-out vec3 FragPos;
-flat out int TexLayer;
-
-uniform mat4 view;
-uniform mat4 projection;
-uniform float uTime;
-
-// Multiple push sources (hero + monsters)
-const int MAX_PUSHERS = 17;
-uniform vec3 pushPos[MAX_PUSHERS];
-uniform float pushRadius[MAX_PUSHERS];
-uniform int numPushers;
-
-void main() {
-    vec3 pos = aPos;
-
-    // Wind: reference WindSpeed = (WorldTime % 720000) * 0.002
-    // uTime is seconds, so mod(uTime, 720) * 2.0 matches reference timing
-    float windSpeed = mod(uTime, 720.0) * 2.0;
-    float wind = sin(windSpeed + aGridX * 5.0) * 10.0 * aWindWeight;
-    pos.x += wind;
-
-    // Grass pushing: top vertices near push sources get pushed away
-    if (aWindWeight > 0.0) {
-        for (int i = 0; i < numPushers; i++) {
-            if (pushRadius[i] <= 0.0) continue;
-            vec2 toBlade = pos.xz - pushPos[i].xz;
-            float dist = length(toBlade);
-            if (dist < pushRadius[i] && dist > 0.001) {
-                float pushStrength = (1.0 - dist / pushRadius[i]);
-                pushStrength *= pushStrength; // Quadratic falloff
-                vec2 pushDir = normalize(toBlade);
-                pos.xz += pushDir * pushStrength * pushRadius[i] * 0.5;
-                pos.y -= pushStrength * 30.0; // Slight downward bend
-            }
-        }
-    }
-
-    gl_Position = projection * view * vec4(pos, 1.0);
-    TexCoord = aTexCoord;
-    VertColor = aColor;
-    FragPos = pos;
-    TexLayer = int(aTexLayer + 0.5);
-}
-)";
-
-static const char *grassFragmentShaderSource = R"(
-#version 330 core
-out vec4 FragColor;
-
-in vec2 TexCoord;
-in vec3 VertColor;
-in vec3 FragPos;
-flat in int TexLayer;
-
-uniform sampler2D grassTex0;
-uniform sampler2D grassTex1;
-uniform sampler2D grassTex2;
-uniform vec3 viewPos;
-uniform vec3 uFogColor;
-uniform float uFogNear;
-uniform float uFogFar;
-uniform float luminosity;
-uniform float uAlphaMult; // Per-world transparency (1.0 = opaque, <1 = semi-transparent)
-
-void main() {
-    vec4 color;
-    if (TexLayer == 1) color = texture(grassTex1, TexCoord);
-    else if (TexLayer == 2) color = texture(grassTex2, TexCoord);
-    else color = texture(grassTex0, TexCoord);
-
-    float finalAlpha = color.a * uAlphaMult;
-    if (finalAlpha < 0.25) discard; // Match original glAlphaFunc(GL_GREATER, 0.25)
-
-    vec3 lit = color.rgb * VertColor * luminosity;
-
-    // Fog matching terrain shader parameters
-    float dist = length(FragPos - viewPos);
-    float fogFactor = clamp((uFogFar - dist) / (uFogFar - uFogNear), 0.0, 1.0);
-    lit = mix(uFogColor * luminosity, lit, fogFactor);
-
-    // Edge fog (same as terrain)
-    float edgeWidth = 2500.0;
-    float edgeMargin = 500.0;
-    float terrainMax = 25600.0;
-    float dEdge = min(min(FragPos.x, terrainMax - FragPos.x),
-                      min(FragPos.z, terrainMax - FragPos.z));
-    float edgeFactor = smoothstep(edgeMargin, edgeMargin + edgeWidth, dEdge);
-    lit = mix(vec3(0.0), lit, edgeFactor);
-
-    FragColor = vec4(lit, finalAlpha);
-}
-)";
-
 // --- Constants ---
 
 // Reference: Height = pBitmap->Height * 2.0f; TileGrass01/02 are 256x64, so
@@ -124,70 +17,51 @@ static constexpr float GRASS_ALPHA_DEVIAS = 0.9f;   // Slightly transparent
 // texture)
 static constexpr float UV_WIDTH = 64.0f / 256.0f;
 
-// --- Implementation ---
+// ============================================================
+// BGFX implementation
+// ============================================================
 
-void GrassRenderer::Init() { setupShader(); }
+// BGFX vertex layout for grass:
+//   a_position  (3f) — world position
+//   a_texcoord0 (2f) — UV coords
+//   a_color0    (3f) — vertex lightmap color (not normalized)
+//   a_texcoord1 (4f) — windWeight, gridX, texLayer, pad
+struct BgfxGrassVertex {
+  glm::vec3 position;
+  glm::vec2 texCoord;
+  glm::vec3 color;
+  float windWeight;
+  float gridX;
+  float texLayer;
+  float _pad;
+};
+static_assert(sizeof(BgfxGrassVertex) == 48, "BgfxGrassVertex must be 48 bytes");
 
-void GrassRenderer::setupShader() {
-  auto compile = [](GLenum type, const char *source) {
-    GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &source, nullptr);
-    glCompileShader(shader);
-    int success;
-    char log[512];
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-    if (!success) {
-      glGetShaderInfoLog(shader, 512, nullptr, log);
-      std::cerr << "[GrassRenderer] Shader error: " << log << std::endl;
-    }
-    return shader;
-  };
+static bgfx::VertexLayout s_grassLayout;
+static bool s_grassLayoutInit = false;
 
-  GLuint vert = compile(GL_VERTEX_SHADER, grassVertexShaderSource);
-  GLuint frag = compile(GL_FRAGMENT_SHADER, grassFragmentShaderSource);
-
-  shaderProgram = glCreateProgram();
-  glAttachShader(shaderProgram, vert);
-  glAttachShader(shaderProgram, frag);
-  glLinkProgram(shaderProgram);
-
-  int success;
-  char log[512];
-  glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
-  if (!success) {
-    glGetProgramInfoLog(shaderProgram, 512, nullptr, log);
-    std::cerr << "[GrassRenderer] Link error: " << log << std::endl;
+static void ensureGrassLayout() {
+  if (!s_grassLayoutInit) {
+    s_grassLayout.begin()
+        .add(bgfx::Attrib::Position,  3, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::Color0,    3, bgfx::AttribType::Float, false)
+        .add(bgfx::Attrib::TexCoord1, 4, bgfx::AttribType::Float)
+        .end();
+    s_grassLayoutInit = true;
   }
+}
 
-  glDeleteShader(vert);
-  glDeleteShader(frag);
-
-  // Cache uniform locations once
-  u_view = glGetUniformLocation(shaderProgram, "view");
-  u_projection = glGetUniformLocation(shaderProgram, "projection");
-  u_uTime = glGetUniformLocation(shaderProgram, "uTime");
-  u_viewPos = glGetUniformLocation(shaderProgram, "viewPos");
-  u_fogColor = glGetUniformLocation(shaderProgram, "uFogColor");
-  u_fogNear = glGetUniformLocation(shaderProgram, "uFogNear");
-  u_fogFar = glGetUniformLocation(shaderProgram, "uFogFar");
-  u_luminosity = glGetUniformLocation(shaderProgram, "luminosity");
-  u_alphaMult = glGetUniformLocation(shaderProgram, "uAlphaMult");
-  u_numPushers = glGetUniformLocation(shaderProgram, "numPushers");
-  for (int i = 0; i < 17; ++i) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "pushPos[%d]", i);
-    u_pushPos[i] = glGetUniformLocation(shaderProgram, buf);
-    snprintf(buf, sizeof(buf), "pushRadius[%d]", i);
-    u_pushRadius[i] = glGetUniformLocation(shaderProgram, buf);
+void GrassRenderer::Init() {
+  shader = Shader::Load("vs_grass.bin", "fs_grass.bin");
+  if (!shader) {
+    fprintf(stderr, "[GrassRenderer] Failed to load BGFX grass shader\n");
   }
-  u_grassTex[0] = glGetUniformLocation(shaderProgram, "grassTex0");
-  u_grassTex[1] = glGetUniformLocation(shaderProgram, "grassTex1");
-  u_grassTex[2] = glGetUniformLocation(shaderProgram, "grassTex2");
 }
 
 void GrassRenderer::Load(const TerrainData &data, int worldID,
-                         const std::string &dataPath,
-                         const std::vector<bool> *objectOccupancy) {
+                          const std::string &dataPath,
+                          const std::vector<bool> *objectOccupancy) {
   m_worldID = worldID;
   const int SIZE = TerrainParser::TERRAIN_SIZE; // 256
 
@@ -196,68 +70,51 @@ void GrassRenderer::Load(const TerrainData &data, int worldID,
   float grassHeight = isSnowWorld ? GRASS_HEIGHT_DEVIAS : GRASS_HEIGHT_DEFAULT;
   m_alphaMult = isSnowWorld ? GRASS_ALPHA_DEVIAS : 1.0f;
 
-  // Load grass textures (OZT for alpha, fall back to same-world alternate, then
-  // World1) Grass billboards REQUIRE alpha for transparency. OZJ (JPEG) has no
-  // alpha.
+  // Load grass textures (OZT for alpha)
   std::string worldDir = dataPath + "/World" + std::to_string(worldID);
   std::string fallbackDir = dataPath + "/World1";
   const char *names[3] = {"TileGrass01", "TileGrass02", "TileGrass03"};
-
-  // For snowy worlds: prefer TileGrass02 (white/snowy) for ALL slots
-  // This prevents falling back to World1's green TileGrass01
   const char *snowyPreferred = "TileGrass02";
 
   for (int i = 0; i < 3; ++i) {
-    // Try world-specific OZT first (has alpha)
     std::string ozt = worldDir + "/" + names[i] + ".OZT";
     grassTextures[i] = TextureLoader::LoadOZT(ozt);
-    // Fall back to same-world alternate OZT (keeps correct color scheme)
-    if (grassTextures[i] == 0) {
-      // For snowy worlds, try the preferred snowy texture first
+    if (!TexValid(grassTextures[i])) {
       if (isSnowWorld) {
         std::string snowOzt = worldDir + "/" + snowyPreferred + ".OZT";
         grassTextures[i] = TextureLoader::LoadOZT(snowOzt);
-        if (grassTextures[i] != 0)
+        if (TexValid(grassTextures[i]))
           std::cout << "[GrassRenderer] " << names[i] << " using snowy "
                     << snowyPreferred << std::endl;
       }
-      // Try other same-world alternates
-      for (int alt = 0; alt < 3 && grassTextures[i] == 0; ++alt) {
-        if (alt == i)
-          continue;
+      for (int alt = 0; alt < 3 && !TexValid(grassTextures[i]); ++alt) {
+        if (alt == i) continue;
         std::string altOzt = worldDir + "/" + names[alt] + ".OZT";
         grassTextures[i] = TextureLoader::LoadOZT(altOzt);
-        if (grassTextures[i] != 0)
+        if (TexValid(grassTextures[i]))
           std::cout << "[GrassRenderer] " << names[i] << " using " << names[alt]
                     << " from same world" << std::endl;
       }
     }
-    // Fall back to World1 OZT (green grass, last resort with alpha)
-    // Skip World1 fallback for snowy worlds — green grass would look wrong
-    if (grassTextures[i] == 0 && worldID != 1 && !isSnowWorld) {
+    if (!TexValid(grassTextures[i]) && worldID != 1 && !isSnowWorld) {
       std::string fallbackOzt = fallbackDir + "/" + names[i] + ".OZT";
       grassTextures[i] = TextureLoader::LoadOZT(fallbackOzt);
-      if (grassTextures[i] != 0)
+      if (TexValid(grassTextures[i]))
         std::cout << "[GrassRenderer] " << names[i] << " fallback from World1"
                   << std::endl;
     }
-    if (grassTextures[i] != 0) {
+    if (TexValid(grassTextures[i])) {
       std::cout << "[GrassRenderer] Loaded " << names[i] << std::endl;
     } else {
       std::cerr << "[GrassRenderer] Failed to load " << names[i] << std::endl;
     }
   }
 
-  // Generate grass billboard quads for grass terrain cells
-  // Single billboard per cell (SW→NE diagonal) matching original engine
-  std::vector<GrassVertex> vertices;
-  std::vector<unsigned int> indices;
+  // Generate grass billboard quads
+  std::vector<BgfxGrassVertex> vertices;
+  std::vector<uint32_t> indices;
 
-  // Seed RNG for per-row UV randomization (matches reference
-  // TerrainGrassTexture)
   srand(42);
-
-  // Pre-compute per-row random UV offsets (reference: TerrainGrassTexture[yi])
   float rowUVOffsets[256];
   for (int z = 0; z < SIZE; ++z) {
     rowUVOffsets[z] = (float)(rand() % 4) / 4.0f;
@@ -267,22 +124,14 @@ void GrassRenderer::Load(const TerrainData &data, int worldID,
     for (int x = 0; x < SIZE - 1; ++x) {
       int idx = z * SIZE + x;
 
-      // Only grass tiles (layer1 index 0 or 1)
       uint8_t layer1 = data.mapping.layer1[idx];
-      if (layer1 != 0 && layer1 != 1)
-        continue;
+      if (layer1 != 0 && layer1 != 1) continue;
+      if (data.mapping.alpha[idx] > 0.0f) continue;
 
-      // Skip cells with alpha blending (overlay covers grass)
-      if (data.mapping.alpha[idx] > 0.0f)
-        continue;
-
-      // Skip cells with NOGROUND attribute (under bridges/structures)
       if (idx < (int)data.mapping.attributes.size() &&
           (data.mapping.attributes[idx] & 0x08) != 0)
         continue;
 
-      // Skip cells adjacent to NOGROUND (within 3 cells) to prevent
-      // floating grass over sunk rift edge terrain
       {
         bool nearRift = false;
         const int GRASS_RIFT_MARGIN = 3;
@@ -300,23 +149,17 @@ void GrassRenderer::Load(const TerrainData &data, int worldID,
             }
           }
         }
-        if (nearRift)
-          continue;
+        if (nearRift) continue;
       }
 
-      // Get heightmap at SW and NE corners (diagonal billboard)
       float h_sw = data.heightmap[z * SIZE + x];
       float h_ne = data.heightmap[(z + 1) * SIZE + (x + 1)];
 
-      // UV strip: reference uses su = xf * Width + TerrainGrassTexture[yi]
-      // This cycles through 4 blade variants per column, plus row randomization
       float su = (float)x * UV_WIDTH + rowUVOffsets[z];
-      // Wrap to [0, 1) range
       su = su - floorf(su);
       float uLeft = su;
       float uRight = su + UV_WIDTH;
 
-      // Lightmap color at this cell
       glm::vec3 lightColor(1.0f);
       if (idx < (int)data.lightmap.size()) {
         lightColor = data.lightmap[idx];
@@ -324,53 +167,53 @@ void GrassRenderer::Load(const TerrainData &data, int worldID,
 
       float texLayer = (float)layer1;
 
-      // Single billboard: SW → NE diagonal (matches reference VectorCopy)
-      // Reference: v[3]=SW(ground), v[2]=NE(ground), v[0]=SW(top), v[1]=NE(top)
-      // Top vertices: Z += Height, X -= 50, Y += wind
-      unsigned int baseIdx = (unsigned int)vertices.size();
+      uint32_t baseIdx = (uint32_t)vertices.size();
 
       glm::vec3 posSW((float)z * 100.0f, h_sw, (float)x * 100.0f);
       glm::vec3 posNE((float)(z + 1) * 100.0f, h_ne, (float)(x + 1) * 100.0f);
 
-      // Bottom-left (SW, anchored at terrain)
-      GrassVertex bl;
+      // Bottom-left (SW, anchored)
+      BgfxGrassVertex bl;
       bl.position = posSW;
-      bl.texCoord = glm::vec2(uLeft, 1.0f); // V=1 at base
+      bl.texCoord = glm::vec2(uLeft, 1.0f);
+      bl.color = lightColor;
       bl.windWeight = 0.0f;
       bl.gridX = (float)x;
-      bl.color = lightColor;
       bl.texLayer = texLayer;
+      bl._pad = 0.0f;
       vertices.push_back(bl);
 
-      // Bottom-right (NE, anchored at terrain)
-      GrassVertex br;
+      // Bottom-right (NE, anchored)
+      BgfxGrassVertex br;
       br.position = posNE;
       br.texCoord = glm::vec2(uRight, 1.0f);
+      br.color = lightColor;
       br.windWeight = 0.0f;
       br.gridX = (float)(x + 1);
-      br.color = lightColor;
       br.texLayer = texLayer;
+      br._pad = 0.0f;
       vertices.push_back(br);
 
       // Top-right (NE, elevated + wind)
-      // Reference: MU_Z += Height, MU_X -= 50 → GL: Y += Height, Z -= 50
-      GrassVertex tr;
+      BgfxGrassVertex tr;
       tr.position = glm::vec3(posNE.x, posNE.y + grassHeight, posNE.z - 50.0f);
-      tr.texCoord = glm::vec2(uRight, 0.0f); // V=0 at tips
+      tr.texCoord = glm::vec2(uRight, 0.0f);
+      tr.color = lightColor;
       tr.windWeight = 1.0f;
       tr.gridX = (float)(x + 1);
-      tr.color = lightColor;
       tr.texLayer = texLayer;
+      tr._pad = 0.0f;
       vertices.push_back(tr);
 
       // Top-left (SW, elevated + wind)
-      GrassVertex tl;
+      BgfxGrassVertex tl;
       tl.position = glm::vec3(posSW.x, posSW.y + grassHeight, posSW.z - 50.0f);
       tl.texCoord = glm::vec2(uLeft, 0.0f);
+      tl.color = lightColor;
       tl.windWeight = 1.0f;
       tl.gridX = (float)x;
-      tl.color = lightColor;
       tl.texLayer = texLayer;
+      tl._pad = 0.0f;
       vertices.push_back(tl);
 
       indices.push_back(baseIdx + 0);
@@ -387,117 +230,82 @@ void GrassRenderer::Load(const TerrainData &data, int worldID,
             << " grass billboards (" << vertices.size() << " vertices)"
             << std::endl;
 
-  if (indexCount == 0)
-    return;
+  if (indexCount == 0) return;
 
-  // Upload to GPU
-  glGenVertexArrays(1, &VAO);
-  glGenBuffers(1, &VBO);
-  glGenBuffers(1, &EBO);
+  // Upload to BGFX
+  ensureGrassLayout();
 
-  glBindVertexArray(VAO);
+  const bgfx::Memory *vMem = bgfx::copy(vertices.data(),
+      (uint32_t)(vertices.size() * sizeof(BgfxGrassVertex)));
+  vbo = bgfx::createVertexBuffer(vMem, s_grassLayout);
 
-  glBindBuffer(GL_ARRAY_BUFFER, VBO);
-  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GrassVertex),
-               vertices.data(), GL_STATIC_DRAW);
-
-  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
-               indices.data(), GL_STATIC_DRAW);
-
-  // position (vec3)
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(GrassVertex),
-                        (void *)offsetof(GrassVertex, position));
-  glEnableVertexAttribArray(0);
-
-  // texCoord (vec2)
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(GrassVertex),
-                        (void *)offsetof(GrassVertex, texCoord));
-  glEnableVertexAttribArray(1);
-
-  // windWeight (float)
-  glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(GrassVertex),
-                        (void *)offsetof(GrassVertex, windWeight));
-  glEnableVertexAttribArray(2);
-
-  // gridX (float)
-  glVertexAttribPointer(3, 1, GL_FLOAT, GL_FALSE, sizeof(GrassVertex),
-                        (void *)offsetof(GrassVertex, gridX));
-  glEnableVertexAttribArray(3);
-
-  // color (vec3)
-  glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(GrassVertex),
-                        (void *)offsetof(GrassVertex, color));
-  glEnableVertexAttribArray(4);
-
-  // texLayer (float)
-  glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(GrassVertex),
-                        (void *)offsetof(GrassVertex, texLayer));
-  glEnableVertexAttribArray(5);
-
-  glBindVertexArray(0);
+  const bgfx::Memory *iMem = bgfx::copy(indices.data(),
+      (uint32_t)(indices.size() * sizeof(uint32_t)));
+  ebo = bgfx::createIndexBuffer(iMem, BGFX_BUFFER_INDEX32);
 }
 
 void GrassRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
-                           float time, const glm::vec3 &viewPos,
-                           const std::vector<PushSource> &pushSources) {
-  if (indexCount == 0 || shaderProgram == 0)
-    return;
+                            float time, const glm::vec3 &viewPos,
+                            const std::vector<PushSource> &pushSources) {
+  if (indexCount == 0 || !shader) return;
 
-  glUseProgram(shaderProgram);
+  // View transform (may already be set by terrain, but set for safety)
+  bgfx::setViewTransform(0, glm::value_ptr(view), glm::value_ptr(projection));
 
-  glUniformMatrix4fv(u_view, 1, GL_FALSE, glm::value_ptr(view));
-  glUniformMatrix4fv(u_projection, 1, GL_FALSE, glm::value_ptr(projection));
-  glUniform1f(u_uTime, time);
-  glUniform3fv(u_viewPos, 1, glm::value_ptr(viewPos));
-  glUniform3fv(u_fogColor, 1, glm::value_ptr(fogColor));
-  glUniform1f(u_fogNear, fogNear);
-  glUniform1f(u_fogFar, fogFar);
-  glUniform1f(u_luminosity, m_luminosity);
-  glUniform1f(u_alphaMult, m_alphaMult);
-
-  // Upload push sources (hero + monsters)
+  // Pack params: x=time, y=numPushers, z=luminosity, w=alphaMult
   int count = std::min((int)pushSources.size(), 17);
-  glUniform1i(u_numPushers, count);
+  shader->setVec4("u_grassParams",
+      glm::vec4(time, (float)count, m_luminosity, m_alphaMult));
+
+  // Pack fog: x=fogNear, y=fogFar
+  shader->setVec4("u_grassFog",
+      glm::vec4(fogNear, fogFar, 0.0f, 0.0f));
+
+  shader->setVec3("u_fogColor", fogColor);
+  shader->setVec3("u_viewPos", viewPos);
+
+  // Upload push sources as vec4 array (xyz=pos, w=radius)
+  float pushData[17 * 4] = {};
   for (int i = 0; i < count; ++i) {
-    glUniform3fv(u_pushPos[i], 1, glm::value_ptr(pushSources[i].pos));
-    glUniform1f(u_pushRadius[i], pushSources[i].radius);
+    pushData[i * 4 + 0] = pushSources[i].pos.x;
+    pushData[i * 4 + 1] = pushSources[i].pos.y;
+    pushData[i * 4 + 2] = pushSources[i].pos.z;
+    pushData[i * 4 + 3] = pushSources[i].radius;
   }
-
-  // Bind grass textures
-  for (int i = 0; i < 3; ++i) {
-    glActiveTexture(GL_TEXTURE0 + i);
-    glBindTexture(GL_TEXTURE_2D, grassTextures[i] ? grassTextures[i] : 0);
+  // BGFX requires num >= 1 for array uniforms
+  int pushUploadCount = (count > 0) ? count : 1;
+  if (!bgfx::isValid(u_pushPosRadius)) {
+    u_pushPosRadius = bgfx::createUniform("u_pushPosRadius",
+        bgfx::UniformType::Vec4, 17);
   }
-  glUniform1i(u_grassTex[0], 0);
-  glUniform1i(u_grassTex[1], 1);
-  glUniform1i(u_grassTex[2], 2);
+  bgfx::setUniform(u_pushPosRadius, pushData, pushUploadCount);
 
-  // Render state: alpha blend, no face culling (both sides visible)
-  glEnable(GL_BLEND);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDisable(GL_CULL_FACE);
+  // Bind textures
+  shader->setTexture(0, "s_grassTex0", grassTextures[0]);
+  shader->setTexture(1, "s_grassTex1", grassTextures[1]);
+  shader->setTexture(2, "s_grassTex2", grassTextures[2]);
 
-  glBindVertexArray(VAO);
-  glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, 0);
-  glBindVertexArray(0);
+  // State: alpha blend, depth test, no face culling (both sides visible)
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                 | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                          BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  // No BGFX_STATE_CULL_* = no face culling
+  bgfx::setState(state);
 
-  glEnable(GL_CULL_FACE);
+  bgfx::setVertexBuffer(0, vbo);
+  bgfx::setIndexBuffer(ebo);
+  bgfx::submit(0, shader->program);
 }
 
 void GrassRenderer::Cleanup() {
-  if (VAO)
-    glDeleteVertexArrays(1, &VAO);
-  if (VBO)
-    glDeleteBuffers(1, &VBO);
-  if (EBO)
-    glDeleteBuffers(1, &EBO);
-  for (int i = 0; i < 3; ++i) {
-    if (grassTextures[i])
-      glDeleteTextures(1, &grassTextures[i]);
+  if (bgfx::isValid(vbo)) { bgfx::destroy(vbo); vbo = BGFX_INVALID_HANDLE; }
+  if (bgfx::isValid(ebo)) { bgfx::destroy(ebo); ebo = BGFX_INVALID_HANDLE; }
+  if (bgfx::isValid(u_pushPosRadius)) {
+    bgfx::destroy(u_pushPosRadius);
+    u_pushPosRadius = BGFX_INVALID_HANDLE;
   }
-  if (shaderProgram)
-    glDeleteProgram(shaderProgram);
-  VAO = VBO = EBO = shaderProgram = 0;
+  for (int i = 0; i < 3; ++i) TexDestroy(grassTextures[i]);
+  if (shader) { shader->destroy(); shader.reset(); }
   indexCount = 0;
 }

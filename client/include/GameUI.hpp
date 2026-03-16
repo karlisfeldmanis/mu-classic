@@ -1,7 +1,6 @@
 #ifndef GAME_UI_HPP
 #define GAME_UI_HPP
 
-#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include "imgui.h"
 #include "UITexture.hpp"

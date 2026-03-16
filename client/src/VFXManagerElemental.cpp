@@ -181,63 +181,40 @@ void VFXManager::updateMeteorBolts(float dt) {
 
 void VFXManager::renderMeteorBolts(const glm::mat4 &view,
                                     const glm::mat4 &projection) {
-  if (m_meteorBolts.empty() || m_fireMeshes.empty() || !m_modelShader)
-    return;
-
+  if (m_meteorBolts.empty() || m_fireMeshes.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-  // Main 5.2: BlendMesh=1 → mesh with Texture==1 renders ADDITIVE
-  glBlendFunc(GL_ONE, GL_ONE);
-  glDepthMask(GL_FALSE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_ADD;
   for (const auto &m : m_meteorBolts) {
-    if (m.impacted)
-      continue;
-
+    if (m.impacted) continue;
     float alpha = std::min(1.0f, m.lifetime / m.maxLifetime * 4.0f);
-    m_modelShader->setFloat("objectAlpha", alpha);
-
-    // Main 5.2: BlendMeshLight flickers 0.4-0.7
     float blendLight = (float)(rand() % 4 + 4) * 0.1f;
-    m_modelShader->setFloat("blendMeshLight", blendLight);
-
-    // Main 5.2: Angle=(0, 20, 0) — standard BMD orientation + 20 deg tilt
+    m_modelShader->setVec4("u_params", glm::vec4(alpha, blendLight, 0, 0));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), m.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::rotate(model, glm::radians(20.0f), glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(m.scale));
-    m_modelShader->setMat4("model", model);
-
     for (const auto &mb : m_fireMeshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 // ============================================================
@@ -337,274 +314,175 @@ void VFXManager::updateIceShards(float dt) {
 
 void VFXManager::renderIceCrystals(const glm::mat4 &view,
                                     const glm::mat4 &projection) {
-  if (m_iceCrystals.empty() || m_iceMeshes.empty() || !m_modelShader)
-    return;
-
+  if (m_iceCrystals.empty() || m_iceMeshes.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setFloat("blendMeshLight", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-  // Main 5.2: BlendMesh=0 — mesh 0 renders additive
-  glBlendFunc(GL_ONE, GL_ONE);
-  glDepthMask(GL_FALSE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_ADD;
   for (const auto &c : m_iceCrystals) {
-    m_modelShader->setFloat("objectAlpha", c.alpha);
-
-    // Standard BMD orientation
+    m_modelShader->setVec4("u_params", glm::vec4(c.alpha, 1.0f, 0, 0));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), c.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(c.scale));
-    m_modelShader->setMat4("model", model);
-
     for (const auto &mb : m_iceMeshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 void VFXManager::renderIceShards(const glm::mat4 &view,
                                   const glm::mat4 &projection) {
-  if (m_iceShards.empty() || m_iceSmallMeshes.empty() || !m_modelShader)
-    return;
-
+  if (m_iceShards.empty() || m_iceSmallMeshes.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setFloat("blendMeshLight", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-  m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-  // Solid ice debris — normal alpha blending so they look like ice pieces, not glow
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_TRUE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  // Normal alpha blend for solid ice debris
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
   for (const auto &s : m_iceShards) {
-    float alpha = std::min(1.0f, s.lifetime * 2.0f); // Fade near end
-    m_modelShader->setFloat("objectAlpha", alpha);
-
-    // Position + tumble rotation
+    float alpha = std::min(1.0f, s.lifetime * 2.0f);
+    m_modelShader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0, 0));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), s.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-    model = glm::rotate(model, s.angleX, glm::vec3(1, 0, 0)); // Tumble
+    model = glm::rotate(model, s.angleX, glm::vec3(1, 0, 0));
     model = glm::scale(model, glm::vec3(s.scale));
-    m_modelShader->setMat4("model", model);
-
     for (const auto &mb : m_iceSmallMeshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-
-  glDepthMask(GL_TRUE);
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 // Main 5.2: MODEL_SKILL_BLAST — render falling Blast01.bmd orbs + vertical beam
 void VFXManager::renderLightningBolts(const glm::mat4 &view,
                                        const glm::mat4 &projection) {
-  if (m_lightningBolts.empty() || !m_modelShader)
-    return;
-
-  bool hasBlastModel = !m_blastMeshes.empty();
-  bool hasFireModel = !m_fireMeshes.empty();
+  if (m_lightningBolts.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
 
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
-  // Pass 1: Render 3D models (Blast01 for lightning, Fire01 for meteor)
-  if (hasBlastModel || hasFireModel) {
-    m_modelShader->use();
-    m_modelShader->setMat4("view", view);
-    m_modelShader->setMat4("projection", projection);
-    m_modelShader->setFloat("luminosity", 1.0f);
-    m_modelShader->setFloat("blendMeshLight", 1.0f);
-    m_modelShader->setInt("numPointLights", 0);
-    m_modelShader->setBool("useFog", false);
-    m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-    m_modelShader->setFloat("outlineOffset", 0.0f);
-    m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-    m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
-    m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-    m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-
-    // Main 5.2: BlendMesh=0 → mesh with Texture==0 renders ADDITIVE
-    glBlendFunc(GL_ONE, GL_ONE);
-    glDepthMask(GL_FALSE);
-
+  // Pass 1: 3D models (Blast01.bmd)
+  if (!m_blastMeshes.empty()) {
+    m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+    m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+    m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+    m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+    m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+    m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+    m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+    m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+    uint64_t mState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                    | BGFX_STATE_BLEND_ADD;
     for (const auto &b : m_lightningBolts) {
-      if (b.impacted)
-        continue;
-
-      const auto &meshes = m_blastMeshes;
-      if (meshes.empty())
-        continue;
-
+      if (b.impacted) continue;
       float alpha = std::min(1.0f, b.lifetime / b.maxLifetime * 4.0f);
-      m_modelShader->setFloat("objectAlpha", alpha);
-
-      m_modelShader->setFloat("blendMeshLight", 1.0f);
-
+      m_modelShader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0, 0));
       glm::mat4 model = glm::translate(glm::mat4(1.0f), b.position);
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-      model = glm::rotate(model, glm::radians(20.0f), glm::vec3(0, 1, 0)); // Fall angle tilt
+      model = glm::rotate(model, glm::radians(20.0f), glm::vec3(0, 1, 0));
       model = glm::scale(model, glm::vec3(b.scale));
-      m_modelShader->setMat4("model", model);
-
-      for (const auto &mb : meshes) {
-        if (mb.indexCount == 0 || mb.hidden)
-          continue;
-        glBindTexture(GL_TEXTURE_2D, mb.texture);
-        glBindVertexArray(mb.vao);
-        glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      for (const auto &mb : m_blastMeshes) {
+        if (mb.indexCount == 0 || mb.hidden) continue;
+        bgfx::setTransform(glm::value_ptr(model));
+        m_modelShader->setTexture(0, "s_texColor", mb.texture);
+        bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        bgfx::setState(mState);
+        bgfx::submit(0, m_modelShader->program);
       }
     }
-    glDepthMask(GL_TRUE);
   }
 
-  // Pass 2: Energy trail (Main 5.2: BITMAP_JOINT_ENERGY SubType 5)
-  // 10-segment trailing ribbon following the bolt, two cross-plane faces
-  if (m_energyTexture && m_ribbonVAO && m_lineShader) {
-    m_lineShader->use();
-    m_lineShader->setMat4("view", view);
-    m_lineShader->setMat4("projection", projection);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, m_energyTexture);
-    m_lineShader->setInt("ribbonTex", 0);
-    m_lineShader->setBool("useTexture", true);
-    m_lineShader->setBool("beamMode", false);
-
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Main 5.2: RENDER_TYPE_ALPHA_BLEND
-    glDepthMask(GL_FALSE);
+  // Pass 2: Energy trail ribbons
+  if (TexValid(m_energyTexture) && m_lineShader) {
+    uint64_t rState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                    | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    m_lineShader->setVec4("u_lineMode", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
 
     for (const auto &b : m_lightningBolts) {
-      if (b.numTrail < 2)
-        continue;
-
-      float alpha = b.impacted
-                        ? std::max(0.0f, 1.0f - b.impactTimer * 7.0f)
-                        : std::min(1.0f, b.lifetime / b.maxLifetime * 4.0f);
-      if (alpha <= 0.01f)
-        continue;
-
+      if (b.numTrail < 2) continue;
+      float alpha = b.impacted ? std::max(0.0f, 1.0f - b.impactTimer * 7.0f)
+                               : std::min(1.0f, b.lifetime / b.maxLifetime * 4.0f);
+      if (alpha <= 0.01f) continue;
       float flicker = 0.7f + 0.3f * ((float)(rand() % 100) / 100.0f);
-      glm::vec3 trailColor = glm::vec3(0.3f, 0.5f, 1.0f);
-      m_lineShader->setVec3("color", trailColor * flicker);
-      m_lineShader->setFloat("alpha", alpha);
+      glm::vec3 trailColor = glm::vec3(0.3f, 0.5f, 1.0f) * flicker;
+      float hw = 50.0f;
 
-      // Build quad strips between consecutive trail positions
-      // Two perpendicular faces (cross-plane) per segment, Scale=100 (±50)
-      float hw = 50.0f; // Half-width
-
-      // Collect all vertices for batch rendering
+      // Build triangle list from trail (convert quad strips to triangles)
       std::vector<RibbonVertex> verts;
-      verts.reserve((b.numTrail) * 8);
-
+      verts.reserve(b.numTrail * 12);
       for (int j = 0; j < b.numTrail - 1; ++j) {
-        glm::vec3 p0 = b.trail[j];
-        glm::vec3 p1 = b.trail[j + 1];
-
-        // UV: fade from bright (newest) to dark (oldest)
+        glm::vec3 p0 = b.trail[j], p1 = b.trail[j + 1];
         float u0 = (float)(b.numTrail - j) / (float)(LightningBolt::MAX_TRAIL);
-        float u1 =
-            (float)(b.numTrail - j - 1) / (float)(LightningBolt::MAX_TRAIL);
-
-        // Direction between trail points for perpendicular orientation
+        float u1 = (float)(b.numTrail - j - 1) / (float)(LightningBolt::MAX_TRAIL);
         glm::vec3 seg = p1 - p0;
         float segLen = glm::length(seg);
-        if (segLen < 0.01f)
-          continue;
+        if (segLen < 0.01f) continue;
         glm::vec3 dir = seg / segLen;
-
-        // Two perpendicular axes for cross-plane geometry (lightning only)
-        glm::vec3 right =
-            glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)));
-        if (glm::length(glm::cross(dir, glm::vec3(0, 1, 0))) < 0.01f)
-          right = glm::vec3(1, 0, 0);
+        glm::vec3 right = glm::normalize(glm::cross(dir, glm::vec3(0, 1, 0)));
+        if (glm::length(glm::cross(dir, glm::vec3(0, 1, 0))) < 0.01f) right = glm::vec3(1, 0, 0);
         glm::vec3 up = glm::normalize(glm::cross(right, dir));
-
-        // Face 1: horizontal cross-section (left/right)
+        // Face 1
         verts.push_back({p0 - right * hw, {u0, 0.0f}});
         verts.push_back({p0 + right * hw, {u0, 1.0f}});
-        verts.push_back({p1 - right * hw, {u1, 0.0f}});
         verts.push_back({p1 + right * hw, {u1, 1.0f}});
-
-        // Face 2: vertical cross-section (up/down)
+        verts.push_back({p0 - right * hw, {u0, 0.0f}});
+        verts.push_back({p1 + right * hw, {u1, 1.0f}});
+        verts.push_back({p1 - right * hw, {u1, 0.0f}});
+        // Face 2
         verts.push_back({p0 - up * hw, {u0, 0.0f}});
         verts.push_back({p0 + up * hw, {u0, 1.0f}});
-        verts.push_back({p1 - up * hw, {u1, 0.0f}});
         verts.push_back({p1 + up * hw, {u1, 1.0f}});
+        verts.push_back({p0 - up * hw, {u0, 0.0f}});
+        verts.push_back({p1 + up * hw, {u1, 1.0f}});
+        verts.push_back({p1 - up * hw, {u1, 0.0f}});
       }
-
-      if (!verts.empty()) {
-        int totalVerts = (int)verts.size();
-        int maxVerts = MAX_RIBBON_VERTS;
-        if (totalVerts > maxVerts)
-          totalVerts = maxVerts;
-
-        glBindVertexArray(m_ribbonVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-        glBufferSubData(GL_ARRAY_BUFFER, 0,
-                         totalVerts * sizeof(RibbonVertex), verts.data());
-
-        // Draw each quad as a triangle strip (4 verts per quad)
-        for (int q = 0; q + 3 < totalVerts; q += 4) {
-          glDrawArrays(GL_TRIANGLE_STRIP, q, 4);
-        }
-      }
+      if (verts.empty()) continue;
+      if ((int)verts.size() > MAX_RIBBON_VERTS) verts.resize(MAX_RIBBON_VERTS);
+      uint32_t nv = (uint32_t)verts.size();
+      bgfx::TransientVertexBuffer tvb;
+      if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) < nv) continue;
+      bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+      memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+      m_lineShader->setVec4("u_lineColor", glm::vec4(trailColor, alpha));
+      m_lineShader->setTexture(0, "s_ribbonTex", m_energyTexture);
+      bgfx::setVertexBuffer(0, &tvb);
+      bgfx::setState(rState);
+      bgfx::submit(0, m_lineShader->program);
     }
-
-    glDepthMask(GL_TRUE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   }
-
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 // Main 5.2: MODEL_POISON — spawn green cloud at target position
@@ -672,62 +550,31 @@ void VFXManager::updateFlameGrounds(float dt) {
 // Flat terrain-projected fire sprite, flickering luminosity 0.8-1.2
 void VFXManager::renderFlameGrounds(const glm::mat4 &view,
                                      const glm::mat4 &projection) {
-  if (m_flameGrounds.empty() || !m_lineShader || m_flameTexture == 0)
-    return;
-
-  m_lineShader->use();
-  m_lineShader->setMat4("view", view);
-  m_lineShader->setMat4("projection", projection);
-
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_flameTexture);
-  m_lineShader->setInt("ribbonTex", 0);
-  m_lineShader->setBool("useTexture", true);
-
-  glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive blend
-  glDisable(GL_CULL_FACE);
-
-  glBindVertexArray(m_ribbonVAO);
-  glBindBuffer(GL_ARRAY_BUFFER, m_ribbonVBO);
-
+  if (m_flameGrounds.empty() || !m_lineShader || !TexValid(m_flameTexture)) return;
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+  m_lineShader->setVec4("u_lineMode", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
   for (const auto &fg : m_flameGrounds) {
-    // Main 5.2: Luminosity = (rand()%4+8)*0.1f = 0.8-1.2 flicker per frame
     float lum = (float)(rand() % 4 + 8) * 0.1f;
-    // Fade alpha in last 25% of lifetime
     float alpha = 1.0f;
-    if (fg.lifetime < fg.maxLifetime * 0.25f)
-      alpha = fg.lifetime / (fg.maxLifetime * 0.25f);
-
-    m_lineShader->setVec3("color", glm::vec3(lum, lum, lum));
-    m_lineShader->setFloat("alpha", alpha);
-
-    // Main 5.2: 2.0 x 2.0 terrain scale ≈ 200x200 world units
+    if (fg.lifetime < fg.maxLifetime * 0.25f) alpha = fg.lifetime / (fg.maxLifetime * 0.25f);
     float halfSize = 100.0f;
-
-    // No rotation for SubType 0 (stationary ground fire)
-    glm::vec3 right(halfSize, 0.0f, 0.0f);
-    glm::vec3 fwd(0.0f, 0.0f, halfSize);
-    glm::vec3 pos = fg.position + glm::vec3(0.0f, 2.0f, 0.0f); // Slight Y offset
-
+    glm::vec3 right(halfSize, 0.0f, 0.0f), fwd(0.0f, 0.0f, halfSize);
+    glm::vec3 pos = fg.position + glm::vec3(0.0f, 2.0f, 0.0f);
     RibbonVertex verts[6];
-    verts[0].pos = pos - right - fwd;
-    verts[0].uv = glm::vec2(0.0f, 0.0f);
-    verts[1].pos = pos + right - fwd;
-    verts[1].uv = glm::vec2(1.0f, 0.0f);
-    verts[2].pos = pos + right + fwd;
-    verts[2].uv = glm::vec2(1.0f, 1.0f);
-    verts[3].pos = pos - right - fwd;
-    verts[3].uv = glm::vec2(0.0f, 0.0f);
-    verts[4].pos = pos + right + fwd;
-    verts[4].uv = glm::vec2(1.0f, 1.0f);
-    verts[5].pos = pos - right + fwd;
-    verts[5].uv = glm::vec2(0.0f, 1.0f);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(verts), verts);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
+    verts[0] = {pos - right - fwd, {0, 0}}; verts[1] = {pos + right - fwd, {1, 0}};
+    verts[2] = {pos + right + fwd, {1, 1}}; verts[3] = {pos - right - fwd, {0, 0}};
+    verts[4] = {pos + right + fwd, {1, 1}}; verts[5] = {pos - right + fwd, {0, 1}};
+    bgfx::TransientVertexBuffer tvb;
+    if (bgfx::getAvailTransientVertexBuffer(6, m_ribbonLayout) < 6) continue;
+    bgfx::allocTransientVertexBuffer(&tvb, 6, m_ribbonLayout);
+    memcpy(tvb.data, verts, sizeof(verts));
+    m_lineShader->setVec4("u_lineColor", glm::vec4(lum, lum, lum, alpha));
+    m_lineShader->setTexture(0, "s_ribbonTex", m_flameTexture);
+    bgfx::setVertexBuffer(0, &tvb);
+    bgfx::setState(state);
+    bgfx::submit(0, m_lineShader->program);
   }
-
-  glEnable(GL_CULL_FACE);
 }
 
 void VFXManager::updatePoisonClouds(float dt) {
@@ -749,65 +596,46 @@ void VFXManager::updatePoisonClouds(float dt) {
 
 void VFXManager::renderPoisonClouds(const glm::mat4 &view,
                                      const glm::mat4 &projection) {
-  if (m_poisonClouds.empty() || m_poisonMeshes.empty() || !m_modelShader)
-    return;
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  if (m_poisonClouds.empty() || m_poisonMeshes.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
   for (const auto &pc : m_poisonClouds) {
-    // Main 5.2 MoveEffect: BlendMeshLight = LifeTime * 0.1 (fades from 4.0 to 0)
     float ticksRemaining = pc.lifetime / 0.04f;
-    float blendMeshLight = ticksRemaining * 0.1f; // 4.0 at start, 0 at end
-
-    // Model matrix: translate → BMD base rotation → scale (no spin)
+    float blendMeshLight = ticksRemaining * 0.1f;
     glm::mat4 model = glm::translate(glm::mat4(1.0f), pc.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(pc.scale));
-
-    m_modelShader->setMat4("model", model);
-    m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-    m_modelShader->setFloat("objectAlpha", pc.alpha);
-
-    // Main 5.2: BlendMesh=1 — mesh with textureId==1 renders additive
-    // BlendMeshLight from MoveEffect fades with lifetime (not random flicker)
+    m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
     for (const auto &mb : m_poisonMeshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
+      if (mb.indexCount == 0 || mb.hidden) continue;
       bool isGlow = (mb.bmdTextureId == 1);
+      uint64_t state;
       if (isGlow) {
-        m_modelShader->setFloat("blendMeshLight", blendMeshLight);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
-        glDepthMask(GL_FALSE);
+        m_modelShader->setVec4("u_params", glm::vec4(pc.alpha, blendMeshLight, 0, 0));
+        state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+              | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
       } else {
-        m_modelShader->setFloat("blendMeshLight", 1.0f);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        m_modelShader->setVec4("u_params", glm::vec4(pc.alpha, 1.0f, 0, 0));
+        state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+              | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
       }
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
-      if (isGlow) {
-        glDepthMask(GL_TRUE);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-      }
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
   }
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
 }
 
 // Main 5.2: MODEL_STORM SubType 0 — Twister tornado at target
@@ -921,78 +749,49 @@ void VFXManager::updateTwisterStorms(float dt) {
 
 void VFXManager::renderTwisterStorms(const glm::mat4 &view,
                                       const glm::mat4 &projection) {
-  if (m_twisterStorms.empty() || m_stormMeshes.empty() || !m_modelShader)
-    return;
-
-  m_modelShader->use();
-  m_modelShader->setMat4("view", view);
-  m_modelShader->setMat4("projection", projection);
-  m_modelShader->setFloat("luminosity", 1.0f);
-  m_modelShader->setInt("numPointLights", 0);
-  m_modelShader->setBool("useFog", false);
-  m_modelShader->setFloat("outlineOffset", 0.0f);
-  m_modelShader->setVec3("lightColor", glm::vec3(1.0f));
-  m_modelShader->setVec3("lightPos", glm::vec3(0, 5000, 0));
+  if (m_twisterStorms.empty() || m_stormMeshes.empty() || !m_modelShader) return;
   glm::mat4 invView = glm::inverse(view);
-  m_modelShader->setVec3("viewPos", glm::vec3(invView[3]));
-
-  glEnable(GL_BLEND);
-  glDisable(GL_CULL_FACE);
-
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
   for (const auto &ts : m_twisterStorms) {
-    // Main 5.2: BlendMeshLight = LifeTime * 0.1 (0→5.9)
-    // In fixed-function GL this was clamped to [0,1] by glColor3f.
-    // Clamp to 1.0 max so additive blend isn't overblown white.
     float ticksRemaining = ts.lifetime / 0.04f;
     float blendMeshLight = std::min(ticksRemaining * 0.1f, 1.0f);
-
-    // Main 5.2: BlendMeshTexCoordU = -(float)LifeTime * 0.1f (scrolls U axis)
     float uvScrollU = -ticksRemaining * 0.1f;
-
-    // Subtle alpha: keep tornado translucent, fade out in last 20%
     float alpha = 0.6f;
-    if (ts.lifetime < ts.maxLifetime * 0.2f)
-      alpha = 0.6f * ts.lifetime / (ts.maxLifetime * 0.2f);
-
-    // Model matrix: translate → BMD base rotation → scale
+    if (ts.lifetime < ts.maxLifetime * 0.2f) alpha = 0.6f * ts.lifetime / (ts.maxLifetime * 0.2f);
     glm::mat4 model = glm::translate(glm::mat4(1.0f), ts.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::scale(model, glm::vec3(1.0f));
-
-    m_modelShader->setMat4("model", model);
-    m_modelShader->setVec3("terrainLight", glm::vec3(1.0f));
-    m_modelShader->setFloat("objectAlpha", alpha);
-
-    // Tornado is fully transparent effect — disable depth write
-    glDepthMask(GL_FALSE);
-
-    // Main 5.2: BlendMesh=0 — mesh with textureId==0 renders additive
-    // BlendMeshTexCoordU only applies to the blend mesh, not other meshes
     for (const auto &mb : m_stormMeshes) {
-      if (mb.indexCount == 0 || mb.hidden)
-        continue;
+      if (mb.indexCount == 0 || mb.hidden) continue;
       bool isBlend = (mb.bmdTextureId == 0);
+      uint64_t state;
       if (isBlend) {
-        m_modelShader->setFloat("blendMeshLight", blendMeshLight);
-        m_modelShader->setVec2("texCoordOffset", glm::vec2(uvScrollU, 0.0f));
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // Additive
+        m_modelShader->setVec4("u_params", glm::vec4(alpha, blendMeshLight, 0, 0));
+        m_modelShader->setVec4("u_texCoordOffset", glm::vec4(uvScrollU, 0, 0, 0));
+        state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+              | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
       } else {
-        m_modelShader->setFloat("blendMeshLight", 1.0f);
-        m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        m_modelShader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0, 0));
+        m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+        state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+              | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
       }
-      glBindTexture(GL_TEXTURE_2D, mb.texture);
-      glBindVertexArray(mb.vao);
-      glDrawElements(GL_TRIANGLES, mb.indexCount, GL_UNSIGNED_INT, 0);
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
     }
-
-    glDepthMask(GL_TRUE);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
   }
-
-  // Reset UV offset
-  m_modelShader->setVec2("texCoordOffset", glm::vec2(0.0f));
-  glBindVertexArray(0);
-  glEnable(GL_CULL_FACE);
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
 }

@@ -237,6 +237,13 @@ void Server::Run() {
               }
             }
 
+            // AG recovery when hit (DK only)
+            if (atk.damage > 0 && s->classCode == 16 && s->ag < s->maxAg) {
+              int agGain = std::max(1, s->maxAg / 30); // ~3% of maxAG
+              s->ag = std::min(s->ag + agGain, s->maxAg);
+              CharacterHandler::SendCharStats(*s);
+            }
+
             // Send monster attack packet to client
             PMSG_MONSTER_ATTACK_SEND pkt{};
             pkt.h = MakeC1Header(sizeof(pkt), Opcode::MON_ATTACK);
