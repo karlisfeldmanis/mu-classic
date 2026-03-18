@@ -28,8 +28,9 @@ struct WeaponEquipInfo {
   uint8_t category = 0xFF; // ItemCategory (0xFF = none equipped)
   uint8_t itemIndex = 0;
   uint8_t itemLevel = 0;
-  bool twoHanded = false; // From ItemDatabase — determines animation set
-  std::string modelFile;  // e.g. "Sword01.bmd"
+  uint8_t quantity = 0;    // Stack count (arrows/bolts)
+  bool twoHanded = false;  // From ItemDatabase — determines animation set
+  std::string modelFile;   // e.g. "Sword01.bmd"
 };
 
 // Client-side rendering config per weapon category
@@ -87,7 +88,9 @@ class HeroCharacter {
 public:
   // Player action indices (_enum.h)
   static constexpr int ACTION_STOP_MALE = 1;
+  static constexpr int ACTION_STOP_FEMALE = 2; // Elf idle (Main 5.2: PLAYER_STOP_FEMALE)
   static constexpr int ACTION_WALK_MALE = 15;
+  static constexpr int ACTION_WALK_FEMALE = 16; // Elf walk (Main 5.2: PLAYER_WALK_FEMALE)
   static constexpr int ACTION_SKILL_VITALITY = 67;
 
   void Init(const std::string &dataPath);
@@ -117,6 +120,8 @@ public:
   bool IsMounted() const { return m_mount.active; }
   bool HasMountEquipped() const { return m_mountEquippedIndex == 2 || m_mountEquippedIndex == 3; }
   uint8_t GetMountItemIndex() const { return m_mountEquippedIndex; }
+  bool IsPetActive() const { return m_pet.active; }
+  uint8_t GetPetItemIndex() const { return m_pet.itemIndex; }
   // Mount is visually active and riding (allowed everywhere including safe zone)
   bool isMountRiding() const { return m_mount.active; }
 
@@ -161,6 +166,7 @@ public:
   glm::vec3 GetWeaponTrailTip() const { return m_weaponTrailTip; }
   glm::vec3 GetWeaponTrailBase() const { return m_weaponTrailBase; }
   uint8_t GetWeaponLevel() const { return m_weaponInfo.itemLevel; }
+  uint8_t GetWeaponCategory() const { return m_weaponInfo.category; }
 
   // HP and damage
   void TakeDamage(int damage);
@@ -223,6 +229,8 @@ public:
   void Heal(int amount);
   bool HasWeapon() const { return m_weaponBmd != nullptr; }
   int weaponIdleAction() const;
+  int defaultIdleAction() const;  // CLASS_ELF → STOP_FEMALE, others → STOP_MALE
+  int defaultWalkAction() const;  // CLASS_ELF → WALK_FEMALE, others → WALK_MALE
   void SetSlowAnimDuration(float d) { m_slowAnimDuration = d; }
 
   // Ground item pickup logic
@@ -278,6 +286,13 @@ public:
   }
   void SetLuminosity(float l) { m_luminosity = l; }
   void SetMapId(int mapId) { m_mapId = mapId; }
+  void SetPoisoned(bool p) { m_poisoned = p; }
+
+  // Elf buff aura state (Main 5.2: eBuff_Defense / eBuff_Attack)
+  void SetBuffDefense(bool active) { m_buffDefenseActive = active; }
+  void SetBuffDamage(bool active) { m_buffDamageActive = active; }
+  bool HasBuffDefense() const { return m_buffDefenseActive; }
+  bool HasBuffDamage() const { return m_buffDamageActive; }
 
   // Snap hero Y to terrain height
   void SnapToTerrain();
@@ -449,11 +464,13 @@ private:
   glm::vec3 m_attackTargetPos{0.0f};
   float m_attackAnimTimer = 0.0f;
   bool m_attackHitRegistered = false;
+  bool m_forceHitThisFrame = false; // Set when swing completes without hit
   int m_swordSwingCount = 0;
   float m_attackCooldown = 0.0f;
   float m_globalAttackCooldown = 0.0f;    // GCD remaining
   float m_globalAttackCooldownMax = 0.0f; // GCD total (for UI progress)
   int m_gcdTargetMonster = -1; // Persists through CancelAttack to prevent move-cancel exploit
+  int m_attackCycleCount = 0;  // Re-engage counter per target (safety timeout)
   float m_teleportCooldown = 0.0f;        // 60s cooldown after teleport use
   static constexpr float TELEPORT_COOLDOWN_TIME = 60.0f;
   uint8_t m_activeSkillId = 0;     // Non-zero when using a skill attack
@@ -586,6 +603,7 @@ private:
     glm::vec3 lastOwnerPos{0.0f};  // Previous frame owner position (for follow delta)
     float followDelay = 0.0f;      // Reaction delay before chasing (seconds)
     bool wasOwnerMoving = false;    // Previous frame owner movement state
+    float idleTime = 0.0f;          // Time spent idle (seconds) — gates wander
   };
   PetCompanion m_pet;
 
@@ -658,6 +676,12 @@ private:
   static constexpr int MAX_POINT_LIGHTS = 64;
   float m_luminosity = 1.0f;
   int m_mapId = 0;
+  bool m_poisoned = false; // Green tint when poisoned by monster
+
+  // Elf buff aura VFX state (Main 5.2: eBuff_Defense / eBuff_Attack)
+  bool m_buffDefenseActive = false;
+  bool m_buffDamageActive = false;
+  float m_buffAuraTimer = 0.0f; // Orbiting particle spawn accumulator
 };
 
 #endif // HERO_CHARACTER_HPP

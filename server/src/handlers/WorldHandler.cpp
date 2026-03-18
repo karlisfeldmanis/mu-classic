@@ -43,14 +43,17 @@ void HandleMove(Session &session, const std::vector<uint8_t> &packet,
     return;
   const auto *move = reinterpret_cast<const PMSG_MOVE_RECV *>(packet.data());
 
-  // Update session world position to match destination (prevents autosave race).
-  // MU coordinate mapping: grid X → worldZ, grid Y → worldX
-  session.worldX = move->y * 100.0f;
-  session.worldZ = move->x * 100.0f;
+  // Don't update worldX/worldZ here — D7 PrecisePosition is the authoritative
+  // source for player position. D4 only provides grid-quantized coordinates and
+  // updating from it causes the server to briefly use a stale/wrong position
+  // (race with D7), breaking monster AI distance checks and safe zone validation.
 
   // Player started walking — reset idle regen timer
   session.idleTimer = 0.0f;
   session.idleHpRemainder = 0.0f;
+
+  // Cancel summon attack target — summon should follow instead of fighting
+  session.attackTargetMonsterIdx = 0;
 
   if (session.characterId > 0) {
     db.UpdatePosition(session.characterId, move->x, move->y);
@@ -72,9 +75,7 @@ void HandlePrecisePosition(Session &session,
   }
   session.worldX = pos->worldX;
   session.worldZ = pos->worldZ;
-  printf("[PrecisePos] fd=%d worldX=%.1f worldZ=%.1f gridX=%d gridY=%d\n",
-         session.GetFd(), session.worldX, session.worldZ,
-         (int)(session.worldZ / 100.0f), (int)(session.worldX / 100.0f));
+  // PrecisePos logging suppressed (fires ~20/s, causes log spam)
 
   // If client just loaded a new map (pending viewport), send NPCs/monsters now.
   // Guard: only trigger if at least 0.5s has passed since TransitionMap
@@ -233,6 +234,7 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
   session.experience = c.experience;
   session.worldX = c.posY * 100.0f;
   session.worldZ = c.posX * 100.0f;
+  session.wasInSafeZone = world.IsSafeZoneGrid(c.posX, c.posY);
 
   CharacterClass charCls = static_cast<CharacterClass>(session.classCode);
   session.maxHp =

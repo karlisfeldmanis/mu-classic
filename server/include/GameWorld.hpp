@@ -26,6 +26,7 @@ namespace ServerConfig {
 static constexpr int XP_MULTIPLIER =
     100;                            // XP gain multiplier (1=normal, 100=100x)
 static constexpr int DROP_RATE = 1; // Drop rate multiplier
+static constexpr float RESPAWN_MULTIPLIER = 1.0f; // Respawn speed (0.5=fast, 1.0=normal, 2.0=slow)
 
 // WoW-style progressive/degressive XP calculation
 // All monsters give at least 1 XP, with smooth reduction for lower-level mobs
@@ -101,6 +102,7 @@ struct MonsterTypeDef {
   uint8_t viewRange;   // Aggro detection range in grid cells (ViewRange)
   uint8_t attackRange; // Attack range in grid cells (1=melee, 4=Lich ranged)
   bool aggressive;     // true=red (auto-aggro), false=yellow (passive)
+  float respawnDelay;  // Seconds before respawn (OpenMU per-type)
 };
 
 // Live monster state (server-authoritative)
@@ -147,6 +149,7 @@ struct MonsterInstance {
   uint8_t viewRange = 5;        // Grid cells for aggro detection
   uint8_t attackRange = 1;      // Grid cells for attack range
   bool aggressive = false;      // true=red (auto-aggro)
+  float respawnDelay = 10.0f;   // Seconds before respawn (per-type from OpenMU)
 
   // Passive HP regen timer (1% maxHP per second when idle + out of combat)
   float regenTimer = 0.0f;
@@ -161,6 +164,11 @@ struct MonsterInstance {
   float repathTimer = 0.0f; // Timer for re-pathfinding during chase
   int chaseFailCount = 0;   // Consecutive pathfinding failures
 
+  // Threat tracking (summon aggro system)
+  float playerThreat = 0.0f;  // Accumulated damage from player
+  float summonThreat = 0.0f;  // Accumulated damage from summon
+  int aggroSummonIdx = 0;     // If non-zero, monster targets this summon instead of player
+
   // WoW-style approach + evade
   float approachTimer = 0.0f;   // Time spent in APPROACHING state
   float staggerDelay = 0.0f;    // Per-monster random offset for attack timing
@@ -172,6 +180,11 @@ struct MonsterInstance {
   float poisonDuration = 0.0f;  // Remaining poison duration
   int poisonDamage = 0;         // Flat damage per tick
   int poisonAttackerFd = -1;    // FD of player who applied poison (for XP/aggro)
+
+  // Summon ownership (Elf summon pets)
+  int ownerFd = -1;          // FD of summoner (-1 = wild monster)
+  int ownerCharId = -1;       // Character ID of summoner
+  bool isSummon() const { return ownerFd >= 0; }
 
   // Broadcast dedup (event-driven: only emit when something changes)
   uint8_t lastBroadcastTargetX = 0;
@@ -210,6 +223,7 @@ public:
     bool dead;
     uint16_t level;
     float petDamageReduction = 0.0f; // Guardian Angel: 0.2 (20%)
+    uint16_t attackTargetMonsterIdx = 0; // Last monster player attacked (summon assist)
   };
 
   // Monster attack result to broadcast
@@ -219,6 +233,25 @@ public:
     uint16_t damage;
     uint8_t damageType;   // 0=Miss, 1=Normal, 2=Crit, 3=Exc, ...
     uint16_t remainingHp; // Player's remaining HP after damage
+  };
+
+  // Summon attack result (summon hits a wild monster)
+  struct SummonHitResult {
+    int ownerFd;           // Owner player fd (for XP/drops)
+    uint16_t monsterIndex; // Target monster that was hit
+    uint16_t damage;
+    uint16_t remainingHp;
+    bool killed;
+  };
+
+  // Monster attacks summon result (wild monster hits player's summon)
+  struct MonsterHitSummonResult {
+    uint16_t attackerIndex;  // Wild monster doing the attacking
+    uint16_t summonIndex;    // Summon being attacked
+    uint16_t damage;
+    uint16_t remainingHp;
+    bool killed;
+    int ownerFd;             // Owner player fd (for despawn notification)
   };
 
   // Poison DoT tick result to broadcast (reuses DAMAGE packet)
@@ -256,7 +289,9 @@ public:
   // broadcast. Also populates outMoves with movement updates.
   std::vector<MonsterAttackResult>
   ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
-                   std::vector<MonsterMoveUpdate> &outMoves);
+                   std::vector<MonsterMoveUpdate> &outMoves,
+                   std::vector<SummonHitResult> *outSummonHits = nullptr,
+                   std::vector<MonsterHitSummonResult> *outMonsterHitSummon = nullptr);
 
   const std::vector<NpcSpawn> &GetNpcs() const { return m_npcs; }
 
@@ -273,6 +308,14 @@ public:
 
   // Find monster by unique index (returns nullptr if not found)
   MonsterInstance *FindMonster(uint16_t index);
+
+  // Summon management
+  MonsterInstance *SpawnSummon(uint16_t type, uint8_t gridX, uint8_t gridY,
+                               int ownerFd, int ownerCharId,
+                               uint16_t ownerLevel = 1);
+  void DespawnSummon(uint16_t summonIndex);
+  void DespawnSummonsForOwner(int ownerFd);
+  void RescaleSummon(uint16_t summonIndex, uint16_t newOwnerLevel);
 
   // Build viewport packets
   std::vector<uint8_t> BuildNpcViewportPacket() const;
@@ -291,7 +334,6 @@ public:
   void AddDrop(const GroundDrop &drop) { m_drops.push_back(drop); }
 
   static constexpr float DYING_DURATION = 3.0f;
-  static constexpr float RESPAWN_DELAY = 10.0f;
   static constexpr float DROP_DESPAWN_TIME = 30.0f;
 
   // Guard patrol constants (OpenMU: GuardIntelligence.cs)
@@ -333,6 +375,7 @@ private:
   std::unordered_map<uint8_t, std::vector<uint8_t>> m_mapTerrainAttributes; // Per-map
   uint8_t m_activeMapId = 0;
   uint16_t m_nextMonsterIndex = 2001;
+  uint16_t m_nextSummonIndex = 5001;
   uint16_t m_nextDropIndex = 1;
 
   // Monster occupancy grid: true = cell has a monster
@@ -365,6 +408,19 @@ private:
                         std::vector<MonsterAttackResult> &attacks);
   void processReturning(MonsterInstance &mon, float dt,
                         std::vector<MonsterMoveUpdate> &outMoves);
+
+  // Summon AI (follows owner, attacks nearby wild monsters)
+  void processSummonAI(MonsterInstance &mon, float dt,
+                       std::vector<PlayerTarget> &players,
+                       std::vector<MonsterMoveUpdate> &outMoves,
+                       std::vector<MonsterAttackResult> &attacks,
+                       std::vector<SummonHitResult> *outSummonHits);
+
+  // Monster targeting a summon (threat system: monster chases + attacks summon)
+  void processSummonTargeting(MonsterInstance &mon, MonsterInstance &summon,
+                              float dt,
+                              std::vector<MonsterMoveUpdate> &outMoves,
+                              std::vector<MonsterHitSummonResult> *outResults);
 
   // Attack stagger: offset attack timers for multi-monster encounters
   float calculateStaggerDelay(int targetFd) const;

@@ -6,6 +6,7 @@
 #include "handlers/CharacterSelectHandler.hpp"
 #include "handlers/InventoryHandler.hpp"
 #include "handlers/WorldHandler.hpp"
+#include "handlers/QuestHandler.hpp"
 #include <arpa/inet.h>
 #include <cerrno>
 #include <chrono>
@@ -17,27 +18,6 @@
 #include <poll.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <unordered_map>
-
-static const char *GetMonsterName(uint16_t type) {
-  static const std::unordered_map<uint16_t, const char *> names = {
-      {0, "Bull Fighter"},     {1, "Hound"},
-      {2, "Budge Dragon"},     {3, "Spider"},
-      {4, "Elite Bull Fighter"},{5, "Hell Hound"},
-      {6, "Lich"},             {7, "Giant"},
-      {8, "Poison Bull"},      {9, "Thunder Lich"},
-      {10, "Dark Knight"},     {11, "Ghost"},
-      {12, "Larva"},           {13, "Hell Spider"},
-      {14, "Skeleton Warrior"},{15, "Skeleton Archer"},
-      {16, "Elite Skeleton"},  {17, "Cyclops"},
-      {18, "Gorgon"},
-      {19, "Yeti"},           {20, "Elite Yeti"},
-      {21, "Assassin"},       {22, "Ice Monster"},
-      {23, "Hommerd"},        {24, "Worm"},
-      {25, "Ice Queen"}};
-  auto it = names.find(type);
-  return it != names.end() ? it->second : "Monster";
-}
 
 static volatile bool g_sigint = false;
 static void sigHandler(int) { g_sigint = true; }
@@ -60,6 +40,7 @@ bool Server::Start(uint16_t port) {
   m_world.LoadTerrainAttributesForMap(0, "Data/World1/EncTerrain1.att");
   m_world.LoadTerrainAttributesForMap(1, "Data/World2/EncTerrain2.att");
   m_world.LoadTerrainAttributesForMap(2, "Data/World3/EncTerrain3.att");
+  m_world.LoadTerrainAttributesForMap(3, "Data/World4/EncTerrain4.att");
   m_world.SetActiveMap(0);
 
   // Load NPC and monster data from database
@@ -178,6 +159,90 @@ void Server::Run() {
       }
     }
 
+    // Summon despawn/respawn on safe zone transitions
+    for (auto &s : m_sessions) {
+      if (!s->IsAlive() || !s->inWorld)
+        continue;
+      if (s->activeSummonType < 0)
+        continue; // No summon at all
+
+      uint8_t gx = static_cast<uint8_t>(s->worldZ / 100.0f);
+      uint8_t gy = static_cast<uint8_t>(s->worldX / 100.0f);
+      bool inSafe = m_world.IsSafeZoneGrid(gx, gy);
+
+      if (inSafe && !s->wasInSafeZone && s->activeSummonIndex > 0) {
+        // Entered safe zone — despawn summon (keep type for respawn on exit)
+        printf("[Server] Despawning summon %d for fd=%d (entered safe zone)\n",
+               s->activeSummonIndex, s->GetFd());
+        PMSG_SUMMON_DESPAWN_SEND dpkt{};
+        dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+        dpkt.monsterIndex = s->activeSummonIndex;
+        Broadcast(&dpkt, sizeof(dpkt));
+        m_world.DespawnSummon(s->activeSummonIndex);
+        s->activeSummonIndex = 0;
+        // Keep activeSummonType for respawn when leaving safe zone
+      } else if (!inSafe && s->wasInSafeZone && s->activeSummonIndex == 0 &&
+                 s->activeSummonType >= 0) {
+        // Left safe zone — respawn summon near player
+        uint8_t sgx = gx, sgy = gy;
+        bool found = false;
+        for (int r = 1; r <= 3 && !found; r++) {
+          for (int dy = -r; dy <= r && !found; dy++) {
+            for (int dx = -r; dx <= r && !found; dx++) {
+              if (dx == 0 && dy == 0) continue;
+              int nx = (int)gx + dx, ny = (int)gy + dy;
+              if (nx >= 0 && ny >= 0 && nx < 256 && ny < 256 &&
+                  m_world.IsWalkableGrid((uint8_t)nx, (uint8_t)ny)) {
+                sgx = (uint8_t)nx;
+                sgy = (uint8_t)ny;
+                found = true;
+              }
+            }
+          }
+        }
+        auto *summon = m_world.SpawnSummon(
+            static_cast<uint16_t>(s->activeSummonType), sgx, sgy,
+            s->GetFd(), s->characterId, s->level);
+        if (summon) {
+          s->activeSummonIndex = summon->index;
+
+          // Broadcast single-summon viewport
+          {
+            size_t entrySize = sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2);
+            size_t pktSize = 5 + entrySize;
+            uint8_t buf[5 + sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2)] = {};
+            auto *head = reinterpret_cast<PWMSG_HEAD *>(buf);
+            *head = MakeC2Header(static_cast<uint16_t>(pktSize), 0x34);
+            buf[4] = 1; // count = 1
+            auto *e = reinterpret_cast<PMSG_MONSTER_VIEWPORT_ENTRY_V2 *>(buf + 5);
+            e->indexH = static_cast<uint8_t>(summon->index >> 8);
+            e->indexL = static_cast<uint8_t>(summon->index & 0xFF);
+            e->typeH = static_cast<uint8_t>(summon->type >> 8);
+            e->typeL = static_cast<uint8_t>(summon->type & 0xFF);
+            e->x = summon->gridX;
+            e->y = summon->gridY;
+            e->dir = summon->dir;
+            e->hp = static_cast<uint16_t>(summon->hp);
+            e->maxHp = static_cast<uint16_t>(summon->maxHp);
+            e->state = 0; // alive
+            Broadcast(buf, pktSize);
+          }
+
+          PMSG_SUMMON_SPAWN_SEND spawnPkt{};
+          spawnPkt.h = MakeC1Header(sizeof(spawnPkt), Opcode::SUMMON_SPAWN);
+          spawnPkt.monsterIndex = summon->index;
+          spawnPkt.ownerCharId = s->characterId;
+          spawnPkt.level = summon->level;
+          Broadcast(&spawnPkt, sizeof(spawnPkt));
+
+          printf("[Server] Respawned summon type=%d for fd=%d (left safe zone)\n",
+                 s->activeSummonType, s->GetFd());
+        }
+      }
+
+      s->wasInSafeZone = inSafe;
+    }
+
     // Monster AI: aggro + attack players
     {
       std::vector<GameWorld::PlayerTarget> targets;
@@ -193,16 +258,171 @@ void Server::Run() {
         CharacterClass cls = static_cast<CharacterClass>(s->classCode);
         pt.defense = StatCalculator::CalculateDefense(cls, s->dexterity) +
                      s->totalDefense;
+        if (s->buffs[0].active) pt.defense += s->buffs[0].value;
         pt.defenseRate =
             StatCalculator::CalculateDefenseRate(cls, s->dexterity);
         pt.life = s->hp;
         pt.dead = s->dead;
         pt.level = s->level;
         pt.petDamageReduction = s->petDamageReduction;
+        pt.attackTargetMonsterIdx = s->attackTargetMonsterIdx;
+        // Clear attack target when player enters safe zone (drop all aggro)
+        if (m_world.IsSafeZoneGrid(pt.gridX, pt.gridY)) {
+          pt.attackTargetMonsterIdx = 0;
+          s->attackTargetMonsterIdx = 0;
+        }
         targets.push_back(pt);
       }
       std::vector<GameWorld::MonsterMoveUpdate> moves;
-      auto attacks = m_world.ProcessMonsterAI(dt, targets, moves);
+      std::vector<GameWorld::SummonHitResult> summonHits;
+      std::vector<GameWorld::MonsterHitSummonResult> monsterHitSummon;
+      auto attacks = m_world.ProcessMonsterAI(dt, targets, moves, &summonHits, &monsterHitSummon);
+
+      // Write back summon-modified fields (e.g. target cleared on summon kill)
+      for (auto &pt : targets) {
+        for (auto &s : m_sessions) {
+          if (s->GetFd() == pt.fd) {
+            s->attackTargetMonsterIdx = pt.attackTargetMonsterIdx;
+            break;
+          }
+        }
+      }
+
+      // Broadcast summon attack results (damage numbers, deaths, XP, drops)
+      for (auto &hit : summonHits) {
+        // Broadcast damage to all clients (floating damage number)
+        PMSG_DAMAGE_SEND dmgPkt{};
+        dmgPkt.h = MakeC1Header(sizeof(dmgPkt), Opcode::DAMAGE);
+        dmgPkt.monsterIndex = hit.monsterIndex;
+        dmgPkt.damage = hit.damage;
+        dmgPkt.damageType = 1; // Normal hit
+        dmgPkt.remainingHp = hit.remainingHp;
+        dmgPkt.attackerCharId = 0; // Summon, not a player
+        // Find summon index from owner session for client attack animation
+        for (auto &s : m_sessions) {
+          if (s->GetFd() == hit.ownerFd && s->activeSummonIndex > 0) {
+            dmgPkt.attackerMonsterIndex = s->activeSummonIndex;
+            break;
+          }
+        }
+        Broadcast(&dmgPkt, sizeof(dmgPkt));
+
+        if (hit.killed) {
+          // Find owner session for XP/drops
+          Session *ownerSession = nullptr;
+          for (auto &s : m_sessions) {
+            if (s->GetFd() == hit.ownerFd && s->IsAlive()) {
+              ownerSession = s.get();
+              break;
+            }
+          }
+
+          auto *mon = m_world.FindMonster(hit.monsterIndex);
+          int xp = 0;
+          if (ownerSession) {
+            xp = ServerConfig::CalculateXP(ownerSession->level,
+                                           mon ? mon->level : 1);
+
+            PMSG_MONSTER_DEATH_SEND deathPkt{};
+            deathPkt.h = MakeC1Header(sizeof(deathPkt), Opcode::MON_DEATH);
+            deathPkt.monsterIndex = hit.monsterIndex;
+            deathPkt.killerCharId = static_cast<uint16_t>(ownerSession->characterId);
+            deathPkt.xpReward = static_cast<uint32_t>(xp);
+            Broadcast(&deathPkt, sizeof(deathPkt));
+
+            ownerSession->experience += xp;
+            bool leveledUp = false;
+            while (true) {
+              uint64_t nextXP = Database::GetXPForLevel(ownerSession->level);
+              if (ownerSession->experience >= nextXP && ownerSession->level < 400) {
+                ownerSession->level++;
+                CharacterClass cls = static_cast<CharacterClass>(ownerSession->classCode);
+                ownerSession->levelUpPoints += StatCalculator::GetLevelUpPoints(cls);
+                ownerSession->maxHp = StatCalculator::CalculateMaxHP(cls, ownerSession->level, ownerSession->vitality) + ownerSession->petBonusMaxHp;
+                ownerSession->maxMana = StatCalculator::CalculateMaxMP(cls, ownerSession->level, ownerSession->energy);
+                ownerSession->maxAg = StatCalculator::CalculateMaxAG(ownerSession->strength, ownerSession->dexterity, ownerSession->vitality, ownerSession->energy);
+                ownerSession->hp = ownerSession->maxHp;
+                ownerSession->mana = ownerSession->maxMana;
+                ownerSession->ag = ownerSession->maxAg;
+                leveledUp = true;
+              } else {
+                break;
+              }
+            }
+
+            if (xp > 0) {
+              char xpBuf[64];
+              snprintf(xpBuf, sizeof(xpBuf), "+%d Experience", xp);
+              m_db.SaveChatMessage(ownerSession->characterId, 1, 0xFFFF78B4, xpBuf);
+            }
+            if (leveledUp) {
+              char lvlBuf[64];
+              snprintf(lvlBuf, sizeof(lvlBuf), "Congratulations! Level %d reached!", (int)ownerSession->level);
+              m_db.SaveChatMessage(ownerSession->characterId, 2, 0xFF64FFFF, lvlBuf);
+              // Rescale active summon to match new owner level
+              if (ownerSession->activeSummonIndex > 0)
+                m_world.RescaleSummon(ownerSession->activeSummonIndex, ownerSession->level);
+            }
+            if (leveledUp || xp > 0)
+              CharacterHandler::SendCharStats(*ownerSession);
+
+            // Spawn drops
+            if (mon) {
+              auto drops = m_world.SpawnDrops(mon->worldX, mon->worldZ, mon->level, mon->type, m_db);
+              for (auto &drop : drops) {
+                PMSG_DROP_SPAWN_SEND dropPkt{};
+                dropPkt.h = MakeC1Header(sizeof(dropPkt), Opcode::DROP_SPAWN);
+                dropPkt.dropIndex = drop.index;
+                dropPkt.defIndex = drop.defIndex;
+                dropPkt.quantity = drop.quantity;
+                dropPkt.itemLevel = drop.itemLevel;
+                dropPkt.worldX = drop.worldX;
+                dropPkt.worldZ = drop.worldZ;
+                Broadcast(&dropPkt, sizeof(dropPkt));
+              }
+            }
+
+            // Quest kill tracking
+            if (mon)
+              QuestHandler::OnMonsterKill(*ownerSession, mon->type, m_db);
+
+            // Clear stale target on session
+            ownerSession->attackTargetMonsterIdx = 0;
+          }
+        }
+      }
+
+      // Broadcast monster-attacks-summon results (aggro system)
+      for (auto &hit : monsterHitSummon) {
+        // Broadcast DAMAGE: target=summon, attacker=wild monster
+        PMSG_DAMAGE_SEND dmgPkt{};
+        dmgPkt.h = MakeC1Header(sizeof(dmgPkt), Opcode::DAMAGE);
+        dmgPkt.monsterIndex = hit.summonIndex;
+        dmgPkt.damage = hit.damage;
+        dmgPkt.damageType = 1; // Normal hit
+        dmgPkt.remainingHp = hit.remainingHp;
+        dmgPkt.attackerCharId = 0;
+        dmgPkt.attackerMonsterIndex = hit.attackerIndex; // Wild monster attack anim
+        Broadcast(&dmgPkt, sizeof(dmgPkt));
+
+        if (hit.killed) {
+          // Broadcast summon despawn
+          PMSG_SUMMON_DESPAWN_SEND dpkt{};
+          dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+          dpkt.monsterIndex = hit.summonIndex;
+          Broadcast(&dpkt, sizeof(dpkt));
+          m_world.DespawnSummon(hit.summonIndex);
+
+          // Clear owner session's summon reference
+          for (auto &s : m_sessions) {
+            if (s->GetFd() == hit.ownerFd) {
+              s->activeSummonIndex = 0;
+              s->activeSummonType = -1;
+              break;
+            }
+          }
+        }
+      }
 
       // Broadcast monster target updates to all clients (event-driven)
       for (auto &mv : moves) {
@@ -224,6 +444,20 @@ void Server::Run() {
             if (s->hp <= 0) {
               s->hp = 0;
               s->dead = true;
+              // Clear buffs and debuffs on death
+              s->buffs[0].active = false;
+              s->buffs[1].active = false;
+              s->poisoned = false;
+              // Despawn summon on owner death
+              if (s->activeSummonIndex > 0) {
+                PMSG_SUMMON_DESPAWN_SEND dpkt{};
+                dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+                dpkt.monsterIndex = s->activeSummonIndex;
+                Broadcast(&dpkt, sizeof(dpkt));
+                m_world.DespawnSummon(s->activeSummonIndex);
+                s->activeSummonIndex = 0;
+                s->activeSummonType = -1;
+              }
               // Player died: drop aggro and return to spawn (evade mode)
               auto *mon = m_world.FindMonster(atk.monsterIndex);
               if (mon) {
@@ -232,8 +466,6 @@ void Server::Run() {
                 mon->evading = true;
                 mon->currentPath.clear();
                 mon->pathStep = 0;
-                printf("[Combat] Mon %d killed player fd=%d (mon HP=%d/%d)\n",
-                       mon->index, s->GetFd(), mon->hp, mon->maxHp);
               }
             }
 
@@ -252,20 +484,26 @@ void Server::Run() {
             pkt.remainingHp = static_cast<float>(s->hp);
             s->Send(&pkt, sizeof(pkt));
 
-            // Save monster→player damage to chat log
-            {
+            // Monster→player poison (OpenMU: Poison Bull type 8, Larva type 12)
+            // Chance = 1/(PoisonResistance+1), we use ~25% chance
+            if (atk.damage > 0 && !s->poisoned) {
               auto *atkMon = m_world.FindMonster(atk.monsterIndex);
-              char chatBuf[128];
-              const char *mName = atkMon
-                  ? GetMonsterName(atkMon->type) : "Monster";
-              if (atk.damage > 0)
-                snprintf(chatBuf, sizeof(chatBuf), "%s hits you for %d damage.",
-                         mName, atk.damage);
-              else
-                snprintf(chatBuf, sizeof(chatBuf), "%s misses you.", mName);
-              // color: 0xFF8C8CFF = IM_COL32(255, 140, 140, 255) (light red)
-              m_db.SaveChatMessage(s->characterId, 1, 0xFF8C8CFF, chatBuf);
+              if (atkMon && (atkMon->type == 8 || atkMon->type == 12)) {
+                if (rand() % 4 == 0) { // 25% chance to poison
+                  s->poisoned = true;
+                  s->poisonTickTimer = 0.0f;
+                  s->poisonDuration = 20.0f;
+                  // Send debuff packet to client
+                  PMSG_DEBUFF_EFFECT_SEND dpkt{};
+                  dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::DEBUFF_EFFECT);
+                  dpkt.debuffType = 1; // Poison
+                  dpkt.active = 1;
+                  dpkt.duration = 20.0f;
+                  s->Send(&dpkt, sizeof(dpkt));
+                }
+              }
             }
+
             break;
           }
         }
@@ -332,6 +570,10 @@ void Server::Run() {
           } else {
             break;
           }
+        }
+        if (leveledUp) {
+          if (attacker->activeSummonIndex > 0)
+            m_world.RescaleSummon(attacker->activeSummonIndex, attacker->level);
         }
         if (leveledUp || xp > 0)
           CharacterHandler::SendCharStats(*attacker);
@@ -407,6 +649,60 @@ void Server::Run() {
         session->attackCooldown -= dt;
         if (session->attackCooldown < 0.0f)
           session->attackCooldown = 0.0f;
+      }
+      // Tick buff durations (Elf auras)
+      for (int b = 0; b < 2; b++) {
+        if (session->buffs[b].active) {
+          session->buffs[b].remaining -= dt;
+          if (session->buffs[b].remaining <= 0) {
+            session->buffs[b].active = false;
+            PMSG_BUFF_EFFECT_SEND bpkt{};
+            bpkt.h = MakeC1Header(sizeof(bpkt), Opcode::BUFF_EFFECT);
+            bpkt.buffType = session->buffs[b].type;
+            bpkt.active = 0;
+            bpkt.value = 0;
+            bpkt.duration = 0;
+            session->Send(&bpkt, sizeof(bpkt));
+          }
+        }
+      }
+      // Tick player poison debuff (monster→player DoT)
+      if (session->poisoned && session->inWorld && !session->dead) {
+        session->poisonDuration -= dt;
+        session->poisonTickTimer += dt;
+        if (session->poisonDuration <= 0.0f) {
+          // Poison expired
+          session->poisoned = false;
+          session->poisonTickTimer = 0.0f;
+          session->poisonDuration = 0.0f;
+          PMSG_DEBUFF_EFFECT_SEND dpkt{};
+          dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::DEBUFF_EFFECT);
+          dpkt.debuffType = 1;
+          dpkt.active = 0;
+          dpkt.duration = 0;
+          session->Send(&dpkt, sizeof(dpkt));
+        } else if (session->poisonTickTimer >= 3.0f) {
+          // Poison tick: 3% of current HP every 3 seconds (OpenMU)
+          session->poisonTickTimer -= 3.0f;
+          int poisonDmg = std::max(1, session->hp * 3 / 100);
+          session->hp -= poisonDmg;
+          if (session->hp <= 0) {
+            session->hp = 0;
+            session->dead = true;
+            session->poisoned = false;
+            // Clear buffs on death
+            session->buffs[0].active = false;
+            session->buffs[1].active = false;
+          }
+          // Send damage as monster attack (reuse MON_ATTACK with index 0xFFFF = poison)
+          PMSG_MONSTER_ATTACK_SEND pkt{};
+          pkt.h = MakeC1Header(sizeof(pkt), Opcode::MON_ATTACK);
+          pkt.monsterIndex = 0xFFFF; // Poison DoT (no specific monster)
+          pkt.damage = (float)poisonDmg;
+          pkt.remainingHp = (float)session->hp;
+          session->Send(&pkt, sizeof(pkt));
+          CharacterHandler::SendCharStats(*session);
+        }
       }
       if (session->gateTransitionCooldown > 0.0f) {
         session->gateTransitionCooldown -= dt;
@@ -542,6 +838,11 @@ void Server::Run() {
                          if (!s->IsAlive()) {
                            if (s->inWorld)
                              SaveSession(*s);
+                           // Despawn summon on disconnect
+                           if (s->activeSummonIndex > 0) {
+                             m_world.DespawnSummon(s->activeSummonIndex);
+                             s->activeSummonIndex = 0;
+                           }
                            m_world.ClearGuardInteractionsForPlayer(s->GetFd());
                            printf("[Server] Client fd=%d disconnected\n",
                                   s->GetFd());
@@ -579,7 +880,8 @@ void Server::SaveSession(Session &session) {
                          static_cast<uint16_t>(session.maxAg),
                          session.levelUpPoints, session.experience, session.zen,
                          posX, posY, session.mapId, session.skillBar,
-                         session.potionBar, session.rmcSkillId);
+                         session.potionBar, session.rmcSkillId,
+                         session.activeSummonType);
 
   // Save full inventory (clear + rewrite all occupied slots)
   m_db.DeleteCharacterInventoryAll(session.characterId);
@@ -597,8 +899,15 @@ void Server::SaveSession(Session &session) {
     auto &eq = session.equipment[i];
     if (eq.category != 0xFF) {
       m_db.UpdateEquipment(session.characterId, static_cast<uint8_t>(i),
-                           eq.category, eq.itemIndex, eq.itemLevel);
+                           eq.category, eq.itemIndex, eq.itemLevel,
+                           eq.quantity);
     }
+  }
+
+  // Save quest progress (active quests only — completed are saved on completion)
+  for (auto &aq : session.activeQuests) {
+    m_db.SaveQuestProgress(session.characterId, aq.questId,
+                           aq.killCount[0], aq.killCount[1], aq.killCount[2], false);
   }
 }
 
@@ -728,6 +1037,14 @@ void Server::CheckGateZones(Session &session) {
     // Devias → Lorencia (east edge return)
     TransitionMap(session, 0, 5, 36);
   }
+  // ── Lorencia ↔ Noria gates ──
+  else if (session.mapId == 0 && gx >= 213 && gx <= 217 && gy >= 246 && gy <= 247) {
+    // Lorencia → Noria (OpenMU gate 23→24)
+    TransitionMap(session, 3, 140, 5);
+  } else if (session.mapId == 3 && gx >= 148 && gx <= 155 && gy >= 3 && gy <= 8) {
+    // Noria → Lorencia (OpenMU gate 25→26, widened trigger zone)
+    TransitionMap(session, 0, 215, 244);
+  }
 }
 
 void Server::TransitionMap(Session &session, uint8_t newMapId,
@@ -735,11 +1052,23 @@ void Server::TransitionMap(Session &session, uint8_t newMapId,
   printf("[Server] Map transition: fd=%d map %d -> %d spawn (%d,%d)\n",
          session.GetFd(), session.mapId, newMapId, spawnX, spawnY);
 
+  // Despawn summon on map change (type preserved for re-summon on new map)
+  if (session.activeSummonIndex > 0) {
+    PMSG_SUMMON_DESPAWN_SEND dpkt{};
+    dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+    dpkt.monsterIndex = session.activeSummonIndex;
+    Broadcast(&dpkt, sizeof(dpkt));
+    m_world.DespawnSummon(session.activeSummonIndex);
+    session.activeSummonIndex = 0;
+    // Keep activeSummonType — will respawn on new map
+  }
+
   // Update session
   session.mapId = newMapId;
   session.gateTransitionCooldown = 3.0f; // 3 second cooldown
   session.worldX = spawnY * 100.0f;
   session.worldZ = spawnX * 100.0f;
+  session.wasInSafeZone = false; // Reset — new map spawn is outside safe zone initially
 
   // Save position to DB immediately (including map change)
   m_db.UpdatePosition(session.characterId, spawnX, spawnY, newMapId);
@@ -757,6 +1086,46 @@ void Server::TransitionMap(Session &session, uint8_t newMapId,
   pkt.spawnX = spawnX;
   pkt.spawnY = spawnY;
   session.Send(&pkt, sizeof(pkt));
+
+  // Respawn summon on new map if player had one active
+  // Skip if spawn position is in a safe zone — the safe zone exit logic will handle it
+  if (session.activeSummonType >= 0 && session.activeSummonIndex == 0 &&
+      !m_world.IsSafeZoneGrid(spawnX, spawnY)) {
+    uint8_t sgx = spawnX, sgy = spawnY;
+    for (int r = 1; r <= 3; r++) {
+      bool found = false;
+      for (int dy = -r; dy <= r && !found; dy++) {
+        for (int dx = -r; dx <= r && !found; dx++) {
+          if (dx == 0 && dy == 0) continue;
+          int nx = spawnX + dx, ny = spawnY + dy;
+          if (nx >= 0 && ny >= 0 && nx < 256 && ny < 256 &&
+              m_world.IsWalkableGrid((uint8_t)nx, (uint8_t)ny)) {
+            sgx = (uint8_t)nx;
+            sgy = (uint8_t)ny;
+            found = true;
+          }
+        }
+      }
+      if (found) break;
+    }
+    auto *summon = m_world.SpawnSummon(
+        static_cast<uint16_t>(session.activeSummonType), sgx, sgy,
+        session.GetFd(), session.characterId, session.level);
+    if (summon) {
+      session.activeSummonIndex = summon->index;
+
+      // Send SUMMON_SPAWN so client knows this is own summon
+      PMSG_SUMMON_SPAWN_SEND spawnPkt{};
+      spawnPkt.h = MakeC1Header(sizeof(spawnPkt), Opcode::SUMMON_SPAWN);
+      spawnPkt.monsterIndex = summon->index;
+      spawnPkt.ownerCharId = session.characterId;
+      spawnPkt.level = summon->level;
+      Broadcast(&spawnPkt, sizeof(spawnPkt));
+
+      printf("[Server] Respawned summon type=%d on map %d for fd=%d\n",
+             session.activeSummonType, newMapId, session.GetFd());
+    }
+  }
 
   // Defer NPC/monster viewport sending — wait for client "ready" signal
   // (SendPrecisePosition after ChangeMap completes). 5s safety fallback.

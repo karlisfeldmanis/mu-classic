@@ -37,11 +37,19 @@ uint64_t HeroCharacter::CalcXPForLevel(int level) {
 }
 
 void HeroCharacter::RecalcStats() {
-  // MaxHP = 110 + 2.0*(Level-1) + (VIT-25)*3.0
-  m_maxHp = (int)(DK_BASE_HP + DK_LEVEL_LIFE * (m_level - 1) +
-                  (m_vitality - DK_BASE_VIT) * DK_VIT_TO_LIFE);
-  if (m_maxHp < 1)
-    m_maxHp = 1;
+  // MaxHP per class (OpenMU formulas, matching server StatCalculator)
+  if (m_class == 0) { // CLASS_DW
+    m_maxHp = std::max(1, 60 + (m_level - 1) * 1 + ((int)m_vitality - 15) * 2);
+  } else if (m_class == 32) { // CLASS_ELF
+    m_maxHp = std::max(1, 80 + (m_level - 1) * 1 + ((int)m_vitality - 20) * 2);
+  } else if (m_class == 48) { // CLASS_MG
+    m_maxHp = std::max(1, 110 + (m_level - 1) * 1 + ((int)m_vitality - 26) * 2);
+  } else { // CLASS_DK (16) and default
+    m_maxHp = (int)(DK_BASE_HP + DK_LEVEL_LIFE * (m_level - 1) +
+                    (m_vitality - DK_BASE_VIT) * DK_VIT_TO_LIFE);
+    if (m_maxHp < 1)
+      m_maxHp = 1;
+  }
 
   // AG/Mana per class (OpenMU formulas, matching server StatCalculator)
   if (m_class == 16) { // CLASS_DK — AG
@@ -57,12 +65,44 @@ void HeroCharacter::RecalcStats() {
   if (m_maxMana < 1)
     m_maxMana = 1;
 
-  // Damage = STR / 6 + weapon .. STR / 4 + weapon (OpenMU DK formula)
-  m_damageMin = std::max(1, (int)m_strength / 6 + m_weaponDamageMin);
-  m_damageMax = std::max(m_damageMin, (int)m_strength / 4 + m_weaponDamageMax);
+  // Damage per class (OpenMU formulas, matching server StatCalculator)
+  bool hasBow = (m_weaponInfo.category == 4);
+  if (m_class == 0) { // CLASS_DW
+    m_damageMin = std::max(1, (int)m_strength / 6 + m_weaponDamageMin);
+    m_damageMax = std::max(m_damageMin, (int)m_strength / 4 + m_weaponDamageMax);
+  } else if (m_class == 32) { // CLASS_ELF
+    if (hasBow) {
+      m_damageMin = std::max(1, (int)m_strength / 14 + (int)m_dexterity / 7 +
+                                    m_weaponDamageMin);
+      m_damageMax = std::max(m_damageMin, (int)m_strength / 8 +
+                                              (int)m_dexterity / 4 +
+                                              m_weaponDamageMax);
+    } else {
+      m_damageMin = std::max(1, ((int)m_strength + (int)m_dexterity) / 7 +
+                                    m_weaponDamageMin);
+      m_damageMax = std::max(m_damageMin, ((int)m_strength + (int)m_dexterity) / 4 +
+                                              m_weaponDamageMax);
+    }
+  } else if (m_class == 48) { // CLASS_MG
+    m_damageMin = std::max(1, (int)m_strength / 6 + (int)m_energy / 12 +
+                                  m_weaponDamageMin);
+    m_damageMax = std::max(m_damageMin, (int)m_strength / 4 + (int)m_energy / 8 +
+                                            m_weaponDamageMax);
+  } else { // CLASS_DK (16) and default
+    m_damageMin = std::max(1, (int)m_strength / 6 + m_weaponDamageMin);
+    m_damageMax = std::max(m_damageMin, (int)m_strength / 4 + m_weaponDamageMax);
+  }
 
-  // Defense = DEX / 3 + equipped armor/shield defense
-  m_defense = (int)m_dexterity / 3 + m_equipDefenseBonus;
+  // Defense per class (OpenMU formulas, matching server StatCalculator)
+  if (m_class == 0) { // CLASS_DW
+    m_defense = (int)m_dexterity / 4 + m_equipDefenseBonus;
+  } else if (m_class == 32) { // CLASS_ELF
+    m_defense = (int)m_dexterity / 10 + m_equipDefenseBonus;
+  } else if (m_class == 48) { // CLASS_MG
+    m_defense = (int)m_dexterity / 4 + m_equipDefenseBonus;
+  } else { // CLASS_DK (16) and default
+    m_defense = (int)m_dexterity / 3 + m_equipDefenseBonus;
+  }
 
   // AttackSuccessRate = Level*5 + (DEX*3)/2 + STR/4
   m_attackSuccessRate =
@@ -251,10 +291,24 @@ static float smoothFacing(float current, float target, float dt) {
 // ─── Weapon animation helpers (Main 5.2 _enum.h + ZzzCharacter.cpp) ────────
 
 bool HeroCharacter::isDualWielding() const {
-  // DK with weapon in right hand AND weapon (not shield) in left hand
+  // DK with weapon in right hand AND weapon (not shield/ammo) in left hand
   if (m_weaponInfo.category == 0xFF || m_shieldInfo.category == 0xFF)
     return false;
-  return m_shieldInfo.category != 6; // Left hand has a weapon, not a shield
+  if (m_shieldInfo.category == 6)
+    return false; // Shield
+  // Arrows (idx 15) and Bolts (idx 7) are ammo, not dual-wield weapons
+  if (m_shieldInfo.category == 4 &&
+      (m_shieldInfo.itemIndex == 7 || m_shieldInfo.itemIndex == 15))
+    return false;
+  return true;
+}
+
+int HeroCharacter::defaultIdleAction() const {
+  return (m_class == 32) ? ACTION_STOP_FEMALE : ACTION_STOP_MALE;
+}
+
+int HeroCharacter::defaultWalkAction() const {
+  return (m_class == 32) ? ACTION_WALK_FEMALE : ACTION_WALK_MALE;
 }
 
 int HeroCharacter::weaponIdleAction() const {
@@ -262,7 +316,7 @@ int HeroCharacter::weaponIdleAction() const {
     return m_weaponBmd ? ACTION_STOP_RIDE_WEAPON : ACTION_STOP_RIDE;
 
   if (!m_weaponBmd)
-    return ACTION_STOP_MALE;
+    return defaultIdleAction();
 
   uint8_t cat = m_weaponInfo.category;
   bool twoH = m_weaponInfo.twoHanded;
@@ -293,7 +347,7 @@ int HeroCharacter::weaponWalkAction() const {
     return m_weaponBmd ? ACTION_RUN_RIDE_WEAPON : ACTION_RUN_RIDE;
 
   if (!m_weaponBmd)
-    return ACTION_WALK_MALE;
+    return defaultWalkAction();
 
   uint8_t cat = m_weaponInfo.category;
   bool twoH = m_weaponInfo.twoHanded;
@@ -828,10 +882,14 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     if (m_partLevels[p] >= 9) partDim = 0.9f;
     else if (m_partLevels[p] >= 7) partDim = 0.8f;
 
+    // Poison green tint (Main 5.2: RGB 0.3, 1.0, 0.5)
+    glm::vec3 finalTint = hasTint ? partTint : glm::vec3(1.0f);
+    if (m_poisoned)
+      finalTint *= glm::vec3(0.3f, 1.0f, 0.5f);
+
     for (auto &mb : m_parts[p].meshBuffers) {
       if (mb.indexCount == 0 || mb.hidden) continue;
-      setHeroUniforms(partDim, 0.0f, 0.0f, glm::vec3(0.0f),
-                      hasTint ? partTint : glm::vec3(1.0f));
+      setHeroUniforms(partDim, 0.0f, 0.0f, glm::vec3(0.0f), finalTint);
       uint64_t st = mb.noneBlend ? stateNone : (mb.bright ? stateAdditive : stateAlpha);
       bgfxDrawMesh(mb, st);
     }
@@ -892,14 +950,37 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   if (m_weaponBmd && !m_weaponMeshBuffers.empty() &&
       attachBone < (int)bones.size()) {
 
-    // SafeZone: back rotation (70,0,90) + offset (-20,5,40) (Main 5.2 line
-    // 6693) Combat: identity (weapon BMD's own bone handles orientation)
-    BoneWorldMatrix weaponOffsetMat =
-        m_inSafeZone
-            ? MuMath::BuildWeaponOffsetMatrix(glm::vec3(70.f, 0.f, 90.f),
-                                              glm::vec3(-20.f, 5.f, 40.f))
-            : MuMath::BuildWeaponOffsetMatrix(glm::vec3(0, 0, 0),
-                                              glm::vec3(0, 0, 0));
+    // Main 5.2 RenderLinkObject / RenderCharacterBackItem:
+    // Crossbows (cat 4, idx 8-14/16/18) have different orientation than bows
+    bool isCrossbowWep = (m_weaponInfo.category == 4 &&
+        ((m_weaponInfo.itemIndex >= 8 && m_weaponInfo.itemIndex <= 14) ||
+         m_weaponInfo.itemIndex == 16 || m_weaponInfo.itemIndex == 18));
+
+    BoneWorldMatrix weaponOffsetMat;
+    if (m_inSafeZone) {
+      // SafeZone back carry (bone 47)
+      if (isCrossbowWep) {
+        // Crossbow on back: rotated to lay flat across back (Main 5.2)
+        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
+            glm::vec3(0.f, 20.f, 180.f), glm::vec3(-10.f, 8.f, 55.f));
+      } else {
+        // Standard weapon back carry: rotation (70,0,90) + offset (-20,5,40)
+        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
+            glm::vec3(70.f, 0.f, 90.f), glm::vec3(-20.f, 5.f, 40.f));
+      }
+    } else {
+      // Combat hand attachment
+      if (isCrossbowWep) {
+        // Crossbow combat: Main 5.2 RenderLinkObject (line 6513-6521)
+        // Crossbows have different BMD orientation than bows/swords
+        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
+            glm::vec3(0.f, 20.f, 180.f), glm::vec3(-10.f, 8.f, 40.f));
+      } else {
+        // Other weapons: identity (weapon BMD handles orientation)
+        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
+            glm::vec3(0, 0, 0), glm::vec3(0, 0, 0));
+      }
+    }
 
     // parentMat = CharBone[attachBone] * OffsetMatrix
     BoneWorldMatrix parentMat;
@@ -1028,22 +1109,29 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   // --- Render shield / left-hand item ---
   // SafeZone: renders on bone 47 (back) offset to not overlap weapon
   // Combat: renders on bone 42 (left hand) with identity offset
+  // Arrows/Bolts (cat 4, idx 7 or 15): ALWAYS on back (Main 5.2 line 15012)
   auto &sCat = GetWeaponCategoryRender(6); // category 6 = shield
-  int shieldBone = (m_inSafeZone && BONE_BACK < (int)bones.size())
+  bool isQuiver = (m_shieldInfo.category == 4 &&
+                   (m_shieldInfo.itemIndex == 7 || m_shieldInfo.itemIndex == 15));
+  int shieldBone = ((m_inSafeZone || isQuiver) && BONE_BACK < (int)bones.size())
                        ? BONE_BACK
                        : sCat.attachBone;
   if (m_shieldBmd && !m_shieldMeshBuffers.empty() &&
       shieldBone < (int)bones.size()) {
 
     // SafeZone back rendering (Main 5.2 RenderLinkObject line 6710-6731):
-    // Shield: rotation (70,0,90) + offset (-10,0,0)
+    // Shield on back: rotation (70,0,90) + offset (-10,0,0)
+    // Arrows/Bolts quiver: same rotation as bows on back (70,0,90) + offset (-10,5,25)
     // Dual-wield left weapon: rotation (-110,180,90) + offset (20,15,40)
-    //   (mirrors to opposite side of back — Kayito WeaponView.cpp)
     bool dualWieldLeft = m_inSafeZone && isDualWielding();
+    bool onBack = m_inSafeZone || isQuiver;
     BoneWorldMatrix shieldOffsetMat =
-        m_inSafeZone ? (dualWieldLeft ? MuMath::BuildWeaponOffsetMatrix(
+        onBack ? (dualWieldLeft ? MuMath::BuildWeaponOffsetMatrix(
                                             glm::vec3(-110.f, 180.f, 90.f),
                                             glm::vec3(20.f, 15.f, 40.f))
+                                : isQuiver ? MuMath::BuildWeaponOffsetMatrix(
+                                            glm::vec3(70.f, 0.f, 90.f),
+                                            glm::vec3(-10.f, 5.f, 25.f))
                                       : MuMath::BuildWeaponOffsetMatrix(
                                             glm::vec3(70.f, 0.f, 90.f),
                                             glm::vec3(-10.f, 0.f, 0.f)))
@@ -1072,40 +1160,50 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       RetransformMeshWithBones(m_shieldBmd->Meshes[mi], sFinalBones, mb);
     }
 
-    // +3/+5 shield base tinting & +7/+9 dimming (Main 5.2)
-    uint8_t slvl = m_shieldInfo.itemLevel;
-    glm::vec3 sTint(1.0f);
-    float sDim = 1.0f;
-    if (slvl >= 5 && slvl < 7)
-      sTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
-    else if (slvl >= 3 && slvl < 5)
-      sTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
-    if (slvl >= 9) sDim = 0.9f;
-    else if (slvl >= 7) sDim = 0.8f;
+    // Quivers render plain — no tinting or glow
+    if (!isQuiver) {
+      // +3/+5 shield base tinting & +7/+9 dimming (Main 5.2)
+      uint8_t slvl = m_shieldInfo.itemLevel;
+      glm::vec3 sTint(1.0f);
+      float sDim = 1.0f;
+      if (slvl >= 5 && slvl < 7)
+        sTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
+      else if (slvl >= 3 && slvl < 5)
+        sTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
+      if (slvl >= 9) sDim = 0.9f;
+      else if (slvl >= 7) sDim = 0.8f;
 
-    for (auto &mb : m_shieldMeshBuffers) {
-      if (mb.indexCount == 0) continue;
-      setHeroUniforms(sDim, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
-      bgfxDrawMesh(mb, stateAlpha);
-    }
+      for (auto &mb : m_shieldMeshBuffers) {
+        if (mb.indexCount == 0) continue;
+        setHeroUniforms(sDim, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
+        bgfxDrawMesh(mb, stateAlpha);
+      }
 
-    // ── +7/+9/+11/+13 shield glow passes (ChromeGlow module) ──
-    if (m_shieldInfo.itemLevel >= 7 && TexValid(ChromeGlow::GetTextures().chrome1)) {
-      float t = (float)glfwGetTime();
-      ChromeGlow::GlowPass passes[3];
-      int n = ChromeGlow::GetGlowPasses(m_shieldInfo.itemLevel, 6, m_shieldInfo.itemIndex, passes);
-      for (int gp = 0; gp < n; ++gp) {
-        for (auto &mb : m_shieldMeshBuffers) {
-          if (mb.indexCount == 0) continue;
-          setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
-          bgfx::setTransform(glm::value_ptr(model));
-          if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
-          else bgfx::setVertexBuffer(0, mb.vbo);
-          bgfx::setIndexBuffer(mb.ebo);
-          m_shader->setTexture(0, "s_texColor", passes[gp].texture);
-          bgfx::setState(stateAdditive);
-          bgfx::submit(0, m_shader->program);
+      // ── +7/+9/+11/+13 shield glow passes (ChromeGlow module) ──
+      if (m_shieldInfo.itemLevel >= 7 && TexValid(ChromeGlow::GetTextures().chrome1)) {
+        float t = (float)glfwGetTime();
+        ChromeGlow::GlowPass passes[3];
+        int n = ChromeGlow::GetGlowPasses(m_shieldInfo.itemLevel, 6, m_shieldInfo.itemIndex, passes);
+        for (int gp = 0; gp < n; ++gp) {
+          for (auto &mb : m_shieldMeshBuffers) {
+            if (mb.indexCount == 0) continue;
+            setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+            bgfx::setTransform(glm::value_ptr(model));
+            if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+            else bgfx::setVertexBuffer(0, mb.vbo);
+            bgfx::setIndexBuffer(mb.ebo);
+            m_shader->setTexture(0, "s_texColor", passes[gp].texture);
+            bgfx::setState(stateAdditive);
+            bgfx::submit(0, m_shader->program);
+          }
         }
+      }
+    } else {
+      // Quiver: plain render, no tinting/glow
+      for (auto &mb : m_shieldMeshBuffers) {
+        if (mb.indexCount == 0) continue;
+        setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f), glm::vec3(1.0f));
+        bgfxDrawMesh(mb, stateAlpha);
       }
     }
   }
@@ -1256,6 +1354,44 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       m_vfxManager->SpawnBurstColored(ParticleType::FLARE, flarePos,
                                        m_setGlowColor, flareCount);
     }
+  }
+
+  // ── Elf buff aura particles (Main 5.2: MODEL_SPEARSKILL SubType 4) ──
+  // Defense = blue-green orbiting particles, Damage = orange-golden particles
+  if ((m_buffDefenseActive || m_buffDamageActive) && m_vfxManager) {
+    m_buffAuraTimer += deltaTime;
+    // Spawn orbiting particles at ~15/sec per active buff
+    const float BUFF_SPAWN_INTERVAL = 1.0f / 15.0f;
+    while (m_buffAuraTimer >= BUFF_SPAWN_INTERVAL) {
+      m_buffAuraTimer -= BUFF_SPAWN_INTERVAL;
+      float cosF = cosf(m_facing), sinF = sinf(m_facing);
+
+      if (m_buffDefenseActive) {
+        // Main 5.2: eBuff_Defense — 5 orbiting ring elements, blue-green color
+        // Spawn at random orbit angle around character, waist height
+        float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
+        float radius = 30.0f + (float)(rand() % 20); // 30-50 unit radius
+        float height = 30.0f + (float)(rand() % 40);  // 30-70 height
+        glm::vec3 offset(cosf(angle) * radius, height, sinf(angle) * radius);
+        glm::vec3 spawnPos = m_pos + offset;
+        // Main 5.2: SubType 2 color = (0.4, 1.0, 0.6) green-cyan
+        m_vfxManager->SpawnBurstColored(ParticleType::BUFF_AURA, spawnPos,
+                                         glm::vec3(0.4f, 1.0f, 0.6f), 1);
+      }
+      if (m_buffDamageActive) {
+        // Main 5.2: eBuff_Attack — golden sparkles, orbit + weapon area
+        float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
+        float radius = 25.0f + (float)(rand() % 25);
+        float height = 40.0f + (float)(rand() % 50);
+        glm::vec3 offset(cosf(angle) * radius, height, sinf(angle) * radius);
+        glm::vec3 spawnPos = m_pos + offset;
+        // Main 5.2: SubType 3 color = (1.0, 0.6, 0.4) warm orange-red
+        m_vfxManager->SpawnBurstColored(ParticleType::BUFF_AURA, spawnPos,
+                                         glm::vec3(1.0f, 0.7f, 0.3f), 1);
+      }
+    }
+  } else {
+    m_buffAuraTimer = 0.0f;
   }
 
   // ── Twisting Slash: render ghost weapon copies orbiting the hero ──
@@ -1727,11 +1863,19 @@ void HeroCharacter::ProcessMovement(float deltaTime) {
     glm::vec3 newPos = m_pos + step;
 
     const int S = TerrainParser::TERRAIN_SIZE;
+    float curHeight = m_pos.y;
     auto isWalkableAt = [&](float wx, float wz) -> bool {
       int tgz = (int)(wx / 100.0f);
       int tgx = (int)(wz / 100.0f);
-      return (tgx >= 0 && tgz >= 0 && tgx < S && tgz < S) &&
-             (m_terrainData->mapping.attributes[tgz * S + tgx] & 0x04) == 0;
+      if (tgx < 0 || tgz < 0 || tgx >= S || tgz >= S)
+        return false;
+      if (m_terrainData->mapping.attributes[tgz * S + tgx] & 0x04)
+        return false;
+      // Block walking up steep walls (height step > 50 units)
+      float nextH = TerrainUtils::GetHeight(m_terrainData, wx, wz);
+      if (nextH - curHeight > 50.0f)
+        return false;
+      return true;
     };
 
     // If currently on an unwalkable tile (e.g. snapped to chair), allow escape
@@ -1769,7 +1913,7 @@ void HeroCharacter::MoveTo(const glm::vec3 &target) {
   // Only reset walk animation if not already walking
   int walkAction = (isMountRiding() || (!m_inSafeZone && m_weaponBmd))
                        ? weaponWalkAction()
-                       : ACTION_WALK_MALE;
+                       : defaultWalkAction();
   if (!m_moving || m_action != walkAction) {
     SetAction(walkAction);
     m_animFrame = 0.0f;
@@ -1787,7 +1931,7 @@ void HeroCharacter::StopMoving() {
   if (isMountRiding() || (!m_inSafeZone && m_weaponBmd)) {
     SetAction(weaponIdleAction());
   } else {
-    SetAction(ACTION_STOP_MALE);
+    SetAction(defaultIdleAction());
   }
   m_animFrame = 0.0f;
 }
@@ -1832,7 +1976,7 @@ void HeroCharacter::CancelSitPose() {
   if (isMountRiding() || (!m_inSafeZone && m_weaponBmd)) {
     SetAction(weaponIdleAction());
   } else {
-    SetAction(ACTION_STOP_MALE);
+    SetAction(defaultIdleAction());
   }
   m_animFrame = 0.0f;
 }
@@ -1847,12 +1991,14 @@ void HeroCharacter::SetInSafeZone(bool safe) {
 
   // Switch animation: isMountRiding() returns false in safe zone,
   // so weaponIdleAction/weaponWalkAction will return ground animations.
+  int safeIdle = defaultIdleAction();
+  int safeWalk = defaultWalkAction();
   if (m_moving) {
     SetAction((isMountRiding() || (!safe && m_weaponBmd)) ? weaponWalkAction()
-                                                          : ACTION_WALK_MALE);
+                                                          : safeWalk);
   } else {
     SetAction((isMountRiding() || (!safe && m_weaponBmd)) ? weaponIdleAction()
-                                                          : ACTION_STOP_MALE);
+                                                          : safeIdle);
   }
 
   std::cout << "[Hero] " << (safe ? "Entered SafeZone" : "Left SafeZone")
@@ -1861,6 +2007,15 @@ void HeroCharacter::SetInSafeZone(bool safe) {
 }
 
 void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
+  // Skip reload if same weapon already equipped (e.g. equipment refresh from
+  // arrow consumption — only slot 1 quantity changed, not slot 0 weapon)
+  if (m_weaponBmd && weapon.category == m_weaponInfo.category &&
+      weapon.itemIndex == m_weaponInfo.itemIndex &&
+      weapon.itemLevel == m_weaponInfo.itemLevel &&
+      weapon.category != 0xFF) {
+    return;
+  }
+
   // Cleanup old weapon
   CleanupMeshBuffers(m_weaponMeshBuffers);
   CleanupMeshBuffers(m_ghostWeaponMeshBuffers);
@@ -1874,7 +2029,7 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
     m_weaponBmd.reset();
     m_weaponInfo = weapon;
     m_inSafeZone = true;
-    SetAction(ACTION_STOP_MALE);
+    SetAction(defaultIdleAction());
     return;
   }
 
@@ -1940,7 +2095,8 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
             << " 2H=" << weapon.twoHanded << ")" << std::endl;
 
   // Update animation to combat stance if outside SafeZone
-  if (!m_inSafeZone) {
+  // Skip if mid-attack — don't reset attack animation on equipment refresh
+  if (!m_inSafeZone && m_attackState == AttackState::NONE) {
     SetAction(m_moving ? weaponWalkAction() : weaponIdleAction());
     m_animFrame = 0.0f;
   }
@@ -2310,6 +2466,8 @@ void HeroCharacter::AttackMonster(int monsterIndex,
     return;
   }
 
+  if (m_attackTargetMonster != monsterIndex)
+    m_attackCycleCount = 0; // Reset cycle counter on new target
   m_attackTargetMonster = monsterIndex;
   m_attackTargetPos = monsterPos;
   m_activeSkillId = 0; // Normal attack, no skill
@@ -2324,6 +2482,7 @@ void HeroCharacter::AttackMonster(int monsterIndex,
     m_attackState = AttackState::SWINGING;
     m_attackAnimTimer = 0.0f;
     m_attackHitRegistered = false;
+    m_forceHitThisFrame = false;
     m_moving = false;
 
     // Face the target
@@ -2332,19 +2491,34 @@ void HeroCharacter::AttackMonster(int monsterIndex,
     // Weapon-type-specific attack animation (Main 5.2 SwordCount cycle)
     int act = nextAttackAction();
     SetAction(act);
+    // Debug: log bow attack start for stuck-animation diagnostics
+    if (m_weaponInfo.category == 4) {
+      int nk = (act >= 0 && act < (int)m_skeleton->Actions.size())
+                   ? m_skeleton->Actions[act].NumAnimationKeys : 1;
+      std::cout << "[Hero] Bow SWINGING: action=" << act << " numKeys=" << nk
+                << " atkSpd=" << attackSpeedMultiplier()
+                << " target=" << m_attackTargetMonster << std::endl;
+    }
     // Main 5.2: weapon-type-specific swing sound (ZzzCharacter.cpp:1199-1204)
-    // Light Saber (sword 10) + spears (cat 3) → eSwingLightSword; others → random
     if (HasWeapon()) {
-      if (m_weaponInfo.category == 3 ||
-          (m_weaponInfo.category == 0 && m_weaponInfo.itemIndex == 10))
+      if (m_weaponInfo.category == 4) {
+        // Bow/crossbow: release sound
+        if (m_weaponInfo.itemIndex >= 8) // Crossbows (idx 8+)
+          SoundManager::Play(SOUND_CROSSBOW);
+        else
+          SoundManager::Play(SOUND_BOW);
+      } else if (m_weaponInfo.category == 3 ||
+                 (m_weaponInfo.category == 0 && m_weaponInfo.itemIndex == 10)) {
         SoundManager::Play(SOUND_SWING_LIGHT);
-      else
+      } else {
         SoundManager::Play(SOUND_SWING1 + rand() % 2);
+      }
     }
 
     // Normal melee: weapon blur trail (Main 5.2: BlurType 1, BlurMapping 0)
     // BlurMapping 0 = blur01.OZJ texture, level-based color
-    if (HasWeapon() && m_vfxManager) {
+    // Skip for bows/crossbows (category 4) — no melee trail
+    if (HasWeapon() && m_weaponInfo.category != 4 && m_vfxManager) {
       // Main 5.2 ZzzCharacter.cpp:3752-3774 weapon trail colors
       glm::vec3 trailColor(0.8f, 0.8f, 0.8f); // Default: gray/white
       uint8_t wlvl = m_weaponInfo.itemLevel;
@@ -2410,6 +2584,7 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
       m_attackState = AttackState::SWINGING;
       m_attackAnimTimer = 0.0f;
       m_attackHitRegistered = false;
+      m_forceHitThisFrame = false;
 
       // Face the target — snap for directional VFX (Aqua Beam)
       m_targetFacing = atan2f(dir.z, -dir.x);
@@ -2454,6 +2629,7 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
           switch (m_activeSkillId) {
           case 17: // Energy Ball
           case 4:  // Fire Ball
+          case 11: // Power Wave
             m_vfxManager->SpawnSpellProjectile(m_activeSkillId, m_pos,
                                                m_attackTargetPos);
             break;
@@ -2528,12 +2704,29 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
     float animDuration = (numKeys > 1) ? (float)numKeys / atkAnimSpeed : 0.5f;
     m_attackAnimTimer += deltaTime;
 
+    // Safety timeout: if stuck in SWINGING for >4 seconds, force cancel
+    if (m_attackAnimTimer > 4.0f) {
+      std::cout << "[Hero] SWINGING safety timeout (timer=" << m_attackAnimTimer
+                << " animDur=" << animDuration << " action=" << m_action
+                << " numKeys=" << numKeys << " spdMul=" << spdMul << ")"
+                << std::endl;
+      CancelAttack();
+      break;
+    }
+
     // Flash uses m_animFrame for swing-done check (animation slowdown desyncs timer)
     bool swingDone = (m_activeSkillId == 12)
         ? (m_animFrame >= (float)(numKeys - 1))
         : (m_attackAnimTimer >= animDuration);
 
     if (swingDone) {
+      // If hit wasn't registered during the swing (frame spike skipped the hit
+      // window), force-register it now so CheckAttackHit() returns true this frame
+      if (!m_attackHitRegistered) {
+        m_attackHitRegistered = true;
+        m_forceHitThisFrame = true;
+      }
+
       // Stop weapon blur trail on swing end
       if (m_weaponTrailActive && m_vfxManager) {
         m_weaponTrailActive = false;
@@ -2567,13 +2760,20 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
 
   case AttackState::COOLDOWN: {
     m_attackCooldown -= deltaTime;
+    // Safety timeout: cooldown should never exceed 3 seconds
+    if (m_attackCooldown < -3.0f) {
+      std::cout << "[Hero] COOLDOWN safety timeout (cooldown="
+                << m_attackCooldown << ")" << std::endl;
+      CancelAttack();
+      break;
+    }
     if (m_attackCooldown <= 0.0f) {
       // Auto-attack: if target is still valid, swing again
       if (m_attackTargetMonster >= 0) {
         // Will be re-evaluated from main.cpp which checks if target alive
+        // and if monster is actually taking damage (unreachable detection)
         m_attackState = AttackState::NONE;
-        m_activeSkillId =
-            0; // Reset so auto-attack re-engages with normal attacks
+        m_activeSkillId = 0;
       } else {
         CancelAttack();
       }
@@ -2590,6 +2790,14 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
 }
 
 bool HeroCharacter::CheckAttackHit() {
+  // Force-hit: swing completed without registering a hit (frame spike skipped
+  // the hit window). The flag is set in UpdateAttack's SWINGING→COOLDOWN
+  // transition and consumed here so main.cpp can process the hit.
+  if (m_forceHitThisFrame) {
+    m_forceHitThisFrame = false;
+    return true;
+  }
+
   if (m_attackState != AttackState::SWINGING || m_attackHitRegistered)
     return false;
 
@@ -2621,6 +2829,8 @@ void HeroCharacter::CancelAttack() {
   m_attackTargetMonster = -1;
   m_activeSkillId = 0;
   m_swordSwingCount = 0;
+  m_attackCycleCount = 0;
+  m_forceHitThisFrame = false;
   m_moving = false; // Stop any approach movement
   m_pendingAquaBeam = false; // Clear pending beam on cancel
   m_aquaBeamSpawned = false;
@@ -2629,7 +2839,7 @@ void HeroCharacter::CancelAttack() {
   if (isMountRiding() || (!m_inSafeZone && m_weaponBmd)) {
     SetAction(weaponIdleAction());
   } else {
-    SetAction(ACTION_STOP_MALE);
+    SetAction(defaultIdleAction());
   }
 }
 
@@ -2685,11 +2895,17 @@ int HeroCharacter::GetSkillAction(uint8_t skillId) {
     return ACTION_SKILL_FLASH; // Aqua Beam
   case 10:
     return ACTION_SKILL_HELL; // Hellfire
+  case 11:
+    // Power Wave — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
+    return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 13:
     // Cometfall — Main 5.2: SetPlayerMagic() → HAND1 or HAND2 (50/50)
     return (rand() % 2 == 0) ? ACTION_SKILL_HAND1 : ACTION_SKILL_HAND2;
   case 14:
     return ACTION_SKILL_INFERNO; // Inferno (self-centered AoE)
+  // Elf summon skills (30-35) — simple magic hand cast
+  case 30: case 31: case 32: case 33: case 34: case 35:
+    return ACTION_SKILL_HAND1;
   default:
     return ACTION_SKILL_SWORD1; // Fallback
   }
@@ -2802,6 +3018,7 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
       switch (skillId) {
       case 17: // Energy Ball: traveling BITMAP_ENERGY projectile
       case 4:  // Fire Ball: traveling MODEL_FIRE projectile
+      case 11: // Power Wave: traveling ground-wave projectile
         m_vfxManager->SpawnSpellProjectile(skillId, m_pos, monsterPos);
         break;
       case 1: // Poison — Main 5.2: MODEL_POISON cloud + 10 smoke at target
@@ -3018,7 +3235,11 @@ void HeroCharacter::ForceDie() {
   CancelAttack();
   m_moving = false;
   SetAction(ACTION_DIE1);
-  SoundManager::Play(SOUND_MALE_DIE);
+  // Elf (class 32) uses female death scream
+  if (m_class == 32)
+    SoundManager::Play(SOUND_FEMALE_SCREAM1);
+  else
+    SoundManager::Play(SOUND_MALE_DIE);
   std::cout << "[Hero] Dying (Forced) — action=" << ACTION_DIE1
             << " numActions="
             << (m_skeleton ? (int)m_skeleton->Actions.size() : 0) << std::endl;
@@ -3130,7 +3351,7 @@ void HeroCharacter::UpdateState(float deltaTime) {
         if (isMountRiding() || (!m_inSafeZone && m_weaponBmd)) {
           SetAction(weaponIdleAction());
         } else {
-          SetAction(ACTION_STOP_MALE);
+          SetAction(defaultIdleAction());
         }
       }
     }
@@ -3179,11 +3400,14 @@ void HeroCharacter::Respawn(const glm::vec3 &spawnPos) {
   m_attackTargetMonster = -1;
   m_gcdTargetMonster = -1;
   m_globalAttackCooldown = 0.0f;
-  // Return to idle
+  m_activeSkillId = 0;
+  m_attackHitRegistered = false;
+  m_swordSwingCount = 0;
+  // Return to idle (Elf uses female idle)
   if (isMountRiding() || (!m_inSafeZone && m_weaponBmd)) {
     SetAction(weaponIdleAction());
   } else {
-    SetAction(ACTION_STOP_MALE);
+    SetAction((m_class == 32) ? ACTION_STOP_FEMALE : ACTION_STOP_MALE);
   }
 }
 

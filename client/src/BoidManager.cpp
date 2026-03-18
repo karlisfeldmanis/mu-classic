@@ -189,7 +189,41 @@ void BoidManager::Init(const std::string &dataPath) {
     std::cerr << "[Boid] Failed to load Fish01.bmd" << std::endl;
   }
 
-  // Initialize all boids/bats/fish as dead with staggered spawn delay
+  // Load butterfly model: Data/Object1/Butterfly01.bmd (Noria ambient)
+  std::string bflyPath = dataPath + "/Object1/Butterfly01.bmd";
+  auto bflyBmd = BMDParser::Parse(bflyPath);
+  if (bflyBmd) {
+    m_butterflyBmd = std::move(bflyBmd);
+    std::string texDir = dataPath + "/Object1/";
+    m_butterflyBones = ComputeBoneMatrices(m_butterflyBmd.get());
+    AABB aabb{};
+    for (auto &mesh : m_butterflyBmd->Meshes) {
+      UploadMeshWithBones(mesh, texDir, m_butterflyBones, m_butterflyMeshes, aabb, true);
+    }
+
+    // Create shadow buffer
+    int totalVerts = 0;
+    for (auto &mesh : m_butterflyBmd->Meshes) {
+      for (int i = 0; i < mesh.NumTriangles; ++i) {
+        totalVerts += (mesh.Triangles[i].Polygon == 4) ? 6 : 3;
+      }
+    }
+    {
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin().add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float).end();
+      m_butterflyShadow.vbo = bgfx::createDynamicVertexBuffer(
+          totalVerts, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
+    }
+    m_butterflyShadow.vertexCount = totalVerts;
+
+    std::cout << "[Boid] Loaded Butterfly01.bmd (" << m_butterflyBmd->Bones.size()
+              << " bones, " << m_butterflyBmd->Meshes.size() << " meshes)"
+              << std::endl;
+  } else {
+    std::cerr << "[Boid] Failed to load Butterfly01.bmd" << std::endl;
+  }
+
+  // Initialize all boids/bats/butterflies/fish as dead with staggered spawn delay
   for (int i = 0; i < MAX_BOIDS; ++i) {
     m_boids[i].live = false;
     m_boids[i].respawnDelay = 2.0f + (float)i * 3.0f; // Stagger: 2s, 5s, 8s, ...
@@ -197,6 +231,10 @@ void BoidManager::Init(const std::string &dataPath) {
   for (int i = 0; i < MAX_BATS; ++i) {
     m_bats[i].live = false;
     m_bats[i].respawnDelay = 2.0f + (float)i * 3.0f;
+  }
+  for (int i = 0; i < MAX_BUTTERFLIES; ++i) {
+    m_butterflies[i].live = false;
+    m_butterflies[i].respawnDelay = 2.0f + (float)i * 2.5f;
   }
   for (auto &f : m_fishs)
     f.live = false;
@@ -213,26 +251,18 @@ void BoidManager::Init(const std::string &dataPath) {
   }
 
   if (TexValid(m_leafTexture)) {
-    // Create leaf quad (3x3 unit quad in XZ plane)
-    struct LeafVert { float x, y, z, u, v; };
-    LeafVert quadVerts[] = {
-        {-3.0f, 0.0f, -3.0f, 0.0f, 0.0f},
-        { 3.0f, 0.0f, -3.0f, 1.0f, 0.0f},
-        { 3.0f, 0.0f,  3.0f, 1.0f, 1.0f},
-        {-3.0f, 0.0f,  3.0f, 0.0f, 1.0f},
-    };
-    uint16_t quadIndices[] = {0, 1, 2, 0, 2, 3};
-
+    // Create dynamic buffers sized for MAX_LEAVES quads (4 verts + 6 indices each)
     bgfx::VertexLayout leafLayout;
     leafLayout.begin()
         .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
         .add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
         .end();
-    m_leafVBO = bgfx::createVertexBuffer(
-        bgfx::copy(quadVerts, sizeof(quadVerts)), leafLayout);
-    m_leafEBO = bgfx::createIndexBuffer(
-        bgfx::copy(quadIndices, sizeof(quadIndices)));
-    std::cout << "[Boid] Leaf texture loaded (BGFX)" << std::endl;
+    m_leafDynVBO = bgfx::createDynamicVertexBuffer(
+        MAX_LEAVES * 4, leafLayout, BGFX_BUFFER_ALLOW_RESIZE);
+    m_leafDynEBO = bgfx::createDynamicIndexBuffer(
+        MAX_LEAVES * 6, BGFX_BUFFER_ALLOW_RESIZE);
+    std::cout << "[Boid] Leaf texture loaded (BGFX batched)" << std::endl;
   }
 
   for (auto &leaf : m_leaves)
@@ -624,6 +654,120 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
   }
 }
 
+// ── Butterfly movement (Main 5.2: GOBoid.cpp MoveButterFly lines 926-944) ──
+// Main 5.2: MoveButterFly (GOBoid.cpp:926-946) + MoveBoidGroup integration
+// All logic is per-tick (25fps). We accumulate dt and run discrete ticks.
+void BoidManager::moveButterfly(Boid &b, const glm::vec3 &heroPos) {
+  // Accumulate time in b.timer; consume 0.04s ticks (25fps)
+  // dt was already added to b.timer by caller
+
+  while (b.timer >= 0.04f) {
+    b.timer -= 0.04f;
+
+    // Random heading change (1/32 chance per tick)
+    if (rand() % 32 == 0) {
+      b.angle.z = (float)(rand() % 360);
+      b.direction.y = (float)(rand() % 15 - 7) * 1.0f;
+    }
+    // Per-tick vertical velocity jitter
+    b.direction.y += (float)(rand() % 15 - 7) * 0.2f;
+
+    // Altitude constraints: soft bounds terrain+50 to terrain+300
+    float terrainH = getTerrainHeight(b.position.x, b.position.z);
+    if (b.position.y < terrainH + 50.0f) {
+      b.direction.y *= 0.8f;
+      b.direction.y += 1.0f;
+    }
+    if (b.position.y > terrainH + 300.0f) {
+      b.direction.y *= 0.8f;
+      b.direction.y -= 1.0f;
+    }
+
+    // Per-tick altitude wiggle (separate from direction.y velocity)
+    b.position.y += (float)(rand() % 15 - 7) * 0.3f;
+
+    // MoveBoidGroup integration: Vector(velocity*25, 0, Direction[2])
+    // rotated by Angle[2], then added to position
+    // Must match moveBoidGroup() trig convention (cos for X, sin for Z)
+    // to align movement direction with render facing (angle.z + 90)
+    float rad = b.angle.z * 3.14159265f / 180.0f;
+    float forward = b.velocity * 25.0f; // 0.3 * 25 = 7.5 units/tick
+    b.position.x += std::cos(rad) * forward;
+    b.position.z -= std::sin(rad) * forward;
+    b.position.y += b.direction.y;
+  }
+}
+
+void BoidManager::updateButterflies(float dt, const glm::vec3 &heroPos) {
+  if (!m_butterflyBmd)
+    return;
+
+  for (int i = 0; i < MAX_BUTTERFLIES; ++i) {
+    Boid &b = m_butterflies[i];
+
+    // Spawn new butterfly
+    if (!b.live) {
+      b.respawnDelay -= dt;
+      if (b.respawnDelay > 0.0f)
+        continue;
+
+      float spawnX = heroPos.x + (float)(rand() % 1024 - 512);
+      float spawnZ = heroPos.z + (float)(rand() % 1024 - 512);
+
+      b = Boid{};
+      b.live = true;
+      b.velocity = 0.3f; // Main 5.2: butterfly velocity 0.3 (much slower than birds)
+      b.alpha = 0.0f;
+      b.alphaTarget = 1.0f;
+      b.scale = 0.7f; // Main 5.2: CreateBugSub default scale
+      b.shadowScale = 5.0f;
+      b.ai = BoidAI::FLY; // Butterflies always fly
+      b.action = 0;
+      b.angle = glm::vec3(0.0f, 0.0f, (float)(rand() % 360));
+
+      b.position.x = spawnX;
+      b.position.z = spawnZ;
+      float terrainH = getTerrainHeight(b.position.x, b.position.z);
+      b.position.y = terrainH + (float)(rand() % 150 + 50);
+      continue;
+    }
+
+    // Animate
+    if (b.action >= 0 && b.action < (int)m_butterflyBmd->Actions.size()) {
+      int numKeys = m_butterflyBmd->Actions[b.action].NumAnimationKeys;
+      if (numKeys > 1) {
+        b.priorAnimFrame = b.animFrame;
+        b.animFrame += 1.0f * dt * 25.0f;
+        if (b.animFrame >= (float)numKeys)
+          b.animFrame = std::fmod(b.animFrame, (float)numKeys);
+      }
+    }
+
+    // Move (tick-based: accumulate dt, moveButterfly consumes 0.04s ticks)
+    b.timer += dt;
+    moveButterfly(b, heroPos);
+
+    // Distance check — fade out if > 1200 units from hero, kill at alpha 0
+    float dx = b.position.x - heroPos.x;
+    float dz = b.position.z - heroPos.z;
+    float range = std::sqrt(dx * dx + dz * dz);
+    if (range >= 1200.0f) {
+      b.alphaTarget = 0.0f; // Fade out smoothly
+    } else {
+      b.alphaTarget = 1.0f;
+    }
+
+    // Alpha fade
+    alphaFade(b.alpha, b.alphaTarget, dt);
+
+    // Kill after fully faded out
+    if (b.alpha <= 0.01f && b.alphaTarget <= 0.0f) {
+      b.live = false;
+      b.respawnDelay = 2.0f + (float)(rand() % 4);
+    }
+  }
+}
+
 void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
   if (!m_fishBmd)
     return;
@@ -801,6 +945,76 @@ void BoidManager::updateLeaves(float dt, const glm::vec3 &heroPos) {
   }
 }
 
+// ── Devias Snow (Main 5.2: CreateDeviasSnow / MoveEtcLeaf) ──────────
+
+void BoidManager::spawnSnow(LeafParticle &s, const glm::vec3 &heroPos) {
+  // Main 5.2: CreateDeviasSnow (ZzzEffectFireLeave.cpp:248-270)
+  s.live = true;
+  s.alpha = 1.0f;
+  s.onGround = false;
+
+  // Spawn around hero (Main 5.2: ±800 X, -500..+900 Y, +200..+400 Z)
+  s.position.x = heroPos.x + (float)(rand() % 1600 - 800);
+  s.position.z = heroPos.z + (float)(rand() % 1400 - 500);
+  s.position.y = heroPos.y + (float)(rand() % 200 + 200);
+
+  // Main 5.2: velocity Vector(0,0,-(8..23)) rotated by Angle(-30,0,0)
+  // After -30° X rotation: x=0, y=-speed*cos30, z=-speed*sin30
+  // Main 5.2 values are per-tick (25fps) — multiply by 25 for per-second
+  float speed = (float)(rand() % 16 + 8) * 25.0f;
+  s.velocity.x = 0.0f;
+  s.velocity.y = -speed * 0.866f; // -cos(30°) * speed (downward)
+  s.velocity.z = -speed * 0.5f;   // -sin(30°) * speed (drift)
+
+  // Gentle tumble for snow (less than leaves), per-tick → per-second
+  s.turningForce.x = (float)(rand() % 20 - 10) * 25.0f;
+  s.turningForce.z = (float)(rand() % 40 - 20) * 25.0f;
+  s.turningForce.y = (float)(rand() % 20 - 10) * 25.0f;
+  s.angle = glm::vec3(0.0f);
+}
+
+void BoidManager::updateSnow(float dt, const glm::vec3 &heroPos) {
+  if (!TexValid(m_leafTexture))
+    return;
+
+  for (int i = 0; i < MAX_LEAVES; ++i) {
+    LeafParticle &s = m_leaves[i];
+
+    if (!s.live) {
+      spawnSnow(s, heroPos);
+      continue;
+    }
+
+    float terrainH = getTerrainHeight(s.position.x, s.position.z);
+
+    // Kill snow too far from hero
+    float dx = s.position.x - heroPos.x;
+    float dz = s.position.z - heroPos.z;
+    if (dx * dx + dz * dz > 1200.0f * 1200.0f) {
+      s.live = false;
+      continue;
+    }
+
+    if (s.position.y <= terrainH) {
+      // On ground: fade out (Main 5.2: Light -= 0.05/tick = 1.25/s)
+      s.position.y = terrainH;
+      s.onGround = true;
+      s.alpha -= 1.25f * dt;
+      if (s.alpha <= 0.0f)
+        s.live = false;
+    } else {
+      // Airborne: gentle random drift (Main 5.2: MoveEtcLeaf ±0.8/tick)
+      s.velocity.x += (float)(rand() % 16 - 8) * 0.1f;
+      s.velocity.z += (float)(rand() % 16 - 8) * 0.1f;
+      s.velocity.y += (float)(rand() % 16 - 8) * 0.1f;
+      s.position += s.velocity * dt;
+    }
+
+    // Gentle tumble
+    s.angle += s.turningForce * dt;
+  }
+}
+
 void BoidManager::Update(float deltaTime, const glm::vec3 &heroPos,
                           int heroAction, float worldTime) {
   m_worldTime = worldTime;
@@ -812,34 +1026,35 @@ void BoidManager::Update(float deltaTime, const glm::vec3 &heroPos,
   } else if (m_mapId == 1) {
     // Dungeon: bats only (no birds, fish, or leaves underground)
     updateBats(deltaTime, heroPos);
+  } else if (m_mapId == 2) {
+    // Devias: falling snow (Main 5.2: CreateDeviasSnow)
+    updateSnow(deltaTime, heroPos);
+  } else if (m_mapId == 3) {
+    // Noria: butterflies and leaves (elf forest — Main 5.2 GOBoid.cpp:1334)
+    updateButterflies(deltaTime, heroPos);
+    updateLeaves(deltaTime, heroPos);
   }
 }
 
 // ── Render ───────────────────────────────────────────────────────────
 
 void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
-                              const glm::mat4 &proj) {
+                              const glm::mat4 &proj, const glm::vec3 &eye) {
   if (!b.live || b.alpha <= 0.001f || !m_birdBmd)
     return;
 
-  // Compute interpolated bones for this boid's animation state
   auto bones = ComputeBoneMatricesInterpolated(m_birdBmd.get(), b.action,
                                                 b.animFrame);
-
-  // Re-skin bird mesh with these bones
   for (int mi = 0; mi < (int)m_birdMeshes.size() && mi < (int)m_birdBmd->Meshes.size(); ++mi) {
     RetransformMeshWithBones(m_birdBmd->Meshes[mi], bones, m_birdMeshes[mi]);
   }
 
-  // Build model matrix
-  // Main 5.2 adds 90 degrees to angle.z for rendering (GOBoid.cpp:1514)
   glm::mat4 model = glm::translate(glm::mat4(1.0f), b.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
   model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
-  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
   glm::vec3 tLight = sampleTerrainLight(b.position);
   m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (auto &mb : m_birdMeshes) {
@@ -869,7 +1084,7 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
 }
 
 void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
-                             const glm::mat4 &proj) {
+                             const glm::mat4 &proj, const glm::vec3 &eye) {
   if (!b.live || b.alpha <= 0.001f || !m_batBmd)
     return;
 
@@ -885,7 +1100,6 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
   model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
-  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
   glm::vec3 tLight = sampleTerrainLight(b.position);
   for (auto &mb : m_batMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
@@ -913,28 +1127,67 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
   }
 }
 
+void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
+                                   const glm::mat4 &proj, const glm::vec3 &eye) {
+  if (!b.live || b.alpha <= 0.001f || !m_butterflyBmd)
+    return;
+
+  auto bones = ComputeBoneMatricesInterpolated(m_butterflyBmd.get(), b.action,
+                                                b.animFrame);
+  for (int mi = 0; mi < (int)m_butterflyMeshes.size() && mi < (int)m_butterflyBmd->Meshes.size(); ++mi) {
+    RetransformMeshWithBones(m_butterflyBmd->Meshes[mi], bones, m_butterflyMeshes[mi]);
+  }
+
+  glm::mat4 model = glm::translate(glm::mat4(1.0f), b.position);
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+  model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
+  model = glm::scale(model, glm::vec3(b.scale));
+
+  glm::vec3 tLight = sampleTerrainLight(b.position);
+  for (auto &mb : m_butterflyMeshes) {
+    if (mb.indexCount == 0 || mb.hidden) continue;
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    m_shader->setTexture(0, "s_texColor", mb.texture);
+    m_shader->setVec4("u_params", glm::vec4(b.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_fogParams", glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_fogColor", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                   | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
+                   | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
+  }
+}
+
 void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
-                              const glm::mat4 &proj) {
+                              const glm::mat4 &proj, const glm::vec3 &eye) {
   if (!f.live || f.alpha <= 0.001f || !m_fishBmd)
     return;
 
-  // Compute interpolated bones
   auto bones = ComputeBoneMatricesInterpolated(m_fishBmd.get(), f.action,
                                                 f.animFrame);
-
-  // Re-skin fish mesh
   for (int mi = 0; mi < (int)m_fishMeshes.size() && mi < (int)m_fishBmd->Meshes.size(); ++mi) {
     RetransformMeshWithBones(m_fishBmd->Meshes[mi], bones, m_fishMeshes[mi]);
   }
 
-  // Build model matrix (Main 5.2: RenderFishs adds 90 degrees)
   glm::mat4 model = glm::translate(glm::mat4(1.0f), f.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(f.angle.z + 90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-f.angle.z), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(f.scale));
 
-  glm::vec3 eye = glm::vec3(glm::inverse(view)[3]);
   glm::vec3 tLight = sampleTerrainLight(f.position);
   for (auto &mb : m_fishMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
@@ -967,15 +1220,17 @@ void BoidManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   if (!m_shader)
     return;
 
-  // BGFX: uniforms are set per-submit in renderBoid/renderBat/renderFish
   if (m_mapId == 0) {
     for (int i = 0; i < MAX_BOIDS; ++i)
-      renderBoid(m_boids[i], view, proj);
+      renderBoid(m_boids[i], view, proj, camPos);
     for (int i = 0; i < MAX_FISHS; ++i)
-      renderFish(m_fishs[i], view, proj);
+      renderFish(m_fishs[i], view, proj, camPos);
   } else if (m_mapId == 1) {
     for (int i = 0; i < MAX_BATS; ++i)
-      renderBat(m_bats[i], view, proj);
+      renderBat(m_bats[i], view, proj, camPos);
+  } else if (m_mapId == 3) {
+    for (int i = 0; i < MAX_BUTTERFLIES; ++i)
+      renderButterfly(m_butterflies[i], view, proj, camPos);
   }
 }
 
@@ -1162,32 +1417,62 @@ void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
 // ── Render Leaves ────────────────────────────────────────────────────
 
 void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj) {
-  if (!m_leafShader || !TexValid(m_leafTexture) || !bgfx::isValid(m_leafVBO))
+  if (!m_leafShader || !TexValid(m_leafTexture) || !bgfx::isValid(m_leafDynVBO))
     return;
 
-  uint64_t leafState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
-                     | BGFX_STATE_DEPTH_TEST_LESS
-                     | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
-  // No cull — leaves visible from both sides
+  // Batch all live leaves into a single draw call
+  struct LeafVert { float x, y, z, u, v; uint32_t col; };
+  static std::vector<LeafVert> verts;
+  static std::vector<uint16_t> indices;
+  verts.clear();
+  indices.clear();
+
+  // Base quad offsets (3x3 in XZ plane)
+  static const glm::vec3 qOff[4] = {
+    {-3.0f, 0.0f, -3.0f}, { 3.0f, 0.0f, -3.0f},
+    { 3.0f, 0.0f,  3.0f}, {-3.0f, 0.0f,  3.0f}
+  };
+  static const float qUV[4][2] = {{0,0},{1,0},{1,1},{0,1}};
 
   for (int i = 0; i < MAX_LEAVES; ++i) {
     const LeafParticle &leaf = m_leaves[i];
     if (!leaf.live || leaf.alpha <= 0.0f)
       continue;
 
-    glm::mat4 model = glm::translate(glm::mat4(1.0f), leaf.position);
-    model = glm::rotate(model, glm::radians(leaf.angle.y), glm::vec3(0, 1, 0));
-    model = glm::rotate(model, glm::radians(leaf.angle.x), glm::vec3(1, 0, 0));
-    model = glm::rotate(model, glm::radians(leaf.angle.z), glm::vec3(0, 0, 1));
+    // Build rotation matrix on CPU
+    glm::mat4 rot(1.0f);
+    rot = glm::rotate(rot, glm::radians(leaf.angle.y), glm::vec3(0, 1, 0));
+    rot = glm::rotate(rot, glm::radians(leaf.angle.x), glm::vec3(1, 0, 0));
+    rot = glm::rotate(rot, glm::radians(leaf.angle.z), glm::vec3(0, 0, 1));
 
-    bgfx::setTransform(glm::value_ptr(model));
-    bgfx::setVertexBuffer(0, m_leafVBO);
-    bgfx::setIndexBuffer(m_leafEBO);
-    m_leafShader->setTexture(0, "s_texColor", m_leafTexture);
-    m_leafShader->setVec4("u_params", glm::vec4(leaf.alpha, 0.0f, 0.0f, 0.0f));
-    bgfx::setState(leafState);
-    bgfx::submit(0, m_leafShader->program);
+    uint8_t a = (uint8_t)(std::min(leaf.alpha, 1.0f) * 255.0f);
+    uint32_t col = (uint32_t)a << 24 | 0x00FFFFFF; // ABGR
+
+    uint16_t base = (uint16_t)verts.size();
+    for (int v = 0; v < 4; ++v) {
+      glm::vec3 p = glm::vec3(rot * glm::vec4(qOff[v], 1.0f)) + leaf.position;
+      verts.push_back({p.x, p.y, p.z, qUV[v][0], qUV[v][1], col});
+    }
+    indices.push_back(base); indices.push_back(base+1); indices.push_back(base+2);
+    indices.push_back(base); indices.push_back(base+2); indices.push_back(base+3);
   }
+
+  if (verts.empty()) return;
+
+  bgfx::update(m_leafDynVBO, 0, bgfx::copy(verts.data(), (uint32_t)(verts.size() * sizeof(LeafVert))));
+  bgfx::update(m_leafDynEBO, 0, bgfx::copy(indices.data(), (uint32_t)(indices.size() * sizeof(uint16_t))));
+
+  glm::mat4 identity(1.0f);
+  bgfx::setTransform(glm::value_ptr(identity));
+  bgfx::setVertexBuffer(0, m_leafDynVBO, 0, (uint32_t)verts.size());
+  bgfx::setIndexBuffer(m_leafDynEBO, 0, (uint32_t)indices.size());
+  m_leafShader->setTexture(0, "s_texColor", m_leafTexture);
+  m_leafShader->setVec4("u_params", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)); // Alpha baked into vertex color
+  uint64_t leafState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                     | BGFX_STATE_DEPTH_TEST_LESS
+                     | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  bgfx::setState(leafState);
+  bgfx::submit(0, m_leafShader->program);
 }
 
 // ── Cleanup ──────────────────────────────────────────────────────────
@@ -1204,10 +1489,10 @@ void BoidManager::Cleanup() {
   m_batShadow.vbo = BGFX_INVALID_HANDLE;
   m_fishShadow.vbo = BGFX_INVALID_HANDLE;
 
-  if (bgfx::isValid(m_leafVBO)) bgfx::destroy(m_leafVBO);
-  if (bgfx::isValid(m_leafEBO)) bgfx::destroy(m_leafEBO);
-  m_leafVBO = BGFX_INVALID_HANDLE;
-  m_leafEBO = BGFX_INVALID_HANDLE;
+  if (bgfx::isValid(m_leafDynVBO)) bgfx::destroy(m_leafDynVBO);
+  if (bgfx::isValid(m_leafDynEBO)) bgfx::destroy(m_leafDynEBO);
+  m_leafDynVBO = BGFX_INVALID_HANDLE;
+  m_leafDynEBO = BGFX_INVALID_HANDLE;
   TexDestroy(m_leafTexture);
 
   m_birdBmd.reset();

@@ -84,6 +84,7 @@ public:
     uint8_t category = 0xFF; // 0xFF = empty
     uint8_t itemIndex = 0;
     uint8_t itemLevel = 0;
+    uint8_t quantity = 0;    // Stack count (arrows/bolts)
   };
   std::array<EquippedItem, NUM_EQUIP_SLOTS> equipment{};
 
@@ -125,21 +126,37 @@ public:
   // Server-side attack rate limiter (prevents speed hack / GCD bypass)
   float attackCooldown = 0.0f; // Seconds until next attack is allowed
 
+  // Monster→player poison debuff (OpenMU: Poison Bull type 8, Larva type 12)
+  // DoT: 3% of current HP every 3 seconds for ~20 seconds
+  bool poisoned = false;
+  float poisonTickTimer = 0.0f; // Accumulator for 3-second tick interval
+  float poisonDuration = 0.0f;  // Remaining poison duration
+
   // Learned skills (skill IDs)
   std::vector<uint8_t> learnedSkills;
 
-  // Quest system — Lorencia/Dungeon chain (quests 0-11)
-  int questIndex = 0;      // Current quest (0-11), 12=all done
-  int questKillCount0 = 0; // Kill progress for target 0
-  int questKillCount1 = 0; // Kill progress for target 1
-  int questKillCount2 = 0; // Kill progress for target 2
-  bool questAccepted = false; // Whether current quest has been accepted
-  // Quest system — Devias chain (quests 12-17), independent from Lorencia
-  int deviasQuestIndex = 12;
-  int deviasKillCount0 = 0;
-  int deviasKillCount1 = 0;
-  int deviasKillCount2 = 0;
-  bool deviasQuestAccepted = false;
+  // Elf summon pet
+  uint16_t activeSummonIndex = 0; // Monster index of active summon (0 = none)
+  int16_t activeSummonType = -1;  // Monster type of active summon (-1 = none)
+  uint16_t attackTargetMonsterIdx = 0; // Last monster player attacked (for summon assist)
+  bool wasInSafeZone = false; // Previous tick safe zone state (for despawn/respawn transitions)
+
+  // Active buffs (Elf auras: Greater Defense, Greater Damage)
+  struct ActiveBuff {
+    uint8_t type = 0;     // 1=Defense, 2=Damage
+    float remaining = 0;  // Seconds left
+    int value = 0;        // Stat bonus amount
+    bool active = false;
+  };
+  ActiveBuff buffs[2]; // [0]=Defense, [1]=Damage (Heal is instant, no tracking)
+
+  // Quest system — per-quest tracking (replaces chain system)
+  struct ActiveQuest {
+    int questId = 0;
+    int killCount[3] = {};
+  };
+  std::vector<ActiveQuest> activeQuests; // Accepted, not yet completed
+  uint64_t completedQuestMask = 0;      // Bitmask: bit N = quest N done (0-33)
 
 private:
   int m_fd;

@@ -16,6 +16,8 @@ class ObjectRenderer;
 struct GroundItem;
 struct UICoords;
 
+struct ClientEquipSlot;
+
 struct InputContext {
   HeroCharacter *hero;
   Camera *camera;
@@ -25,6 +27,7 @@ struct InputContext {
   NpcManager *npcMgr;
   ObjectRenderer *objectRenderer;
   GroundItem *groundItems;
+  ClientEquipSlot *equipSlots; // Equipment slots [12] for ammo validation
   int maxGroundItems;
   UICoords *hudCoords;
   bool *showCharInfo;
@@ -57,6 +60,7 @@ struct InputContext {
   bool *showQuestLog;
   bool *mouseOverUIPanel; // Set each frame by main — true if cursor is over any panel
   bool *showCommandTerminal; // Enter opens, Escape closes
+  bool *showMinimap;         // TAB toggles minimap overlay
   std::string dataPath;
 };
 

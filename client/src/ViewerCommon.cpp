@@ -139,6 +139,11 @@ void UploadMeshWithBones(const Mesh_t &mesh, const std::string &textureDir,
     if (texLower.find("flail00") != std::string::npos) {
       mb.bright = true;
     }
+    // NPC wings (e.g. ElfWizard): JPEG has no alpha, use additive blending
+    // so black areas become transparent (Main 5.2: BlendMesh on wing mesh)
+    if (texLower.find("wing") != std::string::npos) {
+      mb.bright = true;
+    }
   }
 
   mb.bmdTextureId = mesh.Texture;

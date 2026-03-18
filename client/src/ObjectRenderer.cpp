@@ -31,15 +31,32 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
   case 105:
     return 3; // Waterspout01 — water UV scroll
   case 41:
-    return 1; // DungeonGate02 torch — fire glow mesh
+    if (mapId == 3) return 0; // Noria: flowing additive mesh 0
+    return 1; // Dungeon: DungeonGate02 torch — fire glow mesh
   case 42:
-    return 1; // DungeonGate03 torch — fire glow mesh
+    if (mapId == 3) return -1; // Noria: StreamMesh (no BlendMesh)
+    return 1; // Dungeon: DungeonGate03 torch — fire glow mesh
   // Devias-only (World3) BlendMesh objects — Main 5.2: ZzzObject.cpp
   // Types 19/92/93 are aurora curtains on Devias but cannons on Lorencia
   case 19:
+    if (mapId == 3) return 0; // Noria: additive mesh 0
+    return (mapId == 2) ? 0 : -1; // Devias: aurora additive
   case 92:
   case 93:
     return (mapId == 2) ? 0 : -1; // Aurora additive only on Devias
+  // Noria-specific BlendMesh objects — Main 5.2: ZzzObject.cpp WD_3NORIA
+  case 1:
+    return (mapId == 3) ? 1 : -1; // Noria: glowing mesh 1
+  case 9:
+    return (mapId == 3) ? 3 : -1; // Noria: glowing mesh 3
+  case 17:
+    return (mapId == 3) ? 0 : -1; // Noria: additive mesh 0
+  case 18:
+    return (mapId == 3) ? 2 : -1; // Noria: glowing mesh 2
+  case 37:
+    return (mapId == 3) ? 0 : -1; // Noria: additive mesh 0
+  case 39:
+    return (mapId == 3) ? 1 : -1; // Noria: glowing mesh 1
   case 54:
     return 1; // Tomb glow
   case 56:
@@ -654,6 +671,20 @@ void ObjectRenderer::LoadObjectsGeneric(
       continue;
     }
 
+    // Skip types where ALL meshes have zero geometry (invisible placeholder BMDs),
+    // but keep interactive objects (pose triggers, sit spots) which are intentionally invisible
+    {
+      bool hasVisibleMesh = false;
+      for (auto &mb : cache.meshBuffers) {
+        if (mb.indexCount > 0 && !mb.hidden) { hasVisibleMesh = true; break; }
+      }
+      bool isInteractiveType = (obj.type == 38 || obj.type == 91 || obj.type == 133);
+      if (!hasVisibleMesh && !isInteractiveType) {
+        ++skipped;
+        continue;
+      }
+    }
+
     // Build model matrix (same transform as LoadObjects)
     glm::vec3 objPos = obj.position;
     glm::mat4 model = glm::translate(glm::mat4(1.0f), objPos);
@@ -702,7 +733,25 @@ void ObjectRenderer::LoadObjectsGeneric(
         pickRadius = 20.0f;
         pickHeight = 100.0f;
         break;
-      default: break;
+      default:
+        // Noria interactive objects (Main 5.2: ZzzObject.cpp WD_3NORIA)
+        if (m_mapId == 3) {
+          switch (obj.type) {
+          case 8: // Chair/bench (Object09.bmd) — CreateOperate, sit
+            iact = InteractType::SIT;
+            isInteractive = true;
+            pickRadius = 35.0f;
+            pickHeight = 110.0f;
+            break;
+          case 90: // StreetLight01 lamp post — visible pose trigger
+            iact = InteractType::POSE;
+            isInteractive = true;
+            pickRadius = 40.0f;
+            pickHeight = 160.0f;
+            break;
+          }
+        }
+        break;
       }
       if (isInteractive) {
         InteractiveObject io;
@@ -985,6 +1034,8 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       continue;
     if (m_mapId == 2 && (inst.type == 91 || inst.type == 100))
       continue;
+    if (m_mapId == 3 && inst.type == 38) // Noria pose box (HiddenMesh=-2)
+      continue;
     if (!m_typeFilter.empty()) {
       bool allowed = false;
       for (int t : m_typeFilter)
@@ -1046,6 +1097,10 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
 
     bool hasBlendMesh = it->second.blendMeshTexId >= 0;
     bool hasUVScroll = (inst.type == 118 || inst.type == 119 || inst.type == 105);
+    // Noria flowing objects with UV scroll (Main 5.2 MoveObject)
+    bool isNoriaFlowing = (m_mapId == 3 &&
+        (inst.type == 18 || inst.type == 41 || inst.type == 42 || inst.type == 43));
+    if (m_mapId == 3 && inst.type == 41) hasUVScroll = true;
     bool isDungeonWater = (m_mapId == 1 && inst.type >= 22 && inst.type <= 24);
     bool disableCullForObj = (m_mapId == 1 &&
         ((inst.type >= 44 && inst.type <= 46) ||
@@ -1088,6 +1143,24 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
         state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
         state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
         isAdditive = true;
+      } else if (isNoriaFlowing && meshIdx == 0) {
+        // Noria stream/flowing objects (Main 5.2 MoveObject):
+        // Type 18: V scroll, Type 41: BlendMesh+V scroll (handled below),
+        // Type 42: StreamMesh U scroll, Type 43: StreamMesh U scroll (opposite)
+        int wt;
+        if (inst.type == 18) {
+          wt = (int)(currentTime * 1000.0f) % 1000;
+          texOffset = glm::vec2(0.0f, (float)wt * 0.001f);
+        } else if (inst.type == 42) {
+          wt = (int)(currentTime * 1000.0f) % 500;
+          texOffset = glm::vec2(-(float)wt * 0.002f, 0.0f);
+        } else if (inst.type == 43) {
+          wt = (int)(currentTime * 1000.0f) % 500;
+          texOffset = glm::vec2((float)wt * 0.002f, 0.0f);
+        }
+        state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
+        state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+        isAdditive = true;
       } else if (mb.isWindowLight && hasBlendMesh) {
         // BlendMesh: additive blending with intensity flicker
         float intensity = flickerBase;
@@ -1099,14 +1172,24 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           intensity = 0.7f + 0.1f * std::sin(currentTime * 5.3f);
         if (inst.type == 150 || inst.type == 98 || inst.type == 105)
           intensity = 1.0f;
-        if (inst.type == 41 || inst.type == 42) {
+        if (m_mapId == 1 && (inst.type == 41 || inst.type == 42)) {
+          // Dungeon torches: phase-shifted flicker
           float phase = inst.modelMatrix[3][0] * 0.013f;
           intensity = 0.78f + 0.10f * std::sin(currentTime * 3.8f + phase)
                             + 0.06f * std::sin(currentTime * 9.5f + phase * 2.1f);
         }
+        // Noria BlendMesh objects: steady glow
+        if (m_mapId == 3) intensity = 1.0f;
         blendLight = intensity;
-        if (hasUVScroll)
-          texOffset = glm::vec2(0.0f, uvScroll);
+        if (hasUVScroll) {
+          if (m_mapId == 3 && inst.type == 41) {
+            // Noria type 41: slower V scroll (Main 5.2: WorldTime%2000*0.0005)
+            int wt = (int)(currentTime * 1000.0f) % 2000;
+            texOffset = glm::vec2(0.0f, (float)wt * 0.0005f);
+          } else {
+            texOffset = glm::vec2(0.0f, uvScroll);
+          }
+        }
         state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
         state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
         isAdditive = true;
@@ -1248,7 +1331,7 @@ void ObjectRenderer::UpdateDoors(const glm::vec3 &heroPos, float deltaTime) {
 
 void ObjectRenderer::ResetDoorStates() {
   for (auto &door : m_doors) {
-    door.soundPlayed = false;
+    door.soundPlayed = true;
   }
   m_doorCooldown = 0.5f;
 }

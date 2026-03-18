@@ -393,20 +393,20 @@ void Init() {
          76, 102, 0, 25, true);
   // Category 4: Bows & Crossbows (OpenMU 0.95d Weapons.cs)
   addDef(128, 4, 0, "Short Bow", "Bow01.bmd", 2, 3, 20, 80, 0, 0, 2, 4, 3, 5, 0,
-         30, true);
+         30, false);
   addDef(129, 4, 1, "Bow", "Bow02.bmd", 2, 3, 30, 90, 0, 0, 8, 4, 9, 13, 0, 30,
-         true);
+         false);
   addDef(130, 4, 2, "Elven Bow", "Bow03.bmd", 2, 3, 30, 90, 0, 0, 16, 4, 17, 24,
-         0, 30, true);
+         0, 30, false);
   addDef(131, 4, 3, "Battle Bow", "Bow04.bmd", 2, 3, 30, 90, 0, 0, 26, 4, 28,
-         37, 0, 30, true);
+         37, 0, 30, false);
   addDef(132, 4, 4, "Tiger Bow", "Bow05.bmd", 2, 4, 30, 100, 0, 0, 40, 4, 42,
-         52, 0, 30, true);
+         52, 0, 30, false);
   addDef(133, 4, 5, "Silver Bow", "Bow06.bmd", 2, 4, 30, 100, 0, 0, 56, 4, 59,
-         71, 0, 40, true);
+         71, 0, 40, false);
   addDef(134, 4, 6, "Chaos Nature Bow", "Bow07.bmd", 2, 4, 40, 150, 0, 0, 75, 4,
-         88, 106, 0, 35, true);
-  addDef(135, 4, 7, "Bolt", "Bolt01.bmd", 1, 1, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0,
+         88, 106, 0, 35, false);
+  addDef(135, 4, 7, "Bolt", "Arrows01.bmd", 1, 1, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0,
          false);
   addDef(136, 4, 8, "Crossbow", "CrossBow01.bmd", 2, 2, 20, 90, 0, 0, 4, 4, 5,
          8, 0, 40, false);
@@ -422,7 +422,7 @@ void Init() {
          68, 4, 68, 82, 0, 40, false);
   addDef(142, 4, 14, "Aquagold Crossbow", "CrossBow07.bmd", 2, 3, 50, 130, 0, 0,
          72, 4, 78, 92, 0, 30, false);
-  addDef(143, 4, 15, "Arrows", "Arrow01.bmd", 1, 1, 0, 0, 0, 0, 0, 4, 0, 0, 0,
+  addDef(143, 4, 15, "Arrows", "Arrows02.bmd", 1, 1, 0, 0, 0, 0, 0, 4, 0, 0, 0,
          0, false);
   addDef(144, 4, 16, "Saint Crossbow", "CrossBow08.bmd", 2, 3, 50, 130, 0, 0,
          83, 4, 90, 108, 0, 35, false);
@@ -652,7 +652,7 @@ void Init() {
          13, 4);
   addDef(760, 12, 10, "Orb of Greater Damage", "Gem04.bmd", 1, 1, 0, 0, 0, 100,
          18, 4);
-  addDef(761, 12, 11, "Orb of Summoning", "Gem05.bmd", 1, 1, 0, 0, 0, 0, 3, 4);
+  addDef(761, 12, 11, "Orb of Goblin", "Gem05.bmd", 1, 1, 0, 0, 0, 0, 3, 4);
   addDef(762, 12, 12, "Orb of Rageful Blow", "Gem06.bmd", 1, 1, 170, 0, 0, 0,
          78, 2);
   addDef(763, 12, 13, "Orb of Impale", "Gem07.bmd", 1, 1, 28, 0, 0, 0, 20, 2);
@@ -674,6 +674,18 @@ void Init() {
   addDef(772, 12, 22, "Orb of Uppercut", "Gem01.bmd", 1, 1, 0, 0, 0, 0, 1, 2);
   addDef(773, 12, 23, "Orb of Cyclone", "Gem01.bmd", 1, 1, 0, 0, 0, 0, 1, 2);
   addDef(774, 12, 24, "Orb of Slash", "Gem01.bmd", 1, 1, 0, 0, 0, 0, 1, 2);
+
+  // Elf summon orbs (indices 25-29)
+  addDef(775, 12, 25, "Orb of Golem Summoning", "Gem05.bmd", 1, 1, 0, 0, 0,
+         60, 18, 4);
+  addDef(776, 12, 26, "Orb of Assassin Summoning", "Gem05.bmd", 1, 1, 0, 0, 0,
+         90, 26, 4);
+  addDef(777, 12, 27, "Orb of Yeti Summoning", "Gem05.bmd", 1, 1, 0, 0, 0,
+         130, 36, 4);
+  addDef(778, 12, 28, "Orb of Knight Summoning", "Gem05.bmd", 1, 1, 0, 0, 0,
+         170, 48, 4);
+  addDef(779, 12, 29, "Orb of Bali Summoning", "Gem05.bmd", 1, 1, 0, 0, 0,
+         210, 52, 4);
 
   // Category 12 (Jewels mix) & Category 13 (Jewelry/Pets) (IDs 800+)
   addDef(815, 12, 15, "Jewel of Chaos", "Jewel15.bmd", 1, 1, 0, 0, 0, 0, 0, 15);

@@ -211,10 +211,6 @@ static int s_faceLoadedClass = -1;
 static glm::vec3 s_faceAABBMin(0.0f);
 static glm::vec3 s_faceAABBMax(0.0f);
 
-// Face screen rect (set by UI code, used by BGFX render to draw face directly)
-static bool  s_faceScreenValid = false;
-static uint16_t s_faceScreenX = 0, s_faceScreenY = 0;
-static uint16_t s_faceScreenW = 0, s_faceScreenH = 0;
 
 // FBO for rendering face portrait to texture
 static bgfx::FrameBufferHandle s_faceFB = BGFX_INVALID_HANDLE;
@@ -422,12 +418,12 @@ static void ReskinFace() {
   }
 }
 
-// Render face model directly to backbuffer using a restricted viewport.
-// This avoids the FBO alpha compositing issue on Metal.
-static constexpr uint8_t FACE_DIRECT_VIEW = 31; // AFTER ImGui (30), face on top of container fill
-static void RenderFaceToBackbuffer() {
+// Render face model to FBO texture, displayed via ImGui::Image in the create panel.
+static bool s_faceRendered = false; // true when FBO has valid face content this frame
+static void RenderFaceToFBO() {
+  s_faceRendered = false;
   if (s_faceLoadedClass < 0 || s_faceMeshes.empty() || !s_modelShader ||
-      !s_faceScreenValid || s_faceScreenW == 0 || s_faceScreenH == 0)
+      !bgfx::isValid(s_faceFB))
     return;
 
   auto &fp = FACE_PARAMS[s_faceLoadedClass];
@@ -438,11 +434,11 @@ static void RenderFaceToBackbuffer() {
   float width = glm::length(glm::vec2(s_faceAABBMax.x - s_faceAABBMin.x,
                                        s_faceAABBMax.y - s_faceAABBMin.y));
 
-  float aspect = (float)s_faceScreenW / (float)s_faceScreenH;
+  float aspect = (float)FACE_TEX_W / (float)FACE_TEX_H;
   float fovDeg = 10.0f;
   float fov = glm::radians(fovDeg);
 
-  float margin = 0.92f;
+  float margin = 0.82f;
   float fitHeight = height * margin;
   float fitWidth = width * margin;
   float distH = (fitHeight * 0.5f) / tanf(fov * 0.5f);
@@ -450,7 +446,7 @@ static void RenderFaceToBackbuffer() {
   float camDist = std::max(distH, distW);
 
   float modelCenter = (s_faceAABBMin.z + s_faceAABBMax.z) * 0.5f;
-  float pushDown = height * 0.12f;
+  float pushDown = height * 0.02f;
   float targetZ = modelCenter + pushDown;
 
   glm::vec3 camP(0.0f, -camDist, targetZ);
@@ -462,16 +458,15 @@ static void RenderFaceToBackbuffer() {
   glm::mat4 model(1.0f);
   model = glm::rotate(model, angleZ, glm::vec3(0, 0, 1));
 
-  // Setup BGFX view: render to backbuffer with restricted viewport
-  bgfx::setViewName(FACE_DIRECT_VIEW, "FaceDirect");
-  bgfx::setViewRect(FACE_DIRECT_VIEW, s_faceScreenX, s_faceScreenY,
-                     s_faceScreenW, s_faceScreenH);
-  // Only clear depth in this viewport area (keep scene color intact)
-  bgfx::setViewClear(FACE_DIRECT_VIEW, BGFX_CLEAR_DEPTH, 0, 1.0f, 0);
-  bgfx::setViewFrameBuffer(FACE_DIRECT_VIEW, BGFX_INVALID_HANDLE); // backbuffer
-  bgfx::setViewTransform(FACE_DIRECT_VIEW, glm::value_ptr(faceView),
+  // Setup BGFX view: render to FBO
+  bgfx::setViewName(FACE_VIEW_ID, "FaceFBO");
+  bgfx::setViewRect(FACE_VIEW_ID, 0, 0, FACE_TEX_W, FACE_TEX_H);
+  bgfx::setViewClear(FACE_VIEW_ID, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH,
+                      0x00000000, 1.0f, 0); // transparent bg — scene shows through via alpha
+  bgfx::setViewFrameBuffer(FACE_VIEW_ID, s_faceFB);
+  bgfx::setViewTransform(FACE_VIEW_ID, glm::value_ptr(faceView),
                           glm::value_ptr(faceProj));
-  bgfx::touch(FACE_DIRECT_VIEW);
+  bgfx::touch(FACE_VIEW_ID);
 
   // Uniforms: simple flat lighting, no fog, no point lights
   s_modelShader->setVec4("u_params", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
@@ -500,8 +495,9 @@ static void RenderFaceToBackbuffer() {
     bgfx::setIndexBuffer(mb.ebo);
     s_modelShader->setTexture(0, "s_texColor", mb.texture);
     bgfx::setState(state);
-    bgfx::submit(FACE_DIRECT_VIEW, s_modelShader->program);
+    bgfx::submit(FACE_VIEW_ID, s_modelShader->program);
   }
+  s_faceRendered = true;
 }
 
 
@@ -1540,9 +1536,16 @@ void Render(int windowWidth, int windowHeight) {
   s_viewMatrix = glm::lookAt(camPos, s_camTarget, glm::vec3(0.0f, 1.0f, 0.0f));
 
   // ── BGFX rendering path ──
-  // Ensure shadow view (8) renders before main view (0)
-  bgfx::ViewId order[] = { CS_SHADOW_VIEW, 0 };
-  bgfx::setViewOrder(0, 2, order);
+  // View order: shadow → face FBO → scene (scene last to backbuffer).
+  // Face FBO must execute BEFORE scene or Metal clears the backbuffer.
+  // IMPORTANT: must remap positions 0..10 so views 8 and 10 appear exactly
+  // once — otherwise default positions 8 and 10 create duplicate view passes
+  // whose extra render-pass transitions clobber the backbuffer on Metal.
+  bgfx::ViewId order[] = {
+      CS_SHADOW_VIEW, FACE_VIEW_ID, 0,   // pos 0-2: shadow(8), face(10), scene(0)
+      1, 2, 3, 4, 5, 6, 7, 9             // pos 3-10: fill remaining, no duplicates
+  };
+  bgfx::setViewOrder(0, 11, order);
 
   bgfx::setViewTransform(0, glm::value_ptr(s_viewMatrix),
                          glm::value_ptr(s_projMatrix));
@@ -1901,13 +1904,13 @@ void Render(int windowWidth, int windowHeight) {
     }
   }
 
-  // Render face portrait directly to backbuffer (if create window is open)
+  // Render face portrait to FBO (if create window is open)
   if (s_createOpen && s_faceLoadedClass >= 0) {
     int wantIdx = ClassToIndex(s_createClass);
     if (wantIdx != s_faceLoadedClass) {
       RebuildFaceMeshes(wantIdx);
     }
-    RenderFaceToBackbuffer();
+    RenderFaceToFBO();
   }
 
 
@@ -2065,8 +2068,7 @@ void Render(int windowWidth, int windowHeight) {
   // ── Character slot click areas (invisible buttons over each slot) ──
   // We handle this via OnMouseClick instead of ImGui
 
-  // ── Create character panel (original layout with direct backbuffer face) ──
-  if (!s_createOpen) s_faceScreenValid = false;
+  // ── Create character panel ──
   if (s_createOpen) {
     int wantIdx = ClassToIndex(s_createClass);
     if (wantIdx != s_faceLoadedClass) {
@@ -2105,24 +2107,6 @@ void Render(int windowWidth, int windowHeight) {
     statOverlayX = panelX + panelW - statOverlayW;
     float formY = panelY + modelH;
 
-    // Face viewport — shifted left so face is more on the left side
-    float faceX = panelX - panelW * 0.14f;
-    float faceY = panelY;
-    float faceDispW = panelW;
-    float faceDispH = modelH;
-
-    // Compute face screen rect for direct backbuffer rendering (BGFX)
-    {
-      ImGuiIO &io = ImGui::GetIO();
-      float fbScaleX = io.DisplayFramebufferScale.x;
-      float fbScaleY = io.DisplayFramebufferScale.y;
-      s_faceScreenX = (uint16_t)(faceX * fbScaleX);
-      s_faceScreenY = (uint16_t)(faceY * fbScaleY);
-      s_faceScreenW = (uint16_t)(faceDispW * fbScaleX);
-      s_faceScreenH = (uint16_t)(faceDispH * fbScaleY);
-      s_faceScreenValid = true;
-    }
-
     // ImGui window for interactive controls (NoBackground — scene shows through)
     ImGui::SetNextWindowPos(ImVec2(panelX - 5, panelY - 5));
     ImGui::SetNextWindowSize(ImVec2(panelW + 10, panelH + 10));
@@ -2132,10 +2116,27 @@ void Render(int windowWidth, int windowHeight) {
 
     ImDrawList *cdl = ImGui::GetWindowDrawList();
 
-    // ── Model container — full background with opacity, face renders on top (view 31) ──
+    // ── Model container — dark background + FBO face texture ──
     cdl->AddRectFilled(ImVec2(panelX, panelY),
                        ImVec2(panelX + panelW, formY),
                        IM_COL32(10, 10, 20, 160), 2.0f);
+
+    // Draw face FBO texture on top of dark background, zoomed to crop torso
+    if (s_faceRendered && bgfx::isValid(s_faceColorTex)) {
+      // Show top 70% of FBO (face/head), crop bottom (torso)
+      float uvBottom = 0.70f;
+      float fboAspect = (float)FACE_TEX_W / ((float)FACE_TEX_H * uvBottom);
+      float faceDispH = modelH;
+      float faceDispW = faceDispH * fboAspect;
+      // Center horizontally within the left portion of the panel
+      float faceX = panelX + (panelW - statOverlayW - faceDispW) * 0.5f;
+      float faceY = panelY;
+      ImTextureID faceTex = (ImTextureID)(uintptr_t)s_faceColorTex.idx;
+      cdl->AddImage(faceTex, ImVec2(faceX, faceY),
+                    ImVec2(faceX + faceDispW, faceY + faceDispH),
+                    ImVec2(0, 0), ImVec2(1, uvBottom));
+    }
+
     cdl->AddRect(ImVec2(panelX, panelY),
                  ImVec2(panelX + panelW, formY),
                  IM_COL32(80, 70, 45, 100), 2.0f);

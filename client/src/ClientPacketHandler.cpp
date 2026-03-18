@@ -6,6 +6,7 @@
 #include "PacketDefs.hpp"
 #include "SoundManager.hpp"
 #include "SystemMessageLog.hpp"
+#include "VFXManager.hpp"
 #include <cstring>
 #include <iostream>
 
@@ -17,6 +18,16 @@ static PendingMapChange s_pendingMapChange;
 void Init(ClientGameState *state) { g_state = state; }
 
 PendingMapChange &GetPendingMapChange() { return s_pendingMapChange; }
+
+const ClientGameState::ActiveBuff *GetActiveBuffs() {
+  return g_state ? g_state->activeBuffs : nullptr;
+}
+
+PoisonDebuffState GetPoisonState() {
+  if (!g_state) return {false, 0, 0};
+  return {g_state->poisoned, g_state->poisonRemaining,
+          g_state->poisonMaxDuration};
+}
 
 // ── Equipment helpers ──
 
@@ -38,8 +49,9 @@ static void ApplyEquipToHero(uint8_t slot, const WeaponEquipInfo &weapon) {
     if (weapon.category == 13) {
       if (weapon.itemIndex == 0 || weapon.itemIndex == 1) {
         // Floating companions (Guardian Angel, Imp)
-        if (!g_state->hero->HasMountEquipped() ||
-            g_state->hero->GetMountItemIndex() != weapon.itemIndex) {
+        // Skip if already equipped with same pet (prevents position reset on equipment sync)
+        if (!g_state->hero->IsPetActive() ||
+            g_state->hero->GetPetItemIndex() != weapon.itemIndex) {
           g_state->hero->UnequipMount();
           g_state->hero->EquipPet(weapon.itemIndex);
         }
@@ -75,6 +87,7 @@ static void ApplyEquipToUI(uint8_t slot, const WeaponEquipInfo &weapon) {
     g_state->equipSlots[slot].category = weapon.category;
     g_state->equipSlots[slot].itemIndex = weapon.itemIndex;
     g_state->equipSlots[slot].itemLevel = weapon.itemLevel;
+    g_state->equipSlots[slot].quantity = weapon.quantity;
     // Use client-side model file lookup to ensure consistency with
     // ItemModelManager cache (server may have different naming)
     int16_t defIdx =
@@ -141,7 +154,7 @@ static void ParseEquipmentPacket(const uint8_t *pkt, int pktSize,
                                  int countOffset, int dataOffset,
                                  ServerData *serverData) {
   uint8_t count = pkt[countOffset];
-  int entrySize = 4 + 32; // slot(1)+cat(1)+idx(1)+lvl(1)+model(32)
+  int entrySize = 5 + 32; // slot(1)+cat(1)+idx(1)+lvl(1)+qty(1)+model(32)
   for (int i = 0; i < count; i++) {
     int off = dataOffset + i * entrySize;
     if (off + entrySize > pktSize)
@@ -152,8 +165,9 @@ static void ParseEquipmentPacket(const uint8_t *pkt, int pktSize,
     weapon.category = pkt[off + 1];
     weapon.itemIndex = pkt[off + 2];
     weapon.itemLevel = pkt[off + 3];
+    weapon.quantity = pkt[off + 4];
     char modelBuf[33] = {};
-    std::memcpy(modelBuf, &pkt[off + 4], 32);
+    std::memcpy(modelBuf, &pkt[off + 5], 32);
     weapon.modelFile = modelBuf;
 
     // Resolve twoHanded flag from ItemDatabase
@@ -363,6 +377,41 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
       }
       std::cout << "[Net] Chat log history: " << (int)count << " entries\n";
     }
+
+    // Quest catalog (0x51, C2) — full quest definitions from server
+    if (headcode == Opcode::QUEST_CATALOG && pktSize >= 5) {
+      uint8_t count = pkt[4];
+      if (g_state->questCatalog) {
+        g_state->questCatalog->clear();
+        for (int i = 0; i < count; i++) {
+          int off = 5 + i * (int)sizeof(PMSG_QUEST_CATALOG_ENTRY);
+          if (off + (int)sizeof(PMSG_QUEST_CATALOG_ENTRY) > pktSize) break;
+          auto *e = reinterpret_cast<const PMSG_QUEST_CATALOG_ENTRY *>(pkt + off);
+          ClientGameState::QuestCatalogEntry qc;
+          qc.questId = e->questId;
+          qc.guardType = e->guardNpcType;
+          qc.targetCount = e->targetCount;
+          for (int t = 0; t < 3; t++) {
+            qc.targets[t].monType = e->targets[t].monsterType;
+            qc.targets[t].killsReq = e->targets[t].killsRequired;
+            qc.targets[t].name = e->targets[t].name;
+          }
+          qc.questName = e->questName;
+          qc.location = e->location;
+          qc.recommendedLevel = e->recommendedLevel;
+          qc.zenReward = e->zenReward;
+          qc.xpReward = e->xpReward;
+          for (int c = 0; c < 4; c++)
+            for (int s = 0; s < 2; s++) {
+              qc.classReward[c][s].defIndex = e->classReward[c][s].defIndex;
+              qc.classReward[c][s].itemLevel = e->classReward[c][s].itemLevel;
+            }
+          qc.loreText = e->loreText;
+          g_state->questCatalog->push_back(qc);
+        }
+        std::cout << "[Quest] Catalog: " << (int)count << " quests\n";
+      }
+    }
   }
 
   // C1 packets (2-byte header)
@@ -376,9 +425,11 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
       auto *info = reinterpret_cast<const PMSG_CHARINFO_SEND *>(pkt);
       result.spawnGridX = info->x;
       result.spawnGridY = info->y;
+      result.spawnMapId = info->map;
       result.hasSpawnPos = true;
-      std::cout << "[Net] CharInfo spawn position: grid (" << (int)info->x
-                << "," << (int)info->y << ")" << std::endl;
+      std::cout << "[Net] CharInfo spawn: map=" << (int)info->map
+                << " grid=(" << (int)info->x << "," << (int)info->y << ")"
+                << std::endl;
     }
 
     // Monster viewport V1
@@ -432,28 +483,52 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
                 << std::endl;
     }
 
-    // Quest state (0x50:0x00) — arrives during initial sync
+    // Quest state (0x50:0x00) — variable-length, arrives during initial sync
     if (headcode == Opcode::QUEST && pktSize >= 4) {
       uint8_t subcode = pkt[3];
-      if (subcode == Opcode::SUB_QUEST_STATE &&
-          pktSize >= (int)sizeof(PMSG_QUEST_STATE_SEND)) {
-        auto *p = reinterpret_cast<const PMSG_QUEST_STATE_SEND *>(pkt);
-        if (g_state->questIndex)
-          *g_state->questIndex = p->questIndex;
-        if (g_state->questTargetCount)
-          *g_state->questTargetCount = p->targetCount;
-        if (g_state->questKillCount && g_state->questRequired) {
-          for (int i = 0; i < 3; i++) {
-            g_state->questKillCount[i] = (i < p->targetCount) ? p->targets[i].killCount : 0;
-            g_state->questRequired[i] = (i < p->targetCount) ? p->targets[i].killsRequired : 0;
+      if (subcode == Opcode::SUB_QUEST_STATE && pktSize >= 13) {
+        // Parse: PSBMSG_HEAD(4) + completedMask(8) + activeCount(1) + entries(4*N)
+        uint64_t mask = 0;
+        memcpy(&mask, pkt + 4, 8);
+        uint8_t count = pkt[12];
+        if (g_state->completedQuestMask)
+          *g_state->completedQuestMask = mask;
+        if (g_state->activeQuests) {
+          g_state->activeQuests->clear();
+          for (int i = 0; i < count && (13 + i * 4 + 3) < pktSize; i++) {
+            int off = 13 + i * 4;
+            ClientGameState::ActiveQuestClient aq;
+            aq.questId = pkt[off];
+            aq.killCount[0] = pkt[off + 1];
+            aq.killCount[1] = pkt[off + 2];
+            aq.killCount[2] = pkt[off + 3];
+            g_state->activeQuests->push_back(aq);
           }
         }
-        if (g_state->deviasQuestIndex)
-          *g_state->deviasQuestIndex = p->deviasQuestIndex;
-        std::cout << "[Quest] Initial state: quest=" << (int)p->questIndex
-                  << " devias=" << (int)p->deviasQuestIndex
-                  << " targets=" << (int)p->targetCount << "\n";
+        std::cout << "[Quest] Initial state: completed=0x" << std::hex << mask
+                  << std::dec << " active=" << (int)count << "\n";
       }
+    }
+
+    // Summon spawn (0x45) — mark summon tracking before monsters are created
+    if (headcode == Opcode::SUMMON_SPAWN &&
+        pktSize >= (int)sizeof(PMSG_SUMMON_SPAWN_SEND)) {
+      auto *p = reinterpret_cast<const PMSG_SUMMON_SPAWN_SEND *>(pkt);
+      bool isOwn = (g_state->heroCharacterId &&
+                    p->ownerCharId == (uint16_t)*g_state->heroCharacterId);
+      g_state->monsterManager->MarkAsSummon(p->monsterIndex, isOwn, p->level);
+      std::cout << "[Net] Summon spawn (initial): index=" << p->monsterIndex
+                << " owner=" << p->ownerCharId << " isOwn=" << isOwn
+                << " level=" << p->level << std::endl;
+    }
+
+    // Summon despawn (0x46)
+    if (headcode == Opcode::SUMMON_DESPAWN &&
+        pktSize >= (int)sizeof(PMSG_SUMMON_DESPAWN_SEND)) {
+      auto *p = reinterpret_cast<const PMSG_SUMMON_DESPAWN_SEND *>(pkt);
+      g_state->monsterManager->ClearSummon(p->monsterIndex);
+      std::cout << "[Net] Summon despawn (initial): index=" << p->monsterIndex
+                << std::endl;
     }
   }
 }
@@ -502,6 +577,15 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         MonsterInfo mi = g_state->monsterManager->GetMonsterInfo(idx);
         g_state->monsterManager->SetMonsterHP(idx, p->remainingHp, mi.maxHp);
 
+        // Monster attack animation: trigger on attacker and face toward target
+        if (p->attackerMonsterIndex != 0) {
+          int attackerIdx = g_state->monsterManager->FindByServerIndex(p->attackerMonsterIndex);
+          if (attackerIdx >= 0) {
+            g_state->monsterManager->FaceTarget(attackerIdx, idx);
+            g_state->monsterManager->TriggerAttackAnimation(attackerIdx);
+          }
+        }
+
         glm::vec3 monPos =
             g_state->monsterManager->GetMonsterInfo(idx).position;
         glm::vec3 hitPos = monPos + glm::vec3(0, 50, 0);
@@ -513,7 +597,15 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         } else {
           // Normal/skill hits: trigger hit animation + VFX
           g_state->monsterManager->TriggerHitAnimation(idx);
-          SoundManager::Play(SOUND_HIT1 + rand() % 5);
+          // Summon attacks: monster attack sounds play via TriggerAttackAnimation,
+          // skip generic weapon hit sounds
+          if (p->attackerMonsterIndex != 0 && p->attackerCharId == 0) {
+            // No extra hit sound — monster vocalization is enough
+          } else if (p->attackerCharId == (uint16_t)*g_state->heroCharacterId &&
+              g_state->hero->HasWeapon() && g_state->hero->GetWeaponCategory() == 4)
+            SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
+          else
+            SoundManager::Play(SOUND_HIT1 + rand() % 5);
 
           // Skill attacks: spawn skill-specific impact VFX + reduced blood
           // Normal attacks: standard blood burst (Main 5.2: 10x BITMAP_BLOOD+1)
@@ -552,6 +644,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
             case 9:  SoundManager::Play(SOUND_EVIL); break;         // Evil Spirit
             case 10: SoundManager::Play(SOUND_HELLFIRE); break;     // Hellfire
             case 12: SoundManager::Play(SOUND_FLASH); break;        // Aqua Beam
+            case 11:                                                 // Power Wave
             case 17:                                                 // Energy Ball
               SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
               break;
@@ -582,15 +675,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           g_state->spawnDamageNumber(monPos + glm::vec3(0, 80, 0), p->damage,
                                      dmgType);
 
-        // Combat log: "You hit X for Y damage" / "You miss X"
-        if (p->attackerCharId == (uint16_t)*g_state->heroCharacterId) {
-          if (p->damage > 0)
-            SystemMessageLog::Log(MSG_COMBAT, IM_COL32(255, 255, 255, 255),
-                "You hit %s for %d damage.", mi.name.c_str(), (int)p->damage);
-          else
-            SystemMessageLog::Log(MSG_COMBAT, IM_COL32(180, 180, 180, 255),
-                "You miss %s.", mi.name.c_str());
-        }
+        // Per-hit combat log removed (too spammy for chat window)
       }
     }
 
@@ -606,7 +691,6 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
       if (xp > 0) {
         g_state->hero->GainExperience(xp);
         if (g_state->hero->LeveledUpThisFrame()) {
-          SoundManager::Play(SOUND_LEVEL_UP);
           SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(255, 255, 100, 255),
                                 "Congratulations! Level %d reached!",
                                 g_state->hero->GetLevel());
@@ -662,16 +746,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
                                      8);
       }
 
-      // Combat log: "X hits you for Y damage" / "X misses you"
-      if (idx >= 0) {
-        MonsterInfo mi = g_state->monsterManager->GetMonsterInfo(idx);
-        if (p->damage > 0)
-          SystemMessageLog::Log(MSG_COMBAT, IM_COL32(255, 140, 140, 255),
-              "%s hits you for %d damage.", mi.name.c_str(), (int)p->damage);
-        else
-          SystemMessageLog::Log(MSG_COMBAT, IM_COL32(180, 180, 180, 255),
-              "%s misses you.", mi.name.c_str());
-      }
+      // Per-hit combat log removed (too spammy for chat window)
     }
 
     // Monster respawn
@@ -681,6 +756,86 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
       int idx = g_state->monsterManager->FindByServerIndex(p->monsterIndex);
       if (idx >= 0)
         g_state->monsterManager->RespawnMonster(idx, p->x, p->y, p->hp);
+    }
+
+    // Summon spawn (0x45)
+    if (headcode == Opcode::SUMMON_SPAWN &&
+        pktSize >= (int)sizeof(PMSG_SUMMON_SPAWN_SEND)) {
+      auto *p = reinterpret_cast<const PMSG_SUMMON_SPAWN_SEND *>(pkt);
+      bool isOwn = (g_state->heroCharacterId &&
+                    p->ownerCharId == (uint16_t)*g_state->heroCharacterId);
+      g_state->monsterManager->MarkAsSummon(p->monsterIndex, isOwn, p->level);
+      printf("[Net] Summon spawn: index=%d owner=%d isOwn=%d level=%d\n",
+             p->monsterIndex, p->ownerCharId, isOwn, p->level);
+    }
+
+    // Summon despawn (0x46)
+    if (headcode == Opcode::SUMMON_DESPAWN &&
+        pktSize >= (int)sizeof(PMSG_SUMMON_DESPAWN_SEND)) {
+      auto *p = reinterpret_cast<const PMSG_SUMMON_DESPAWN_SEND *>(pkt);
+      g_state->monsterManager->ClearSummon(p->monsterIndex);
+      printf("[Net] Summon despawn: index=%d\n", p->monsterIndex);
+    }
+
+    // Buff effect (0x47) — Elf aura applied/expired
+    if (headcode == Opcode::BUFF_EFFECT &&
+        pktSize >= (int)sizeof(PMSG_BUFF_EFFECT_SEND)) {
+      auto *p = reinterpret_cast<const PMSG_BUFF_EFFECT_SEND *>(pkt);
+      if (p->buffType == 0 && p->active) {
+        // Heal: show green heal number on self + blue cast flash
+        if (g_state->hero && g_state->spawnDamageNumber) {
+          glm::vec3 heroPos = g_state->hero->GetPosition();
+          g_state->spawnDamageNumber(heroPos + glm::vec3(0, 80, 0), p->value, 10);
+          // Main 5.2: BITMAP_MAGIC+1 SubType 1 — blue ground circle for Heal
+          if (g_state->vfxManager)
+            g_state->vfxManager->SpawnBuffCastFlash(heroPos, glm::vec3(0.4f, 0.6f, 1.0f));
+        }
+        SoundManager::Play(SOUND_HEART); // Warm heal sound
+      } else if (p->buffType >= 1 && p->buffType <= 2) {
+        int idx = p->buffType - 1; // 0=defense, 1=damage
+        if (p->active) {
+          g_state->activeBuffs[idx] = {true, p->buffType, (int)p->value,
+                                       p->duration, p->duration};
+          SoundManager::Play(SOUND_SOULBARRIER); // Soul Barrier sound for buff auras
+          // Main 5.2: BITMAP_MAGIC+1 SubType 2/3 — colored ground circle on cast
+          if (g_state->hero && g_state->vfxManager) {
+            glm::vec3 heroPos = g_state->hero->GetPosition();
+            // Defense = green (0.4, 1.0, 0.6), Damage = red-orange (1.0, 0.6, 0.4)
+            glm::vec3 flashColor = (p->buffType == 1)
+              ? glm::vec3(0.4f, 1.0f, 0.6f)
+              : glm::vec3(1.0f, 0.6f, 0.4f);
+            g_state->vfxManager->SpawnBuffCastFlash(heroPos, flashColor);
+            // Burst of buff-colored particles on cast (Main 5.2: initial ring)
+            g_state->vfxManager->SpawnBurstColored(ParticleType::BUFF_AURA,
+                heroPos + glm::vec3(0, 50, 0), flashColor, 12);
+          }
+        } else {
+          g_state->activeBuffs[idx].active = false;
+        }
+      }
+    }
+
+    // Debuff effect (monster poison → player)
+    if (headcode == Opcode::DEBUFF_EFFECT &&
+        pktSize >= (int)sizeof(PMSG_DEBUFF_EFFECT_SEND)) {
+      auto *p = reinterpret_cast<const PMSG_DEBUFF_EFFECT_SEND *>(pkt);
+      if (p->debuffType == 1) { // Poison
+        if (p->active) {
+          g_state->poisoned = true;
+          g_state->poisonRemaining = p->duration;
+          g_state->poisonMaxDuration = p->duration;
+          // Spawn poison cloud on hero
+          if (g_state->hero && g_state->vfxManager) {
+            glm::vec3 heroPos = g_state->hero->GetPosition();
+            g_state->vfxManager->SpawnBurst(ParticleType::SPELL_POISON,
+                                            heroPos + glm::vec3(0, 40, 0), 10);
+          }
+          SoundManager::Play(SOUND_HEART);
+        } else {
+          g_state->poisoned = false;
+          g_state->poisonRemaining = 0.0f;
+        }
+      }
     }
 
     // Stat allocation response
@@ -834,13 +989,12 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           *g_state->serverMaxHP, *g_state->serverMP, *g_state->serverMaxMP,
           stats->ag, stats->maxAg, stats->charClass);
 
-      // Detect level-up from stats sync (quest rewards, etc.)
+      // Detect level-up from stats sync (e.g. quest reward XP)
       if (stats->level > oldLevel && oldLevel > 0) {
         g_state->hero->SetLevelUpFlag();
-        SoundManager::Play(SOUND_LEVEL_UP);
         SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(255, 255, 100, 255),
                               "Congratulations! Level %d reached!",
-                              (int)stats->level);
+                              stats->level);
       }
 
       // Floating heal text if HP increased
@@ -890,27 +1044,29 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
       }
     }
 
-    // Quest State (0x50:0x00)
+    // Quest State (0x50:0x00) — variable-length
     if (headcode == Opcode::QUEST && pktSize >= 4) {
       uint8_t subcode = pkt[3];
-      if (subcode == Opcode::SUB_QUEST_STATE &&
-          pktSize >= (int)sizeof(PMSG_QUEST_STATE_SEND)) {
-        auto *p = reinterpret_cast<const PMSG_QUEST_STATE_SEND *>(pkt);
-        if (g_state->questIndex)
-          *g_state->questIndex = p->questIndex;
-        if (g_state->deviasQuestIndex)
-          *g_state->deviasQuestIndex = p->deviasQuestIndex;
-        if (g_state->questTargetCount)
-          *g_state->questTargetCount = p->targetCount;
-        if (g_state->questKillCount && g_state->questRequired) {
-          for (int i = 0; i < 3; i++) {
-            g_state->questKillCount[i] = (i < p->targetCount) ? p->targets[i].killCount : 0;
-            g_state->questRequired[i] = (i < p->targetCount) ? p->targets[i].killsRequired : 0;
+      if (subcode == Opcode::SUB_QUEST_STATE && pktSize >= 13) {
+        uint64_t mask = 0;
+        memcpy(&mask, pkt + 4, 8);
+        uint8_t count = pkt[12];
+        if (g_state->completedQuestMask)
+          *g_state->completedQuestMask = mask;
+        if (g_state->activeQuests) {
+          g_state->activeQuests->clear();
+          for (int i = 0; i < count && (13 + i * 4 + 3) < pktSize; i++) {
+            int off = 13 + i * 4;
+            ClientGameState::ActiveQuestClient aq;
+            aq.questId = pkt[off];
+            aq.killCount[0] = pkt[off + 1];
+            aq.killCount[1] = pkt[off + 2];
+            aq.killCount[2] = pkt[off + 3];
+            g_state->activeQuests->push_back(aq);
           }
         }
-        std::cout << "[Quest] State: lorc=" << (int)p->questIndex
-                  << " devias=" << (int)p->deviasQuestIndex
-                  << " targets=" << (int)p->targetCount << "\n";
+        std::cout << "[Quest] State: completed=0x" << std::hex << mask
+                  << std::dec << " active=" << (int)count << "\n";
       }
       // Quest Reward (0x50:0x03)
       if (subcode == Opcode::SUB_QUEST_REWARD &&
@@ -922,7 +1078,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
                               p->zenReward, p->xpReward);
         std::cout << "[Quest] Reward: zen=" << p->zenReward
                   << " xp=" << p->xpReward
-                  << " next=" << (int)p->nextQuestIndex << "\n";
+                  << " questId=" << (int)p->questId << "\n";
       }
     }
 
@@ -944,6 +1100,41 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
   // C2 packets (ongoing)
   if (type == 0xC2 && pktSize >= 5) {
     uint8_t headcode = pkt[3];
+
+    // Quest catalog (0x51) — may arrive after map change or reconnect
+    if (headcode == Opcode::QUEST_CATALOG && pktSize >= 5) {
+      uint8_t count = pkt[4];
+      if (g_state->questCatalog) {
+        g_state->questCatalog->clear();
+        for (int i = 0; i < count; i++) {
+          int off = 5 + i * (int)sizeof(PMSG_QUEST_CATALOG_ENTRY);
+          if (off + (int)sizeof(PMSG_QUEST_CATALOG_ENTRY) > pktSize) break;
+          auto *e = reinterpret_cast<const PMSG_QUEST_CATALOG_ENTRY *>(pkt + off);
+          ClientGameState::QuestCatalogEntry qc;
+          qc.questId = e->questId;
+          qc.guardType = e->guardNpcType;
+          qc.targetCount = e->targetCount;
+          for (int t = 0; t < 3; t++) {
+            qc.targets[t].monType = e->targets[t].monsterType;
+            qc.targets[t].killsReq = e->targets[t].killsRequired;
+            qc.targets[t].name = e->targets[t].name;
+          }
+          qc.questName = e->questName;
+          qc.location = e->location;
+          qc.recommendedLevel = e->recommendedLevel;
+          qc.zenReward = e->zenReward;
+          qc.xpReward = e->xpReward;
+          for (int c = 0; c < 4; c++)
+            for (int s = 0; s < 2; s++) {
+              qc.classReward[c][s].defIndex = e->classReward[c][s].defIndex;
+              qc.classReward[c][s].itemLevel = e->classReward[c][s].itemLevel;
+            }
+          qc.loreText = e->loreText;
+          g_state->questCatalog->push_back(qc);
+        }
+        std::cout << "[Quest] Catalog (game): " << (int)count << " quests\n";
+      }
+    }
 
     // Inventory sync
     if (headcode == Opcode::INV_SYNC) {

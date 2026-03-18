@@ -26,43 +26,94 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
+#include <string>
 #include <vector>
 
-// BlendMesh texture ID lookup by BMD filename (model viewer has no type IDs)
-static int GetBlendMeshTexIdFromFilename(const std::string &filename) {
-  if (filename == "House03.bmd")
-    return 4;
-  if (filename == "House04.bmd")
-    return 8;
-  if (filename == "House05.bmd")
-    return 2;
-  if (filename == "HouseWall02.bmd")
-    return 4;
-  if (filename == "Bonfire01.bmd")
-    return 1;
-  if (filename == "StreetLight01.bmd")
-    return 1;
-  if (filename == "Candle01.bmd")
-    return 1;
-  if (filename == "Carriage01.bmd")
-    return 2;
-  if (filename == "Waterspout01.bmd")
-    return 3;
+// Extract object type from "ObjectNN.bmd" filename. Returns -1 if not that pattern.
+static int GetObjectTypeFromFilename(const std::string &filename) {
+  if (filename.size() >= 11 && filename.compare(0, 6, "Object") == 0) {
+    std::string numStr;
+    for (size_t i = 6; i < filename.size(); ++i) {
+      if (std::isdigit(filename[i])) numStr += filename[i];
+      else break;
+    }
+    if (!numStr.empty()) return std::stoi(numStr) - 1; // Object01=type0
+  }
+  return -1;
+}
+
+// BlendMesh texture ID lookup — map-aware for ObjectNN.bmd files
+// Source: Main 5.2 ZzzObject.cpp CreateObject / MoveObject per map
+static int GetBlendMeshTexIdFromFilename(const std::string &filename, int mapIdx) {
+  // Named objects (Lorencia / shared)
+  if (mapIdx == 0) {
+    if (filename == "House03.bmd") return 4;
+    if (filename == "House04.bmd") return 8;
+    if (filename == "House05.bmd") return 2;
+    if (filename == "HouseWall02.bmd") return 4;
+    if (filename == "Bonfire01.bmd") return 1;
+    if (filename == "StreetLight01.bmd") return 1;
+    if (filename == "Candle01.bmd") return 1;
+    if (filename == "Carriage01.bmd") return 2;
+    if (filename == "Waterspout01.bmd") return 3;
+  }
+
+  // ObjectNN.bmd → type-based lookup
+  int type = GetObjectTypeFromFilename(filename);
+  if (type < 0) return -1;
+
+  if (mapIdx == 1) { // Dungeon
+    if (type == 41) return 1; // DungeonGate02 torch
+    if (type == 42) return 1; // DungeonGate03 torch
+  }
+  if (mapIdx == 2) { // Devias
+    if (type == 19 || type == 92 || type == 93) return 0; // Aurora
+  }
+  if (mapIdx == 3) { // Noria (Main 5.2 WD_3NORIA)
+    switch (type) {
+    case 1: return 1;
+    case 9: return 3;
+    case 17: return 0;
+    case 18: return 2;
+    case 19: return 0;
+    case 37: return 0;
+    case 39: return 1;
+    case 41: return 0;
+    }
+  }
   return -1;
 }
 
 // UV scroll animation for specific models
-static bool HasUVScrollAnimation(const std::string &filename) {
-  return filename == "House04.bmd" || filename == "House05.bmd" ||
-         filename == "Waterspout01.bmd";
+static bool HasUVScrollAnimation(const std::string &filename, int mapIdx) {
+  if (mapIdx == 0)
+    return filename == "House04.bmd" || filename == "House05.bmd" ||
+           filename == "Waterspout01.bmd";
+  if (mapIdx == 3) {
+    int type = GetObjectTypeFromFilename(filename);
+    return type == 18 || type == 41 || type == 42 || type == 43;
+  }
+  return false;
 }
 
 namespace fs = std::filesystem;
 
-static const std::string DATA_PATH = "Data/Object1/";
 static const std::string EFFECT_PATH = "Data/Effect";
 static const int WIN_WIDTH = 1280;
 static const int WIN_HEIGHT = 720;
+
+// Map definitions for the object browser
+struct MapDef {
+  const char *label;    // Display name
+  const char *objDir;   // Object directory
+};
+static const MapDef MAP_DEFS[] = {
+    {"Lorencia", "Data/Object1/"},
+    {"Dungeon",  "Data/Object2/"},
+    {"Devias",   "Data/Object3/"},
+    {"Noria",    "Data/Object4/"},
+};
+static const int NUM_MAPS = sizeof(MAP_DEFS) / sizeof(MAP_DEFS[0]);
 
 class ObjectBrowser {
 public:
@@ -76,13 +127,9 @@ public:
     ScanDirectory();
 
     if (bmdFiles.empty()) {
-      std::cerr << "[ObjectBrowser] No BMD files found in " << DATA_PATH
+      std::cerr << "[ObjectBrowser] No BMD files found in " << dataPath
                 << std::endl;
-      ShutdownImGuiBgfx();
-      bgfx::shutdown();
-      glfwDestroyWindow(window);
-      glfwTerminate();
-      return;
+      // Don't exit — user can switch maps via UI
     }
 
     shader = Shader::Load("vs_model.bin", "fs_model.bin");
@@ -96,7 +143,8 @@ public:
     }
 
     fireEffect.Init(EFFECT_PATH);
-    LoadObject(0);
+    if (!bmdFiles.empty())
+      LoadObject(0);
 
     while (!glfwWindowShouldClose(window)) {
       float currentFrame = glfwGetTime();
@@ -123,6 +171,10 @@ public:
 
 private:
   GLFWwindow *window = nullptr;
+
+  // Map selection
+  int currentMapIdx = 0;
+  std::string dataPath = MAP_DEFS[0].objDir;
 
   // File list
   std::vector<std::string> bmdFiles;
@@ -190,19 +242,25 @@ private:
     if (!window)
       return false;
 
-    // Initialize BGFX with platform-native window handle
-    bgfx::PlatformData pd{};
-#ifdef __APPLE__
-    pd.nwh = glfwGetCocoaWindow(window);
-#endif
-    bgfx::setPlatformData(pd);
+    // Initialize BGFX (single-threaded Metal on macOS)
+    bgfx::renderFrame(); // Single-threaded mode: must call before bgfx::init
 
     bgfx::Init init;
-    init.type = bgfx::RendererType::Count; // Auto-detect (Metal on macOS)
-    init.resolution.width = WIN_WIDTH;
-    init.resolution.height = WIN_HEIGHT;
+    init.type = bgfx::RendererType::Metal;
+#ifdef __APPLE__
+    init.platformData.nwh = glfwGetCocoaWindow(window);
+#endif
+    int initW, initH;
+    glfwGetFramebufferSize(window, &initW, &initH);
+    init.resolution.width = initW;
+    init.resolution.height = initH;
     init.resolution.reset = BGFX_RESET_VSYNC;
-    bgfx::init(init);
+    if (!bgfx::init(init)) {
+      std::cerr << "[ObjectBrowser] bgfx::init() failed" << std::endl;
+      glfwDestroyWindow(window);
+      glfwTerminate();
+      return false;
+    }
 
     // Clear color: dark blue-gray (0.15, 0.18, 0.22) = 0x262E38FF
     bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x262E38FF,
@@ -222,7 +280,7 @@ private:
   void InitImGuiBgfx() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGui_ImplGlfw_InitForOther(window, true);
+    ImGui_ImplGlfw_InitForOther(window, false); // false = don't install chaining callbacks (we forward manually)
 
     // Resolve shader directory (shaders/ or ../shaders/)
     std::ifstream test("shaders/vs_imgui.bin");
@@ -239,7 +297,12 @@ private:
   // --- Directory scanning ---
 
   void ScanDirectory() {
-    for (auto &entry : fs::directory_iterator(DATA_PATH)) {
+    bmdFiles.clear();
+    if (!fs::exists(dataPath)) {
+      std::cerr << "[ObjectBrowser] Directory not found: " << dataPath << std::endl;
+      return;
+    }
+    for (auto &entry : fs::directory_iterator(dataPath)) {
       if (entry.is_regular_file()) {
         std::string ext = entry.path().extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -249,8 +312,8 @@ private:
       }
     }
     std::sort(bmdFiles.begin(), bmdFiles.end());
-    std::cout << "[ObjectBrowser] Found " << bmdFiles.size() << " BMD files"
-              << std::endl;
+    std::cout << "[ObjectBrowser] Found " << bmdFiles.size() << " BMD files in "
+              << dataPath << std::endl;
   }
 
   // --- Object loading / unloading ---
@@ -265,7 +328,7 @@ private:
     UnloadObject();
     currentIndex = index;
 
-    std::string fullPath = DATA_PATH + bmdFiles[index];
+    std::string fullPath = dataPath + bmdFiles[index];
     currentBMD = BMDParser::Parse(fullPath);
 
     if (!currentBMD) {
@@ -292,13 +355,13 @@ private:
     // Upload meshes with bone-transformed vertices
     currentAABB = AABB{};
     for (auto &mesh : currentBMD->Meshes) {
-      UploadMeshWithBones(mesh, DATA_PATH, boneMatrices, meshBuffers,
+      UploadMeshWithBones(mesh, dataPath, boneMatrices, meshBuffers,
                           currentAABB, currentIsAnimated);
     }
 
     // Resolve BlendMesh for this model
-    blendMeshTexId = GetBlendMeshTexIdFromFilename(bmdFiles[index]);
-    hasUVScroll = HasUVScrollAnimation(bmdFiles[index]);
+    blendMeshTexId = GetBlendMeshTexIdFromFilename(bmdFiles[index], currentMapIdx);
+    hasUVScroll = HasUVScrollAnimation(bmdFiles[index], currentMapIdx);
     if (blendMeshTexId >= 0) {
       for (auto &mb : meshBuffers) {
         if (mb.bmdTextureId == blendMeshTexId) {
@@ -326,6 +389,22 @@ private:
                         std::to_string(index + 1) + "/" +
                         std::to_string(bmdFiles.size()) + ")";
     glfwSetWindowTitle(window, title.c_str());
+  }
+
+  void SwitchMap(int mapIdx) {
+    UnloadObject();
+    fireEffect.ClearEmitters();
+    currentMapIdx = mapIdx;
+    dataPath = MAP_DEFS[mapIdx].objDir;
+    filterBuf[0] = '\0';
+    ScanDirectory();
+    if (!bmdFiles.empty()) {
+      LoadObject(0);
+    } else {
+      std::string title = std::string("MU Object Browser - ") +
+                          MAP_DEFS[mapIdx].label + " (empty)";
+      glfwSetWindowTitle(window, title.c_str());
+    }
   }
 
   void AutoFrame() {
@@ -441,9 +520,10 @@ private:
                     std::sin(currentTime * 11.1f + 2.0f);
     float uvScroll = -std::fmod(currentTime, 1.0f);
 
-    for (auto &mb : meshBuffers) {
+    // Two-pass: opaque first, then alpha (so transparent meshes see depth)
+    auto renderMesh = [&](MeshBuffers &mb) {
       if (mb.indexCount == 0 || mb.hidden)
-        continue;
+        return;
 
       // Set model transform for this draw call
       bgfx::setTransform(glm::value_ptr(model));
@@ -493,19 +573,38 @@ private:
         bgfx::setState(state);
         bgfx::submit(0, shader->program);
 
-      } else {
-        // Normal alpha-blended rendering
+      } else if (mb.hasAlpha) {
+        // Alpha mesh: blend, no depth write, no backface cull
         SetModelUniforms(eye, 1.0f, 1.0f, glm::vec2(0.0f), 1.0f);
 
         uint64_t state =
-            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z |
+            BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
             BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
             BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
                                   BGFX_STATE_BLEND_INV_SRC_ALPHA);
         bgfx::setState(state);
         bgfx::submit(0, shader->program);
+
+      } else {
+        // Opaque mesh: depth write, backface cull, no blend
+        SetModelUniforms(eye, 1.0f, 1.0f, glm::vec2(0.0f), 1.0f);
+
+        uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+                         BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
+                         BGFX_STATE_MSAA | BGFX_STATE_CULL_CW;
+        bgfx::setState(state);
+        bgfx::submit(0, shader->program);
       }
-    }
+    };
+
+    // Pass 1: opaque meshes (write depth)
+    for (auto &mb : meshBuffers)
+      if (!mb.hasAlpha && !mb.isWindowLight && !mb.bright)
+        renderMesh(mb);
+    // Pass 2: alpha/additive meshes (read depth, don't write)
+    for (auto &mb : meshBuffers)
+      if (mb.hasAlpha || mb.isWindowLight || mb.bright)
+        renderMesh(mb);
 
     // Update and render fire effects
     fireEffect.Update(deltaTime);
@@ -525,6 +624,20 @@ private:
     ImGui::Begin("Objects", nullptr,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoCollapse);
+
+    // Map selector
+    if (ImGui::BeginCombo("Map", MAP_DEFS[currentMapIdx].label)) {
+      for (int i = 0; i < NUM_MAPS; ++i) {
+        bool selected = (i == currentMapIdx);
+        if (ImGui::Selectable(MAP_DEFS[i].label, selected)) {
+          if (i != currentMapIdx)
+            SwitchMap(i);
+        }
+        if (selected)
+          ImGui::SetItemDefaultFocus();
+      }
+      ImGui::EndCombo();
+    }
 
     ImGui::InputText("Filter", filterBuf, sizeof(filterBuf));
 
@@ -666,14 +779,16 @@ private:
       return;
 
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-      if (key == GLFW_KEY_LEFT || key == GLFW_KEY_UP) {
-        int newIdx = (self->currentIndex - 1 + (int)self->bmdFiles.size()) %
-                     (int)self->bmdFiles.size();
-        self->LoadObject(newIdx);
-      }
-      if (key == GLFW_KEY_RIGHT || key == GLFW_KEY_DOWN) {
-        int newIdx = (self->currentIndex + 1) % (int)self->bmdFiles.size();
-        self->LoadObject(newIdx);
+      if (!self->bmdFiles.empty()) {
+        if (key == GLFW_KEY_LEFT || key == GLFW_KEY_UP) {
+          int newIdx = (self->currentIndex - 1 + (int)self->bmdFiles.size()) %
+                       (int)self->bmdFiles.size();
+          self->LoadObject(newIdx);
+        }
+        if (key == GLFW_KEY_RIGHT || key == GLFW_KEY_DOWN) {
+          int newIdx = (self->currentIndex + 1) % (int)self->bmdFiles.size();
+          self->LoadObject(newIdx);
+        }
       }
       if (key == GLFW_KEY_ESCAPE) {
         glfwSetWindowShouldClose(w, true);

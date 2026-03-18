@@ -124,16 +124,24 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         refMoveSpeed = 334.0f;
 
       if (mon.action == ACTION_WALK) {
-        if (mon.state == MonsterState::WALKING)
+        bool isOwnSummon = (mon.serverIndex == m_ownSummonIndex &&
+                            m_ownSummonIndex != 0);
+        if (isOwnSummon && (mon.state == MonsterState::WALKING ||
+                            mon.state == MonsterState::IDLE)) {
+          // Own summon follow speed (Guardian Angel follow or server-driven)
+          animSpeed *= (CHASE_SPEED * 1.5f) / refMoveSpeed;
+        } else if (mon.state == MonsterState::WALKING) {
           animSpeed *= WANDER_SPEED / refMoveSpeed;
-        else if (mon.state == MonsterState::CHASING)
+        } else if (mon.state == MonsterState::CHASING) {
           animSpeed *= CHASE_SPEED / refMoveSpeed;
+        }
       }
 
       mon.animFrame += animSpeed * deltaTime;
 
-      // Die animation doesn't loop
-      if (mon.state == MonsterState::DYING || mon.state == MonsterState::DEAD) {
+      // Die and hit animations clamp at last frame (don't loop)
+      if (mon.state == MonsterState::DYING || mon.state == MonsterState::DEAD ||
+          mon.state == MonsterState::HIT) {
         if (mon.animFrame >= (float)(numKeys - 1))
           mon.animFrame = (float)(numKeys - 1);
       } else {
@@ -448,10 +456,12 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         }
       }
 
-      // Ambient smoke: Hound (1), Budge Dragon (2), Hell Hound (5)
+      // Ambient smoke: Hound (1), Budge Dragon (2), Hell Hound (5),
+      // Dark Knight (10), Larva (12)
       // Main 5.2: rand()%4 per tick (~25fps) = ~6/sec. At 60fps, use timer.
       if ((mon.monsterType == 1 || mon.monsterType == 2 ||
-           mon.monsterType == 5) &&
+           mon.monsterType == 5 || mon.monsterType == 10 ||
+           mon.monsterType == 12) &&
           mon.ambientVfxTimer >= 0.5f) {
         mon.ambientVfxTimer = 0.0f;
         glm::vec3 smokePos =
@@ -459,6 +469,27 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
                                      20.0f + (float)(rand() % 30),
                                      (float)(rand() % 64 - 32));
         m_vfxManager->SpawnBurst(ParticleType::SMOKE, smokePos, 1);
+      }
+
+      // Poison Bull (type 8): nose smoke from bone 24 during idle/walk
+      // Main 5.2: ZzzCharacter.cpp line 5985 — smoke at snout bone
+      if (mon.monsterType == 8 && mon.ambientVfxTimer >= 0.3f) {
+        if (24 < (int)bones.size()) {
+          glm::mat4 modelRot = glm::mat4(1.0f);
+          modelRot =
+              glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+          modelRot =
+              glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+
+          const auto &bm = bones[24];
+          glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+          glm::vec3 worldPos =
+              glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+          glm::vec3 smokePos = worldPos * mon.scale + mon.position;
+          m_vfxManager->SpawnBurst(ParticleType::SMOKE, smokePos, 1);
+          mon.ambientVfxTimer = 0.0f;
+        }
       }
     }
 
@@ -496,8 +527,22 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         mon.spawnAlpha = 1.0f;
     }
 
-    // Combined alpha: corpse fade * spawn fade-in * per-type alpha
-    float renderAlpha = mon.corpseAlpha * mon.spawnAlpha * mdl.typeAlpha;
+    // Own summon safe zone fade (fast fade out/in ~0.3s)
+    if (mon.serverIndex == m_ownSummonIndex && m_ownSummonIndex != 0) {
+      float target = m_playerInSafeZone ? 0.0f : 1.0f;
+      if (mon.summonFadeAlpha != target) {
+        float speed = 3.3f; // ~0.3s
+        if (m_playerInSafeZone)
+          mon.summonFadeAlpha = std::max(0.0f, mon.summonFadeAlpha - speed * deltaTime);
+        else
+          mon.summonFadeAlpha = std::min(1.0f, mon.summonFadeAlpha + speed * deltaTime);
+      }
+    }
+
+    // Combined alpha: corpse fade * spawn fade-in * per-type alpha * summon safe zone fade
+    float renderAlpha = mon.corpseAlpha * mon.spawnAlpha * mdl.typeAlpha * mon.summonFadeAlpha;
+    if (renderAlpha <= 0.0f)
+      continue;
 
     // BlendMesh UV scroll (Main 5.2: Lich — texCoordV scrolls over time)
     // -(float)((int)(WorldTime)%2000)*0.0005f
@@ -872,20 +917,13 @@ void MonsterManager::RenderSilhouetteOutline(int monsterIndex,
   }
 }
 
-void MonsterManager::RenderNameplates(ImDrawList *dl, ImFont *font,
-                                      const glm::mat4 &view,
-                                      const glm::mat4 &proj, int winW, int winH,
-                                      const glm::vec3 &camPos,
-                                      int hoveredMonster,
-                                      int attackTarget, int playerLevel) {
-  // Show nameplate for hovered monster, or attack target if not hovering
-  int targetIdx = hoveredMonster;
-  if (targetIdx < 0 || targetIdx >= GetMonsterCount())
-    targetIdx = attackTarget;
-  if (targetIdx < 0 || targetIdx >= GetMonsterCount())
-    return;
-
-  MonsterInfo mi = GetMonsterInfo(targetIdx);
+// Helper: render a single nameplate at a given monster index
+static void renderSingleNameplate(MonsterManager *mgr, ImDrawList *dl,
+                                   ImFont *font, const glm::mat4 &view,
+                                   const glm::mat4 &proj, int winW, int winH,
+                                   int targetIdx, int playerLevel,
+                                   bool isSummon, bool isOwnSummon) {
+  MonsterInfo mi = mgr->GetMonsterInfo(targetIdx);
   if (mi.state == MonsterState::DEAD)
     return;
 
@@ -900,63 +938,65 @@ void MonsterManager::RenderNameplates(ImDrawList *dl, ImFont *font,
   float sx = (ndc.x * 0.5f + 0.5f) * winW;
   float sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * winH;
 
-  // WoW-style threat color based on XP gain potential
-  // Gray threshold matches server CalculateXP formula
-  int grayThreshold = 8 + playerLevel / 10;
-  if (grayThreshold > 20) grayThreshold = 20;
-  int diff = playerLevel - mi.level; // positive = player higher
+  // Nameplate color
   ImU32 threatCol;
-  if (diff > grayThreshold)
-    threatCol = IM_COL32(120, 150, 120, 200);  // Dark green-gray: very low XP
-  else if (diff > 5)
-    threatCol = IM_COL32(80, 210, 80, 200);    // Green: reduced XP
-  else if (diff >= -2)
-    threatCol = IM_COL32(255, 230, 60, 200);   // Yellow: even
-  else if (diff >= -5)
-    threatCol = IM_COL32(255, 140, 40, 200);   // Orange: dangerous
-  else
-    threatCol = IM_COL32(255, 60, 60, 200);    // Red: very dangerous
+  if (isSummon) {
+    if (isOwnSummon)
+      threatCol = IM_COL32(60, 220, 60, 200);   // Green: own summon
+    else
+      threatCol = IM_COL32(100, 180, 255, 200);  // Light blue: other's summon
+  } else {
+    int grayThreshold = 8 + playerLevel / 10;
+    if (grayThreshold > 20) grayThreshold = 20;
+    int diff = playerLevel - mi.level;
+    if (diff > grayThreshold)
+      threatCol = IM_COL32(120, 150, 120, 200);
+    else if (diff > 5)
+      threatCol = IM_COL32(80, 210, 80, 200);
+    else if (diff >= -2)
+      threatCol = IM_COL32(255, 230, 60, 200);
+    else if (diff >= -5)
+      threatCol = IM_COL32(255, 140, 40, 200);
+    else
+      threatCol = IM_COL32(255, 60, 60, 200);
+  }
 
-  // Name + Level text (no background frame — floating text with shadow)
+  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float nameFs = 12.0f * uiScale;
+  float lvlFs = 10.0f * uiScale;
+
   char nameText[64];
   snprintf(nameText, sizeof(nameText), "%s", mi.name.c_str());
   char levelText[16];
   snprintf(levelText, sizeof(levelText), "%d", mi.level);
-  ImVec2 nameSize = font->CalcTextSizeA(12.0f, FLT_MAX, 0, nameText);
-  ImVec2 lvlSize = font->CalcTextSizeA(10.0f, FLT_MAX, 0, levelText);
+  ImVec2 nameSize = font->CalcTextSizeA(nameFs, FLT_MAX, 0, nameText);
 
-  // HP bar dimensions (thin, elegant)
-  float barW = 60.0f;
-  float barH = 5.0f;
-
-  // Center everything on projected point
+  float barW = 60.0f * uiScale;
+  float barH = 5.0f * uiScale;
   float nameX = sx - nameSize.x * 0.5f;
   float nameY = sy - barH - nameSize.y - 6.0f;
   float barX = sx - barW * 0.5f;
   float barY = sy - barH - 3.0f;
 
   // Name shadow + text
-  dl->AddText(font, 12.0f, ImVec2(nameX + 1, nameY + 1),
+  dl->AddText(font, nameFs, ImVec2(nameX + 1, nameY + 1),
               IM_COL32(0, 0, 0, 160), nameText);
-  dl->AddText(font, 12.0f, ImVec2(nameX, nameY), threatCol, nameText);
+  dl->AddText(font, nameFs, ImVec2(nameX, nameY), threatCol, nameText);
 
-  // Level badge (small, right of name)
+  // Level badge
   float lvlX = nameX + nameSize.x + 4.0f;
   float lvlY = nameY + 2.0f;
-  dl->AddText(font, 10.0f, ImVec2(lvlX + 1, lvlY + 1),
+  dl->AddText(font, lvlFs, ImVec2(lvlX + 1, lvlY + 1),
               IM_COL32(0, 0, 0, 140), levelText);
-  dl->AddText(font, 10.0f, ImVec2(lvlX, lvlY),
+  dl->AddText(font, lvlFs, ImVec2(lvlX, lvlY),
               IM_COL32(200, 200, 200, 160), levelText);
 
-  // HP bar — subtle translucent
+  // HP bar
   float hpFrac = mi.maxHp > 0 ? (float)mi.hp / mi.maxHp : 0.0f;
   hpFrac = std::max(0.0f, std::min(1.0f, hpFrac));
 
-  // Bar background (very subtle dark)
   dl->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH),
                     IM_COL32(0, 0, 0, 100), 2.0f);
-
-  // Bar fill (soft gradient feel via two-tone)
   if (hpFrac > 0.0f) {
     ImU32 hpCol = hpFrac > 0.5f    ? IM_COL32(50, 200, 50, 180)
                   : hpFrac > 0.25f ? IM_COL32(220, 190, 40, 180)
@@ -964,8 +1004,34 @@ void MonsterManager::RenderNameplates(ImDrawList *dl, ImFont *font,
     dl->AddRectFilled(ImVec2(barX, barY),
                       ImVec2(barX + barW * hpFrac, barY + barH), hpCol, 2.0f);
   }
-
-  // Thin border on bar
   dl->AddRect(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH),
               IM_COL32(255, 255, 255, 40), 2.0f);
+}
+
+void MonsterManager::RenderNameplates(ImDrawList *dl, ImFont *font,
+                                      const glm::mat4 &view,
+                                      const glm::mat4 &proj, int winW, int winH,
+                                      const glm::vec3 &camPos,
+                                      int hoveredMonster,
+                                      int attackTarget, int playerLevel) {
+  // Always show own summon nameplate (unless faded out in safe zone)
+  if (m_ownSummonIndex != 0 && !m_playerInSafeZone) {
+    int summonIdx = FindByServerIndex(m_ownSummonIndex);
+    if (summonIdx >= 0 && summonIdx != hoveredMonster && summonIdx != attackTarget) {
+      renderSingleNameplate(this, dl, font, view, proj, winW, winH,
+                            summonIdx, playerLevel, true, true);
+    }
+  }
+
+  // Show nameplate for hovered monster, or attack target if not hovering
+  int targetIdx = hoveredMonster;
+  if (targetIdx < 0 || targetIdx >= GetMonsterCount())
+    targetIdx = attackTarget;
+  if (targetIdx < 0 || targetIdx >= GetMonsterCount())
+    return;
+
+  bool isSummon = IsSummon(GetMonsterInfo(targetIdx).serverIndex);
+  bool isOwn = isSummon && GetMonsterInfo(targetIdx).serverIndex == m_ownSummonIndex;
+  renderSingleNameplate(this, dl, font, view, proj, winW, winH,
+                        targetIdx, playerLevel, isSummon, isOwn);
 }

@@ -1,4 +1,4 @@
-$input v_texcoord0
+$input v_texcoord0, v_color0
 
 #include <bgfx_shader.sh>
 
@@ -10,5 +10,5 @@ void main()
 {
     vec4 tex = texture2D(s_texColor, v_texcoord0);
     if (tex.a < 0.15) discard;
-    gl_FragColor = vec4(tex.rgb, tex.a * u_params.x);
+    gl_FragColor = vec4(tex.rgb, tex.a * v_color0.a * u_params.x);
 }

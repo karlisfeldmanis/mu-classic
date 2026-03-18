@@ -139,6 +139,31 @@ static void LoadSound(int id, const std::string &filename, int maxChannels,
   if (wav.samples.empty())
     return;
 
+  // OpenAL 3D positional audio requires MONO sources — stereo sources ignore
+  // position and play at full volume regardless of distance. Downmix stereo
+  // to mono at load time for positional sounds.
+  if (positional && wav.numChannels == 2) {
+    if (wav.bitsPerSample == 16) {
+      // Stereo 16-bit → Mono 16-bit: average L+R channels
+      const int16_t *stereo =
+          reinterpret_cast<const int16_t *>(wav.samples.data());
+      size_t numFrames = wav.samples.size() / 4; // 4 bytes per stereo frame
+      std::vector<uint8_t> mono(numFrames * 2);
+      int16_t *monoOut = reinterpret_cast<int16_t *>(mono.data());
+      for (size_t i = 0; i < numFrames; i++)
+        monoOut[i] = (int16_t)(((int)stereo[i * 2] + (int)stereo[i * 2 + 1]) / 2);
+      wav.samples = std::move(mono);
+      wav.numChannels = 1;
+    } else if (wav.bitsPerSample == 8) {
+      size_t numFrames = wav.samples.size() / 2;
+      std::vector<uint8_t> mono(numFrames);
+      for (size_t i = 0; i < numFrames; i++)
+        mono[i] = (uint8_t)(((int)wav.samples[i * 2] + (int)wav.samples[i * 2 + 1]) / 2);
+      wav.samples = std::move(mono);
+      wav.numChannels = 1;
+    }
+  }
+
   ALenum format = AL_NONE;
   if (wav.numChannels == 1 && wav.bitsPerSample == 16)
     format = AL_FORMAT_MONO16;
@@ -220,6 +245,7 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_WIND01, sndPath + "aWind.wav", 1);
   LoadSound(SOUND_DUNGEON01, sndPath + "aDungeon.wav", 1);
   LoadSound(SOUND_BAT01, sndPath + "aBat.wav", 1, true); // 3D positional
+  LoadSound(SOUND_FOREST01, sndPath + "aForest.wav", 1); // Noria forest ambient
   LoadSound(SOUND_DOOR01, sndPath + "aDoor.wav", 1);
   LoadSound(SOUND_DOOR02, sndPath + "aCastleDoor.wav", 1);
   LoadSound(SOUND_WALK_GRASS, sndPath + "pWalk(Grass).wav", 2);
@@ -292,6 +318,9 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_RAGE_BLOW1, sndPath + "eRageBlow_1.wav", 2);
   LoadSound(SOUND_RAGE_BLOW2, sndPath + "eRageBlow_2.wav", 2);
   LoadSound(SOUND_RAGE_BLOW3, sndPath + "eRageBlow_3.wav", 2);
+
+  // Soul Barrier cast sound (Main 5.2: eSoulBarrier.wav — used for Elf buff auras)
+  LoadSound(SOUND_SOULBARRIER, sndPath + "eSoulBarrier.wav", 2);
 
   // DW spell sounds (Main 5.2: ZzzCharacter.cpp PlayBuffer calls)
   LoadSound(SOUND_METEORITE01, sndPath + "eMeteorite.wav", 2);
@@ -398,6 +427,40 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_MONSTER_ICEQUEENATTACK1, sndPath + "mIceQueenAttack1.wav", 2, true);
   LoadSound(SOUND_MONSTER_ICEQUEENATTACK2, sndPath + "mIceQueenAttack2.wav", 2, true);
   LoadSound(SOUND_MONSTER_ICEQUEENDIE, sndPath + "mIceQueenDie.wav", 2, true);
+  // --- Noria monsters (types 26-33) ---
+  // Goblin (type 26) + Elite Goblin (type 33)
+  LoadSound(SOUND_MONSTER_GOBLIN1, sndPath + "mGoblin1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOBLIN2, sndPath + "mGoblin2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOBLINATTACK1, sndPath + "mGoblinAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOBLINATTACK2, sndPath + "mGoblinAttack2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOBLINDIE, sndPath + "mGoblinDie.wav", 2, true);
+  // Chain Scorpion (type 27)
+  LoadSound(SOUND_MONSTER_SCORPION1, sndPath + "mScorpion1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_SCORPION2, sndPath + "mScorpion2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_SCORPIONATTACK1, sndPath + "mScorpionAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_SCORPIONATTACK2, sndPath + "mScorpionAttack2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_SCORPIONDIE, sndPath + "mScorpionDie.wav", 2, true);
+  // Beetle Monster (type 28)
+  LoadSound(SOUND_MONSTER_BEETLE1, sndPath + "mBeetle1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BEETLEATTACK1, sndPath + "mBeetleAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BEETLEDIE, sndPath + "mBeetleDie.wav", 2, true);
+  // Hunter (type 29)
+  LoadSound(SOUND_MONSTER_HUNTER1, sndPath + "mHunter1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_HUNTER2, sndPath + "mHunter2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_HUNTERATTACK1, sndPath + "mHunterAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_HUNTERATTACK2, sndPath + "mHunterAttack2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_HUNTERDIE, sndPath + "mHunterDie.wav", 2, true);
+  // Stone Golem (type 32) — also used for Forest Monster (30) and Agon (31)
+  LoadSound(SOUND_MONSTER_GOLEM1, sndPath + "mGolem1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOLEM2, sndPath + "mGolem2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOLEMATTACK1, sndPath + "mGolemAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOLEMATTACK2, sndPath + "mGolemAttack2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_GOLEMDIE, sndPath + "mGolemDie.wav", 2, true);
+
+  // Bow/crossbow release sounds
+  LoadSound(SOUND_BOW, sndPath + "eBow.wav", 3, false);
+  LoadSound(SOUND_CROSSBOW, sndPath + "eCrossbow.wav", 3, false);
+
   // NPC sounds (3D positional)
   LoadSound(SOUND_NPC_BLACKSMITH, sndPath + "nBlackSmith.wav", 1, true);
   LoadSound(SOUND_NPC_HARP, sndPath + "nHarp.wav", 1, true);
@@ -433,7 +496,7 @@ void Shutdown() {
   std::cout << "[Sound] Shutdown" << std::endl;
 }
 
-void Play(int soundId) {
+void Play(int soundId, float gain) {
   if (!s_initialized)
     return;
   auto it = s_sounds.find(soundId);
@@ -444,7 +507,7 @@ void Play(int soundId) {
   ALuint src = slot.sources[slot.nextCh];
   alSourcef(src, AL_PITCH, 1.0f);
   alSourcei(src, AL_LOOPING, AL_FALSE);
-  alSourcef(src, AL_GAIN, s_masterVolume);
+  alSourcef(src, AL_GAIN, s_masterVolume * gain);
   alSourcePlay(src);
   slot.nextCh = (slot.nextCh + 1) % slot.maxCh;
   auto nm = s_soundNames.find(soundId);
@@ -551,6 +614,26 @@ void Play3D(int soundId, float x, float y, float z) {
   std::cout << "[Sound] Play3D: " << (nm != s_soundNames.end() ? nm->second : "?")
             << " (id=" << soundId << ") at (" << x << "," << y << "," << z << ")"
             << std::endl;
+}
+
+void Play3DPitched(int soundId, float x, float y, float z, float minPitch,
+                   float maxPitch) {
+  if (!s_initialized)
+    return;
+  auto it = s_sounds.find(soundId);
+  if (it == s_sounds.end())
+    return;
+
+  auto &slot = it->second;
+  ALuint src = slot.sources[slot.nextCh];
+  float pitch =
+      minPitch + (float)rand() / (float)RAND_MAX * (maxPitch - minPitch);
+  alSource3f(src, AL_POSITION, x, y, z);
+  alSourcef(src, AL_PITCH, pitch);
+  alSourcei(src, AL_LOOPING, AL_FALSE);
+  alSourcef(src, AL_GAIN, s_masterVolume);
+  alSourcePlay(src);
+  slot.nextCh = (slot.nextCh + 1) % slot.maxCh;
 }
 
 void UpdateListener(float x, float y, float z) {

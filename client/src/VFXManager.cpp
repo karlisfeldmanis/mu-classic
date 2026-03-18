@@ -768,6 +768,19 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       p.alpha = 0.9f;
       break;
     }
+    case ParticleType::BUFF_AURA: {
+      // Main 5.2: MODEL_SPEARSKILL SubType 4 — orbiting energy particles
+      // Position set by caller (pre-computed orbit position around character)
+      // Gentle upward drift + slight outward spread, then fade
+      p.velocity = glm::vec3((float)(rand() % 8 - 4),
+                             15.0f + (float)(rand() % 10),
+                             (float)(rand() % 8 - 4));
+      p.scale = 6.0f + (float)(rand() % 8); // 6-14 units
+      p.maxLifetime = 0.6f + (float)(rand() % 4) / 10.0f; // 0.6-1.0s
+      p.color = glm::vec3(0.4f, 1.0f, 0.6f); // Default green (overridden)
+      p.alpha = 0.85f;
+      break;
+    }
     }
 
     p.lifetime = p.maxLifetime;
@@ -852,6 +865,10 @@ void VFXManager::SpawnSkillCast(uint8_t skillId, const glm::vec3 &heroPos,
     SpawnBurst(ParticleType::SPELL_FIRE, castPos, 15);
     SpawnBurst(ParticleType::FLARE, castPos, 3);
     break;
+  case 11: // Power Wave — Main 5.2: MODEL_MAGIC2 ground wave, cast glow
+    SpawnBurst(ParticleType::SPELL_ENERGY, castPos, 10);
+    SpawnBurst(ParticleType::FLARE, castPos, 2);
+    break;
   case 13: // Cometfall — no cast-side particles (Main 5.2: none for Blast)
     break;
   case 14: // Inferno — no cast-side particles (Main 5.2: ring IS the effect)
@@ -892,6 +909,11 @@ void VFXManager::SpawnSkillImpact(uint8_t skillId,
     SpawnBurst(ParticleType::FLARE, hitPos, 3);
     break;
   case 4: // Fire Ball — Main 5.2: impact handled by projectile collision
+    SpawnBurst(ParticleType::FLARE, hitPos, 2);
+    break;
+  case 11: // Power Wave — ground burst on impact
+    SpawnBurst(ParticleType::SPELL_ENERGY, hitPos, 20);
+    SpawnBurst(ParticleType::HIT_SPARK, hitPos, 8);
     SpawnBurst(ParticleType::FLARE, hitPos, 2);
     break;
   case 1: // Poison — cloud already spawned at cast time, skip duplicate
@@ -969,6 +991,11 @@ void VFXManager::SpawnSpellProjectile(uint8_t skillId, const glm::vec3 &start,
   case 17: // Energy Ball — Main 5.2: BITMAP_ENERGY, blue-dominant light
     proj.scale = 40.0f;
     proj.color = glm::vec3(0.4f, 0.6f, 1.0f); // Blue-dominant (0.2R, 0.4G, 1.0B)
+    proj.trailType = ParticleType::SPELL_ENERGY;
+    break;
+  case 11: // Power Wave — Main 5.2: MODEL_MAGIC2, white-blue ground wave
+    proj.scale = 50.0f;
+    proj.color = glm::vec3(0.6f, 0.8f, 1.0f); // White-blue
     proj.trailType = ParticleType::SPELL_ENERGY;
     break;
   case 4: { // Fire Ball — Main 5.2: MODEL_FIRE 3D model + particle trail
@@ -1345,6 +1372,12 @@ void VFXManager::Update(float deltaTime) {
       p.velocity.x *= (1.0f - 2.0f * deltaTime);
       p.velocity.z *= (1.0f - 2.0f * deltaTime);
       p.scale *= (1.0f - 1.5f * deltaTime); // Shrink over time
+      break;
+    case ParticleType::BUFF_AURA:
+      // Elf buff aura — gentle upward drift, decelerate XZ, shrink
+      p.velocity.x *= (1.0f - 3.0f * deltaTime);
+      p.velocity.z *= (1.0f - 3.0f * deltaTime);
+      p.scale *= (1.0f - 1.2f * deltaTime);
       break;
     case ParticleType::FLARE:
       // Main 5.2: BITMAP_FLASH — stationary, rapid scale shrink + alpha fade
@@ -1816,6 +1849,8 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
                 TexValid(m_infernoFireTexture) ? m_infernoFireTexture : m_fireTexture, true);
   drawBatchBgfx(ParticleType::SET_WATERFALL,
                 TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
+  drawBatchBgfx(ParticleType::BUFF_AURA,
+                TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
 
   // 3D spell models — use model shader for MeshBuffers with BGFX handles
   renderSpellProjectiles(view, projection);
@@ -1910,6 +1945,19 @@ void VFXManager::SpawnLevelUpEffect(const glm::vec3 &position) {
   gc.maxLifetime = 2.0f; // Main 5.2: LifeTime=20 ticks at 25fps = 0.8s, extended for visual
   gc.lifetime = gc.maxLifetime;
   gc.color = glm::vec3(1.0f, 0.75f, 0.2f); // Golden-orange (regular level-up)
+  m_groundCircles.push_back(gc);
+}
+
+void VFXManager::SpawnBuffCastFlash(const glm::vec3 &position,
+                                     const glm::vec3 &color) {
+  // Main 5.2: BITMAP_MAGIC+1 SubType 1/2/3 — expanding colored ground circle
+  // Same rendering as level-up ground circle but with buff-specific color
+  GroundCircle gc;
+  gc.position = position;
+  gc.rotation = 0.0f;
+  gc.maxLifetime = 1.2f; // Main 5.2: LifeTime=20 ticks = 0.8s, slight extend
+  gc.lifetime = gc.maxLifetime;
+  gc.color = color;
   m_groundCircles.push_back(gc);
 }
 

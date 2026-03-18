@@ -75,11 +75,14 @@ public:
   int GetNpcCount() const { return (int)m_npcs.size(); }
   NpcInfo GetNpcInfo(int index) const;
 
-  // Quest marker state (set from main.cpp each frame)
-  // questIndex = Lorencia chain (0-11), deviasQuestIndex = Devias chain (12-17)
-  void SetQuestState(int questIndex, int deviasQuestIndex,
-                     const int *killCount, const int *required,
-                     int targetCount, int currentMapId);
+  // Quest marker state — precomputed per guard NPC type
+  // marker: '!' = available, '?' = in-progress or completable, '\0' = none
+  struct GuardMarker {
+    uint16_t guardType;
+    char marker;     // '!', '?', '\0'
+    bool isGold;     // true=gold, false=grey
+  };
+  void SetQuestMarkers(const std::vector<GuardMarker> &markers);
 
   // Server-driven NPC movement (guard patrol)
   void SetNpcMoveTarget(uint16_t serverIndex, float worldX, float worldZ);
@@ -114,6 +117,9 @@ private:
     uint16_t serverIndex = 0; // Server-assigned index (1001+)
     std::string name;
 
+
+    // NPC ambient sound cooldown (seconds until next trigger)
+    float soundCooldown = 0.0f;
 
     // Guard movement (server-driven via 0x14 NPC_MOVE packets)
     bool isMoving = false;
@@ -184,13 +190,9 @@ private:
   void addNpc(int modelIdx, int gridX, int gridY, int dir, float scale = 1.0f);
   float snapToTerrain(float worldX, float worldZ);
   glm::vec3 sampleTerrainLightAt(const glm::vec3 &worldPos) const;
-  // Quest marker state (dual chains)
-  int m_questIndex = 0;        // Lorencia chain (0-11)
-  int m_deviasQuestIndex = 12; // Devias chain (12-17)
-  int m_questKillCount[3] = {};
-  int m_questRequired[3] = {};
-  int m_questTargetCount = 0;
-  int m_currentMapId = 0;
+  // Quest marker state (3 chains)
+  // Precomputed quest markers per guard NPC type
+  std::vector<GuardMarker> m_guardMarkers;
 
   // Main 5.2: default NPC PlaySpeed = 0.25 per tick at 25fps = 6.25 fps
   static constexpr float ANIM_SPEED = 6.25f;

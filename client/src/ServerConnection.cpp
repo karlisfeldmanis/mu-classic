@@ -151,6 +151,7 @@ void ServerConnection::SendDropItem(uint8_t bagSlot) {
 void ServerConnection::SendGridMove(uint8_t gridX, uint8_t gridY) {
   PMSG_MOVE_RECV pkt{};
   pkt.h = MakeC1Header(sizeof(pkt), Opcode::MOVE);
+  pkt.x = gridX;
   pkt.y = gridY;
   m_client.Send(&pkt, sizeof(pkt));
 }
@@ -199,23 +200,24 @@ void ServerConnection::SendNpcInteract(uint16_t npcType, bool open) {
   m_client.Send(&pkt, sizeof(pkt));
 }
 
-void ServerConnection::SendQuestAccept(uint16_t guardNpcType) {
-  PMSG_QUEST_ACCEPT_RECV pkt{};
+void ServerConnection::SendQuestAccept(uint8_t questId) {
+  PMSG_QUEST_ACCEPT_SEND pkt{};
   pkt.h = MakeC1SubHeader(sizeof(pkt), Opcode::QUEST, Opcode::SUB_QUEST_ACCEPT);
-  pkt.guardNpcType = guardNpcType;
+  pkt.questId = questId;
   m_client.Send(&pkt, sizeof(pkt));
 }
 
-void ServerConnection::SendQuestComplete(uint16_t guardNpcType) {
-  PMSG_QUEST_COMPLETE_RECV pkt{};
+void ServerConnection::SendQuestComplete(uint8_t questId) {
+  PMSG_QUEST_COMPLETE_SEND pkt{};
   pkt.h = MakeC1SubHeader(sizeof(pkt), Opcode::QUEST, Opcode::SUB_QUEST_COMPLETE);
-  pkt.guardNpcType = guardNpcType;
+  pkt.questId = questId;
   m_client.Send(&pkt, sizeof(pkt));
 }
 
-void ServerConnection::SendQuestAbandon() {
-  PSBMSG_HEAD pkt{};
-  pkt = MakeC1SubHeader(sizeof(pkt), Opcode::QUEST, Opcode::SUB_QUEST_ABANDON);
+void ServerConnection::SendQuestAbandon(uint8_t questId) {
+  PMSG_QUEST_ABANDON_SEND pkt{};
+  pkt.h = MakeC1SubHeader(sizeof(pkt), Opcode::QUEST, Opcode::SUB_QUEST_ABANDON);
+  pkt.questId = questId;
   m_client.Send(&pkt, sizeof(pkt));
 }
 

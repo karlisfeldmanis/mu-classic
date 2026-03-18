@@ -17,48 +17,63 @@ GameWorld::~GameWorld() = default;
 // ─── Static monster type definitions (OpenMU Version075) ─────────────────────
 
 static const MonsterTypeDef s_monsterDefs[] = {
-    // type hp    def  defR atkMn atkMx atkR lvl  atkCD  mvDel mR vR aR aggro
+    // type hp    def  defR atkMn atkMx atkR lvl  atkCD  mvDel mR vR aR aggro respawn
     // All values from OpenMU Version075 (canonical reference)
     // --- Lorencia monsters ---
-    {0, 100, 6, 6, 16, 20, 28, 6, 1.6f, 0.4f, 3, 5, 1, true}, // Bull Fighter
-    {1, 140, 9, 9, 22, 27, 39, 9, 1.6f, 0.4f, 3, 5, 1, true}, // Hound
-    {2, 60, 3, 3, 10, 13, 18, 4, 2.0f, 0.4f, 3, 4, 1, true},  // Budge Dragon
-    {3, 30, 1, 1, 4, 7, 8, 2, 1.8f, 0.6f, 2, 5, 1, true},     // Spider (slower)
+    {0, 100, 6, 6, 16, 20, 28, 6, 1.6f, 0.4f, 3, 5, 1, true, 3.0f},  // Bull Fighter
+    {1, 140, 9, 9, 22, 27, 39, 9, 1.6f, 0.4f, 3, 5, 1, true, 10.0f}, // Hound
+    {2, 60, 3, 3, 10, 13, 18, 4, 2.0f, 0.4f, 3, 4, 1, true, 3.0f},   // Budge Dragon
+    {3, 30, 1, 1, 4, 7, 8, 2, 1.8f, 0.6f, 2, 5, 1, true, 10.0f},     // Spider (slower)
     {4, 190, 12, 12, 31, 36, 50, 12, 1.4f, 0.4f, 3, 4, 1,
-     true}, // Elite Bull Fighter
-    {6, 255, 14, 14, 41, 46, 62, 14, 2.0f, 0.4f, 3, 7, 4, true}, // Lich
-    {7, 400, 18, 18, 57, 62, 80, 17, 2.2f, 0.4f, 2, 3, 2, true}, // Giant
+     true, 10.0f}, // Elite Bull Fighter
+    {6, 255, 14, 14, 41, 46, 62, 14, 2.0f, 0.4f, 3, 7, 4, true, 10.0f}, // Lich
+    {7, 400, 18, 18, 57, 62, 80, 17, 2.2f, 0.4f, 2, 3, 2, true, 10.0f}, // Giant
     {14, 525, 22, 22, 68, 74, 93, 19, 1.4f, 0.4f, 2, 4, 1,
-     true}, // Skeleton Warrior
+     true, 10.0f}, // Skeleton Warrior
     {15, 600, 25, 25, 72, 78, 100, 22, 1.6f, 0.4f, 2, 5, 4,
-     true}, // Skeleton Archer (ranged)
+     true, 10.0f}, // Skeleton Archer (ranged)
     {16, 800, 30, 30, 85, 92, 115, 25, 1.4f, 0.4f, 2, 4, 1,
-     true}, // Skeleton Captain
-    // --- Dungeon monsters ---
-    {5, 1400, 55, 55, 125, 130, 165, 38, 1.4f, 0.4f, 3, 5, 1, true},  // Hell Hound
-    {8, 2500, 75, 75, 145, 150, 190, 46, 1.6f, 0.4f, 2, 4, 1, true},  // Poison Bull
-    {9, 2000, 70, 70, 140, 145, 180, 44, 1.8f, 0.4f, 2, 7, 4, true},  // Thunder Lich (ranged)
-    {10, 3000, 80, 80, 150, 155, 200, 48, 1.4f, 0.4f, 2, 4, 1, true}, // Dark Knight
-    {11, 1000, 40, 40, 110, 115, 145, 32, 1.6f, 0.4f, 3, 5, 1, true}, // Ghost
-    {12, 750, 31, 31, 90, 95, 120, 25, 1.8f, 0.4f, 3, 4, 1, true},    // Larva
-    {13, 1600, 60, 60, 130, 135, 170, 40, 1.6f, 0.4f, 2, 7, 4, true}, // Hell Spider (ranged)
-    {17, 850, 35, 35, 100, 105, 130, 28, 2.0f, 0.4f, 2, 3, 2, true},  // Cyclops
-    {18, 6000, 100, 100, 165, 175, 220, 55, 1.2f, 0.4f, 2, 5, 1, true}, // Gorgon
-    // --- Devias monsters ---
-    {19, 900, 37, 37, 105, 110, 150, 30, 1.6f, 0.4f, 3, 5, 1, true},    // Yeti
-    {20, 1200, 50, 50, 120, 125, 180, 36, 1.4f, 0.4f, 3, 5, 1, true},   // Elite Yeti
-    {21, 800, 33, 33, 95, 100, 130, 26, 1.4f, 0.4f, 3, 5, 1, true},     // Assassin
-    {22, 650, 27, 27, 80, 85, 110, 22, 1.8f, 0.4f, 3, 5, 1, true},      // Ice Monster
-    {23, 700, 29, 29, 85, 90, 120, 24, 1.6f, 0.4f, 3, 5, 1, true},      // Hommerd
-    {24, 600, 25, 25, 75, 80, 100, 20, 1.8f, 0.4f, 3, 4, 1, true},      // Worm
-    {25, 4000, 90, 90, 155, 165, 260, 52, 1.2f, 0.4f, 2, 5, 4, true},   // Ice Queen
+     true, 10.0f}, // Skeleton Captain
+    // --- Dungeon monsters (OpenMU Version075 Dungeon.cs) ---
+    {5, 1400, 55, 45, 125, 130, 190, 38, 1.2f, 0.4f, 3, 4, 1, true, 10.0f},  // Hell Hound
+    {8, 2500, 75, 61, 145, 150, 230, 46, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},  // Poison Bull
+    {9, 2000, 70, 55, 140, 145, 220, 44, 2.2f, 0.4f, 3, 7, 4, true, 10.0f},  // Thunder Lich (ranged)
+    {10, 3000, 80, 70, 150, 155, 240, 48, 1.4f, 0.4f, 3, 5, 1, true, 10.0f}, // Dark Knight
+    {11, 1000, 40, 39, 110, 115, 160, 32, 1.4f, 0.4f, 3, 5, 1, true, 10.0f}, // Ghost
+    {12, 750, 31, 31, 90, 95, 125, 25, 1.8f, 0.4f, 3, 4, 1, true, 10.0f},    // Larva
+    {13, 1600, 60, 47, 130, 135, 200, 40, 1.6f, 0.4f, 3, 7, 4, true, 10.0f}, // Hell Spider (ranged)
+    {17, 850, 35, 35, 100, 105, 140, 28, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},  // Cyclops
+    {18, 6000, 100, 82, 165, 175, 275, 55, 1.6f, 0.4f, 3, 7, 1, true, 10.0f}, // Gorgon
+    // --- Devias monsters (OpenMU Version075 Devias.cs) ---
+    {19, 900, 37, 37, 105, 110, 150, 30, 2.0f, 0.4f, 2, 6, 4, true, 3.0f},     // Yeti (EnergyBall skill)
+    {20, 1200, 50, 43, 120, 125, 180, 36, 1.4f, 0.4f, 3, 6, 1, true, 3.0f},    // Elite Yeti
+    {21, 800, 33, 33, 95, 100, 130, 26, 2.0f, 0.4f, 2, 7, 1, true, 10.0f},     // Assassin
+    {22, 650, 27, 27, 80, 85, 110, 22, 2.0f, 0.4f, 2, 5, 1, true, 10.0f},      // Ice Monster (Ice skill)
+    {23, 700, 29, 29, 85, 90, 120, 24, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},      // Hommerd
+    {24, 600, 25, 25, 75, 80, 100, 20, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},      // Worm
+    {25, 4000, 90, 76, 155, 165, 260, 52, 1.4f, 0.4f, 3, 7, 4, true, 50.0f},   // Ice Queen (PowerWave skill)
+    // --- Noria monsters (OpenMU Version075) ---
+    {26, 45, 2, 2, 7, 10, 13, 3, 1.8f, 0.4f, 2, 4, 1, true, 10.0f},      // Goblin
+    {27, 80, 4, 4, 13, 17, 23, 5, 1.8f, 0.4f, 3, 4, 1, true, 10.0f},     // Chain Scorpion
+    {28, 165, 10, 10, 26, 31, 44, 10, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},  // Beetle Monster
+    {29, 220, 13, 13, 36, 41, 56, 13, 1.6f, 0.4f, 3, 4, 4, true, 10.0f},  // Hunter (ranged)
+    {30, 295, 15, 15, 46, 51, 68, 15, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},  // Forest Monster
+    {31, 340, 16, 16, 51, 57, 74, 16, 1.4f, 0.4f, 2, 4, 1, true, 10.0f},  // Agon
+    {32, 465, 20, 20, 62, 68, 86, 18, 2.2f, 0.4f, 2, 3, 2, true, 10.0f},  // Stone Golem
+    {33, 120, 8, 8, 19, 23, 33, 8, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},    // Elite Goblin
+    // --- Summon-only monsters (Elf summoning skills) ---
+    {150, 5000, 100, 75, 165, 170, 260, 52, 1.6f, 0.4f, 3, 1, 7, false, 10.0f}, // Bali
 };
 static constexpr int NUM_MONSTER_DEFS =
     sizeof(s_monsterDefs) / sizeof(s_monsterDefs[0]);
 
-// World-space melee range threshold (squared) — 1.5 grid cells.
-// Melee monsters (attackRange <= 1) must be within this distance to attack.
-static constexpr float MELEE_ATTACK_DIST_SQ = 200.0f * 200.0f;
+// World-space melee range threshold (squared) — must be adjacent.
+// Adjacent diagonal = ~141 units, so 150 allows adjacent but not 2-cell hits.
+// Max world distance for melee attacks. Grid cells are 100 units wide, and
+// the worst case for adjacent diagonal cells (Chebyshev dist=1) is ~281 units
+// (monster at cell corner, player at far corner of adjacent cell). Use 300 to
+// ensure all adjacent-cell configurations pass the world-distance check.
+static constexpr float MELEE_ATTACK_DIST_SQ = 300.0f * 300.0f;
 
 static float WorldDistSq(const MonsterInstance &mon,
                          const GameWorld::PlayerTarget &target) {
@@ -404,6 +419,7 @@ void GameWorld::LoadMonstersFromDB(Database &db, uint8_t mapId) {
       mon.viewRange = def->viewRange;
       mon.attackRange = def->attackRange;
       mon.aggressive = def->aggressive;
+      mon.respawnDelay = def->respawnDelay;
     } else {
       // Fallback for unknown types
       mon.hp = 30;
@@ -416,8 +432,8 @@ void GameWorld::LoadMonstersFromDB(Database &db, uint8_t mapId) {
       mon.level = 4;
     }
 
-    // Validate spawn position — if on blocked/void tile, relocate to nearest walkable cell
-    if (!IsWalkableGrid(mon.gridX, mon.gridY)) {
+    // Validate spawn position — if on blocked/void/safezone tile, relocate to nearest valid cell
+    if (!IsWalkableGrid(mon.gridX, mon.gridY) || IsSafeZoneGrid(mon.gridX, mon.gridY)) {
       bool relocated = false;
       for (int radius = 1; radius <= 10 && !relocated; radius++) {
         for (int dy = -radius; dy <= radius && !relocated; dy++) {
@@ -475,37 +491,53 @@ bool GameWorld::advancePathStep(MonsterInstance &mon, float dt,
   mon.moveTimer += dt;
   if (mon.moveTimer < mon.moveDelay)
     return false;
-  mon.moveTimer -= mon.moveDelay;
 
-  if (mon.pathStep >= (int)mon.currentPath.size())
-    return false;
+  // Process multiple steps per frame if dt spike exceeded moveDelay
+  // (prevents monsters freezing during server lag bursts)
+  bool moved = false;
+  static constexpr int MAX_STEPS_PER_FRAME = 4; // Cap to prevent runaway
+  int steps = 0;
+  while (mon.moveTimer >= mon.moveDelay && steps < MAX_STEPS_PER_FRAME) {
+    mon.moveTimer -= mon.moveDelay;
+    steps++;
 
-  GridPoint next = mon.currentPath[mon.pathStep];
+    if (mon.pathStep >= (int)mon.currentPath.size())
+      break;
 
-  // Clear old occupancy
-  setOccupied(mon.gridX, mon.gridY, false);
+    GridPoint next = mon.currentPath[mon.pathStep];
 
-  // Update direction
-  int dx = (int)next.x - (int)mon.gridX;
-  int dy = (int)next.y - (int)mon.gridY;
-  mon.dir = dirFromDelta(dx, dy);
+    // Clear old occupancy
+    setOccupied(mon.gridX, mon.gridY, false);
 
-  // Move to next cell
-  mon.gridX = next.x;
-  mon.gridY = next.y;
-  mon.worldX = mon.gridY * 100.0f; // gridY → worldX
-  mon.worldZ = mon.gridX * 100.0f; // gridX → worldZ
+    // Update direction
+    int dx = (int)next.x - (int)mon.gridX;
+    int dy = (int)next.y - (int)mon.gridY;
+    mon.dir = dirFromDelta(dx, dy);
 
-  // Set new occupancy
-  setOccupied(mon.gridX, mon.gridY, true);
+    // Move to next cell
+    mon.gridX = next.x;
+    mon.gridY = next.y;
+    mon.worldX = mon.gridY * 100.0f; // gridY → worldX
+    mon.worldZ = mon.gridX * 100.0f; // gridX → worldZ
 
-  mon.pathStep++;
+    // Set new occupancy
+    setOccupied(mon.gridX, mon.gridY, true);
 
-  // Broadcast: target is path endpoint
-  GridPoint pathEnd = mon.currentPath.back();
-  emitMoveIfChanged(mon, pathEnd.x, pathEnd.y, chasing, true, outMoves);
+    mon.pathStep++;
+    moved = true;
+  }
 
-  return true;
+  // Cap leftover to prevent accumulation across frames
+  if (mon.moveTimer > mon.moveDelay)
+    mon.moveTimer = mon.moveDelay;
+
+  if (moved) {
+    // Broadcast: target is path endpoint
+    GridPoint pathEnd = mon.currentPath.back();
+    emitMoveIfChanged(mon, pathEnd.x, pathEnd.y, chasing, true, outMoves);
+  }
+
+  return moved;
 }
 
 // ─── Find best target within viewRange ───────────────────────────────────────
@@ -517,14 +549,11 @@ GameWorld::findBestTarget(const MonsterInstance &mon,
   int bestDist = 999;
 
   // Priority 1: explicit aggro target (always honored, even for passive mobs)
+  // No range limit — if monster was hit by player, chase regardless of distance
   if (mon.aggroTargetFd != -1) {
     for (auto &p : players) {
       if (p.fd == mon.aggroTargetFd && !p.dead) {
-        int dist =
-            PathFinder::ChebyshevDist(mon.gridX, mon.gridY, p.gridX, p.gridY);
-        if (dist <= mon.viewRange * 2)
-          return &p;
-        break; // Found but too far
+        return &p;
       }
     }
   }
@@ -560,8 +589,10 @@ void GameWorld::processIdle(MonsterInstance &mon, float dt,
   mon.stateTimer -= dt;
 
   // Check for target (proximity aggro or explicit)
+  // If chaseFailCount > 0 (returned to IDLE after failed chase), wait for
+  // stateTimer cooldown before re-engaging. Prevents rapid IDLE↔CHASING loop.
   const PlayerTarget *target = findBestTarget(mon, players);
-  if (target) {
+  if (target && (mon.chaseFailCount == 0 || mon.stateTimer <= 0.0f)) {
     mon.aggroTargetFd = target->fd;
     mon.aggroTimer = 15.0f;
     mon.aiState = MonsterInstance::AIState::CHASING;
@@ -569,14 +600,19 @@ void GameWorld::processIdle(MonsterInstance &mon, float dt,
     mon.pathStep = 0;
     mon.moveTimer = 0.0f;
     mon.repathTimer = 0.0f;
-    printf("[AI] Mon %d (type %d): IDLE→CHASING fd=%d\n", mon.index, mon.type,
-           target->fd);
+    mon.chaseFailCount = 0; // Reset on re-engage
     return;
   }
 
   // Wander when idle timer expires
   if (mon.stateTimer <= 0.0f) {
-    for (int tries = 0; tries < 5; tries++) {
+    // Pre-check: collect up to 5 valid walkable candidates, then pathfind
+    // only the best one. Saves A* calls on blocked/safezone cells.
+    struct WanderCandidate { uint8_t gx, gy; int dist; };
+    WanderCandidate candidates[5];
+    int numCandidates = 0;
+
+    for (int tries = 0; tries < 10 && numCandidates < 5; tries++) {
       int rx = (int)mon.spawnGridX + (rand() % (2 * mon.moveRange + 1)) -
                mon.moveRange;
       int ry = (int)mon.spawnGridY + (rand() % (2 * mon.moveRange + 1)) -
@@ -584,29 +620,30 @@ void GameWorld::processIdle(MonsterInstance &mon, float dt,
       if (rx < 0 || ry < 0 || rx >= TERRAIN_SIZE || ry >= TERRAIN_SIZE)
         continue;
       uint8_t gx = (uint8_t)rx, gy = (uint8_t)ry;
-
-      bool walkable = IsWalkableGrid(gx, gy);
-      bool safezone = IsSafeZoneGrid(gx, gy);
-      if (!walkable) {
-        printf("[AI] Mon %d target (%d,%d) NOT walkable\n", mon.index, gx, gy);
+      if (!IsWalkableGrid(gx, gy) || IsSafeZoneGrid(gx, gy))
         continue;
-      }
-      if (safezone) {
-        printf("[AI] Mon %d target (%d,%d) is SAFEZONE\n", mon.index, gx, gy);
-        continue;
-      }
       if (gx == mon.gridX && gy == mon.gridY)
         continue;
+      candidates[numCandidates++] = {gx, gy,
+          PathFinder::ChebyshevDist(mon.gridX, mon.gridY, gx, gy)};
+    }
+
+    // Sort by distance (closest first) — shorter paths are cheaper to compute
+    for (int i = 0; i < numCandidates - 1; i++)
+      for (int j = i + 1; j < numCandidates; j++)
+        if (candidates[j].dist < candidates[i].dist)
+          std::swap(candidates[i], candidates[j]);
+
+    for (int c = 0; c < numCandidates; c++) {
+      uint8_t gx = candidates[c].gx, gy = candidates[c].gy;
 
       // A* pathfind to wander target
       GridPoint start{mon.gridX, mon.gridY};
       GridPoint end{gx, gy};
 
-      // Temporarily clear own occupancy for pathfinding
-      setOccupied(mon.gridX, mon.gridY, false);
+      // Monsters can ghost through each other (original MU behavior)
       auto path = m_pathFinder->FindPath(start, end, m_terrainAttributes.data(),
-                                         16, 500, false, m_monsterOccupancy);
-      setOccupied(mon.gridX, mon.gridY, true);
+                                         16, 500, false, nullptr);
 
       if (!path.empty()) {
         mon.currentPath = std::move(path);
@@ -638,8 +675,6 @@ void GameWorld::processWandering(MonsterInstance &mon, float dt,
     mon.pathStep = 0;
     mon.moveTimer = 0.0f;
     mon.repathTimer = 0.0f;
-    printf("[AI] Mon %d (type %d): WANDERING→CHASING fd=%d\n", mon.index,
-           mon.type, target->fd);
     return;
   }
 
@@ -698,26 +733,17 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
   }
 
   // Leash check — chase limit from spawn point
-  int leashDist = std::max(12, mon.viewRange * 3);
+  // Damage-aggro'd monsters get a much larger leash to chase attackers
+  int leashDist = std::max(25, mon.viewRange * 3);
   int distFromSpawn = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
                                                 mon.spawnGridX, mon.spawnGridY);
   if (distFromSpawn > leashDist) {
-    printf("[AI] Mon %d LEASHED (dist=%d, limit=%d)\n", mon.index,
-           distFromSpawn, leashDist);
     beginReturn();
     return;
   }
 
-  // De-aggro if target too far from monster
   int distToTarget = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
                                                target->gridX, target->gridY);
-  if (distToTarget > leashDist) {
-    printf("[AI] Mon %d DE-AGGRO (dist=%d) monGrid=(%d,%d) targetGrid=(%d,%d)\n",
-           mon.index, distToTarget, mon.gridX, mon.gridY,
-           target->gridX, target->gridY);
-    beginReturn();
-    return;
-  }
 
   // In attack range → APPROACHING (brief delay for client walk anim to finish)
   if (distToTarget <= mon.attackRange &&
@@ -762,14 +788,15 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
 
     // Melee monsters: spread to different adjacent cells around the player
     // using monster index as a rotational offset to prevent all converging
-    // on the same cell
+    // on the same cell. Prefer cardinal cells (100 units) over diagonal
+    // (141 units) for visually tighter attacks.
     if (mon.attackRange <= 1) {
-      static const int dx8[] = {-1, -1, -1, 0, 0, 1, 1, 1};
-      static const int dy8[] = {-1, 0, 1, -1, 1, -1, 0, 1};
-      int preferred = mon.index % 8; // Each monster prefers a different direction
-      int bestDist = 999;
+      // Cardinals first (indices 0-3), then diagonals (4-7)
+      static const int dx8[] = {0, 0, -1, 1, -1, -1, 1, 1};
+      static const int dy8[] = {-1, 1, 0, 0, -1, 1, -1, 1};
+      int preferred = mon.index % 8;
+      int bestScore = 999;
       GridPoint bestEnd = end;
-      // Try preferred direction first, then others
       for (int j = 0; j < 8; j++) {
         int i = (preferred + j) % 8;
         int nx = (int)target->gridX + dx8[i];
@@ -780,14 +807,35 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
           continue;
         int dist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
                                              (uint8_t)nx, (uint8_t)ny);
-        // Strongly prefer the monster's assigned direction (bias of -10)
-        int score = dist + (j > 0 ? 0 : -10);
-        if (score < bestDist) {
-          bestDist = score;
+        // Prefer assigned direction (-10), prefer cardinal over diagonal (-3)
+        bool isCardinal = (i < 4);
+        int score = dist + (j == 0 ? -10 : 0) + (isCardinal ? -3 : 0);
+        if (score < bestScore) {
+          bestScore = score;
           bestEnd = {(uint8_t)nx, (uint8_t)ny};
         }
       }
       end = bestEnd;
+    }
+
+    // If target is beyond the 16-cell A* segment limit, compute an
+    // intermediate waypoint ~12 cells toward the target so the monster
+    // can chase incrementally in multiple steps.
+    int distToEnd = PathFinder::ChebyshevDist(start.x, start.y, end.x, end.y);
+    if (distToEnd > 14) {
+      float dx = (float)end.x - (float)start.x;
+      float dy = (float)end.y - (float)start.y;
+      float len = std::max(std::abs(dx), std::abs(dy));
+      if (len > 0) {
+        float ratio = 12.0f / len;
+        int ix = (int)start.x + (int)(dx * ratio);
+        int iy = (int)start.y + (int)(dy * ratio);
+        ix = std::max(0, std::min(ix, TERRAIN_SIZE - 1));
+        iy = std::max(0, std::min(iy, TERRAIN_SIZE - 1));
+        end = {(uint8_t)ix, (uint8_t)iy};
+      }
+      // Re-path more frequently when stepping incrementally
+      mon.repathTimer = 0.3f;
     }
 
     // Don't use occupancy grid during chase — monsters can overlap when
@@ -795,8 +843,11 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
     if (start == end) {
       mon.chaseFailCount = 0;
     } else {
+      // Allow safe zone traversal during chase (monsters walk through, just
+      // don't aggro there). Original MU behavior — prevents stuck monsters
+      // near town borders.
       auto path = m_pathFinder->FindPath(start, end, m_terrainAttributes.data(),
-                                         16, 500, false, nullptr);
+                                         16, 500, true, nullptr);
       if (!path.empty()) {
         mon.currentPath = std::move(path);
         mon.pathStep = 0;
@@ -806,14 +857,34 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
       } else {
         mon.chaseFailCount++;
         if (mon.chaseFailCount >= 10) {
-          printf("[AI] Mon %d: gave up chasing (no path %d times)\n", mon.index,
-                 mon.chaseFailCount);
-          beginReturn();
+          // If explicitly aggro'd by damage, don't return — stay in place
+          // so the monster doesn't heal to full when hit from range by Elf bow.
+          // Just stop chasing and idle (aggro timer handles de-aggro after 15s).
+          if (mon.aggroTargetFd != -1) {
+            mon.aiState = MonsterInstance::AIState::IDLE;
+            mon.currentPath.clear();
+            mon.pathStep = 0;
+            mon.stateTimer = 2.0f;
+            // Keep aggroTargetFd and aggroTimer so findBestTarget still returns target
+          } else {
+            beginReturn();
+          }
           return;
         }
       }
     }
-    mon.repathTimer = 1.0f; // Re-pathfind every 1s
+    // Scale repath interval by distance: close targets repath more often
+    // (smoother tracking), distant targets less often (saves CPU)
+    if (mon.repathTimer <= 0.0f) {
+      int distNow = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
+                                              target->gridX, target->gridY);
+      if (distNow <= 3)
+        mon.repathTimer = 0.5f;  // Very close: responsive tracking
+      else if (distNow <= 8)
+        mon.repathTimer = 1.0f;  // Medium: standard rate
+      else
+        mon.repathTimer = 1.5f;  // Far away: relax (intermediate steps use 0.3s)
+    }
   }
 
   // Advance along path
@@ -885,8 +956,6 @@ void GameWorld::processApproaching(MonsterInstance &mon, float dt,
     mon.aiState = MonsterInstance::AIState::ATTACKING;
     mon.attackCooldown = 0.0f;
     emitMoveIfChanged(mon, mon.gridX, mon.gridY, true, false, outMoves);
-    printf("[AI] Mon %d: APPROACHING→ATTACKING (delay=%.2fs)\n", mon.index,
-           requiredDelay);
   }
 }
 
@@ -984,14 +1053,6 @@ void GameWorld::processAttacking(MonsterInstance &mon, float dt,
     }
   }
 
-  printf("[AI] Mon %d (type %d) -> Player fd=%d: ATK %d - DEF %d (Rate %d/%d) "
-         "= %d%s\n",
-         mon.index, mon.type, target->fd,
-         dmg +
-             (missed ? 0 : target->defense), // Show raw damage before reduction
-         target->defense, target->defenseRate, mon.attackRate, dmg,
-         missed ? " (MISS)" : "");
-
   // Subtract damage from local target state for correct HP sync in packet
   target->life -= dmg;
 
@@ -1021,19 +1082,37 @@ void GameWorld::processReturning(MonsterInstance &mon, float dt,
       // Re-aggro cooldown after evade return (prevents heal→chase→fail loop)
       mon.aggroTimer = -5.0f;
       mon.chaseFailCount = 0;
+      mon.playerThreat = 0.0f;
+      mon.summonThreat = 0.0f;
+      mon.aggroSummonIdx = 0;
       emitMoveIfChanged(mon, mon.gridX, mon.gridY, false, false, outMoves);
-      printf("[AI] Mon %d returned to spawn, healed to %d/%d\n", mon.index,
-             mon.hp, mon.maxHp);
       return;
     }
 
     // Re-pathfind toward spawn (path may be >16 steps, multiple cycles)
     GridPoint start{mon.gridX, mon.gridY};
     GridPoint end{mon.spawnGridX, mon.spawnGridY};
-    setOccupied(mon.gridX, mon.gridY, false);
+
+    // Intermediate waypoint if spawn is beyond pathfinder segment limit
+    int distToSpawn = PathFinder::ChebyshevDist(start.x, start.y, end.x, end.y);
+    if (distToSpawn > 14) {
+      float ddx = (float)end.x - (float)start.x;
+      float ddy = (float)end.y - (float)start.y;
+      float len = std::max(std::abs(ddx), std::abs(ddy));
+      if (len > 0) {
+        float ratio = 12.0f / len;
+        int ix = (int)start.x + (int)(ddx * ratio);
+        int iy = (int)start.y + (int)(ddy * ratio);
+        ix = std::max(0, std::min(ix, TERRAIN_SIZE - 1));
+        iy = std::max(0, std::min(iy, TERRAIN_SIZE - 1));
+        end = {(uint8_t)ix, (uint8_t)iy};
+      }
+    }
+
+    // Don't use occupancy grid — returning monsters ghost through others
+    // (matches chase behavior and prevents stuck evading monsters)
     auto path = m_pathFinder->FindPath(start, end, m_terrainAttributes.data(),
-                                       16, 500, false, m_monsterOccupancy);
-    setOccupied(mon.gridX, mon.gridY, true);
+                                       16, 500, false, nullptr);
     if (!path.empty()) {
       mon.currentPath = std::move(path);
       mon.pathStep = 0;
@@ -1051,6 +1130,9 @@ void GameWorld::processReturning(MonsterInstance &mon, float dt,
       mon.stateTimer = 2.0f;
       mon.aggroTimer = -5.0f; // Re-aggro cooldown after evade
       mon.chaseFailCount = 0;
+      mon.playerThreat = 0.0f;
+      mon.summonThreat = 0.0f;
+      mon.aggroSummonIdx = 0;
       emitMoveIfChanged(mon, mon.gridX, mon.gridY, false, false, outMoves);
       return;
     }
@@ -1071,8 +1153,10 @@ void GameWorld::Update(float dt,
                        std::function<void(uint16_t)> guardKillCallback) {
   // Update monster DYING/DEAD timers and respawn
   for (auto &mon : m_monsterInstances) {
-    if (mon.attackCooldown > 0)
+    if (mon.attackCooldown > 0) {
       mon.attackCooldown -= dt;
+      if (mon.attackCooldown < 0) mon.attackCooldown = 0;
+    }
 
     switch (mon.aiState) {
     case MonsterInstance::AIState::DYING:
@@ -1085,8 +1169,10 @@ void GameWorld::Update(float dt,
       }
       break;
     case MonsterInstance::AIState::DEAD:
+      if (mon.isSummon())
+        break; // Summons don't respawn — removed in sweep below
       mon.stateTimer += dt;
-      if (mon.stateTimer >= RESPAWN_DELAY) {
+      if (mon.stateTimer >= mon.respawnDelay * ServerConfig::RESPAWN_MULTIPLIER) {
         // Respawn at original position
         setOccupied(mon.gridX, mon.gridY, false);
         mon.aiState = MonsterInstance::AIState::IDLE;
@@ -1108,6 +1194,9 @@ void GameWorld::Update(float dt,
         mon.chaseFailCount = 0;
         mon.poisoned = false;
         mon.evading = false;
+        mon.playerThreat = 0.0f;
+        mon.summonThreat = 0.0f;
+        mon.aggroSummonIdx = 0;
         mon.justRespawned = true;
         setOccupied(mon.gridX, mon.gridY, true);
       }
@@ -1127,6 +1216,8 @@ void GameWorld::Update(float dt,
     uint8_t guardGX = static_cast<uint8_t>(npc.worldZ / 100.0f);
     uint8_t guardGY = static_cast<uint8_t>(npc.worldX / 100.0f);
     for (auto &mon : m_monsterInstances) {
+      if (mon.isSummon())
+        continue; // Guards don't attack summons
       if (mon.aiState == MonsterInstance::AIState::DYING ||
           mon.aiState == MonsterInstance::AIState::DEAD)
         continue;
@@ -1162,6 +1253,18 @@ void GameWorld::Update(float dt,
       ++it;
     }
   }
+
+  // Sweep dead summons (they don't respawn)
+  for (auto it = m_monsterInstances.begin(); it != m_monsterInstances.end();) {
+    if (it->isSummon() && it->aiState == MonsterInstance::AIState::DEAD) {
+      setOccupied(it->gridX, it->gridY, false);
+      printf("[Summon] Removed dead summon index=%d type=%d\n", it->index,
+             it->type);
+      it = m_monsterInstances.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 // ─── Guard NPC interaction ────────────────────────────────────────────────────
@@ -1192,7 +1295,9 @@ void GameWorld::ClearGuardInteractionsForPlayer(int playerFd) {
 
 std::vector<GameWorld::MonsterAttackResult>
 GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
-                            std::vector<MonsterMoveUpdate> &outMoves) {
+                            std::vector<MonsterMoveUpdate> &outMoves,
+                            std::vector<SummonHitResult> *outSummonHits,
+                            std::vector<MonsterHitSummonResult> *outMonsterHitSummon) {
   std::vector<MonsterAttackResult> attacks;
 
   for (auto &mon : m_monsterInstances) {
@@ -1200,6 +1305,12 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
     if (mon.aiState == MonsterInstance::AIState::DYING ||
         mon.aiState == MonsterInstance::AIState::DEAD)
       continue;
+
+    // Summons use separate AI
+    if (mon.isSummon()) {
+      processSummonAI(mon, dt, players, outMoves, attacks, outSummonHits);
+      continue;
+    }
 
     // Tick respawn immunity timer toward 0 (negative = immune)
     if (mon.aggroTimer < 0.0f) {
@@ -1265,6 +1376,26 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
       continue; // Skip AI state machine while stunned
     }
 
+    // Summon-targeting: if this monster has aggro on a summon, handle it
+    if (mon.aggroSummonIdx > 0) {
+      MonsterInstance *summon = nullptr;
+      for (auto &m : m_monsterInstances) {
+        if (m.index == mon.aggroSummonIdx && m.isSummon() && m.hp > 0 &&
+            m.aiState != MonsterInstance::AIState::DYING &&
+            m.aiState != MonsterInstance::AIState::DEAD) {
+          summon = &m;
+          break;
+        }
+      }
+      if (summon) {
+        processSummonTargeting(mon, *summon, dt, outMoves, outMonsterHitSummon);
+        continue; // Skip normal AI
+      } else {
+        // Summon gone — clear and resume normal player targeting
+        mon.aggroSummonIdx = 0;
+      }
+    }
+
     // Dispatch to state handler
     switch (mon.aiState) {
     case MonsterInstance::AIState::IDLE:
@@ -1292,6 +1423,440 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
   return attacks;
 }
 
+// ─── Summon AI (follows owner, attacks nearby wild monsters) ─────────────────
+
+void GameWorld::processSummonAI(MonsterInstance &mon, float dt,
+                                 std::vector<PlayerTarget> &players,
+                                 std::vector<MonsterMoveUpdate> &outMoves,
+                                 std::vector<MonsterAttackResult> &attacks,
+                                 std::vector<SummonHitResult> *outSummonHits) {
+  // Find owner
+  PlayerTarget *owner = nullptr;
+  for (auto &p : players) {
+    if (p.fd == mon.ownerFd) {
+      owner = &p;
+      break;
+    }
+  }
+
+  // Owner disconnected or dead → mark summon for death
+  if (!owner || owner->dead) {
+    mon.hp = 0;
+    mon.aiState = MonsterInstance::AIState::DYING;
+    mon.stateTimer = 0.0f;
+    return;
+  }
+
+  // Tick attack cooldown
+  if (mon.attackCooldown > 0)
+    mon.attackCooldown -= dt;
+
+  // Spawn grace period: summon stays still for 1s after spawning so the client
+  // can show the appear animation before it starts chasing
+  if (mon.stateTimer > 0.0f) {
+    mon.stateTimer -= dt;
+    return;
+  }
+
+  // HP regen: 2% of maxHP per second (always, even during chase)
+  if (mon.hp > 0 && mon.hp < mon.maxHp) {
+    mon.regenTimer += dt;
+    if (mon.regenTimer >= 1.0f) {
+      mon.regenTimer -= 1.0f;
+      int regen = std::max(1, mon.maxHp / 50);
+      mon.hp = std::min(mon.maxHp, mon.hp + regen);
+    }
+  }
+
+  // Calculate distance to owner (grid)
+  int ownerGX = static_cast<int>(owner->worldZ / 100.0f);
+  int ownerGY = static_cast<int>(owner->worldX / 100.0f);
+  int distToOwner =
+      PathFinder::ChebyshevDist(mon.gridX, mon.gridY, ownerGX, ownerGY);
+
+  // Leash: teleport to owner if too far (>8 cells)
+  if (distToOwner > 8) {
+    // Find walkable cell near owner
+    for (int r = 1; r <= 3; r++) {
+      for (int dy = -r; dy <= r; dy++) {
+        for (int dx = -r; dx <= r; dx++) {
+          int nx = ownerGX + dx, ny = ownerGY + dy;
+          if (nx < 0 || ny < 0 || nx >= TERRAIN_SIZE || ny >= TERRAIN_SIZE)
+            continue;
+          if (IsWalkableGrid((uint8_t)nx, (uint8_t)ny)) {
+            setOccupied(mon.gridX, mon.gridY, false);
+            mon.gridX = (uint8_t)nx;
+            mon.gridY = (uint8_t)ny;
+            mon.worldX = mon.gridY * 100.0f;
+            mon.worldZ = mon.gridX * 100.0f;
+            setOccupied(mon.gridX, mon.gridY, true);
+            mon.currentPath.clear();
+            mon.pathStep = 0;
+            mon.aggroTargetFd = -1; // Reset chase state after teleport
+            mon.attackCooldown = std::max(mon.attackCooldown, 0.8f); // Delay before attacking after teleport
+            emitMoveIfChanged(mon, mon.gridX, mon.gridY, false, false,
+                              outMoves);
+            goto leash_done;
+          }
+        }
+      }
+    }
+  leash_done:
+    distToOwner =
+        PathFinder::ChebyshevDist(mon.gridX, mon.gridY, ownerGX, ownerGY);
+  }
+
+  // Check for attack target FIRST — attacking takes priority over following
+  MonsterInstance *bestTarget = nullptr;
+  int bestTargetDist = 999;
+
+  if (owner->attackTargetMonsterIdx > 0) {
+    for (auto &other : m_monsterInstances) {
+      if (other.index == owner->attackTargetMonsterIdx && !other.isSummon() &&
+          other.aiState != MonsterInstance::AIState::DYING &&
+          other.aiState != MonsterInstance::AIState::DEAD &&
+          other.aggroTimer >= 0.0f && // Skip freshly respawned monsters
+          other.hp > 0) {
+        bestTarget = &other;
+        bestTargetDist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
+                                                    other.gridX, other.gridY);
+        break;
+      }
+    }
+    // Clear stale target if monster is dead/respawned
+    if (!bestTarget)
+      owner->attackTargetMonsterIdx = 0;
+  }
+
+  // Summons must walk close before attacking — force melee range regardless
+  // of monster type's attackRange (even Stone Golem/Bali walk up first)
+  static constexpr float SUMMON_MELEE_DIST_SQ = 120.0f * 120.0f;
+  bool inMeleeRange = false;
+  if (bestTarget && bestTargetDist <= 1) {
+    float dx = mon.worldX - bestTarget->worldX;
+    float dz = mon.worldZ - bestTarget->worldZ;
+    inMeleeRange = (dx * dx + dz * dz) <= SUMMON_MELEE_DIST_SQ;
+  }
+
+  // If target is in attack range, interrupt path and attack immediately
+  if (bestTarget && inMeleeRange) {
+    // Stop any current movement
+    mon.currentPath.clear();
+    mon.pathStep = 0;
+
+    // Approach delay: first arrival in melee range after chasing —
+    // wait for client walk animation to finish before attack plays
+    if (mon.aggroTargetFd > 0) {
+      if (mon.attackCooldown < 0.8f)
+        mon.attackCooldown = 0.8f;
+      mon.aggroTargetFd = -1;
+    }
+
+    // Face the target
+    int ddx = (int)bestTarget->gridX - (int)mon.gridX;
+    int ddy = (int)bestTarget->gridY - (int)mon.gridY;
+    mon.dir = dirFromDelta(ddx, ddy);
+    emitMoveIfChanged(mon, mon.gridX, mon.gridY, true, false,
+                      outMoves);
+
+    if (mon.attackCooldown <= 0.0f) {
+      // Calculate damage
+      int damage = mon.attackMin + (rand() % (mon.attackMax - mon.attackMin + 1));
+      int defense = bestTarget->defense;
+      damage -= defense;
+      if (damage < 1)
+        damage = 1;
+
+      bestTarget->hp -= damage;
+      mon.attackCooldown = mon.atkCooldownTime;
+      bool killed = bestTarget->hp <= 0;
+
+      // Track summon threat for aggro system
+      bestTarget->summonThreat += static_cast<float>(damage);
+      // If summon outpaces player damage by 10%, monster switches aggro to summon
+      if (bestTarget->aggroSummonIdx == 0 &&
+          bestTarget->summonThreat > bestTarget->playerThreat * 1.1f + 10.0f) {
+        bestTarget->aggroSummonIdx = mon.index;
+        printf("[Aggro] Mon %d switches to summon %d (summonThreat=%.0f > "
+               "playerThreat=%.0f)\n",
+               bestTarget->index, mon.index, bestTarget->summonThreat,
+               bestTarget->playerThreat);
+      }
+
+      if (killed) {
+        bestTarget->hp = 0;
+        bestTarget->aiState = MonsterInstance::AIState::DYING;
+        bestTarget->stateTimer = 0.0f;
+        bestTarget->aggroTargetFd = -1;
+        bestTarget->playerThreat = 0.0f;
+        bestTarget->summonThreat = 0.0f;
+        bestTarget->aggroSummonIdx = 0;
+        owner->attackTargetMonsterIdx = 0;
+      }
+
+      // Push result for Server.cpp to broadcast damage/death/XP/drops
+      if (outSummonHits) {
+        SummonHitResult hit{};
+        hit.ownerFd = mon.ownerFd;
+        hit.monsterIndex = bestTarget->index;
+        hit.damage = static_cast<uint16_t>(damage);
+        hit.remainingHp = static_cast<uint16_t>(std::max(0, bestTarget->hp));
+        hit.killed = killed;
+        outSummonHits->push_back(hit);
+      }
+    }
+    return; // In range — stay here (wait for cooldown or attack)
+  }
+
+  // If target exists but out of range, chase it with A* pathfinding
+  if (bestTarget) {
+    // Mark as chasing so approach delay triggers on arrival
+    if (mon.aggroTargetFd < 0) {
+      mon.aggroTargetFd = 1; // Flag: chasing target
+      if (!mon.currentPath.empty()) {
+        mon.currentPath.clear();
+        mon.pathStep = 0;
+        mon.repathTimer = 0.0f;
+      }
+    }
+    mon.repathTimer -= dt;
+    if (mon.currentPath.empty() || mon.repathTimer <= 0.0f) {
+      mon.repathTimer = 0.3f; // Fast repath for combat chasing
+      mon.currentPath.clear();
+      mon.pathStep = 0;
+
+      GridPoint start{mon.gridX, mon.gridY};
+
+      // Find best walkable cell adjacent to target — prefer cardinal
+      // neighbors (100 units) over diagonal (141 units) for closer approach
+      GridPoint end{bestTarget->gridX, bestTarget->gridY};
+      int bestAdjDist = 999;
+      bool foundCardinal = false;
+
+      // Priority 1: Cardinal neighbors (N/S/E/W — 100 world units)
+      static const int cardinalDirs[][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+      for (auto &dir : cardinalDirs) {
+        int nx = (int)bestTarget->gridX + dir[0];
+        int ny = (int)bestTarget->gridY + dir[1];
+        if (nx < 0 || ny < 0 || nx >= TERRAIN_SIZE || ny >= TERRAIN_SIZE)
+          continue;
+        if (!IsWalkableGrid((uint8_t)nx, (uint8_t)ny))
+          continue;
+        int d = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
+                                          (uint8_t)nx, (uint8_t)ny);
+        if (d < bestAdjDist) {
+          bestAdjDist = d;
+          end = {(uint8_t)nx, (uint8_t)ny};
+          foundCardinal = true;
+        }
+      }
+
+      // Priority 2: Diagonal neighbors only if no cardinal cell is reachable
+      if (!foundCardinal) {
+        static const int diagDirs[][2] = {{1,1},{1,-1},{-1,1},{-1,-1}};
+        for (auto &dir : diagDirs) {
+          int nx = (int)bestTarget->gridX + dir[0];
+          int ny = (int)bestTarget->gridY + dir[1];
+          if (nx < 0 || ny < 0 || nx >= TERRAIN_SIZE || ny >= TERRAIN_SIZE)
+            continue;
+          if (!IsWalkableGrid((uint8_t)nx, (uint8_t)ny))
+            continue;
+          int d = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
+                                            (uint8_t)nx, (uint8_t)ny);
+          if (d < bestAdjDist) {
+            bestAdjDist = d;
+            end = {(uint8_t)nx, (uint8_t)ny};
+          }
+        }
+      }
+
+      // Summons ghost through other monsters when chasing (no occupancy)
+      auto path = m_pathFinder->FindPath(start, end,
+                                         m_terrainAttributes.data(), 16, 500,
+                                         true, nullptr);
+
+      if (!path.empty()) {
+        mon.currentPath = std::move(path);
+        mon.pathStep = 0;
+        mon.moveTimer = 0.0f;
+        mon.aggroTargetFd = 1; // Signal that we're chasing
+      }
+    }
+
+    // Advance chase path
+    if (!mon.currentPath.empty() &&
+        mon.pathStep < (int)mon.currentPath.size()) {
+      advancePathStep(mon, dt, outMoves, true);
+      if (mon.pathStep >= (int)mon.currentPath.size()) {
+        mon.currentPath.clear();
+        mon.pathStep = 0;
+      }
+    }
+    return;
+  }
+
+  // ── No combat target — follow owner like a pet (direct grid stepping) ──
+
+  // Clear any stale chase state
+  mon.currentPath.clear();
+  mon.pathStep = 0;
+  mon.aggroTargetFd = -1;
+
+  // Direct grid stepping toward owner (no A*, always responsive)
+  if (distToOwner > 2) {
+    mon.moveTimer += dt;
+    if (mon.moveTimer >= mon.moveDelay) {
+      mon.moveTimer -= mon.moveDelay;
+      int dx = (ownerGX > (int)mon.gridX) ? 1
+             : (ownerGX < (int)mon.gridX) ? -1
+                                          : 0;
+      int dy = (ownerGY > (int)mon.gridY) ? 1
+             : (ownerGY < (int)mon.gridY) ? -1
+                                          : 0;
+
+      // Try direct diagonal, then each cardinal fallback
+      struct {
+        int dx, dy;
+      } tries[] = {{dx, dy}, {dx, 0}, {0, dy}};
+
+      for (auto &t : tries) {
+        if (t.dx == 0 && t.dy == 0)
+          continue;
+        int nx = (int)mon.gridX + t.dx;
+        int ny = (int)mon.gridY + t.dy;
+        if (nx >= 0 && ny >= 0 && nx < TERRAIN_SIZE && ny < TERRAIN_SIZE &&
+            IsWalkableGrid((uint8_t)nx, (uint8_t)ny)) {
+          setOccupied(mon.gridX, mon.gridY, false);
+          mon.gridX = (uint8_t)nx;
+          mon.gridY = (uint8_t)ny;
+          mon.worldX = mon.gridY * 100.0f;
+          mon.worldZ = mon.gridX * 100.0f;
+          setOccupied(mon.gridX, mon.gridY, true);
+          mon.dir = dirFromDelta(t.dx, t.dy);
+          // Always emit for summon follow (bypass dedup so client tracks each step)
+          outMoves.push_back({mon.index, (uint8_t)ownerGX, (uint8_t)ownerGY, 0});
+          mon.lastBroadcastTargetX = (uint8_t)ownerGX;
+          mon.lastBroadcastTargetY = (uint8_t)ownerGY;
+          mon.lastBroadcastChasing = false;
+          mon.lastBroadcastIsMoving = true;
+          break;
+        }
+      }
+    }
+  }
+}
+
+// ─── Monster targeting summon (threat-based aggro switch) ────────────────────
+
+static float WorldDistSqMon(const MonsterInstance &a, const MonsterInstance &b) {
+  float dx = a.worldX - b.worldX;
+  float dz = a.worldZ - b.worldZ;
+  return dx * dx + dz * dz;
+}
+
+void GameWorld::processSummonTargeting(
+    MonsterInstance &mon, MonsterInstance &summon, float dt,
+    std::vector<MonsterMoveUpdate> &outMoves,
+    std::vector<MonsterHitSummonResult> *outResults) {
+  // Tick attack cooldown
+  if (mon.attackCooldown > 0)
+    mon.attackCooldown -= dt;
+
+  int dist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY, summon.gridX,
+                                       summon.gridY);
+
+  // In attack range — face and attack the summon
+  if (dist <= mon.attackRange &&
+      (mon.attackRange > 1 || WorldDistSqMon(mon, summon) <= MELEE_ATTACK_DIST_SQ)) {
+    // Face the summon
+    int dx = (int)summon.gridX - (int)mon.gridX;
+    int dy = (int)summon.gridY - (int)mon.gridY;
+    if (dx != 0 || dy != 0)
+      mon.dir = dirFromDelta(dx, dy);
+    emitMoveIfChanged(mon, mon.gridX, mon.gridY, true, false, outMoves);
+
+    // Wait for cooldown
+    if (mon.attackCooldown > 0.0f)
+      return;
+
+    // Calculate damage (simplified — no hit chance, summon always gets hit)
+    int dmg = mon.attackMin + (mon.attackMax > mon.attackMin
+                                   ? rand() % (mon.attackMax - mon.attackMin + 1)
+                                   : 0);
+    dmg = std::max(0, dmg - summon.defense);
+    if (dmg < 1)
+      dmg = 1;
+
+    summon.hp -= dmg;
+    mon.attackCooldown = mon.atkCooldownTime;
+    bool killed = summon.hp <= 0;
+
+    if (killed) {
+      summon.hp = 0;
+      summon.aiState = MonsterInstance::AIState::DYING;
+      summon.stateTimer = 0.0f;
+      mon.aggroSummonIdx = 0; // Resume normal player targeting
+    }
+
+    if (outResults) {
+      MonsterHitSummonResult result{};
+      result.attackerIndex = mon.index;
+      result.summonIndex = summon.index;
+      result.damage = static_cast<uint16_t>(dmg);
+      result.remainingHp = static_cast<uint16_t>(std::max(0, summon.hp));
+      result.killed = killed;
+      result.ownerFd = summon.ownerFd;
+      outResults->push_back(result);
+    }
+    return;
+  }
+
+  // Out of range — chase toward summon
+  mon.repathTimer -= dt;
+  if (mon.currentPath.empty() || mon.repathTimer <= 0.0f) {
+    mon.repathTimer = 0.5f;
+    GridPoint start{mon.gridX, mon.gridY};
+    GridPoint end{summon.gridX, summon.gridY};
+
+    // Target adjacent cell to the summon (for melee)
+    if (mon.attackRange <= 1) {
+      int bestAdjDist = 999;
+      for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+          if (dx == 0 && dy == 0)
+            continue;
+          int nx = (int)summon.gridX + dx;
+          int ny = (int)summon.gridY + dy;
+          if (nx < 0 || ny < 0 || nx >= TERRAIN_SIZE || ny >= TERRAIN_SIZE)
+            continue;
+          if (!IsWalkableGrid((uint8_t)nx, (uint8_t)ny))
+            continue;
+          int d = PathFinder::ChebyshevDist(mon.gridX, mon.gridY, (uint8_t)nx,
+                                            (uint8_t)ny);
+          if (d < bestAdjDist) {
+            bestAdjDist = d;
+            end = {(uint8_t)nx, (uint8_t)ny};
+          }
+        }
+      }
+    }
+
+    auto path = m_pathFinder->FindPath(start, end, m_terrainAttributes.data(),
+                                       16, 500, true, nullptr);
+    if (!path.empty()) {
+      mon.currentPath = std::move(path);
+      mon.pathStep = 0;
+      GridPoint pathEnd = mon.currentPath.back();
+      emitMoveIfChanged(mon, pathEnd.x, pathEnd.y, true, true, outMoves);
+    }
+  }
+
+  // Advance path
+  if (mon.pathStep < (int)mon.currentPath.size()) {
+    advancePathStep(mon, dt, outMoves, true);
+  }
+}
+
 // ─── Find monster by index ───────────────────────────────────────────────────
 
 MonsterInstance *GameWorld::FindMonster(uint16_t index) {
@@ -1300,6 +1865,131 @@ MonsterInstance *GameWorld::FindMonster(uint16_t index) {
       return &mon;
   }
   return nullptr;
+}
+
+// ─── Summon Spawn / Despawn ──────────────────────────────────────────────────
+
+MonsterInstance *GameWorld::SpawnSummon(uint16_t type, uint8_t gridX,
+                                        uint8_t gridY, int ownerFd,
+                                        int ownerCharId, uint16_t ownerLevel) {
+  MonsterInstance mon{};
+  mon.index = m_nextSummonIndex++;
+  mon.type = type;
+  mon.gridX = gridX;
+  mon.gridY = gridY;
+  mon.spawnGridX = gridX;
+  mon.spawnGridY = gridY;
+  mon.dir = 0;
+  mon.worldX = gridY * 100.0f;
+  mon.worldZ = gridX * 100.0f;
+  mon.spawnX = mon.worldX;
+  mon.spawnZ = mon.worldZ;
+  mon.aiState = MonsterInstance::AIState::IDLE;
+  mon.stateTimer = 1.0f;
+  mon.ownerFd = ownerFd;
+  mon.ownerCharId = ownerCharId;
+  mon.aggressive = false; // Summons don't self-aggro, AI handles targeting
+
+  const MonsterTypeDef *def = FindMonsterTypeDef(type);
+  if (def) {
+    mon.hp = def->hp;
+    mon.maxHp = def->hp;
+    mon.defense = def->defense;
+    mon.defenseRate = def->defenseRate;
+    mon.attackMin = def->attackMin;
+    mon.attackMax = def->attackMax;
+    mon.attackRate = def->attackRate;
+    mon.level = def->level;
+    mon.atkCooldownTime = def->atkCooldown;
+    mon.moveDelay = def->moveDelay;
+    mon.moveRange = def->moveRange;
+    mon.viewRange = def->viewRange;
+    mon.attackRange = def->attackRange;
+  } else {
+    // Fallback — use the type's known HP from summon table
+    mon.hp = 100;
+    mon.maxHp = 100;
+    mon.defense = 5;
+    mon.defenseRate = 5;
+    mon.attackMin = 10;
+    mon.attackMax = 15;
+    mon.attackRate = 20;
+    mon.level = 5;
+  }
+
+  // Scale summon stats to owner's level (summon matches player power)
+  if (ownerLevel > mon.level && mon.level > 0) {
+    float scale = (float)ownerLevel / (float)mon.level;
+    mon.hp = (int)(mon.hp * scale);
+    mon.maxHp = mon.hp;
+    mon.attackMin = (int)(mon.attackMin * scale);
+    mon.attackMax = (int)(mon.attackMax * scale);
+    mon.defense = (int)(mon.defense * scale);
+    mon.defenseRate = (int)(mon.defenseRate * scale);
+    mon.attackRate = (int)(mon.attackRate * scale);
+    mon.level = ownerLevel;
+  }
+
+  // Summons move faster than their wild counterparts to keep up with the player
+  mon.moveDelay = std::min(mon.moveDelay, 0.15f);
+  // Keep the monster's natural attack cooldown (e.g. Goblin=1.8s per OpenMU)
+
+  setOccupied(gridX, gridY, true);
+  m_monsterInstances.push_back(mon);
+
+  printf("[Summon] Spawned summon index=%d type=%d at (%d,%d) owner fd=%d\n",
+         mon.index, type, gridX, gridY, ownerFd);
+
+  return &m_monsterInstances.back();
+}
+
+void GameWorld::DespawnSummon(uint16_t summonIndex) {
+  for (auto it = m_monsterInstances.begin(); it != m_monsterInstances.end();
+       ++it) {
+    if (it->index == summonIndex && it->isSummon()) {
+      setOccupied(it->gridX, it->gridY, false);
+      printf("[Summon] Despawned summon index=%d type=%d\n", it->index,
+             it->type);
+      m_monsterInstances.erase(it);
+      return;
+    }
+  }
+}
+
+void GameWorld::DespawnSummonsForOwner(int ownerFd) {
+  for (auto it = m_monsterInstances.begin(); it != m_monsterInstances.end();) {
+    if (it->isSummon() && it->ownerFd == ownerFd) {
+      setOccupied(it->gridX, it->gridY, false);
+      printf("[Summon] Despawned summon index=%d (owner fd=%d disconnected)\n",
+             it->index, ownerFd);
+      it = m_monsterInstances.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+void GameWorld::RescaleSummon(uint16_t summonIndex, uint16_t newOwnerLevel) {
+  auto *summon = FindMonster(summonIndex);
+  if (!summon || !summon->isSummon())
+    return;
+
+  const MonsterTypeDef *def = FindMonsterTypeDef(summon->type);
+  if (!def || def->level == 0)
+    return;
+
+  float scale = (float)newOwnerLevel / (float)def->level;
+  float hpRatio =
+      (summon->maxHp > 0) ? (float)summon->hp / (float)summon->maxHp : 1.0f;
+
+  summon->maxHp = (int)(def->hp * scale);
+  summon->hp = (int)(summon->maxHp * hpRatio);
+  summon->attackMin = (int)(def->attackMin * scale);
+  summon->attackMax = (int)(def->attackMax * scale);
+  summon->defense = (int)(def->defense * scale);
+  summon->defenseRate = (int)(def->defenseRate * scale);
+  summon->attackRate = (int)(def->attackRate * scale);
+  summon->level = newOwnerLevel;
 }
 
 // ─── Poison DoT processing ───────────────────────────────────────────────────

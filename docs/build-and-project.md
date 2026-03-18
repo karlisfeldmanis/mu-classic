@@ -77,7 +77,7 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `TextureLoader.hpp` | OZJ/OZT loading, texture resolution, `TextureScriptFlags` (_R/_H/_N suffixes), `TextureLoadResult` (ID + hasAlpha). |
 | `MeshBuffers.hpp` | Per-mesh GPU state: VAO/VBO/EBO + rendering flags (hasAlpha, noneBlend, hidden, bright) + BlendMesh + animation. |
 | `Shader.hpp` | RAII OpenGL shader wrapper. `use()`, `setMat4()`, `setVec3()`, `setBool()`. |
-| `Camera.hpp` | Isometric camera with zoom, state persistence (`camera_save.txt`). |
+| `Camera.hpp` | Isometric camera with scroll zoom (400-1200 range), smooth lerp, state persistence (`camera_save.txt`). |
 | `ViewerCommon.hpp` | Shared viewer utilities: OrbitCamera, DebugAxes, UploadMeshWithBones/RetransformMeshWithBones helpers. |
 | **World Rendering** | |
 | `Terrain.hpp` | 256x256 heightmap mesh, 4-tap tile blending, lightmap integration. |
@@ -111,7 +111,7 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `UITexture.hpp` | UI texture loading and management. |
 | `UIWidget.hpp` | UI primitives: buttons, slots, bars. |
 | `RayPicker.hpp` | `namespace RayPicker`: mouse-to-world raycasting for terrain, NPCs, monsters, ground items. |
-| `UICoords.hpp` | HUD coordinate system with centered scaling. |
+| `UICoords.hpp` | HUD coordinate system with dynamic centered scaling (fullscreen-safe). |
 | `Screenshot.hpp` | JPEG capture + GIF recording (frame-diffed animation). |
 
 ### Sources (src/)
@@ -122,7 +122,7 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `BMDParser.cpp` | BMD decryption (XOR key + cumulative wKey) and binary parsing. |
 | `BMDUtils.cpp` | Euler->quaternion->matrix, parent-chain bone concatenation, quaternion slerp interpolation. |
 | `TextureLoader.cpp` | OZJ (JPEG+header) and OZT (TGA+header) loading with RLE, V-flip, extension resolution. |
-| `Camera.cpp` | Camera math, smooth zoom lerp, state save/load. |
+| `Camera.cpp` | Camera math, smooth zoom lerp (400-1200), scroll handling, state save/load. |
 | `ViewerCommon.cpp` | Shared viewer boilerplate. |
 | **World Rendering** | |
 | `Terrain.cpp` | Terrain vertex grid generation, texture array loading, shader-based 4-tap blending. |
@@ -134,10 +134,15 @@ main.cpp (orchestrator: init, render loop, shutdown)
 | `VFXManager.cpp` | VFX: particle bursts (15+ types), ribbon trails (lightning, Death Stab spirals), 3D model effects (MeteorBolt, LightningBolt, PoisonCloud, Rageful Blow EQ cracks, stone debris), weapon blur trails, per-monster combat effects, level-up, camera shake. Main 5.2 1:1 migration. |
 | `SoundManager.cpp` | OpenAL init/shutdown, WAV loader (PCM 16-bit), multi-channel source pooling, 3D positional audio, random pitch variation, MP3 music (minimp3 decode to OpenAL buffer), music crossfade system (fade out/in with state machine). |
 | **Characters & Entities** | |
-| `HeroCharacter.cpp` | DK character: 5-part body, skeletal animation, click-to-move, weapon bone attachment (safe zone/combat), blob shadow with stencil buffer, attack state machine with GCD, pet companions (GOBoid direction-vector movement), mount system (Uniria/Dinorant with ride animations), weapon blur trail capture, Twisting Slash ghost weapon orbit, sit/pose system. |
+| `HeroCharacter.cpp` | DK character: 5-part body, skeletal animation, click-to-move, weapon bone attachment (safe zone/combat), blob shadow with stencil buffer, attack state machine with GCD, weapon blur trail capture, Twisting Slash ghost weapon orbit, sit/pose system. |
+| `HeroCharacterPet.cpp` | Pet companion AI: Guardian Angel/Imp, GOBoid direction-vector movement, idle wander (1.5s cooldown), follow ramp. |
+| `HeroCharacterMount.cpp` | Mount system: Uniria/Dinorant ride animations, root motion removal, animation sync. |
 | `MonsterManager.cpp` | Monster rendering, state machine, skeleton weapons (Sword/Shield/Bow/Axe via RetransformMeshWithBones), arrow projectiles (Arrow01.bmd), death debris, nameplates. |
 | `NpcManager.cpp` | NPC models, animation, name label overlays. |
 | `ClickEffect.cpp` | Click-to-move ring effect. |
+| `BoidManager.cpp` | Ambient creatures: bird flocking AI, dungeon bats, water fish, falling leaves. |
+| `SystemMessageLog.cpp` | Persistent message log with tab filtering and fullscreen-scaled rendering. |
+| `CharacterSelect.cpp` | Character selection scene: standalone terrain, lighting, emotes, creation flow. |
 | **Items & Inventory** | |
 | `ItemDatabase.cpp` | 293 item definitions (addDef calls), all lookup functions, body part mapping, category names. |
 | `ItemModelManager.cpp` | BMD item model cache with GPU upload, viewport-based UI rendering, world-space rendering. |

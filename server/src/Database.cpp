@@ -68,6 +68,7 @@ void Database::CreateTables() {
             skill_bar BLOB,
             potion_bar BLOB,
             rmc_skill_id INTEGER DEFAULT -1,
+            summon_type INTEGER DEFAULT -1,
             FOREIGN KEY (account_id) REFERENCES accounts(id)
         );
         CREATE TABLE IF NOT EXISTS item_definitions (
@@ -98,6 +99,7 @@ void Database::CreateTables() {
             item_category INTEGER NOT NULL,
             item_index INTEGER NOT NULL,
             item_level INTEGER DEFAULT 0,
+            quantity INTEGER DEFAULT 0,
             UNIQUE(character_id, slot),
             FOREIGN KEY (character_id) REFERENCES characters(id),
             FOREIGN KEY (item_category, item_index) REFERENCES item_definitions(category, item_index)
@@ -228,42 +230,28 @@ void Database::CreateTables() {
     sqlite3_free(chatErr);
   }
 
-  // Quest progress table
+  // Quest progress table (per-quest tracking, replaces old chain system)
   const char *questSql = R"(
-        CREATE TABLE IF NOT EXISTS character_quests (
-            character_id INTEGER PRIMARY KEY,
-            quest_index INTEGER NOT NULL DEFAULT 0,
+        CREATE TABLE IF NOT EXISTS character_quest_progress (
+            character_id INTEGER NOT NULL,
+            quest_id INTEGER NOT NULL,
             kill_count_0 INTEGER NOT NULL DEFAULT 0,
             kill_count_1 INTEGER NOT NULL DEFAULT 0,
             kill_count_2 INTEGER NOT NULL DEFAULT 0,
-            accepted INTEGER NOT NULL DEFAULT 0,
+            completed INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (character_id, quest_id),
             FOREIGN KEY (character_id) REFERENCES characters(id)
         );
     )";
   char *questErr = nullptr;
   if (sqlite3_exec(m_db, questSql, nullptr, nullptr, &questErr) != SQLITE_OK) {
-    printf("[DB] character_quests create error: %s\n", questErr);
+    printf("[DB] character_quest_progress create error: %s\n", questErr);
     sqlite3_free(questErr);
   }
-  // Migrate: add accepted column if missing (existing DBs)
+
+  // Migration: add summon_type to characters (default -1 = no summon)
   sqlite3_exec(m_db,
-      "ALTER TABLE character_quests ADD COLUMN accepted INTEGER NOT NULL DEFAULT 0",
-      nullptr, nullptr, nullptr);
-  // Migrate: add Devias quest chain columns (independent from Lorencia)
-  sqlite3_exec(m_db,
-      "ALTER TABLE character_quests ADD COLUMN devias_quest_index INTEGER NOT NULL DEFAULT 12",
-      nullptr, nullptr, nullptr);
-  sqlite3_exec(m_db,
-      "ALTER TABLE character_quests ADD COLUMN devias_kc0 INTEGER NOT NULL DEFAULT 0",
-      nullptr, nullptr, nullptr);
-  sqlite3_exec(m_db,
-      "ALTER TABLE character_quests ADD COLUMN devias_kc1 INTEGER NOT NULL DEFAULT 0",
-      nullptr, nullptr, nullptr);
-  sqlite3_exec(m_db,
-      "ALTER TABLE character_quests ADD COLUMN devias_kc2 INTEGER NOT NULL DEFAULT 0",
-      nullptr, nullptr, nullptr);
-  sqlite3_exec(m_db,
-      "ALTER TABLE character_quests ADD COLUMN devias_accepted INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE characters ADD COLUMN summon_type INTEGER DEFAULT -1",
       nullptr, nullptr, nullptr);
 }
 
@@ -440,12 +428,16 @@ int Database::CreateCharacter(int accountId, const std::string &name,
     return -1; // Invalid class
   }
 
+  // Starting position per class (OpenMU: DW/DK/MG → Lorencia, ELF → Noria)
+  int startMap = 0; uint8_t startX = 142, startY = 116; // Lorencia default
+  if (classCode == 32) { startMap = 3; startX = 174; startY = 110; } // Noria
+
   sqlite3_stmt *stmt = nullptr;
   const char *sql =
       "INSERT INTO characters (account_id, slot, name, class, level, "
       "strength, dexterity, vitality, energy, life, max_life, mana, "
-      "max_mana, pos_x, pos_y, money, level_up_points) "
-      "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 142, 116, 0, 0)";
+      "max_mana, map_id, pos_x, pos_y, money, level_up_points) "
+      "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
     printf("[DB] CreateCharacter prepare error: %s\n", sqlite3_errmsg(m_db));
     return -1;
@@ -462,6 +454,9 @@ int Database::CreateCharacter(int accountId, const std::string &name,
   sqlite3_bind_int(stmt, 10, maxHp);
   sqlite3_bind_int(stmt, 11, mp);
   sqlite3_bind_int(stmt, 12, maxMp);
+  sqlite3_bind_int(stmt, 13, startMap);
+  sqlite3_bind_int(stmt, 14, startX);
+  sqlite3_bind_int(stmt, 15, startY);
 
   if (sqlite3_step(stmt) != SQLITE_DONE) {
     printf("[DB] CreateCharacter error: %s\n", sqlite3_errmsg(m_db));
@@ -518,7 +513,7 @@ CharacterData Database::GetCharacter(const std::string &name) {
       "pos_x, pos_y, direction, strength, dexterity, vitality, "
       "energy, life, max_life, mana, max_mana, ag, max_ag, money, "
       "experience, level_up_points, skill_bar, potion_bar, "
-      "rmc_skill_id FROM characters WHERE name=?";
+      "rmc_skill_id, summon_type FROM characters WHERE name=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return c;
 
@@ -562,6 +557,7 @@ CharacterData Database::GetCharacter(const std::string &name) {
     }
 
     c.rmcSkillId = static_cast<int8_t>(sqlite3_column_int(stmt, 25));
+    c.summonType = static_cast<int16_t>(sqlite3_column_int(stmt, 26));
   }
   sqlite3_finalize(stmt);
   return c;
@@ -575,7 +571,7 @@ CharacterData Database::GetCharacterById(int id) {
       "pos_x, pos_y, direction, strength, dexterity, vitality, "
       "energy, life, max_life, mana, max_mana, ag, max_ag, money, "
       "experience, level_up_points, skill_bar, potion_bar, "
-      "rmc_skill_id FROM characters WHERE id=?";
+      "rmc_skill_id, summon_type FROM characters WHERE id=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return c;
 
@@ -619,6 +615,7 @@ CharacterData Database::GetCharacterById(int id) {
     }
 
     c.rmcSkillId = static_cast<int8_t>(sqlite3_column_int(stmt, 25));
+    c.summonType = static_cast<int16_t>(sqlite3_column_int(stmt, 26));
   }
   sqlite3_finalize(stmt);
   return c;
@@ -673,13 +670,14 @@ void Database::SaveCharacterFull(int charId, uint16_t level, uint16_t strength,
                                  uint16_t levelUpPoints, uint64_t experience,
                                  uint32_t money, uint8_t posX, uint8_t posY,
                                  uint8_t mapId, const int8_t *skillBar,
-                                 const int16_t *potionBar, int8_t rmcSkillId) {
+                                 const int16_t *potionBar, int8_t rmcSkillId,
+                                 int16_t summonType) {
   sqlite3_stmt *stmt = nullptr;
   const char *sql =
       "UPDATE characters SET level=?, strength=?, dexterity=?, vitality=?, "
       "energy=?, life=?, max_life=?, mana=?, max_mana=?, ag=?, max_ag=?, "
       "level_up_points=?, experience=?, money=?, pos_x=?, pos_y=?, "
-      "map_id=?, skill_bar=?, potion_bar=?, rmc_skill_id=? WHERE id=?";
+      "map_id=?, skill_bar=?, potion_bar=?, rmc_skill_id=?, summon_type=? WHERE id=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return;
   sqlite3_bind_int(stmt, 1, level);
@@ -702,7 +700,8 @@ void Database::SaveCharacterFull(int charId, uint16_t level, uint16_t strength,
   sqlite3_bind_blob(stmt, 18, skillBar, 10, SQLITE_TRANSIENT);
   sqlite3_bind_blob(stmt, 19, potionBar, 8, SQLITE_TRANSIENT); // 4 × int16_t
   sqlite3_bind_int(stmt, 20, rmcSkillId);
-  sqlite3_bind_int(stmt, 21, charId);
+  sqlite3_bind_int(stmt, 21, summonType);
+  sqlite3_bind_int(stmt, 22, charId);
 
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
@@ -802,6 +801,36 @@ void Database::SeedNpcSpawns() {
   } else {
     printf("[DB] Seeded 8 Devias NPC spawns (5 vendors + 3 quest guards)\n");
   }
+
+  // Seed Noria (map_id=3) NPCs if not already present
+  sqlite3_prepare_v2(m_db, "SELECT COUNT(*) FROM npc_spawns WHERE map_id=3",
+                     -1, &stmt, nullptr);
+  int noriaNpcCount = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW)
+    noriaNpcCount = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  if (noriaNpcCount > 0) {
+    printf("[DB] Noria NPC spawns already seeded (%d entries)\n", noriaNpcCount);
+    return;
+  }
+
+  const char *noriaSql = R"(
+        INSERT INTO npc_spawns (type, map_id, pos_x, pos_y, direction, name) VALUES
+            (253, 3, 169, 109, 4, 'Potion Girl Amy'),
+            (253, 3, 193, 110, 3, 'Potion Girl Amy'),
+            (242, 3, 173, 125, 2, 'Elf Lala'),
+            (243, 3, 195, 124, 3, 'Eo the Craftsman'),
+            (240, 3, 172, 96,  4, 'Baz the Vault Keeper'),
+            (238, 3, 180, 103, 2, 'Chaos Goblin'),
+            (256, 3, 170, 88,  4, 'Sentinel Arwen');
+    )";
+  err = nullptr;
+  if (sqlite3_exec(m_db, noriaSql, nullptr, nullptr, &err) != SQLITE_OK) {
+    printf("[DB] SeedNoriaNpcSpawns error: %s\n", err);
+    sqlite3_free(err);
+  } else {
+    printf("[DB] Seeded 7 Noria NPC spawns (3 vendors + vault + chaos goblin + quest guard)\n");
+  }
 }
 
 std::vector<NpcSpawnData> Database::GetNpcSpawns(uint8_t mapId) {
@@ -894,14 +923,15 @@ void Database::SeedItemDefinitions() {
             (3, 9, 'Bill of Balrog', 'Spear10.bmd', 63, 76, 102, 0, 25, 1, 2, 4, 80, 50, 0, 0, 6),
 
             -- Category 4: Bows & Crossbows (OpenMU 0.95d Weapons.cs)
-            (4, 0, 'Short Bow', 'Bow01.bmd', 2, 3, 5, 0, 30, 1, 2, 3, 20, 80, 0, 0, 4),
-            (4, 1, 'Bow', 'Bow02.bmd', 8, 9, 13, 0, 30, 1, 2, 3, 30, 90, 0, 0, 4),
-            (4, 2, 'Elven Bow', 'Bow03.bmd', 16, 17, 24, 0, 30, 1, 2, 3, 30, 90, 0, 0, 4),
-            (4, 3, 'Battle Bow', 'Bow04.bmd', 26, 28, 37, 0, 30, 1, 2, 3, 30, 90, 0, 0, 4),
-            (4, 4, 'Tiger Bow', 'Bow05.bmd', 40, 42, 52, 0, 30, 1, 2, 4, 30, 100, 0, 0, 4),
-            (4, 5, 'Silver Bow', 'Bow06.bmd', 56, 59, 71, 0, 40, 1, 2, 4, 30, 100, 0, 0, 4),
-            (4, 6, 'Chaos Nature Bow', 'Bow07.bmd', 75, 88, 106, 0, 35, 1, 2, 4, 40, 150, 0, 0, 4),
-            (4, 7, 'Bolt', 'Bolt01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 4),
+            -- Bows are NOT two-handed: arrows/bolts go in slot 1 (off-hand)
+            (4, 0, 'Short Bow', 'Bow01.bmd', 2, 3, 5, 0, 30, 0, 2, 3, 20, 80, 0, 0, 4),
+            (4, 1, 'Bow', 'Bow02.bmd', 8, 9, 13, 0, 30, 0, 2, 3, 30, 90, 0, 0, 4),
+            (4, 2, 'Elven Bow', 'Bow03.bmd', 16, 17, 24, 0, 30, 0, 2, 3, 30, 90, 0, 0, 4),
+            (4, 3, 'Battle Bow', 'Bow04.bmd', 26, 28, 37, 0, 30, 0, 2, 3, 30, 90, 0, 0, 4),
+            (4, 4, 'Tiger Bow', 'Bow05.bmd', 40, 42, 52, 0, 30, 0, 2, 4, 30, 100, 0, 0, 4),
+            (4, 5, 'Silver Bow', 'Bow06.bmd', 56, 59, 71, 0, 40, 0, 2, 4, 30, 100, 0, 0, 4),
+            (4, 6, 'Chaos Nature Bow', 'Bow07.bmd', 75, 88, 106, 0, 35, 0, 2, 4, 40, 150, 0, 0, 4),
+            (4, 7, 'Bolt', 'Arrows01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 4),
             (4, 8, 'Crossbow', 'CrossBow01.bmd', 4, 5, 8, 0, 40, 0, 2, 2, 20, 90, 0, 0, 4),
             (4, 9, 'Golden Crossbow', 'CrossBow02.bmd', 12, 13, 19, 0, 40, 0, 2, 2, 30, 90, 0, 0, 4),
             (4, 10, 'Arquebus', 'CrossBow03.bmd', 20, 22, 30, 0, 40, 0, 2, 2, 30, 90, 0, 0, 4),
@@ -909,7 +939,7 @@ void Database::SeedItemDefinitions() {
             (4, 12, 'Serpent Crossbow', 'CrossBow05.bmd', 48, 50, 61, 0, 40, 0, 2, 3, 30, 100, 0, 0, 4),
             (4, 13, 'Bluewing Crossbow', 'CrossBow06.bmd', 68, 68, 82, 0, 40, 0, 2, 3, 40, 110, 0, 0, 4),
             (4, 14, 'Aquagold Crossbow', 'CrossBow07.bmd', 72, 78, 92, 0, 30, 0, 2, 3, 50, 130, 0, 0, 4),
-            (4, 15, 'Arrows', 'Arrow01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 4),
+            (4, 15, 'Arrows', 'Arrows02.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 4),
             (4, 16, 'Saint Crossbow', 'CrossBow08.bmd', 83, 90, 108, 0, 35, 0, 2, 3, 50, 130, 0, 0, 4),
 
             -- Category 5: Staves (OpenMU 0.95d Weapons.cs)
@@ -1040,7 +1070,7 @@ void Database::SeedItemDefinitions() {
              (12, 8, 'Orb of Healing', 'Gem02.bmd', 8, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 100, 4),
              (12, 9, 'Orb of Greater Defense', 'Gem03.bmd', 13, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 100, 4),
              (12, 10, 'Orb of Greater Damage', 'Gem04.bmd', 18, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 100, 4),
-             (12, 11, 'Orb of Summoning', 'Gem05.bmd', 3, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 4),
+             (12, 11, 'Orb of Goblin', 'Gem05.bmd', 3, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 4),
              (12, 12, 'Orb of Rageful Blow', 'Gem06.bmd', 170, 0, 0, 0, 0, 0, 1, 1, 170, 0, 0, 0, 2),
              (12, 13, 'Orb of Impale', 'Gem07.bmd', 20, 0, 0, 0, 0, 0, 1, 1, 28, 0, 0, 0, 2),
              (12, 14, 'Orb of Greater Fortitude', 'Gem08.bmd', 60, 0, 0, 0, 0, 0, 1, 1, 120, 0, 0, 0, 2),
@@ -1054,6 +1084,12 @@ void Database::SeedItemDefinitions() {
              (12, 22, 'Orb of Uppercut', 'Gem01.bmd', 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 2),
              (12, 23, 'Orb of Cyclone', 'Gem01.bmd', 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 2),
              (12, 24, 'Orb of Slash', 'Gem01.bmd', 1, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 2),
+             -- Elf summon orbs (indices 25-29)
+             (12, 25, 'Orb of Golem Summoning', 'Gem05.bmd', 18, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 60, 4),
+             (12, 26, 'Orb of Assassin Summoning', 'Gem05.bmd', 26, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 90, 4),
+             (12, 27, 'Orb of Yeti Summoning', 'Gem05.bmd', 36, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 130, 4),
+             (12, 28, 'Orb of Knight Summoning', 'Gem05.bmd', 48, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 170, 4),
+             (12, 29, 'Orb of Bali Summoning', 'Gem05.bmd', 52, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 210, 4),
             -- Jewel of Chaos
             (12, 15, 'Jewel of Chaos', 'Jewel01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
 
@@ -1085,6 +1121,7 @@ void Database::SeedItemDefinitions() {
             (14, 22, 'Jewel of Creation', 'Jewel05.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
 
              -- Category 15: Scrolls (Dark Wizard — Research confirmed: BookXX.bmd)
+             (15, 10, 'Scroll of Power Wave', 'Book11.bmd', 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 56, 1),
              (15, 0, 'Scroll of Poison', 'Book01.bmd', 30, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 140, 1),
              (15, 1, 'Scroll of Meteorite', 'Book02.bmd', 21, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 104, 1),
              (15, 2, 'Scroll of Lightning', 'Book03.bmd', 13, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 72, 1),
@@ -1281,9 +1318,9 @@ void Database::SeedItemDefinitions() {
         WHERE category = 15;
     )";
     sqlite3_exec(m_db, scrollPrices, nullptr, nullptr, nullptr);
-    // Ammo — Bolt (4,7) and Arrows (4,15) — cheap
+    // Ammo — Bolt (4,7) and Arrows (4,15) — very cheap (255 zen per stack)
     sqlite3_exec(m_db,
-                 "UPDATE item_definitions SET buy_price = 100 "
+                 "UPDATE item_definitions SET buy_price = 1 "
                  "WHERE (category = 4 AND item_index = 7) OR (category = 4 AND "
                  "item_index = 15)",
                  nullptr, nullptr, nullptr);
@@ -1382,7 +1419,7 @@ std::vector<EquipmentSlot> Database::GetCharacterEquipment(int characterId) {
   std::vector<EquipmentSlot> equip;
   sqlite3_stmt *stmt = nullptr;
   const char *sql =
-      "SELECT slot, item_category, item_index, item_level "
+      "SELECT slot, item_category, item_index, item_level, quantity "
       "FROM character_equipment WHERE character_id=? ORDER BY slot";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return equip;
@@ -1394,6 +1431,7 @@ std::vector<EquipmentSlot> Database::GetCharacterEquipment(int characterId) {
     e.category = static_cast<uint8_t>(sqlite3_column_int(stmt, 1));
     e.itemIndex = static_cast<uint8_t>(sqlite3_column_int(stmt, 2));
     e.itemLevel = static_cast<uint8_t>(sqlite3_column_int(stmt, 3));
+    e.quantity = static_cast<uint8_t>(sqlite3_column_int(stmt, 4));
     equip.push_back(e);
   }
   sqlite3_finalize(stmt);
@@ -1727,6 +1765,80 @@ void Database::SeedMonsterSpawns() {
            "Version075 Devias.cs)\n");
   }
   } // end Devias else
+
+  // Seed Noria (map_id=3) spawns if not already present
+  sqlite3_prepare_v2(m_db, "SELECT COUNT(*) FROM monster_spawns WHERE map_id=3",
+                     -1, &stmt, nullptr);
+  int noriaCount = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW)
+    noriaCount = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  if (noriaCount > 0) {
+    printf("[DB] Noria monster spawns already seeded (%d entries)\n", noriaCount);
+  } else {
+
+  // Noria monster spawns from OpenMU Version075 Noria.cs
+  // Spawn zones: Goblin/ChainScorpion NE quadrant, Beetle/Hunter NW,
+  //              ForestMonster/Agon south half, StoneGolem SE, EliteGoblin SW
+  const char *noriaMSql = R"(
+        INSERT INTO monster_spawns (type, map_id, pos_x, pos_y, direction) VALUES
+            -- Goblin (type 26, Lv3): NE quadrant x=128-251, y=0-128
+            (26,3,135,15,2),(26,3,145,25,4),(26,3,158,38,6),(26,3,170,12,1),
+            (26,3,182,48,3),(26,3,195,22,5),(26,3,208,55,0),(26,3,220,35,7),
+            (26,3,232,18,2),(26,3,245,42,4),(26,3,140,65,6),(26,3,155,78,1),
+            (26,3,168,92,3),(26,3,180,108,5),(26,3,192,72,0),(26,3,205,85,7),
+            (26,3,218,98,2),(26,3,230,62,4),(26,3,242,115,6),(26,3,148,50,1),
+            -- Chain Scorpion (type 27, Lv5): NE quadrant x=128-251, y=0-128
+            (27,3,132,20,2),(27,3,148,35,4),(27,3,162,52,6),(27,3,175,18,1),
+            (27,3,188,68,3),(27,3,200,42,5),(27,3,215,28,0),(27,3,228,58,7),
+            (27,3,240,75,2),(27,3,138,88,4),(27,3,152,102,6),(27,3,165,115,1),
+            (27,3,178,82,3),(27,3,190,95,5),(27,3,202,110,0),(27,3,222,48,7),
+            (27,3,235,32,2),(27,3,248,62,4),
+            -- Beetle Monster (type 28, Lv10): NW quadrant x=0-128, y=0-128
+            (28,3,12,15,2),(28,3,25,32,4),(28,3,38,48,6),(28,3,52,65,1),
+            (28,3,68,82,3),(28,3,82,98,5),(28,3,95,112,0),(28,3,108,22,7),
+            (28,3,18,42,2),(28,3,35,58,4),(28,3,48,75,6),(28,3,62,92,1),
+            (28,3,75,108,3),(28,3,88,18,5),(28,3,102,35,0),(28,3,118,52,7),
+            (28,3,22,68,2),(28,3,42,85,4),
+            -- Hunter (type 29, Lv13, ranged): NW quadrant x=0-128, y=0-128
+            (29,3,15,25,2),(29,3,28,42,4),(29,3,42,58,6),(29,3,55,75,1),
+            (29,3,72,92,3),(29,3,85,108,5),(29,3,98,18,0),(29,3,112,35,7),
+            (29,3,20,52,2),(29,3,32,68,4),(29,3,45,85,6),(29,3,58,102,1),
+            (29,3,78,118,3),(29,3,92,28,5),(29,3,105,45,0),(29,3,122,62,7),
+            (29,3,8,78,2),(29,3,48,115,4),
+            -- Forest Monster (type 30, Lv15): South half x=0-251, y=128-245
+            (30,3,15,135,2),(30,3,35,152,4),(30,3,55,168,6),(30,3,75,185,1),
+            (30,3,95,202,3),(30,3,115,218,5),(30,3,135,235,0),(30,3,155,142,7),
+            (30,3,175,158,2),(30,3,195,175,4),(30,3,215,192,6),(30,3,235,208,1),
+            (30,3,25,225,3),(30,3,45,240,5),(30,3,65,132,0),(30,3,85,148,7),
+            (30,3,105,165,2),(30,3,125,182,4),
+            -- Agon (type 31, Lv16): South half x=0-251, y=128-245
+            (31,3,20,138,2),(31,3,42,155,4),(31,3,62,172,6),(31,3,82,188,1),
+            (31,3,102,205,3),(31,3,122,222,5),(31,3,142,238,0),(31,3,162,145,7),
+            (31,3,182,162,2),(31,3,202,178,4),(31,3,222,195,6),(31,3,242,212,1),
+            (31,3,30,228,3),(31,3,52,242,5),(31,3,72,135,0),(31,3,92,152,7),
+            (31,3,112,168,2),(31,3,132,185,4),
+            -- Stone Golem (type 32, Lv18): SE quadrant x=128-251, y=128-245
+            (32,3,135,135,2),(32,3,152,152,4),(32,3,168,168,6),(32,3,185,185,1),
+            (32,3,202,202,3),(32,3,218,218,5),(32,3,235,235,0),(32,3,145,145,7),
+            (32,3,162,162,2),(32,3,178,178,4),(32,3,195,195,6),(32,3,212,212,1),
+            (32,3,228,228,3),(32,3,245,240,5),(32,3,138,158,0),
+            -- Elite Goblin (type 33, Lv8): SW quadrant x=0-128, y=128-245
+            (33,3,12,135,2),(33,3,25,152,4),(33,3,38,168,6),(33,3,52,185,1),
+            (33,3,68,202,3),(33,3,82,218,5),(33,3,95,235,0),(33,3,108,142,7),
+            (33,3,18,158,2),(33,3,32,175,4),(33,3,45,192,6),(33,3,58,208,1),
+            (33,3,72,225,3),(33,3,85,240,5),(33,3,98,148,0),(33,3,115,165,7),
+            (33,3,22,182,2),(33,3,42,198,4)
+    )";
+  err = nullptr;
+  if (sqlite3_exec(m_db, noriaMSql, nullptr, nullptr, &err) != SQLITE_OK) {
+    printf("[DB] SeedMonsterSpawns (Noria) error: %s\n", err);
+    sqlite3_free(err);
+  } else {
+    printf("[DB] Seeded Noria monster spawns (8 types from OpenMU Version075 "
+           "Noria.cs)\n");
+  }
+  } // end Noria else
 }
 
 std::vector<MonsterSpawnData> Database::GetMonsterSpawns(uint8_t mapId) {
@@ -1779,16 +1891,17 @@ void Database::SeedDefaultEquipment(int characterId) {
 }
 
 void Database::UpdateEquipment(int characterId, uint8_t slot, uint8_t category,
-                               uint8_t itemIndex, uint8_t itemLevel) {
+                               uint8_t itemIndex, uint8_t itemLevel,
+                               uint8_t quantity) {
   sqlite3_stmt *stmt = nullptr;
   // UPSERT: insert or replace on (character_id, slot) unique constraint
   const char *sql =
       "INSERT INTO character_equipment (character_id, slot, item_category, "
-      "item_index, item_level) "
-      "VALUES (?, ?, ?, ?, ?) "
+      "item_index, item_level, quantity) "
+      "VALUES (?, ?, ?, ?, ?, ?) "
       "ON CONFLICT(character_id, slot) DO UPDATE SET "
       "item_category=excluded.item_category, item_index=excluded.item_index, "
-      "item_level=excluded.item_level";
+      "item_level=excluded.item_level, quantity=excluded.quantity";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return;
   sqlite3_bind_int(stmt, 1, characterId);
@@ -1796,10 +1909,11 @@ void Database::UpdateEquipment(int characterId, uint8_t slot, uint8_t category,
   sqlite3_bind_int(stmt, 3, category);
   sqlite3_bind_int(stmt, 4, itemIndex);
   sqlite3_bind_int(stmt, 5, itemLevel);
+  sqlite3_bind_int(stmt, 6, quantity);
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
-  printf("[DB] Equipment updated: char=%d slot=%d cat=%d idx=%d +%d\n",
-         characterId, slot, category, itemIndex, itemLevel);
+  printf("[DB] Equipment updated: char=%d slot=%d cat=%d idx=%d +%d qty=%d\n",
+         characterId, slot, category, itemIndex, itemLevel, quantity);
 }
 
 std::vector<Database::InventorySlotData>
@@ -1994,71 +2108,60 @@ Database::GetChatHistory(int characterId, int limit) {
   return entries;
 }
 
-Database::QuestState Database::LoadQuestState(int characterId) {
-  QuestState qs;
+std::vector<Database::QuestProgress> Database::LoadAllQuestProgress(int characterId) {
+  std::vector<QuestProgress> result;
   sqlite3_stmt *stmt = nullptr;
   if (sqlite3_prepare_v2(m_db,
-          "SELECT quest_index, kill_count_0, kill_count_1, kill_count_2, accepted,"
-          " devias_quest_index, devias_kc0, devias_kc1, devias_kc2, devias_accepted"
-          " FROM character_quests WHERE character_id=?",
+          "SELECT quest_id, kill_count_0, kill_count_1, kill_count_2, completed "
+          "FROM character_quest_progress WHERE character_id=?",
           -1, &stmt, nullptr) != SQLITE_OK)
-    return qs;
+    return result;
   sqlite3_bind_int(stmt, 1, characterId);
-  if (sqlite3_step(stmt) == SQLITE_ROW) {
-    qs.questIndex = sqlite3_column_int(stmt, 0);
-    qs.killCount0 = sqlite3_column_int(stmt, 1);
-    qs.killCount1 = sqlite3_column_int(stmt, 2);
-    qs.killCount2 = sqlite3_column_int(stmt, 3);
-    qs.accepted = sqlite3_column_int(stmt, 4) != 0;
-    qs.deviasQuestIndex = sqlite3_column_int(stmt, 5);
-    qs.deviasKc0 = sqlite3_column_int(stmt, 6);
-    qs.deviasKc1 = sqlite3_column_int(stmt, 7);
-    qs.deviasKc2 = sqlite3_column_int(stmt, 8);
-    qs.deviasAccepted = sqlite3_column_int(stmt, 9) != 0;
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    QuestProgress qp;
+    qp.questId = sqlite3_column_int(stmt, 0);
+    qp.kc[0] = sqlite3_column_int(stmt, 1);
+    qp.kc[1] = sqlite3_column_int(stmt, 2);
+    qp.kc[2] = sqlite3_column_int(stmt, 3);
+    qp.completed = sqlite3_column_int(stmt, 4) != 0;
+    result.push_back(qp);
   }
   sqlite3_finalize(stmt);
-  return qs;
+  return result;
 }
 
-void Database::SaveQuestState(int characterId, int questIndex,
-                              int kc0, int kc1, int kc2, bool accepted) {
+void Database::SaveQuestProgress(int characterId, int questId,
+                                 int kc0, int kc1, int kc2, bool completed) {
   sqlite3_stmt *stmt = nullptr;
   if (sqlite3_prepare_v2(m_db,
-          "INSERT INTO character_quests (character_id, quest_index, "
-          "kill_count_0, kill_count_1, kill_count_2, accepted) VALUES (?,?,?,?,?,?) "
-          "ON CONFLICT(character_id) DO UPDATE SET "
-          "quest_index=excluded.quest_index, "
+          "INSERT INTO character_quest_progress "
+          "(character_id, quest_id, kill_count_0, kill_count_1, kill_count_2, completed) "
+          "VALUES (?,?,?,?,?,?) "
+          "ON CONFLICT(character_id, quest_id) DO UPDATE SET "
           "kill_count_0=excluded.kill_count_0, "
           "kill_count_1=excluded.kill_count_1, "
           "kill_count_2=excluded.kill_count_2, "
-          "accepted=excluded.accepted",
+          "completed=excluded.completed",
           -1, &stmt, nullptr) != SQLITE_OK)
     return;
   sqlite3_bind_int(stmt, 1, characterId);
-  sqlite3_bind_int(stmt, 2, questIndex);
+  sqlite3_bind_int(stmt, 2, questId);
   sqlite3_bind_int(stmt, 3, kc0);
   sqlite3_bind_int(stmt, 4, kc1);
   sqlite3_bind_int(stmt, 5, kc2);
-  sqlite3_bind_int(stmt, 6, accepted ? 1 : 0);
+  sqlite3_bind_int(stmt, 6, completed ? 1 : 0);
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
 }
 
-void Database::SaveDeviasQuestState(int characterId, int questIndex,
-                                    int kc0, int kc1, int kc2, bool accepted) {
+void Database::DeleteQuestProgress(int characterId, int questId) {
   sqlite3_stmt *stmt = nullptr;
   if (sqlite3_prepare_v2(m_db,
-          "UPDATE character_quests SET "
-          "devias_quest_index=?, devias_kc0=?, devias_kc1=?, devias_kc2=?, devias_accepted=? "
-          "WHERE character_id=?",
+          "DELETE FROM character_quest_progress WHERE character_id=? AND quest_id=?",
           -1, &stmt, nullptr) != SQLITE_OK)
     return;
-  sqlite3_bind_int(stmt, 1, questIndex);
-  sqlite3_bind_int(stmt, 2, kc0);
-  sqlite3_bind_int(stmt, 3, kc1);
-  sqlite3_bind_int(stmt, 4, kc2);
-  sqlite3_bind_int(stmt, 5, accepted ? 1 : 0);
-  sqlite3_bind_int(stmt, 6, characterId);
+  sqlite3_bind_int(stmt, 1, characterId);
+  sqlite3_bind_int(stmt, 2, questId);
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
 }

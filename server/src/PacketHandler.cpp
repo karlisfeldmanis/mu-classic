@@ -29,9 +29,10 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
     return;
   }
 
-  printf(
-      "[PacketHandler] Received packet type: %02X, headcode: %02X, size: %zu\n",
-      type, headcode, packet.size());
+  // Only log non-spam packets (skip D7 PrecisePosition)
+  if (headcode != 0xD7)
+    printf("[PacketHandler] Received packet type: %02X, headcode: %02X, size: %zu\n",
+           type, headcode, packet.size());
 
   switch (headcode) {
   // Auth / World entry
@@ -82,7 +83,7 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
     CombatHandler::HandleSkillAttack(session, packet, world, server);
     break;
   case Opcode::SKILL_TELEPORT:
-    CombatHandler::HandleTeleport(session, packet, world);
+    CombatHandler::HandleTeleport(session, packet, world, server);
     break;
 
   // Inventory
@@ -134,8 +135,9 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       if (mapId == 0) { sx = 125; sy = 125; }       // Lorencia center
       else if (mapId == 1) { sx = 108; sy = 247; }   // Dungeon entrance
       else if (mapId == 2) { sx = 210; sy = 40; }    // Devias center
+      else if (mapId == 3) { sx = 174; sy = 110; }   // Noria center
     }
-    if (mapId <= 2) { // Allow maps 0-2
+    if (mapId <= 3) { // Allow maps 0-3
       printf("[PacketHandler] Warp command: fd=%d -> map %d (%d,%d)\n",
              session.GetFd(), mapId, sx, sy);
       server.TransitionMap(session, mapId, sx, sy);
@@ -146,11 +148,11 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
   // Quest system
   case Opcode::QUEST:
     if (subcode == Opcode::SUB_QUEST_ACCEPT)
-      QuestHandler::HandleQuestAccept(session, packet, db, server);
+      QuestHandler::HandleQuestAccept(session, packet, db);
     else if (subcode == Opcode::SUB_QUEST_COMPLETE)
       QuestHandler::HandleQuestComplete(session, packet, db, server);
     else if (subcode == Opcode::SUB_QUEST_ABANDON)
-      QuestHandler::HandleQuestAbandon(session, db);
+      QuestHandler::HandleQuestAbandon(session, packet, db);
     break;
 
   default:

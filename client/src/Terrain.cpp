@@ -60,12 +60,127 @@ void Terrain::Load(const TerrainData &data, int worldID,
                    const std::vector<uint8_t> &rawAttributes,
                    const std::vector<bool> &bridgeMask) {
   this->worldID = worldID;
-  m_heightmap = data.heightmap;
   const auto &meshAttrs =
       rawAttributes.empty() ? data.mapping.attributes : rawAttributes;
+  const int S = TerrainParser::TERRAIN_SIZE;
+
+  m_heightmap = data.heightmap;
   setupMesh(data.heightmap, data.lightmap, meshAttrs, bridgeMask);
   std::string worldDir = data_path + "/World" + std::to_string(worldID);
   setupTextures(data, worldDir);
+
+  // Darken lightmap near void edges (Main 5.2: pre-baked black lightmap at
+  // void areas). Compute distance-to-void for each cell; cells within the
+  // fade radius get progressively darker. Bridge cells and their neighbors
+  // are fully protected to keep bridges normally lit.
+  if (!meshAttrs.empty() && (int)m_baselineLightRGBA.size() >= S * S * 4) {
+    bool hasBridge = (bridgeMask.size() >= (size_t)(S * S));
+    const float FADE_RADIUS = 8.0f;
+    const float BRIDGE_PROTECT = 10.0f; // cells around bridge exempt from darkening
+
+    // Compute distance to nearest bridge cell (for protection zone)
+    std::vector<float> bridgeDist(S * S, 999.0f);
+    if (hasBridge) {
+      for (int i = 0; i < S * S; i++)
+        if (bridgeMask[i]) bridgeDist[i] = 0.0f;
+      for (int y = 0; y < S; y++)
+        for (int x = 0; x < S; x++) {
+          int i = y * S + x;
+          if (x > 0) bridgeDist[i] = std::min(bridgeDist[i], bridgeDist[i-1] + 1.0f);
+          if (y > 0) bridgeDist[i] = std::min(bridgeDist[i], bridgeDist[i-S] + 1.0f);
+        }
+      for (int y = S-1; y >= 0; y--)
+        for (int x = S-1; x >= 0; x--) {
+          int i = y * S + x;
+          if (x < S-1) bridgeDist[i] = std::min(bridgeDist[i], bridgeDist[i+1] + 1.0f);
+          if (y < S-1) bridgeDist[i] = std::min(bridgeDist[i], bridgeDist[i+S] + 1.0f);
+        }
+    }
+
+    // Compute distance to nearest void cell (excluding bridge-protected voids)
+    std::vector<float> voidDist(S * S, 999.0f);
+    for (int i = 0; i < S * S; i++) {
+      if ((meshAttrs[i] & 0x08) && !(hasBridge && bridgeMask[i]))
+        voidDist[i] = 0.0f;
+    }
+    for (int pass = 0; pass < 2; pass++) {
+      for (int y = 0; y < S; y++)
+        for (int x = 0; x < S; x++) {
+          int i = y * S + x;
+          if (x > 0) voidDist[i] = std::min(voidDist[i], voidDist[i-1] + 1.0f);
+          if (y > 0) voidDist[i] = std::min(voidDist[i], voidDist[i-S] + 1.0f);
+        }
+      for (int y = S-1; y >= 0; y--)
+        for (int x = S-1; x >= 0; x--) {
+          int i = y * S + x;
+          if (x < S-1) voidDist[i] = std::min(voidDist[i], voidDist[i+1] + 1.0f);
+          if (y < S-1) voidDist[i] = std::min(voidDist[i], voidDist[i+S] + 1.0f);
+        }
+    }
+
+    // Compute per-cell depression: how far below its highest neighbor this cell
+    // sits. Cells at cliff tops / flat terrain have depression~0 (stay bright).
+    // Cells on cliff faces going down into voids have high depression (get dark).
+    // This ensures only the vertical cliff geometry gets void darkening, not the
+    // walkable terrain at cliff edges or bridge approaches.
+    std::vector<float> depression(S * S, 0.0f);
+    if (!m_heightmap.empty()) {
+      for (int y = 0; y < S; y++)
+        for (int x = 0; x < S; x++) {
+          int i = y * S + x;
+          float h = m_heightmap[i];
+          float maxNeighborH = h;
+          if (x > 0)     maxNeighborH = std::max(maxNeighborH, m_heightmap[i - 1]);
+          if (x < S - 1) maxNeighborH = std::max(maxNeighborH, m_heightmap[i + 1]);
+          if (y > 0)     maxNeighborH = std::max(maxNeighborH, m_heightmap[i - S]);
+          if (y < S - 1) maxNeighborH = std::max(maxNeighborH, m_heightmap[i + S]);
+          depression[i] = maxNeighborH - h; // 0 = at top/flat, positive = sunken
+        }
+    }
+
+    // Void-proximity brightness floor: the JPEG lightmap has pre-baked dark
+    // values near void edges. For walkable terrain, apply a distance-based
+    // minimum brightness to prevent dark cliff-edge terrain.
+    const float VOID_FLOOR_RADIUS = 18.0f;
+    const float VOID_FLOOR_BRIGHT = 0.65f;
+    for (int i = 0; i < S * S; i++) {
+      if (meshAttrs[i] & 0x08) continue;              // skip void cells
+      if (hasBridge && bridgeMask[i]) continue;        // bridges have own logic
+      if (voidDist[i] >= VOID_FLOOR_RADIUS) continue;  // far from void = no change
+      float t = voidDist[i] / VOID_FLOOR_RADIUS;       // 0..1 (near..far)
+      float floor = VOID_FLOOR_BRIGHT * (1.0f - t * t); // quadratic falloff
+      for (int c = 0; c < 3; c++)
+        m_baselineLightRGBA[i * 4 + c] = std::max(m_baselineLightRGBA[i * 4 + c], floor);
+    }
+
+    // Apply void darkening — only to cells that are depressed (below neighbors).
+    // Cliff tops and flat terrain stay bright; cliff faces into voids get dark.
+    const float DEP_MIN = 15.0f;  // below: no darkening (flat/hilltop terrain)
+    const float DEP_MAX = 50.0f;  // above: full darkening (cliff face going down)
+    for (int i = 0; i < S * S; i++) {
+      if (bridgeDist[i] < BRIDGE_PROTECT) continue; // protect bridge + neighbors
+      if (voidDist[i] < FADE_RADIUS) {
+        float df = std::clamp((depression[i] - DEP_MIN) / (DEP_MAX - DEP_MIN), 0.0f, 1.0f);
+        if (df < 0.01f) continue; // not depressed: skip
+        float t = voidDist[i] / FADE_RADIUS;
+        float fade = t * t; // quadratic distance falloff
+        float finalFade = 1.0f - df * (1.0f - fade);
+        finalFade = std::max(finalFade, 0.40f); // prevent dark cliff spots
+        m_baselineLightRGBA[i * 4 + 0] *= finalFade;
+        m_baselineLightRGBA[i * 4 + 1] *= finalFade;
+        m_baselineLightRGBA[i * 4 + 2] *= finalFade;
+      }
+    }
+    // Re-upload lightmap texture with modified void edges
+    {
+      TexDestroy(lightmapTex);
+      const bgfx::Memory *mem = bgfx::copy(
+          m_baselineLightRGBA.data(), m_baselineLightRGBA.size() * sizeof(float));
+      lightmapTex = bgfx::createTexture2D(
+          S, S, false, 1, bgfx::TextureFormat::RGBA32F,
+          BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, mem);
+    }
+  }
 }
 
 float Terrain::GetHeight(float x, float y) {
@@ -161,6 +276,45 @@ void Terrain::Render(const glm::mat4 &view, const glm::mat4 &projection,
   bgfx::submit(0, shader->program);
 }
 
+void Terrain::RenderToView(bgfx::ViewId viewId, const glm::mat4 &view,
+                           const glm::mat4 &proj, float time,
+                           const glm::vec3 &viewPos) {
+  if (indexCount == 0 || !shader)
+    return;
+
+  bgfx::setViewTransform(viewId, glm::value_ptr(view), glm::value_ptr(proj));
+
+  glm::mat4 model(1.0f);
+  bgfx::setTransform(glm::value_ptr(model));
+
+  // Uniforms — no fog, no shadows for minimap
+  shader->setVec4("u_terrainParams",
+                  glm::vec4(time, 0.0f, m_luminosity, 0.0f));
+  shader->setVec4("u_fogParams",
+                  glm::vec4(99999.0f, 100000.0f, -99999.0f, 1.0f));
+  shader->setVec3("u_fogColor", glm::vec3(0.0f));
+  shader->setVec3("u_viewPos", viewPos);
+  shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+
+  applyDynamicLights();
+
+  shader->setTexture(0, "s_tileTextures", tileTextureArray);
+  shader->setTexture(1, "s_layer1Map", layer1InfoMap);
+  shader->setTexture(2, "s_layer2Map", layer2InfoMap);
+  shader->setTexture(3, "s_alphaMap", alphaMap);
+  shader->setTexture(4, "s_attributeMap", attributeMap);
+  shader->setTexture(5, "s_symmetryMap", symmetryMap);
+  shader->setTexture(6, "s_lightMap", lightmapTex);
+
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+                   BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
+  bgfx::setState(state);
+
+  bgfx::setVertexBuffer(0, vbo);
+  bgfx::setIndexBuffer(ebo);
+  bgfx::submit(viewId, shader->program);
+}
+
 void Terrain::SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx) {
   m_shadowMapTex = tex;
   m_lightMtx = lightMtx;
@@ -191,40 +345,57 @@ void Terrain::setupMesh(const std::vector<float> &heightmap,
   bool hasAttrs = (rawAttributes.size() >= (size_t)(size * size));
   bool hasBridgeMask = (bridgeMask.size() >= (size_t)(size * size));
 
-  // Sink interior void vertices into the abyss. A void vertex is "interior"
-  // if all 4 quads sharing it are also void — meaning no rendered terrain
-  // references it. Border void vertices (adjacent to rendered terrain) must
-  // keep their original height or the shared triangle corners get pulled down.
+  // Darken and sink void vertices. All void cell vertices get black vertex color
+  // (matching Main 5.2's pre-baked black lightmap at void areas). Interior void
+  // vertices (all 4 neighboring quads are void) are also sunk 600 units.
+  // Border void vertices at terrain edges keep their height for smooth fade-to-black.
+  // Void vertices next to bridges are ALSO sunk — the bridge 3D model covers them,
+  // and keeping them at bridge height makes the bridge area appear dark.
   if (hasAttrs) {
-    auto isRendered = [&](int qz, int qx) -> bool {
+    // For terrain-void border detection: only regular terrain prevents sinking.
+    // Bridge cells don't prevent sinking — bridge 3D objects cover the geometry.
+    auto isTerrainRendered = [&](int qz, int qx) -> bool {
       if (qz < 0 || qz >= size - 1 || qx < 0 || qx >= size - 1) return false;
       int qi = qz * size + qx;
       bool qVoid = (rawAttributes[qi] & 0x08) != 0;
       bool qBridge = hasBridgeMask && bridgeMask[qi];
-      return !qVoid || qBridge;
+      return !qVoid && !qBridge; // Only actual terrain counts
+    };
+    // Check if a cell is in bridge zone (for vertex color protection)
+    auto isBridgeCell = [&](int cz, int cx) -> bool {
+      if (cz < 0 || cz >= size || cx < 0 || cx >= size) return false;
+      return hasBridgeMask && bridgeMask[cz * size + cx];
     };
     for (int z = 0; z < size; ++z) {
       for (int x = 0; x < size; ++x) {
         int idx = z * size + x;
         if (!(rawAttributes[idx] & 0x08)) continue;
         if (hasBridgeMask && bridgeMask[idx]) continue;
-        // Check if any of the 4 quads sharing this vertex are rendered
-        bool border = isRendered(z - 1, x - 1) || isRendered(z - 1, x)
-                   || isRendered(z, x - 1)     || isRendered(z, x);
-        if (!border) {
-          vertices[idx].position.y -= 600.0f;
+        // Skip vertex darkening for void cells adjacent to bridge cells —
+        // prevents vertex color interpolation from creating dark gradients
+        // on the bridge surface.
+        bool nearBridge = isBridgeCell(z-1,x-1) || isBridgeCell(z-1,x) || isBridgeCell(z-1,x+1)
+                       || isBridgeCell(z,x-1)                          || isBridgeCell(z,x+1)
+                       || isBridgeCell(z+1,x-1) || isBridgeCell(z+1,x) || isBridgeCell(z+1,x+1);
+        if (!nearBridge) {
           vertices[idx].color = glm::vec3(0.0f);
+        }
+        // Sink void vertices unless they border actual terrain (not bridges)
+        bool borderTerrain = isTerrainRendered(z - 1, x - 1) || isTerrainRendered(z - 1, x)
+                          || isTerrainRendered(z, x - 1)     || isTerrainRendered(z, x);
+        if (!borderTerrain) {
+          vertices[idx].position.y -= 600.0f;
         }
       }
     }
   }
 
+  // Generate indices for ALL quads including void ones. Void quads render as
+  // opaque black geometry (their vertices have color=0 + interior ones are sunk
+  // 600 units) which blocks view-through to terrain on the far side of rifts.
+  // Bridge-zone quads are always rendered (handled by bridgeMask above).
   for (int z = 0; z < size - 1; ++z) {
     for (int x = 0; x < size - 1; ++x) {
-      if (hasAttrs && (rawAttributes[z * size + x] & 0x08)) {
-        if (!hasBridgeMask || !bridgeMask[z * size + x])
-          continue;
-      }
       int current = z * size + x;
       int next = current + size;
       indices.push_back(current);

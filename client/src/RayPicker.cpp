@@ -205,6 +205,9 @@ int PickMonster(GLFWwindow *window, double mouseX, double mouseY) {
     MonsterInfo info = s_monsters->GetMonsterInfo(i);
     if (info.state == MonsterState::DEAD || info.state == MonsterState::DYING)
       continue;
+    // Skip own summon — allow clicking through to monsters behind it
+    if (s_monsters->IsOwnSummon(i))
+      continue;
     float r = info.radius * 1.2f;
     float yMin = info.position.y;
     float yMax = info.position.y + info.height;

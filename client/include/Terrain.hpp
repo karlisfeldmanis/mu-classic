@@ -21,6 +21,9 @@ public:
             const std::vector<bool> &bridgeMask = {});
   void Render(const glm::mat4 &view, const glm::mat4 &projection, float time,
               const glm::vec3 &viewPos = glm::vec3(0.0f));
+  void RenderToView(bgfx::ViewId viewId, const glm::mat4 &view,
+                    const glm::mat4 &proj, float time,
+                    const glm::vec3 &viewPos = glm::vec3(0.0f));
   void SetDebugMode(int mode) { debugMode = mode; }
   int GetDebugMode() const { return debugMode; }
   void SetPointLights(const std::vector<glm::vec3> &positions,

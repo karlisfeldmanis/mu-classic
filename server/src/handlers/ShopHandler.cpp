@@ -37,6 +37,7 @@ static std::map<uint16_t, std::vector<std::pair<uint8_t, uint8_t>>> s_shops = {
     // Pasi (254) - DW Scrolls, Staves & Armor
     {254,
      {// Scrolls
+      {15, 10}, // Power Wave
       {15, 0},  // Poison
       {15, 1},  // Meteorite
       {15, 2},  // Lightning
@@ -97,7 +98,7 @@ static std::map<uint16_t, std::vector<std::pair<uint8_t, uint8_t>>> s_shops = {
     // Izabel the Wizard (303) - DW Scrolls, Staves & Armor (mid-high level)
     {303,
      {// Scrolls (all)
-      {15, 0}, {15, 1}, {15, 2}, {15, 3}, {15, 4}, {15, 5},
+      {15, 10}, {15, 0}, {15, 1}, {15, 2}, {15, 3}, {15, 4}, {15, 5},
       {15, 6}, {15, 7}, {15, 8}, {15, 9}, {15, 11}, {15, 12}, {15, 13},
       // Staves (Serpent through Legendary)
       {5, 2}, {5, 3}, {5, 4}, {5, 5},
@@ -125,7 +126,26 @@ static std::map<uint16_t, std::vector<std::pair<uint8_t, uint8_t>>> s_shops = {
       {7, 6}, {8, 6}, {9, 6}, {10, 6}, {11, 6},
       // Skill Orbs
       {12, 20}, {12, 21}, {12, 22}, {12, 23}, {12, 24},
-      {12, 7}, {12, 13}, {12, 14}}}}; // Twisting Slash, Impale, Greater Fortitude
+      {12, 7}, {12, 13}, {12, 14}}},  // Twisting Slash, Impale, Greater Fortitude
+    // ── Noria Vendors ──
+    // Elf Lala (242) - Elf Armor & Skill Orbs
+    {242,
+     {// Vine Set (Elf beginner armor, index 10)
+      {7, 10}, {8, 10}, {9, 10}, {10, 10}, {11, 10},
+      // Silk Set (Elf mid armor, index 11)
+      {7, 11}, {8, 11}, {9, 11}, {10, 11}, {11, 11},
+      // Elf skill orbs (OpenMU Version075)
+      {12, 8}, {12, 9}, {12, 10}, {12, 11},
+      // Summoning orbs
+      {12, 25}, {12, 26}, {12, 27}, {12, 28}, {12, 29}}},
+    // Eo the Craftsman (243) - Bows, Crossbows & Ammo
+    {243,
+     {// Bows (Short Bow through Silver Bow)
+      {4, 0}, {4, 1}, {4, 2}, {4, 3}, {4, 4}, {4, 5},
+      // Crossbows (Crossbow through Bluewing)
+      {4, 8}, {4, 9}, {4, 10}, {4, 11}, {4, 12}, {4, 13},
+      // Arrows & Bolts (ammo)
+      {4, 15}, {4, 7}}}};
 
 void HandleShopOpen(Session &session, const std::vector<uint8_t> &packet,
                     Database &db) {
@@ -135,9 +155,8 @@ void HandleShopOpen(Session &session, const std::vector<uint8_t> &packet,
 
   uint16_t npcType = recv->npcType;
 
-  if (s_shops.find(npcType) == s_shops.end()) {
+  if (s_shops.find(npcType) == s_shops.end())
     return; // NPC has no shop (guards, etc.)
-  }
 
   session.shopNpcType = npcType;
 
@@ -150,14 +169,14 @@ void HandleShopOpen(Session &session, const std::vector<uint8_t> &packet,
       PMSG_SHOP_ITEM si;
       si.defIndex = def.category * 32 + def.itemIndex;
       si.itemLevel = 0;
-      si.buyPrice = def.buyPrice;
+      // Send stack price so client zen check matches server charge
+      bool isAmmo = (def.category == 4 && (def.itemIndex == 7 || def.itemIndex == 15));
+      bool isPotion = (def.category == 14 && def.width == 1 && def.height == 1);
+      uint8_t buyStack = isAmmo ? 255 : (isPotion ? 20 : 1);
+      si.buyPrice = def.buyPrice * buyStack;
       shopItems.push_back(si);
-    } else {
-      printf("[Shop] WARN: item (%d,%d) not found in DB\n", it.first, it.second);
     }
   }
-  printf("[Shop] NPC %d: sending %zu items\n", npcType, shopItems.size());
-
   uint16_t packetSize =
       sizeof(PWMSG_HEAD) + 1 + shopItems.size() * sizeof(PMSG_SHOP_ITEM);
   std::vector<uint8_t> sendBuf(packetSize);
@@ -202,7 +221,14 @@ void HandleShopBuy(Session &session, const std::vector<uint8_t> &packet,
     return;
   }
 
-  uint32_t price = def.buyPrice * (recv->quantity > 0 ? recv->quantity : 1);
+  // Stack sizes: arrows/bolts = 255 (uint8_t max), potions = 20
+  bool isAmmo = (cat == 4 && (idx == 7 || idx == 15));
+  bool isPotion = (cat == 14 && def.width == 1 && def.height == 1);
+  bool isStackable = isAmmo || isPotion;
+  uint8_t maxStack = isAmmo ? 255 : 20;
+  uint8_t buyStack = isStackable ? maxStack : 1;
+
+  uint32_t price = def.buyPrice * buyStack;
   if (session.zen < price) {
     printf("[Shop] Buy failed: not enough Zen (need %u, have %u, defIdx=%d)\n",
            price, session.zen, recv->defIndex);
@@ -210,24 +236,26 @@ void HandleShopBuy(Session &session, const std::vector<uint8_t> &packet,
     return; // Not enough zen
   }
 
-  printf("[Shop] Buying item defIdx=%d (price=%u)\n", recv->defIndex, price);
+  printf("[Shop] Buying item defIdx=%d (qty=%u, price=%u)\n", recv->defIndex,
+         buyStack, price);
 
-  static constexpr uint8_t MAX_STACK = 20;
-
-  // Stackable items (category 14 = potions): try to merge into existing stack
-  if (cat == 14 && def.width == 1 && def.height == 1) {
+  // Stackable items: try merge into existing stack first
+  if (isStackable) {
     for (int i = 0; i < 64; i++) {
       if (session.bag[i].occupied && session.bag[i].primary &&
           session.bag[i].defIndex == recv->defIndex &&
-          session.bag[i].quantity < MAX_STACK) {
-        // Merge into existing stack
+          session.bag[i].quantity < maxStack) {
+        // Merge into existing stack (fill up to max)
+        uint8_t space = maxStack - session.bag[i].quantity;
+        uint8_t toAdd = std::min(buyStack, space);
         session.zen -= price;
         db.UpdateCharacterMoney(session.characterId, session.zen);
-        session.bag[i].quantity++;
+        session.bag[i].quantity += toAdd;
         db.SaveCharacterInventory(
             session.characterId, recv->defIndex, session.bag[i].quantity,
             session.bag[i].itemLevel, static_cast<uint8_t>(i));
         res.result = 1;
+        res.quantity = session.bag[i].quantity;
         session.Send(&res, sizeof(res));
         InventoryHandler::SendInventorySync(session);
         return;
@@ -286,7 +314,7 @@ void HandleShopBuy(Session &session, const std::vector<uint8_t> &packet,
     }
   }
   session.bag[slot].defIndex = recv->defIndex;
-  session.bag[slot].quantity = recv->quantity > 0 ? recv->quantity : 1;
+  session.bag[slot].quantity = buyStack;
   session.bag[slot].itemLevel = recv->itemLevel;
   session.bag[slot].category = cat;
   session.bag[slot].itemIndex = idx;
@@ -325,7 +353,9 @@ void HandleShopSell(Session &session, const std::vector<uint8_t> &packet,
     return;
   }
 
-  uint32_t sellPrice = def.buyPrice / 3;
+  // Sell price accounts for stack quantity (potions/ammo sold as stacks)
+  uint32_t qty = (item.quantity > 1) ? item.quantity : 1;
+  uint32_t sellPrice = (def.buyPrice * qty) / 3;
   if (sellPrice == 0) {
     // Fallback: items with no/low buy price get minimum sell price
     sellPrice = std::max(1u, (uint32_t)(def.level * 100));

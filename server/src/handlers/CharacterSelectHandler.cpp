@@ -153,6 +153,13 @@ void HandleCharCreate(Session &session, const std::vector<uint8_t> &packet,
     printf("[CharSelect] DK '%s' equipped Small Axe + Small Shield\n", name);
   }
 
+  // ELF (class 32) starts with Short Bow (cat=4,idx=0) + Arrows (cat=4,idx=15)
+  if (classCode == 32) {
+    db.UpdateEquipment(charId, 0, 4, 0, 0);       // Right hand: Short Bow
+    db.UpdateEquipment(charId, 1, 4, 15, 0, 255); // Left hand: 255 Arrows
+    printf("[CharSelect] ELF '%s' equipped Short Bow + 255 Arrows\n", name);
+  }
+
   // Find the slot that was assigned
   auto chars = db.GetCharacterList(session.accountId);
   for (auto &c : chars) {
@@ -298,6 +305,7 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
   session.worldX = c.posY * 100.0f;
   session.worldZ = c.posX * 100.0f;
   session.mapId = c.mapId;
+  session.wasInSafeZone = world.IsSafeZoneGrid(c.posX, c.posY);
 
   CharacterClass charCls = static_cast<CharacterClass>(session.classCode);
   session.maxHp =
@@ -362,15 +370,16 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
     mapPkt.spawnX = c.posX;
     mapPkt.spawnY = c.posY;
     session.Send(&mapPkt, sizeof(mapPkt));
+    // Defer viewport — client will ChangeMap (clearing old monsters) then
+    // send PrecisePosition to trigger the viewport send.
+    session.pendingViewportDelay = 5.0f;
+  } else {
+    // Lorencia: no map change, send viewport immediately
+    WorldHandler::SendNpcViewport(session, world);
+    auto v2pkt = world.BuildMonsterViewportV2Packet();
+    if (!v2pkt.empty())
+      session.Send(v2pkt.data(), v2pkt.size());
   }
-
-  // Send world data
-  WorldHandler::SendNpcViewport(session, world);
-
-  // Send v2 monster viewport
-  auto v2pkt = world.BuildMonsterViewportV2Packet();
-  if (!v2pkt.empty())
-    session.Send(v2pkt.data(), v2pkt.size());
 
   InventoryHandler::SendInventorySync(session);
   // IMPORTANT: Send CharStats BEFORE Equipment so the client knows the class
@@ -426,20 +435,96 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
     }
   }
 
-  // Load quest state (both Lorencia + Devias chains) and send to client
+  // Load quest progress (per-quest tracking) and send to client
   {
-    auto qs = db.LoadQuestState(c.id);
-    session.questIndex = qs.questIndex;
-    session.questKillCount0 = qs.killCount0;
-    session.questKillCount1 = qs.killCount1;
-    session.questKillCount2 = qs.killCount2;
-    session.questAccepted = qs.accepted;
-    session.deviasQuestIndex = qs.deviasQuestIndex;
-    session.deviasKillCount0 = qs.deviasKc0;
-    session.deviasKillCount1 = qs.deviasKc1;
-    session.deviasKillCount2 = qs.deviasKc2;
-    session.deviasQuestAccepted = qs.deviasAccepted;
+    auto allProgress = db.LoadAllQuestProgress(c.id);
+    session.activeQuests.clear();
+    session.completedQuestMask = 0;
+    for (auto &qp : allProgress) {
+      if (qp.completed) {
+        session.completedQuestMask |= (1ULL << qp.questId);
+      } else {
+        Session::ActiveQuest aq;
+        aq.questId = qp.questId;
+        aq.killCount[0] = qp.kc[0];
+        aq.killCount[1] = qp.kc[1];
+        aq.killCount[2] = qp.kc[2];
+        session.activeQuests.push_back(aq);
+      }
+    }
+    QuestHandler::SendQuestCatalog(session);
     QuestHandler::SendQuestState(session);
+  }
+
+  // Restore summon if character had an active one saved
+  session.activeSummonType = c.summonType;
+  if (c.summonType >= 0) {
+    // Don't spawn summon in safe zones — the existing safe zone exit logic
+    // in Server::Run() will respawn it when the player walks out.
+    bool spawnInSafe = world.IsSafeZoneGrid(c.posX, c.posY);
+    if (spawnInSafe) {
+      session.activeSummonIndex = 0;
+      printf("[CharSelect] Summon type=%d deferred (safe zone) for '%s'\n",
+             c.summonType, name);
+    } else {
+      // Find walkable cell near character for summon spawn
+      uint8_t summonGX = c.posX, summonGY = c.posY;
+      for (int r = 1; r <= 3; r++) {
+        bool found = false;
+        for (int dy = -r; dy <= r && !found; dy++) {
+          for (int dx = -r; dx <= r && !found; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            int nx = c.posX + dx, ny = c.posY + dy;
+            if (nx >= 0 && ny >= 0 && nx < 256 && ny < 256 &&
+                world.IsWalkableGrid((uint8_t)nx, (uint8_t)ny)) {
+              summonGX = (uint8_t)nx;
+              summonGY = (uint8_t)ny;
+              found = true;
+            }
+          }
+        }
+        if (found) break;
+      }
+
+      auto *summon = world.SpawnSummon(static_cast<uint16_t>(c.summonType),
+                                        summonGX, summonGY, session.GetFd(),
+                                        session.characterId);
+      if (summon) {
+        session.activeSummonIndex = summon->index;
+
+        // Send summon to client via single-monster viewport packet
+        {
+          size_t entrySize = sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2);
+          size_t pktSize = 5 + entrySize;
+          uint8_t buf[5 + sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2)] = {};
+          auto *head = reinterpret_cast<PWMSG_HEAD *>(buf);
+          *head = MakeC2Header(static_cast<uint16_t>(pktSize), 0x34);
+          buf[4] = 1; // count
+          auto *e = reinterpret_cast<PMSG_MONSTER_VIEWPORT_ENTRY_V2 *>(buf + 5);
+          e->indexH = static_cast<uint8_t>(summon->index >> 8);
+          e->indexL = static_cast<uint8_t>(summon->index & 0xFF);
+          e->typeH = static_cast<uint8_t>(summon->type >> 8);
+          e->typeL = static_cast<uint8_t>(summon->type & 0xFF);
+          e->x = summon->gridX;
+          e->y = summon->gridY;
+          e->dir = summon->dir;
+          e->hp = static_cast<uint16_t>(summon->hp);
+          e->maxHp = static_cast<uint16_t>(summon->maxHp);
+          e->state = 0;
+          session.Send(buf, pktSize);
+        }
+
+        // Send SUMMON_SPAWN so client knows this is own summon
+        PMSG_SUMMON_SPAWN_SEND spawnPkt{};
+        spawnPkt.h = MakeC1Header(sizeof(spawnPkt), Opcode::SUMMON_SPAWN);
+        spawnPkt.monsterIndex = summon->index;
+        spawnPkt.ownerCharId = session.characterId;
+        server.Broadcast(&spawnPkt, sizeof(spawnPkt));
+
+        printf("[CharSelect] Restored summon type=%d at (%d,%d) for '%s'\n",
+               c.summonType, summonGX, summonGY, name);
+      }
+    }
   }
 
   printf("[CharSelect] Character '%s' entered world at (%d,%d) class=%d\n",

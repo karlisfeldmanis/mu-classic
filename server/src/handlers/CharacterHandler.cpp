@@ -156,7 +156,8 @@ void SendCharStats(Session &session) {
 void SendEquipment(Session &session, Database &db, int characterId) {
   auto equip = db.GetCharacterEquipment(characterId);
 
-  size_t entrySize = 1 + 1 + 1 + 1 + 32;
+  // Match PMSG_EQUIPMENT_SLOT: slot(1) + cat(1) + idx(1) + lvl(1) + qty(1) + model(32) = 37
+  size_t entrySize = sizeof(PMSG_EQUIPMENT_SLOT);
   size_t totalSize = 5 + equip.size() * entrySize;
   std::vector<uint8_t> packet(totalSize, 0);
 
@@ -172,10 +173,18 @@ void SendEquipment(Session &session, Database &db, int characterId) {
     packet[off + 1] = equip[i].category;
     packet[off + 2] = equip[i].itemIndex;
     packet[off + 3] = equip[i].itemLevel;
+    packet[off + 4] = equip[i].quantity;
 
     auto itemDef = db.GetItemDefinition(equip[i].category, equip[i].itemIndex);
-    strncpy(reinterpret_cast<char *>(&packet[off + 4]),
+    strncpy(reinterpret_cast<char *>(&packet[off + 5]),
             itemDef.modelFile.c_str(), 31);
+  }
+
+  // Also update session equipment cache
+  for (auto &e : equip) {
+    if (e.slot < Session::NUM_EQUIP_SLOTS) {
+      session.equipment[e.slot].quantity = e.quantity;
+    }
   }
 
   session.Send(packet.data(), packet.size());
@@ -400,11 +409,34 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
 
       // Slot 1 (left hand) constraint logic
       if (eq->slot == 1) {
+        // Ammo (arrows/bolts) is allowed in slot 1 alongside matching bow/crossbow
+        bool isAmmoItem = (eq->category == 4 &&
+                           (eq->itemIndex == 7 || eq->itemIndex == 15));
+        // Validate ammo type matches weapon: bolts(7) for crossbows, arrows(15) for bows
+        if (isAmmoItem) {
+          auto equip0 = db.GetCharacterEquipment(charId);
+          for (auto &e0 : equip0) {
+            if (e0.slot == 0 && e0.category == 4) {
+              bool weapIsCrossbow =
+                  (e0.itemIndex >= 8 && e0.itemIndex <= 14) ||
+                  e0.itemIndex == 16 || e0.itemIndex == 18;
+              bool ammoIsBolt = (eq->itemIndex == 7);
+              if (weapIsCrossbow != ammoIsBolt) {
+                printf("[Character] Rejecting equip char=%d: %s requires %s\n",
+                       charId, weapIsCrossbow ? "crossbow" : "bow",
+                       weapIsCrossbow ? "bolts" : "arrows");
+                SendEquipment(session, db, charId);
+                InventoryHandler::SendInventorySync(session);
+                return;
+              }
+            }
+          }
+        }
         auto equip = db.GetCharacterEquipment(charId);
         for (auto &e : equip) {
           if (e.slot == 0 && e.category != 0xFF) {
             auto s0Def = db.GetItemDefinition(e.category, e.itemIndex);
-            if (s0Def.twoHanded) {
+            if (s0Def.twoHanded && !isAmmoItem) {
               printf("[Character] Rejecting equip char=%d slot=1: cannot equip "
                      "with 2-handed weapon in slot 0\n",
                      charId);
@@ -416,24 +448,30 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
         }
 
         if (eq->category <= 5) { // Weapon
-          if (itemDef.twoHanded) {
-            printf("[Character] Rejecting equip char=%d cat=%d: cannot dual "
-                   "wield two-handed weapon\n",
-                   charId, eq->category);
-            SendEquipment(session, db, charId);
-            InventoryHandler::SendInventorySync(session);
-            return;
-          }
-          CharacterClass charCls =
-              static_cast<CharacterClass>(session.classCode);
-          if (charCls != CharacterClass::CLASS_DK &&
-              charCls != CharacterClass::CLASS_MG) {
-            printf("[Character] Rejecting equip char=%d cat=%d: only DK/MG can "
-                   "dual wield\n",
-                   charId, eq->category);
-            SendEquipment(session, db, charId);
-            InventoryHandler::SendInventorySync(session);
-            return;
+          // Allow ammo (arrows idx 15, bolts idx 7) in off-hand for any class
+          bool isAmmo = (eq->category == 4 &&
+                         (eq->itemIndex == 7 || eq->itemIndex == 15));
+          if (!isAmmo) {
+            if (itemDef.twoHanded) {
+              printf("[Character] Rejecting equip char=%d cat=%d: cannot dual "
+                     "wield two-handed weapon\n",
+                     charId, eq->category);
+              SendEquipment(session, db, charId);
+              InventoryHandler::SendInventorySync(session);
+              return;
+            }
+            CharacterClass charCls =
+                static_cast<CharacterClass>(session.classCode);
+            if (charCls != CharacterClass::CLASS_DK &&
+                charCls != CharacterClass::CLASS_MG) {
+              printf(
+                  "[Character] Rejecting equip char=%d cat=%d: only DK/MG can "
+                  "dual wield\n",
+                  charId, eq->category);
+              SendEquipment(session, db, charId);
+              InventoryHandler::SendInventorySync(session);
+              return;
+            }
           }
         } else if (eq->category != 6) { // Not a shield either
           printf("[Character] Rejecting equip char=%d cat=%d: invalid item for "
@@ -483,12 +521,13 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
 
   // Save old equipment in this slot for swap/unequip
   auto oldEquip = db.GetCharacterEquipment(charId);
-  uint8_t oldCat = 0xFF, oldIdx = 0, oldLvl = 0;
+  uint8_t oldCat = 0xFF, oldIdx = 0, oldLvl = 0, oldQty = 0;
   for (auto &oe : oldEquip) {
     if (oe.slot == eq->slot && oe.category != 0xFF) {
       oldCat = oe.category;
       oldIdx = oe.itemIndex;
       oldLvl = oe.itemLevel;
+      oldQty = oe.quantity;
       break;
     }
   }
@@ -611,14 +650,57 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
     }
   }
 
+  // 1b. Auto-unequip incompatible ammo when equipping bow/crossbow to slot 0
+  if (eq->slot == 0 && eq->category == 4) {
+    bool newIsCrossbow =
+        (eq->itemIndex >= 8 && eq->itemIndex <= 14) ||
+        eq->itemIndex == 16 || eq->itemIndex == 18;
+    // Re-read equipment (may have been modified by 2H unequip above)
+    auto equip1 = db.GetCharacterEquipment(charId);
+    for (auto &e1 : equip1) {
+      if (e1.slot == 1 && e1.category == 4 &&
+          (e1.itemIndex == 7 || e1.itemIndex == 15)) {
+        bool ammoIsBolt = (e1.itemIndex == 7);
+        if (newIsCrossbow != ammoIsBolt) {
+          // Wrong ammo type — auto-unequip it back to bag
+          int16_t ammoDef = (int16_t)(4 * 32 + e1.itemIndex);
+          uint8_t ammoSlot;
+          if (InventoryHandler::FindEmptySpace(session, 1, 1, ammoSlot)) {
+            session.bag[ammoSlot].occupied = true;
+            session.bag[ammoSlot].primary = true;
+            session.bag[ammoSlot].defIndex = ammoDef;
+            session.bag[ammoSlot].category = e1.category;
+            session.bag[ammoSlot].itemIndex = e1.itemIndex;
+            session.bag[ammoSlot].quantity = e1.quantity;
+            session.bag[ammoSlot].itemLevel = e1.itemLevel;
+            db.SaveCharacterInventory(charId, ammoDef, e1.quantity,
+                                      e1.itemLevel, ammoSlot);
+          }
+          db.UpdateEquipment(charId, 1, 0xFF, 0, 0);
+          session.equipment[1].category = 0xFF;
+          // Notify player
+          const char *msg = newIsCrossbow
+              ? "Bolts required for crossbow! Arrows unequipped."
+              : "Arrows required for bow! Bolts unequipped.";
+          db.SaveChatMessage(session.characterId, 1, 0xFF64FFFF, msg);
+          printf("[Character] Auto-unequipped incompatible ammo for %s\n",
+                 newIsCrossbow ? "crossbow" : "bow");
+          break;
+        }
+      }
+    }
+  }
+
   // When equipping (category != 0xFF), remove item from inventory bag
   // Track which slot was freed so we can prefer it for the old weapon
   int freedSlot = -1;
+  uint8_t newItemQty = 0; // Carry quantity from bag (for arrows/bolts)
   if (eq->category != 0xFF) {
     int16_t dIdx = (int16_t)((int)eq->category * 32 + (int)eq->itemIndex);
     for (int i = 0; i < 64; i++) {
       if (session.bag[i].occupied && session.bag[i].primary &&
           session.bag[i].defIndex == dIdx) {
+        newItemQty = session.bag[i].quantity;
         // Clear bag slot (including multi-cell)
         auto dI = db.GetItemDefinition(dIdx);
         int w = dI.width > 0 ? dI.width : 1;
@@ -633,8 +715,8 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
         }
         freedSlot = i;
         db.DeleteCharacterInventoryItem(charId, i);
-        printf("[Character] Removed equipped item from bag slot %d (def=%d)\n",
-               i, dIdx);
+        printf("[Character] Removed equipped item from bag slot %d (def=%d qty=%d)\n",
+               i, dIdx, newItemQty);
         break;
       }
     }
@@ -648,6 +730,9 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
     auto oDefI = db.GetItemDefinition(oDef);
     int w = oDefI.width > 0 ? oDefI.width : 1;
     int h = oDefI.height > 0 ? oDefI.height : 1;
+
+    // Restore quantity for arrows/bolts being unequipped back to bag
+    uint8_t restoreQty = (oldQty > 0) ? oldQty : 1;
 
     // Helper lambda: try to place old weapon at a specific slot
     auto tryPlace = [&](int startSlot) -> bool {
@@ -667,14 +752,14 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
           session.bag[s].category = oldCat;
           session.bag[s].itemIndex = oldIdx;
           if (hh == 0 && ww == 0) {
-            session.bag[s].quantity = 1;
+            session.bag[s].quantity = restoreQty;
             session.bag[s].itemLevel = oldLvl;
           }
         }
       }
-      db.SaveCharacterInventory(charId, oDef, 1, oldLvl, (uint8_t)startSlot);
-      printf("[Character] Unequipped item saved to bag slot %d (def=%d)\n",
-             startSlot, oDef);
+      db.SaveCharacterInventory(charId, oDef, restoreQty, oldLvl, (uint8_t)startSlot);
+      printf("[Character] Unequipped item saved to bag slot %d (def=%d qty=%d)\n",
+             startSlot, oDef, restoreQty);
       return true;
     };
 
@@ -700,13 +785,14 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
   }
 
   db.UpdateEquipment(charId, eq->slot, eq->category, eq->itemIndex,
-                     eq->itemLevel);
+                     eq->itemLevel, newItemQty);
 
   // Update session equipment cache
   if (eq->slot < Session::NUM_EQUIP_SLOTS) {
     session.equipment[eq->slot].category = eq->category;
     session.equipment[eq->slot].itemIndex = eq->itemIndex;
     session.equipment[eq->slot].itemLevel = eq->itemLevel;
+    session.equipment[eq->slot].quantity = newItemQty;
   }
 
   RefreshCombatStats(session, db, charId);

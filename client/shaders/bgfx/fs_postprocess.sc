@@ -17,6 +17,11 @@ void main()
     color = min(color, vec3_splat(1.5));
     color *= u_ppTint.xyz;
 
+    // Slight brightness lift and saturation boost
+    color = pow(color, vec3_splat(0.92));  // Gamma lift — brightens midtones
+    float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    color = mix(vec3_splat(lum), color, 1.15);  // +15% saturation
+
     // Vignette
     if (u_ppComposite.y > 0.001) {
         vec2 uv = v_texcoord0 * 2.0 - 1.0;

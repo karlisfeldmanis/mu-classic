@@ -50,9 +50,9 @@ public:
   void SendNpcInteract(uint16_t npcType, bool open);
 
   // Quest system
-  void SendQuestAccept(uint16_t guardNpcType);
-  void SendQuestComplete(uint16_t guardNpcType);
-  void SendQuestAbandon();
+  void SendQuestAccept(uint8_t questId);
+  void SendQuestComplete(uint8_t questId);
+  void SendQuestAbandon(uint8_t questId);
 
   // Warp
   void SendWarpCommand(uint8_t mapId, uint8_t spawnX = 0, uint8_t spawnY = 0);

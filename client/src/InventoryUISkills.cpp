@@ -1,3 +1,4 @@
+#include "ClientPacketHandler.hpp"
 #include "HeroCharacter.hpp"
 #include "InputHandler.hpp"
 #include "InventoryUI_Internal.hpp"
@@ -54,6 +55,9 @@ static const char *GetSkillName(uint8_t skillId) {
   for (int i = 0; i < NUM_DW_SPELLS; i++)
     if (g_dwSpells[i].skillId == skillId)
       return g_dwSpells[i].name;
+  for (int i = 0; i < NUM_ELF_SKILLS; i++)
+    if (g_elfSkills[i].skillId == skillId)
+      return g_elfSkills[i].name;
   return nullptr;
 }
 
@@ -93,6 +97,14 @@ void RenderSkillDragCursor(ImDrawList *dl) {
     for (int i = 0; i < NUM_DW_SPELLS; i++) {
       if (g_dwSpells[i].skillId == skillId) {
         skillName = g_dwSpells[i].name;
+        break;
+      }
+    }
+  }
+  if (!skillName) {
+    for (int i = 0; i < NUM_ELF_SKILLS; i++) {
+      if (g_elfSkills[i].skillId == skillId) {
+        skillName = g_elfSkills[i].name;
         break;
       }
     }
@@ -482,6 +494,136 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     }
   }
 
+  // ══════════════ Active Buff Icons (above skill slots) ══════════════
+  {
+    const auto *buffs = ClientPacketHandler::GetActiveBuffs();
+    for (int b = 0; buffs && b < 2; b++) {
+      auto &buff = buffs[b];
+      if (!buff.active) continue;
+
+      int8_t iconSkillId = (buff.type == 1) ? 27 : 28;
+      // Position: above skill slots 1-2 (buff 0) and 3-4 (buff 1)
+      float vx = SkillSlotX(b * 2) + (SLOT + GAP) * 0.5f;
+      float vy = ROW_VY - SLOT - 6.0f;
+      float sx = c.ToScreenX(vx);
+      float sy = c.ToScreenY(vy);
+      float sz = c.ToScreenX(vx + SLOT * 0.8f) - sx;
+
+      ImVec2 p0(sx, sy), p1(sx + sz, sy + sz);
+      dl->AddRectFilled(p0, p1, IM_COL32(15, 12, 8, 200), 3.0f);
+
+      ImU32 tint = (buff.type == 1) ? IM_COL32(100, 200, 255, 255)
+                                    : IM_COL32(255, 180, 80, 255);
+      RenderSkillIcon(dl, iconSkillId, sx, sy, sz, tint);
+
+      // Cooldown sweep (fills from top as time passes)
+      if (buff.maxDuration > 0) {
+        float frac = buff.remaining / buff.maxDuration;
+        float fillH = sz * (1.0f - frac);
+        dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + fillH),
+                          IM_COL32(0, 0, 0, 150), 3.0f);
+      }
+
+      // Duration text (m:ss for >= 60s, Ns for < 60s)
+      char timeBuf[8];
+      int secs = (int)ceilf(buff.remaining);
+      if (secs >= 60)
+        snprintf(timeBuf, sizeof(timeBuf), "%d:%02d", secs / 60, secs % 60);
+      else
+        snprintf(timeBuf, sizeof(timeBuf), "%ds", secs);
+      ImVec2 tsz = ImGui::CalcTextSize(timeBuf);
+      DrawShadowText(dl, ImVec2(sx + (sz - tsz.x) * 0.5f, sy + sz - tsz.y - 1),
+                     IM_COL32(255, 255, 255, 230), timeBuf);
+
+      // Border glow
+      ImU32 borderCol = (buff.type == 1) ? IM_COL32(60, 140, 255, 180)
+                                         : IM_COL32(255, 140, 40, 180);
+      dl->AddRect(p0, p1, borderCol, 3.0f, 0, 1.5f);
+
+      // Hover tooltip
+      ImVec2 mpos = ImGui::GetIO().MousePos;
+      if (mpos.x >= p0.x && mpos.x <= p1.x && mpos.y >= p0.y && mpos.y <= p1.y) {
+        const char *name = (buff.type == 1) ? "Greater Defense" : "Greater Damage";
+        const char *desc = (buff.type == 1) ? "Increases Defense" : "Increases Attack Damage";
+        int mins = secs / 60, rsecs = secs % 60;
+        char durLine[32];
+        snprintf(durLine, sizeof(durLine), "Remaining: %d:%02d", mins, rsecs);
+        char bonusLine[48];
+        snprintf(bonusLine, sizeof(bonusLine), "+%d %s", buff.value,
+                 (buff.type == 1) ? "Defense" : "Damage");
+
+        float tw = 180.0f, th = 12.0f + 18.0f * 4 + 8.0f;
+        BeginPendingTooltip(tw, th);
+        g_pendingTooltip.borderColor = borderCol;
+        AddPendingTooltipLine(IM_COL32(255, 255, 255, 255), name, 1);
+        AddTooltipSeparator();
+        AddPendingTooltipLine(IM_COL32(180, 180, 180, 255), desc);
+        AddPendingTooltipLine(IM_COL32(100, 255, 100, 255), bonusLine);
+        AddPendingTooltipLine(IM_COL32(200, 200, 200, 255), durLine);
+      }
+    }
+  }
+
+  // ══════════════ Active Debuff Icons (poison — above skill slots, right side) ══
+  {
+    auto poison = ClientPacketHandler::GetPoisonState();
+    if (poison.active) {
+      // Position: above skill slot 4 (rightmost), same row as buff icons
+      float vx = SkillSlotX(3) + (SLOT + GAP) * 0.5f;
+      float vy = ROW_VY - SLOT - 6.0f;
+      float sx = c.ToScreenX(vx);
+      float sy = c.ToScreenY(vy);
+      float sz = c.ToScreenX(vx + SLOT * 0.8f) - sx;
+
+      ImVec2 p0(sx, sy), p1(sx + sz, sy + sz);
+      dl->AddRectFilled(p0, p1, IM_COL32(10, 15, 8, 200), 3.0f);
+
+      // Poison skull icon — use skill icon 30 (Poison) or just draw text
+      // Use green-tinted skull symbol
+      ImU32 poisonTint = IM_COL32(80, 255, 80, 255);
+      const char *skull = "P"; // Poison indicator
+      ImVec2 ksz = ImGui::CalcTextSize(skull);
+      DrawShadowText(dl, ImVec2(sx + (sz - ksz.x) * 0.5f, sy + 2),
+                     poisonTint, skull);
+
+      // Cooldown sweep (fills from top as time passes)
+      if (poison.maxDuration > 0) {
+        float frac = poison.remaining / poison.maxDuration;
+        float fillH = sz * (1.0f - frac);
+        dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + fillH),
+                          IM_COL32(0, 0, 0, 150), 3.0f);
+      }
+
+      // Duration text
+      char timeBuf[8];
+      int secs = (int)ceilf(poison.remaining);
+      snprintf(timeBuf, sizeof(timeBuf), "%ds", secs);
+      ImVec2 tsz = ImGui::CalcTextSize(timeBuf);
+      DrawShadowText(dl, ImVec2(sx + (sz - tsz.x) * 0.5f, sy + sz - tsz.y - 1),
+                     IM_COL32(80, 255, 80, 230), timeBuf);
+
+      // Green poison border
+      dl->AddRect(p0, p1, IM_COL32(40, 180, 40, 180), 3.0f, 0, 1.5f);
+
+      // Hover tooltip
+      ImVec2 mpos = ImGui::GetIO().MousePos;
+      if (mpos.x >= p0.x && mpos.x <= p1.x && mpos.y >= p0.y && mpos.y <= p1.y) {
+        int mins = secs / 60, rsecs = secs % 60;
+        char durLine[32];
+        snprintf(durLine, sizeof(durLine), "Remaining: %d:%02d", mins, rsecs);
+
+        float tw = 200.0f, th = 12.0f + 18.0f * 4 + 8.0f;
+        BeginPendingTooltip(tw, th);
+        g_pendingTooltip.borderColor = IM_COL32(40, 180, 40, 180);
+        AddPendingTooltipLine(IM_COL32(80, 255, 80, 255), "Poison", 1);
+        AddTooltipSeparator();
+        AddPendingTooltipLine(IM_COL32(180, 180, 180, 255), "Poisoned by monster");
+        AddPendingTooltipLine(IM_COL32(255, 100, 100, 255), "3% HP damage / 3 sec");
+        AddPendingTooltipLine(IM_COL32(200, 200, 200, 255), durLine);
+      }
+    }
+  }
+
   // ══════════════ RMC Slot ══════════════
   {
     float sx = c.ToScreenX(RmcSlotX());
@@ -826,7 +968,7 @@ void RenderCastBar(ImDrawList *dl) {
     progress = std::clamp(1.0f - timer / duration, 0.0f, 1.0f);
     remaining = std::max(0.0f, timer);
   } else {
-    snprintf(label, sizeof(label), "Teleporting to Lorencia");
+    snprintf(label, sizeof(label), "Teleporting to Town");
     float timer = *s_ctx->teleportTimer;
     float duration = s_ctx->teleportCastTime;
     progress = std::clamp(1.0f - timer / duration, 0.0f, 1.0f);

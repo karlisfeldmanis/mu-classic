@@ -24,6 +24,9 @@ enum SoundId {
   SOUND_SWING1 = 60,
   SOUND_SWING2 = 61,
   SOUND_SWING_LIGHT = 62,
+  // Bow/crossbow release sounds (Main 5.2: eBow.wav, eCrossbow.wav)
+  SOUND_BOW = 63,
+  SOUND_CROSSBOW = 64,
   // DW spell impact (Main 5.2: SOUND_METEORITE01)
   SOUND_METEORITE01 = 66,
   SOUND_JEWEL01 = 69,
@@ -67,6 +70,8 @@ enum SoundId {
   SOUND_MISSILE_HIT2 = 135,
   SOUND_MISSILE_HIT3 = 136,
   SOUND_MISSILE_HIT4 = 137,
+  // Soul Barrier cast sound (Main 5.2: SOUND_SOULBARRIER — eSoulBarrier.wav)
+  SOUND_SOULBARRIER = 139,
   SOUND_RAGE_BLOW1 = 149,
   SOUND_RAGE_BLOW2 = 150,
   SOUND_RAGE_BLOW3 = 151,
@@ -182,17 +187,51 @@ enum SoundId {
   SOUND_MONSTER_ICEQUEENATTACK1 = 307,
   SOUND_MONSTER_ICEQUEENATTACK2 = 308,
   SOUND_MONSTER_ICEQUEENDIE = 309,
+  // --- Noria monsters (types 26-33) ---
+  // Goblin (type 26) + Elite Goblin (type 33)
+  SOUND_MONSTER_GOBLIN1 = 310,
+  SOUND_MONSTER_GOBLIN2 = 311,
+  SOUND_MONSTER_GOBLINATTACK1 = 312,
+  SOUND_MONSTER_GOBLINATTACK2 = 313,
+  SOUND_MONSTER_GOBLINDIE = 314,
+  // Chain Scorpion (type 27)
+  SOUND_MONSTER_SCORPION1 = 315,
+  SOUND_MONSTER_SCORPION2 = 316,
+  SOUND_MONSTER_SCORPIONATTACK1 = 317,
+  SOUND_MONSTER_SCORPIONATTACK2 = 318,
+  SOUND_MONSTER_SCORPIONDIE = 319,
+  // Beetle Monster (type 28)
+  SOUND_MONSTER_BEETLE1 = 320,
+  SOUND_MONSTER_BEETLEATTACK1 = 321,
+  SOUND_MONSTER_BEETLEDIE = 322,
+  // Hunter (type 29)
+  SOUND_MONSTER_HUNTER1 = 323,
+  SOUND_MONSTER_HUNTER2 = 324,
+  SOUND_MONSTER_HUNTERATTACK1 = 325,
+  SOUND_MONSTER_HUNTERATTACK2 = 326,
+  SOUND_MONSTER_HUNTERDIE = 327,
+  // Golem (type 32) — also used for Forest Monster (30) and Agon (31)
+  SOUND_MONSTER_GOLEM1 = 328,
+  SOUND_MONSTER_GOLEM2 = 329,
+  SOUND_MONSTER_GOLEMATTACK1 = 330,
+  SOUND_MONSTER_GOLEMATTACK2 = 331,
+  SOUND_MONSTER_GOLEMDIE = 332,
+
   // Door sounds (Main 5.2: aDoor.wav, aCastleDoor.wav)
   SOUND_DOOR01 = 280, // Swinging wood door
   SOUND_DOOR02 = 281, // Sliding castle door
+  // Noria forest ambient (Main 5.2: aForest.wav — intermittent nature sounds)
+  SOUND_FOREST01 = 340,
 };
 
 namespace SoundManager {
 void Init(const std::string &dataPath);
 void Shutdown();
-void Play(int soundId);
+void Play(int soundId, float gain = 1.0f);
 void PlayPitched(int soundId, float minPitch, float maxPitch);
 void Play3D(int soundId, float x, float y, float z);
+void Play3DPitched(int soundId, float x, float y, float z, float minPitch,
+                   float maxPitch);
 void PlayLoop(int soundId);
 void Play3DLoop(int soundId, float x, float y, float z, float gain = 1.0f);
 void UpdateSource3D(int soundId, float x, float y, float z);

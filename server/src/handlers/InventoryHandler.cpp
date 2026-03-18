@@ -363,6 +363,16 @@ void HandleItemUse(Session &session, const std::vector<uint8_t> &packet,
         {7, 41},  // Orb of Twisting Slash → Twisting Slash
         {12, 42}, // Orb of Rageful Blow → Rageful Blow
         {19, 43}, // Orb of Death Stab → Death Stab
+        // Elf orbs (OpenMU Version075)
+        {8, 26},  // Orb of Healing → Heal
+        {9, 27},  // Orb of Greater Defense → Greater Defense
+        {10, 28}, // Orb of Greater Damage → Greater Damage
+        {11, 30}, // Orb of Goblin → Summon Goblin
+        {25, 31}, // Orb of Golem Summoning → Summon Stone Golem
+        {26, 32}, // Orb of Assassin Summoning → Summon Assassin
+        {27, 33}, // Orb of Yeti Summoning → Summon Elite Yeti
+        {28, 34}, // Orb of Knight Summoning → Summon Dark Knight
+        {29, 35}, // Orb of Bali Summoning → Summon Bali
     };
 
     uint8_t skillId = 0;

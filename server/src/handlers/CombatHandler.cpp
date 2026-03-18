@@ -9,26 +9,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
-#include <unordered_map>
-
-static const char *GetMonsterName(uint16_t type) {
-  static const std::unordered_map<uint16_t, const char *> names = {
-      {0, "Bull Fighter"},     {1, "Hound"},
-      {2, "Budge Dragon"},     {3, "Spider"},
-      {4, "Elite Bull Fighter"},{5, "Hell Hound"},
-      {6, "Lich"},             {7, "Giant"},
-      {8, "Poison Bull"},      {9, "Thunder Lich"},
-      {10, "Dark Knight"},     {11, "Ghost"},
-      {12, "Larva"},           {13, "Hell Spider"},
-      {14, "Skeleton Warrior"},{15, "Skeleton Archer"},
-      {16, "Elite Skeleton"},  {17, "Cyclops"},
-      {18, "Gorgon"}};
-  auto it = names.find(type);
-  return it != names.end() ? it->second : "Monster";
-}
 
 namespace CombatHandler {
 
@@ -55,6 +37,7 @@ static const SkillDef g_skillDefs[] = {
     {42, 20, 60, 300, false},  // Rageful Blow (AoE range 3 grid)
     {43, 12, 70, 100, false},  // Death Stab (splash range 1 grid around target)
     // DW spells (Mana cost) — OpenMU Version075 skill definitions
+    {11, 5, 14, 0, true},       // Power Wave (ranged, OpenMU: damage=14, mana=5)
     {17, 1, 8, 0, true},        // Energy Ball (basic ranged)
     {1, 42, 20, 0, true},       // Poison (DoT effect, single target)
     {2, 12, 40, 0, true},       // Meteorite (single target ranged)
@@ -69,6 +52,16 @@ static const SkillDef g_skillDefs[] = {
     {12, 140, 90, 90, true},    // Aqua Beam (beam, line AoE — width matches visible beam)
     {13, 90, 120, 150, true},   // Cometfall (AoE sky-strike)
     {14, 200, 150, 400, true},  // Inferno (ring of explosions AoE)
+    // Elf skills (Mana cost) — OpenMU Version075
+    {26, 20, 0, 0, true},       // Heal (buff, no damage)
+    {27, 30, 0, 0, true},       // Greater Defense (buff)
+    {28, 40, 0, 0, true},       // Greater Damage (buff)
+    {30, 40, 0, 0, true},       // Summon Goblin (summon)
+    {31, 70, 0, 0, true},       // Summon Stone Golem
+    {32, 110, 0, 0, true},      // Summon Assassin
+    {33, 160, 0, 0, true},      // Summon Elite Yeti
+    {34, 200, 0, 0, true},      // Summon Dark Knight
+    {35, 250, 0, 0, true},      // Summon Bali
 };
 
 static const SkillDef *FindSkillDef(uint8_t skillId) {
@@ -170,6 +163,10 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
     // Skill damage bonus (flat addition before defense)
     damage += bonusDamage;
 
+    // Greater Damage buff (Elf aura)
+    if (session.buffs[1].active)
+      damage += session.buffs[1].value;
+
     damage = std::max(1, damage - mon->defense);
 
     // Evading monsters are invulnerable (WoW leash behavior)
@@ -178,20 +175,18 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
       damage = 0;
       damageType = 0; // Show as miss
       mon->evading = false;
-      printf("[AI] Mon %d: EVADE cancelled by attacker fd=%d\n", mon->index,
-             session.GetFd());
     } else {
       mon->hp -= damage;
     }
+    // Track player threat for aggro system (summon threat comparison)
+    mon->playerThreat += static_cast<float>(damage);
+  }
 
-    // Aggro logic
+  // Aggro logic — always triggers regardless of hit/miss
+  // (attacking a monster should provoke it even if the attack misses)
+  {
     if (mon->aggroTargetFd != session.GetFd()) {
       mon->aggroTargetFd = session.GetFd();
-      printf("[AI] Mon %d (type %d): NEW AGGRO on attacker fd=%d (dmg=%d) "
-             "monGrid=(%d,%d) playerGrid=(%d,%d)\n",
-             mon->index, mon->type, session.GetFd(), damage,
-             mon->gridX, mon->gridY,
-             (int)(session.worldZ / 100.0f), (int)(session.worldX / 100.0f));
     }
     mon->aggroTimer = 15.0f;
     // Don't reset AI if already engaged with the same target — resetting
@@ -215,6 +210,8 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
       for (auto &ally : world.GetMonsterInstancesMut()) {
         if (ally.index == mon->index)
           continue;
+        if (ally.isSummon())
+          continue; // Summons follow their owner's AI, not pack aggro
         if (ally.type != mon->type)
           continue;
         if (ally.aiState == MonsterInstance::AIState::DYING ||
@@ -240,9 +237,6 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
           ally.repathTimer = 0.0f;
           ally.moveTimer = ally.moveDelay;
           ally.attackCooldown = 0.0f;
-          printf("[AI] Mon %d (type %d): PACK ASSIST on attacker fd=%d "
-                 "(dist=%d cells from attacked)\n",
-                 ally.index, ally.type, session.GetFd(), dist);
         }
       }
     }
@@ -254,6 +248,10 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
     if (killed) {
       mon->aiState = MonsterInstance::AIState::DYING;
       mon->stateTimer = 0.0f;
+
+      // Clear attack target so summon stops chasing the dead monster
+      if (session.attackTargetMonsterIdx == mon->index)
+        session.attackTargetMonsterIdx = 0;
 
       int xp = ServerConfig::CalculateXP(session.level, mon->level);
 
@@ -309,6 +307,9 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
                  (int)session.level);
         // yellow: IM_COL32(255, 255, 100, 255) = 0xFF64FFFF
         server.GetDB().SaveChatMessage(session.characterId, 2, 0xFF64FFFF, lvlBuf);
+        // Rescale active summon to match new owner level
+        if (session.activeSummonIndex > 0)
+          world.RescaleSummon(session.activeSummonIndex, session.level);
       }
 
       if (leveledUp || xp > 0) {
@@ -332,9 +333,6 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
       // Quest kill tracking
       QuestHandler::OnMonsterKill(session, mon->type, server.GetDB());
 
-      printf("[Combat] Monster %d killed by char %d (dmg=%d, xp=%d, "
-             "drops=%zu)\n",
-             mon->index, session.characterId, damage, xp, drops.size());
     }
   }
 
@@ -347,16 +345,6 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
   dmgPkt.remainingHp = static_cast<uint16_t>(std::max(0, mon->hp));
   dmgPkt.attackerCharId = static_cast<uint16_t>(session.characterId);
   server.Broadcast(&dmgPkt, sizeof(dmgPkt));
-
-  // Save combat message to chat log DB
-  char chatBuf[128];
-  const char *mName = GetMonsterName(mon->type);
-  if (damage > 0)
-    snprintf(chatBuf, sizeof(chatBuf), "You hit %s for %d damage.",
-             mName, damage);
-  else
-    snprintf(chatBuf, sizeof(chatBuf), "You miss %s.", mName);
-  server.GetDB().SaveChatMessage(session.characterId, 1, 0xFFFFFFFF, chatBuf);
 }
 
 void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
@@ -382,8 +370,47 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
       mon->aiState == MonsterInstance::AIState::DEAD)
     return;
 
+  // Bow/crossbow requires correct ammo type in left hand (slot 1)
+  // Bows (idx 0-6, 17) need Arrows (idx 15), Crossbows (idx 8-14, 16, 18) need Bolts (idx 7)
+  if (session.hasBow) {
+    auto &ammo = session.equipment[1];
+    auto &weapon = session.equipment[0];
+    bool isCrossbow = (weapon.category == 4 &&
+        ((weapon.itemIndex >= 8 && weapon.itemIndex <= 14) ||
+         weapon.itemIndex == 16 || weapon.itemIndex == 18));
+    bool correctAmmo = isCrossbow
+        ? (ammo.category == 4 && ammo.itemIndex == 7)   // Bolts for crossbows
+        : (ammo.category == 4 && ammo.itemIndex == 15);  // Arrows for bows
+    if (!correctAmmo || ammo.quantity == 0)
+      return;
+  }
+
   ApplyDamageToMonster(session, mon, 0, world, server);
   session.attackCooldown = 0.4f; // Minimum 0.4s between melee attacks
+  session.attackTargetMonsterIdx = mon->index; // Track for summon assist
+
+  // Consume one arrow/bolt after successful ranged attack
+  if (session.hasBow) {
+    auto &ammo = session.equipment[1];
+    if (ammo.quantity > 0) {
+      ammo.quantity--;
+      Database &db = server.GetDB();
+      if (ammo.quantity == 0) {
+        // Arrows depleted — unequip slot 1
+        db.UpdateEquipment(session.characterId, 1, 0xFF, 0, 0, 0);
+        ammo.category = 0xFF;
+        ammo.itemIndex = 0;
+        ammo.itemLevel = 0;
+        CharacterHandler::SendEquipment(session, db, session.characterId);
+        CharacterHandler::RefreshCombatStats(session, db, session.characterId);
+      } else {
+        // Update quantity in DB
+        db.UpdateEquipment(session.characterId, 1, ammo.category,
+                           ammo.itemIndex, ammo.itemLevel, ammo.quantity);
+        CharacterHandler::SendEquipment(session, db, session.characterId);
+      }
+    }
+  }
 
   // AG recovery on auto-attack hit (DK only)
   if (session.classCode == 16 && session.ag < session.maxAg) {
@@ -393,18 +420,6 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
   }
 }
 
-// File-based debug log for skill attacks (stdout goes to /dev/null)
-static void SkillLog(const char *fmt, ...) {
-  FILE *f = fopen("skill_debug.log", "a");
-  if (!f)
-    return;
-  va_list args;
-  va_start(args, fmt);
-  vfprintf(f, fmt, args);
-  va_end(args);
-  fclose(f);
-}
-
 void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
                        GameWorld &world, Server &server) {
   if (session.dead)
@@ -412,23 +427,18 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   // Block attacks from players standing in safe zones
   if (world.IsSafeZone(session.worldX, session.worldZ))
     return;
-  // Server-side attack rate limiting (prevents speed hack / GCD bypass)
-  if (session.attackCooldown > 0.0f)
-    return;
 
-  SkillLog("[SkillAttack] ENTER: pktSize=%zu learnedSkills=%zu mana=%d\n",
-           packet.size(), session.learnedSkills.size(), session.mana);
-
-  if (packet.size() < sizeof(PMSG_SKILL_ATTACK_RECV)) {
-    SkillLog("[SkillAttack] FAIL: packet too small (%zu < %zu)\n",
-             packet.size(), sizeof(PMSG_SKILL_ATTACK_RECV));
+  if (packet.size() < sizeof(PMSG_SKILL_ATTACK_RECV))
     return;
-  }
   const auto *atk =
       reinterpret_cast<const PMSG_SKILL_ATTACK_RECV *>(packet.data());
 
-  SkillLog("[SkillAttack] monsterIndex=%d skillId=%d\n", atk->monsterIndex,
-           atk->skillId);
+  // Utility skills (buffs 26-28, summons 30-35) bypass combat GCD
+  bool isUtility = (atk->skillId >= 26 && atk->skillId <= 28) ||
+                   (atk->skillId >= 30 && atk->skillId <= 35);
+  // Server-side attack rate limiting (prevents speed hack / GCD bypass)
+  if (!isUtility && session.attackCooldown > 0.0f)
+    return;
 
   // Validate skill is learned
   bool hasSkill = false;
@@ -438,21 +448,13 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
       break;
     }
   }
-  if (!hasSkill) {
-    SkillLog("[SkillAttack] FAIL: skill %d not learned (have %zu skills)\n",
-             atk->skillId, session.learnedSkills.size());
-    printf("[Combat] fd=%d tried skill %d but hasn't learned it\n",
-           session.GetFd(), atk->skillId);
+  if (!hasSkill)
     return;
-  }
 
   // Look up skill definition
   const SkillDef *skillDef = FindSkillDef(atk->skillId);
-  if (!skillDef) {
-    SkillLog("[SkillAttack] FAIL: unknown skill %d\n", atk->skillId);
-    printf("[Combat] fd=%d unknown skill %d\n", session.GetFd(), atk->skillId);
+  if (!skillDef)
     return;
-  }
 
   // Check resource (DK uses AG, others use Mana)
   CharacterClass charCls = static_cast<CharacterClass>(session.classCode);
@@ -460,12 +462,6 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   int currentResource = isDK ? session.ag : session.mana;
 
   if (currentResource < skillDef->resourceCost) {
-    SkillLog("[SkillAttack] FAIL: not enough resource (%d < %d) isDK=%d\n",
-             currentResource, skillDef->resourceCost, (int)isDK);
-    printf("[Combat] fd=%d not enough %s (%d/%d) for skill %d\n",
-           session.GetFd(), isDK ? "AG" : "Mana", currentResource,
-           skillDef->resourceCost, atk->skillId);
-    // Re-sync stats so client has accurate AG value
     CharacterHandler::SendCharStats(session);
     return;
   }
@@ -480,14 +476,162 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
     session.mana -= skillDef->resourceCost;
   }
 
-  SkillLog("[SkillAttack] Resource deducted: %d -> %d\n", currentResource,
-           isDK ? session.ag : session.mana);
-
   // Teleport (skill 6) — no damage, just utility
   if (skillDef->skillId == 6) {
     CharacterHandler::SendCharStats(session);
-    printf("[Combat] fd=%d used Teleport (mana cost=%d)\n",
-           session.GetFd(), skillDef->resourceCost);
+    return;
+  }
+
+  // Summon skills (30-35) — spawn a summon pet
+  if (atk->skillId >= 30 && atk->skillId <= 35) {
+    // Block summon casting in safe zones
+    uint8_t pgx = static_cast<uint8_t>(session.worldZ / 100.0f);
+    uint8_t pgy = static_cast<uint8_t>(session.worldX / 100.0f);
+    if (world.IsSafeZoneGrid(pgx, pgy))
+      return;
+
+    // Map skill→monster type
+    static const uint16_t summonTypeMap[] = {
+        26,  // skill 30: Goblin
+        32,  // skill 31: Stone Golem
+        21,  // skill 32: Assassin
+        20,  // skill 33: Elite Yeti
+        10,  // skill 34: Dark Knight
+        150, // skill 35: Bali
+    };
+    uint16_t monsterType = summonTypeMap[atk->skillId - 30];
+
+    // If already have the same summon type active, despawn it (toggle off)
+    if (session.activeSummonIndex > 0 &&
+        session.activeSummonType == static_cast<int16_t>(monsterType)) {
+      PMSG_SUMMON_DESPAWN_SEND dpkt{};
+      dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+      dpkt.monsterIndex = session.activeSummonIndex;
+      server.Broadcast(&dpkt, sizeof(dpkt));
+      world.DespawnSummon(session.activeSummonIndex);
+      session.activeSummonIndex = 0;
+      session.activeSummonType = -1;
+      return;
+    }
+
+    // Despawn old summon before creating a different one
+    if (session.activeSummonIndex > 0) {
+      PMSG_SUMMON_DESPAWN_SEND dpkt{};
+      dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+      dpkt.monsterIndex = session.activeSummonIndex;
+      server.Broadcast(&dpkt, sizeof(dpkt));
+      world.DespawnSummon(session.activeSummonIndex);
+      session.activeSummonIndex = 0;
+    }
+
+    // Find walkable cell adjacent to player
+    uint8_t playerGX = static_cast<uint8_t>(session.worldZ / 100.0f);
+    uint8_t playerGY = static_cast<uint8_t>(session.worldX / 100.0f);
+    uint8_t summonGX = playerGX, summonGY = playerGY;
+    bool found = false;
+    for (int r = 1; r <= 3 && !found; r++) {
+      for (int dy = -r; dy <= r && !found; dy++) {
+        for (int dx = -r; dx <= r && !found; dx++) {
+          if (std::abs(dx) != r && std::abs(dy) != r)
+            continue;
+          int nx = (int)playerGX + dx;
+          int ny = (int)playerGY + dy;
+          if (nx < 0 || ny < 0 || nx >= 256 || ny >= 256)
+            continue;
+          if (world.IsWalkableGrid((uint8_t)nx, (uint8_t)ny)) {
+            summonGX = (uint8_t)nx;
+            summonGY = (uint8_t)ny;
+            found = true;
+          }
+        }
+      }
+    }
+
+    auto *summon =
+        world.SpawnSummon(monsterType, summonGX, summonGY, session.GetFd(),
+                          session.characterId, session.level);
+    if (summon) {
+      session.activeSummonIndex = summon->index;
+      session.activeSummonType = static_cast<int16_t>(monsterType);
+
+      // Broadcast single-summon viewport so client creates the monster instance
+      // (Don't use BuildMonsterViewportV2Packet — that resends ALL monsters and
+      // causes duplicates on the client)
+      {
+        size_t entrySize = sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2);
+        size_t pktSize = 5 + entrySize;
+        uint8_t buf[5 + sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2)] = {};
+        auto *head = reinterpret_cast<PWMSG_HEAD *>(buf);
+        *head = MakeC2Header(static_cast<uint16_t>(pktSize), 0x34);
+        buf[4] = 1; // count = 1
+        auto *e = reinterpret_cast<PMSG_MONSTER_VIEWPORT_ENTRY_V2 *>(buf + 5);
+        e->indexH = static_cast<uint8_t>(summon->index >> 8);
+        e->indexL = static_cast<uint8_t>(summon->index & 0xFF);
+        e->typeH = static_cast<uint8_t>(summon->type >> 8);
+        e->typeL = static_cast<uint8_t>(summon->type & 0xFF);
+        e->x = summon->gridX;
+        e->y = summon->gridY;
+        e->dir = summon->dir;
+        e->hp = static_cast<uint16_t>(summon->hp);
+        e->maxHp = static_cast<uint16_t>(summon->maxHp);
+        e->state = 0; // alive
+        server.Broadcast(buf, pktSize);
+      }
+
+      // Broadcast summon spawn packet
+      PMSG_SUMMON_SPAWN_SEND spawnPkt{};
+      spawnPkt.h = MakeC1Header(sizeof(spawnPkt), Opcode::SUMMON_SPAWN);
+      spawnPkt.monsterIndex = summon->index;
+      spawnPkt.ownerCharId = session.characterId;
+      spawnPkt.level = summon->level;
+      server.Broadcast(&spawnPkt, sizeof(spawnPkt));
+    }
+
+    CharacterHandler::SendCharStats(session);
+    session.attackCooldown = 1.0f; // Summon cast GCD
+    return;
+  }
+
+  // Elf buff skills (26=Heal, 27=Greater Defense, 28=Greater Damage) — self-cast
+  if (atk->skillId >= 26 && atk->skillId <= 28) {
+    if (atk->skillId == 26) {
+      // Heal: instant, 5 + (energy / 5) — skip if already at full HP
+      if (session.hp >= session.maxHp) return;
+      int healAmount = 5 + session.energy / 5;
+      session.hp = std::min(session.hp + healAmount, session.maxHp);
+      PMSG_BUFF_EFFECT_SEND pkt{};
+      pkt.h = MakeC1Header(sizeof(pkt), Opcode::BUFF_EFFECT);
+      pkt.buffType = 0;
+      pkt.active = 1;
+      pkt.value = (uint16_t)healAmount;
+      pkt.duration = 0;
+      session.Send(&pkt, sizeof(pkt));
+      session.attackCooldown = 2.0f; // Heal cooldown (2 seconds)
+    } else if (atk->skillId == 27) {
+      // Greater Defense: 2 + (energy / 8), 30 minutes
+      int bonus = 2 + session.energy / 8;
+      session.buffs[0] = {1, 1800.0f, bonus, true};
+      PMSG_BUFF_EFFECT_SEND pkt{};
+      pkt.h = MakeC1Header(sizeof(pkt), Opcode::BUFF_EFFECT);
+      pkt.buffType = 1;
+      pkt.active = 1;
+      pkt.value = (uint16_t)bonus;
+      pkt.duration = 1800.0f;
+      session.Send(&pkt, sizeof(pkt));
+    } else {
+      // Greater Damage: 3 + (energy / 7), 30 minutes
+      int bonus = 3 + session.energy / 7;
+      session.buffs[1] = {2, 1800.0f, bonus, true};
+      PMSG_BUFF_EFFECT_SEND pkt{};
+      pkt.h = MakeC1Header(sizeof(pkt), Opcode::BUFF_EFFECT);
+      pkt.buffType = 2;
+      pkt.active = 1;
+      pkt.value = (uint16_t)bonus;
+      pkt.duration = 1800.0f;
+      session.Send(&pkt, sizeof(pkt));
+    }
+    CharacterHandler::SendCharStats(session);
+    session.attackCooldown = 1.0f;
     return;
   }
 
@@ -555,33 +699,23 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
           ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
                                server, skillDef->isMagic);
         }
-        if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0) {
+        if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0)
           other.stormTime = 10;
-          printf("[Storm] Ground AoE: stunned mon %d HP=%d at (%.0f,%.0f) skill=%d\n",
-                 other.index, other.hp, other.worldX, other.worldZ, skillDef->skillId);
-        }
         aoeHits++;
       }
     }
     CharacterHandler::SendCharStats(session);
-    printf("[Skill] fd=%d ground-cast AoE skill %d player(%.0f,%.0f) target(%.0f,%.0f) hit %d\n",
-           session.GetFd(), skillDef->skillId, px, pz, tx, tz, aoeHits);
     return;
   }
 
   if (!mon || mon->aiState == MonsterInstance::AIState::DYING ||
-      mon->aiState == MonsterInstance::AIState::DEAD) {
-    SkillLog("[SkillAttack] FAIL: monster %d not found or dead\n",
-             atk->monsterIndex);
+      mon->aiState == MonsterInstance::AIState::DEAD)
     return;
-  }
-
-  SkillLog("[SkillAttack] SUCCESS: applying damage bonus=%d to mon %d\n",
-           skillDef->damageBonus, atk->monsterIndex);
 
   // Apply damage with skill bonus to primary target
   ApplyDamageToMonster(session, mon, skillDef->damageBonus, world, server,
                        skillDef->isMagic);
+  session.attackTargetMonsterIdx = mon->index; // Track for summon assist
 
   // Meteorite (skill 2): two fireballs = two damage hits
   if (skillDef->skillId == 2 && mon->hp > 0) {
@@ -596,11 +730,8 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   }
 
   // Main 5.2: Twister/Evil Spirit applies StormTime=10 AI stun (only if alive)
-  if ((skillDef->skillId == 8 || skillDef->skillId == 9) && mon->hp > 0) {
+  if ((skillDef->skillId == 8 || skillDef->skillId == 9) && mon->hp > 0)
     mon->stormTime = 10;
-    printf("[Storm] Stunned primary target mon %d HP=%d at (%.0f,%.0f) skill=%d\n",
-           mon->index, mon->hp, mon->worldX, mon->worldZ, skillDef->skillId);
-  }
 
   // Poison (skill 1): apply DoT debuff — OpenMU PoisonMagicEffect
   // Duration 10s, tick every 3s, tick damage = 30% of initial hit
@@ -615,8 +746,6 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
     mon->poisonDuration = 10.0f;
     mon->poisonDamage = std::max(mon->poisonDamage, tickDmg);
     mon->poisonAttackerFd = session.GetFd();
-    printf("[Combat] Poison applied to mon %d (tick=%d, dur=10s) by fd=%d\n",
-           mon->index, mon->poisonDamage, session.GetFd());
   }
 
   // AoE: hit all nearby monsters within skill range (OpenMU: AreaSkillAutomaticHits)
@@ -636,11 +765,8 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
         ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
                              server, skillDef->isMagic);
         // Main 5.2: Twister/Evil Spirit stuns AoE targets too (only if alive)
-        if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0) {
+        if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0)
           other.stormTime = 10;
-          printf("[Storm] AoE stunned mon %d HP=%d at (%.0f,%.0f) skill=%d\n",
-                 other.index, other.hp, other.worldX, other.worldZ, skillDef->skillId);
-        }
         aoeHits++;
       }
     }
@@ -651,15 +777,10 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
 
   // Server-side GCD: minimum time between skill casts
   session.attackCooldown = 0.3f; // 0.3s minimum between skill attacks
-
-  printf("[Combat] fd=%d used skill %d (AG cost=%d, bonus=%d) on mon %d "
-         "(+%d AoE)\n",
-         session.GetFd(), atk->skillId, skillDef->resourceCost, skillDef->damageBonus,
-         atk->monsterIndex, aoeHits);
 }
 
 void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
-                    GameWorld &world) {
+                    GameWorld &world, Server &server) {
   if (session.dead)
     return;
   if (packet.size() < sizeof(PMSG_SKILL_TELEPORT_RECV))
@@ -675,10 +796,8 @@ void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
       break;
     }
   }
-  if (!hasSkill) {
-    printf("[Teleport] fd=%d hasn't learned Teleport\n", session.GetFd());
+  if (!hasSkill)
     return;
-  }
 
   // Look up teleport skill def for mana cost
   const SkillDef *skillDef = FindSkillDef(6);
@@ -690,26 +809,19 @@ void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
   bool isDK = (charCls == CharacterClass::CLASS_DK);
   int currentResource = isDK ? session.ag : session.mana;
   if (currentResource < skillDef->resourceCost) {
-    printf("[Teleport] fd=%d not enough mana (%d/%d)\n", session.GetFd(),
-           currentResource, skillDef->resourceCost);
     CharacterHandler::SendCharStats(session);
     return;
   }
 
   // Block teleport from safe zone
-  if (world.IsSafeZone(session.worldX, session.worldZ)) {
-    printf("[Teleport] fd=%d blocked — in safe zone\n", session.GetFd());
+  if (world.IsSafeZone(session.worldX, session.worldZ))
     return;
-  }
 
   // Validate target position is walkable
   uint8_t gx = tp->targetGridX;
   uint8_t gy = tp->targetGridY;
-  if (!world.IsWalkableGrid(gx, gy)) {
-    printf("[Teleport] fd=%d target (%d,%d) not walkable\n", session.GetFd(),
-           gx, gy);
+  if (!world.IsWalkableGrid(gx, gy))
     return;
-  }
 
   // Deduct mana
   if (isDK) {
@@ -725,8 +837,44 @@ void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
   session.worldX = (float)gy * 100.0f;
   session.worldZ = (float)gx * 100.0f;
 
-  printf("[Teleport] fd=%d teleported to grid (%d,%d) world (%.0f,%.0f)\n",
-         session.GetFd(), gx, gy, session.worldX, session.worldZ);
+  // Move summon to near teleport destination and broadcast new position
+  if (session.activeSummonIndex > 0) {
+    auto *summon = world.FindMonster(session.activeSummonIndex);
+    if (summon) {
+      // Find walkable cell adjacent to teleport destination
+      for (int r = 1; r <= 3; r++) {
+        bool found = false;
+        for (int dy = -r; dy <= r && !found; dy++) {
+          for (int dx = -r; dx <= r && !found; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            int nx = (int)gx + dx, ny = (int)gy + dy;
+            if (nx >= 0 && ny >= 0 && nx < 256 && ny < 256 &&
+                world.IsWalkableGrid((uint8_t)nx, (uint8_t)ny)) {
+              summon->gridX = (uint8_t)nx;
+              summon->gridY = (uint8_t)ny;
+              summon->worldX = summon->gridY * 100.0f;
+              summon->worldZ = summon->gridX * 100.0f;
+              summon->currentPath.clear();
+              summon->pathStep = 0;
+              summon->lastBroadcastTargetX = (uint8_t)nx;
+              summon->lastBroadcastTargetY = (uint8_t)ny;
+              found = true;
+            }
+          }
+        }
+        if (found) break;
+      }
+
+      // Broadcast summon's new position immediately so client snaps it
+      PMSG_MONSTER_MOVE_SEND movePkt{};
+      movePkt.h = MakeC1Header(sizeof(movePkt), Opcode::MON_MOVE);
+      movePkt.monsterIndex = summon->index;
+      movePkt.targetX = summon->gridX;
+      movePkt.targetY = summon->gridY;
+      movePkt.chasing = 0;
+      server.Broadcast(&movePkt, sizeof(movePkt));
+    }
+  }
 
   // Send updated stats (mana deducted)
   CharacterHandler::SendCharStats(session);

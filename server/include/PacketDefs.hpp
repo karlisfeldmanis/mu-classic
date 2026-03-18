@@ -86,6 +86,16 @@ constexpr uint8_t SKILL_TELEPORT = 0x43; // C->S: teleport to position
 // NPC Interaction
 constexpr uint8_t NPC_INTERACT = 0x44; // C->S: guard/quest NPC interact (open/close)
 
+// Summon system
+constexpr uint8_t SUMMON_SPAWN = 0x45;   // S->C: summon pet spawned
+constexpr uint8_t SUMMON_DESPAWN = 0x46; // S->C: summon pet despawned
+
+// Buff system (Elf auras)
+constexpr uint8_t BUFF_EFFECT = 0x47; // S->C: buff applied/expired
+
+// Debuff system (monster poison)
+constexpr uint8_t DEBUFF_EFFECT = 0x48; // S->C: debuff applied/expired
+
 // Quest System
 constexpr uint8_t QUEST = 0x50;              // Quest headcode
 constexpr uint8_t SUB_QUEST_STATE = 0x00;    // S->C: current quest state
@@ -93,6 +103,7 @@ constexpr uint8_t SUB_QUEST_ACCEPT = 0x01;   // C->S: accept quest
 constexpr uint8_t SUB_QUEST_COMPLETE = 0x02; // C->S: turn in quest
 constexpr uint8_t SUB_QUEST_REWARD = 0x03;   // S->C: reward notification
 constexpr uint8_t SUB_QUEST_ABANDON = 0x04;  // C->S: abandon active quest
+constexpr uint8_t QUEST_CATALOG = 0x51;      // S->C: full quest catalog (C2)
 
 // Map transition
 constexpr uint8_t MAP_CHANGE = 0x1C; // S->C: map transition
@@ -273,10 +284,11 @@ struct PMSG_EQUIPMENT_SLOT {
   uint8_t category;   // ItemCategory (0=Sword, 1=Axe, etc.)
   uint8_t itemIndex;  // Index within category (0=Sword01, 1=Sword02)
   uint8_t itemLevel;  // Enhancement level (+0 to +15)
+  uint8_t quantity;   // Stack count (arrows/bolts), 0 for non-stackable
   char modelFile[32]; // Model file name (null-terminated, 32 chars max)
 };
 
-static_assert(sizeof(PMSG_EQUIPMENT_SLOT) == 36,
+static_assert(sizeof(PMSG_EQUIPMENT_SLOT) == 37,
               "PMSG_EQUIPMENT_SLOT size mismatch");
 
 // S->C: Character Stats (0x25)
@@ -400,6 +412,7 @@ struct PMSG_DAMAGE_SEND {
   uint8_t damageType; // 0=miss, 1=normal, 2=critical, 3=excellent
   uint16_t remainingHp;
   uint16_t attackerCharId;
+  uint16_t attackerMonsterIndex = 0; // Non-zero = summon attacking this monster
 };
 
 // S->C: Monster Death + XP (0x2A)
@@ -649,28 +662,32 @@ struct PMSG_MAP_CHANGE_SEND {
 // Section 6b: Quest System
 // =====================================================
 
-// S->C: Quest state sync (0x50:0x00)
-struct PMSG_QUEST_STATE_SEND {
-  PSBMSG_HEAD h;              // C1:0x50:0x00
-  uint8_t questIndex;         // Lorencia chain (0-11), 12=all done
-  uint8_t deviasQuestIndex;   // Devias chain (12-17), 18=all done
-  uint8_t targetCount;        // 1-3 kill targets for map-active quest
-  struct Target {
-    uint8_t killCount;
-    uint8_t killsRequired;
-  } targets[3];
+// S->C: Quest state sync (0x50:0x00) — variable-length C1 packet
+// Layout: PSBMSG_HEAD(4) + completedMask(4) + activeCount(1) + entries(4*N)
+// Parsed from raw bytes; entry struct below for convenience.
+struct QuestProgressEntry {
+  uint8_t questId;
+  uint8_t killCount0;
+  uint8_t killCount1;
+  uint8_t killCount2;
 };
 
 // C->S: Accept quest (0x50:0x01)
 struct PMSG_QUEST_ACCEPT_RECV {
-  PSBMSG_HEAD h;        // C1:0x50:0x01
-  uint16_t guardNpcType;
+  PSBMSG_HEAD h;   // C1:0x50:0x01
+  uint8_t questId;
 };
 
 // C->S: Complete quest (0x50:0x02)
 struct PMSG_QUEST_COMPLETE_RECV {
-  PSBMSG_HEAD h;        // C1:0x50:0x02
-  uint16_t guardNpcType;
+  PSBMSG_HEAD h;   // C1:0x50:0x02
+  uint8_t questId;
+};
+
+// C->S: Abandon quest (0x50:0x04)
+struct PMSG_QUEST_ABANDON_RECV {
+  PSBMSG_HEAD h;   // C1:0x50:0x04
+  uint8_t questId;
 };
 
 // S->C: Reward notification (0x50:0x03)
@@ -678,7 +695,77 @@ struct PMSG_QUEST_REWARD_SEND {
   PSBMSG_HEAD h;         // C1:0x50:0x03
   uint32_t zenReward;
   uint32_t xpReward;
-  uint8_t nextQuestIndex;
+  uint8_t questId;
+};
+
+// S->C: Quest Catalog (0x51, C2 variable-length)
+// Wire: PWMSG_HEAD(4) + count(1) + PMSG_QUEST_CATALOG_ENTRY[count]
+struct PMSG_QUEST_CATALOG_TARGET {
+  uint8_t monsterType;
+  uint8_t killsRequired;
+  char name[24];
+};
+
+struct PMSG_QUEST_CATALOG_REWARD {
+  int16_t defIndex; // -1 = no item
+  uint8_t itemLevel;
+};
+
+struct PMSG_QUEST_CATALOG_ENTRY {
+  uint8_t questId;
+  uint16_t guardNpcType;
+  uint8_t targetCount;
+  PMSG_QUEST_CATALOG_TARGET targets[3];
+  char questName[32];
+  char location[16];
+  uint8_t recommendedLevel;
+  uint32_t zenReward;
+  uint32_t xpReward;
+  PMSG_QUEST_CATALOG_REWARD classReward[4][2];
+  char loreText[256];
+};
+
+// =====================================================
+// Section 6c: Summon System
+// =====================================================
+
+// S->C: Summon Spawn (0x45) — tells client which monster is a summon
+struct PMSG_SUMMON_SPAWN_SEND {
+  PBMSG_HEAD h; // C1:0x45
+  uint16_t monsterIndex;
+  uint16_t ownerCharId;
+  uint16_t level; // Scaled level (matches owner level)
+};
+
+// S->C: Summon Despawn (0x46) — tells client a summon was removed
+struct PMSG_SUMMON_DESPAWN_SEND {
+  PBMSG_HEAD h; // C1:0x46
+  uint16_t monsterIndex;
+};
+
+// =====================================================
+// Section 6d: Buff System (Elf Auras)
+// =====================================================
+
+// S->C: Buff Effect (0x47) — buff applied or expired
+struct PMSG_BUFF_EFFECT_SEND {
+  PBMSG_HEAD h;       // C1:0x47
+  uint8_t buffType;   // 0=Heal, 1=GreaterDefense, 2=GreaterDamage
+  uint8_t active;     // 1=applied, 0=expired
+  uint16_t value;     // Heal: HP restored. Def/Dmg: stat bonus amount
+  float duration;     // Seconds remaining (0 for heal)
+};
+
+// =====================================================
+// Section 6e: Debuff System (Monster Poison)
+// =====================================================
+
+// S->C: Debuff Effect (0x48) — debuff applied or expired
+struct PMSG_DEBUFF_EFFECT_SEND {
+  PBMSG_HEAD h;       // C1:0x48
+  uint8_t debuffType; // 1=Poison
+  uint8_t active;     // 1=applied, 0=expired
+  float duration;     // Seconds remaining
 };
 
 // =====================================================

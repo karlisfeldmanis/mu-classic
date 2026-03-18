@@ -38,8 +38,8 @@ vec2 applySymmetry(vec2 uv, uint symmetry) {
 }
 
 float computeEdgeFog(vec3 worldPos) {
-    float edgeWidth = 2500.0;
-    float edgeMargin = 500.0;
+    float edgeWidth = 1200.0;   // Narrower fade band (was 2500)
+    float edgeMargin = 300.0;   // Start darkening closer to edge
     float terrainMax = 25600.0;
     float dEdge = min(min(worldPos.x, terrainMax - worldPos.x),
                       min(worldPos.z, terrainMax - worldPos.z));
@@ -112,7 +112,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = fract(uv * 0.25);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.03;
+                cUV.x += uTime * 0.05;
                 cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c0 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
@@ -120,7 +120,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = fract(uv * 0.25);
             tileUV = applySymmetry(tileUV, sym0);
             if (isWater) {
-                tileUV.x += uTime * 0.03;
+                tileUV.x += uTime * 0.05;
                 tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c0 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src0 + 0.5)));
@@ -133,7 +133,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = fract(uv * 0.25);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.03;
+                cUV.x += uTime * 0.05;
                 cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c1 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
@@ -141,7 +141,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = fract(uv * 0.25);
             tileUV = applySymmetry(tileUV, sym1);
             if (isWater) {
-                tileUV.x += uTime * 0.03;
+                tileUV.x += uTime * 0.05;
                 tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c1 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src1 + 0.5)));
@@ -154,7 +154,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = fract(uv * 0.25);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.03;
+                cUV.x += uTime * 0.05;
                 cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c2 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
@@ -162,7 +162,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = fract(uv * 0.25);
             tileUV = applySymmetry(tileUV, sym2);
             if (isWater) {
-                tileUV.x += uTime * 0.03;
+                tileUV.x += uTime * 0.05;
                 tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c2 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src2 + 0.5)));
@@ -175,7 +175,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = fract(uv * 0.25);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.03;
+                cUV.x += uTime * 0.05;
                 cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c3 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
@@ -183,7 +183,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = fract(uv * 0.25);
             tileUV = applySymmetry(tileUV, sym3);
             if (isWater) {
-                tileUV.x += uTime * 0.03;
+                tileUV.x += uTime * 0.05;
                 tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
             }
             c3 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src3 + 0.5)));
@@ -192,6 +192,14 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
 
     // Bilinear mix
     vec4 color = mix(mix(c0, c1, f.x), mix(c2, c3, f.x), f.y);
+
+    // Subtle water darkening so fish are visible against the water surface
+    float w0 = (abs(src0 - 5.0) < 0.1) ? 1.0 : 0.0;
+    float w1 = (abs(src1 - 5.0) < 0.1) ? 1.0 : 0.0;
+    float w2 = (abs(src2 - 5.0) < 0.1) ? 1.0 : 0.0;
+    float w3 = (abs(src3 - 5.0) < 0.1) ? 1.0 : 0.0;
+    float waterFrac = mix(mix(w0, w1, f.x), mix(w2, w3, f.x), f.y);
+    color.rgb *= mix(vec3_splat(1.0), vec3(0.6, 0.7, 0.5), waterFrac);
 
     // Mask out 255/invalid tiles
     float m0 = (src0 < 254.5) ? 1.0 : 0.0;
@@ -261,10 +269,9 @@ void main()
     float fogFactor = distFog * (1.0 - heightMist * mistBuild * 0.55);
     finalColor = mix(fogColor * luminosity, finalColor, fogFactor);
 
-    // Edge fog: darken at map boundaries
+    // Edge fog: dark mist at map boundaries (blends to black at very edge)
     float edgeFactor = computeEdgeFog(v_fragpos);
-    float edgeBlend = mix(0.3, 1.0, edgeFactor);
-    finalColor *= edgeBlend;
+    finalColor *= mix(0.05, 1.0, edgeFactor);
 
     gl_FragColor = vec4(finalColor, 1.0);
 }

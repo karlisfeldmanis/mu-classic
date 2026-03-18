@@ -23,6 +23,34 @@
 // ── Stored context (set once via Init) ──
 static InputContext s_ctxStore;
 static const InputContext *s_ctx = &s_ctxStore;
+
+// Heal spell cooldown (client-side lock to prevent packet spam)
+static float s_healCooldown = 0.0f;
+static constexpr float HEAL_COOLDOWN_TIME = 2.0f;
+
+// Check if player has correct ammo for bow/crossbow. Returns true if OK or not ranged.
+static bool CheckRangedAmmo() {
+  if (!s_ctx->hero || !s_ctx->equipSlots) return true;
+  if (s_ctx->hero->GetWeaponCategory() != 4) return true; // Not bow/crossbow
+
+  auto &weapon = s_ctx->equipSlots[0]; // Right hand
+  auto &ammo = s_ctx->equipSlots[1];   // Left hand (arrows/bolts)
+  bool isCrossbow = (weapon.category == 4 &&
+      ((weapon.itemIndex >= 8 && weapon.itemIndex <= 14) ||
+       weapon.itemIndex == 16 || weapon.itemIndex == 18));
+
+  bool correctAmmo = isCrossbow
+      ? (ammo.category == 4 && ammo.itemIndex == 7 && ammo.quantity > 0)
+      : (ammo.category == 4 && ammo.itemIndex == 15 && ammo.quantity > 0);
+
+  if (!correctAmmo) {
+    InventoryUI::ShowNotification(isCrossbow
+        ? "This weapon requires Bolts!" : "This weapon requires Arrows!");
+    SoundManager::Play(SOUND_ERROR01);
+    return false;
+  }
+  return true;
+}
 static bool s_ctxInitialized = false;
 
 // Pending NPC interaction (walk to NPC then open shop)
@@ -166,7 +194,8 @@ static void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
   if (s_window) {
     GLFWcursor *cursor = s_cursorDefault;
     if (s_gameReady && !mouseOverUI) {
-      if (*s_ctx->hoveredMonster >= 0) {
+      if (*s_ctx->hoveredMonster >= 0 && s_ctx->monsterMgr &&
+          !s_ctx->monsterMgr->IsSummon(s_ctx->monsterMgr->GetServerIndex(*s_ctx->hoveredMonster))) {
         cursor = s_cursorAttack;
       } else if (*s_ctx->hoveredNpc >= 0) {
         cursor = s_cursorTalk;
@@ -240,6 +269,7 @@ static void HandlePickupClick(GLFWwindow *window, double mx, double my) {
 
 static bool IsGuardNpc(uint16_t npcType) {
   return (npcType >= 245 && npcType <= 249) ||
+         npcType == 256 ||
          (npcType >= 310 && npcType <= 312);
 }
 
@@ -253,6 +283,8 @@ static void OpenNpcDialog(int npcIdx, const NpcInfo &info) {
     // Tell server to pause guard patrol
     s_ctx->server->SendNpcInteract(info.type, true);
   } else {
+    printf("[Input] Opening shop for NPC idx=%d type=%d name=%s\n",
+           npcIdx, info.type, info.name.c_str());
     s_ctx->server->SendShopOpen(info.type);
   }
 }
@@ -390,11 +422,15 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
 
         if (itemHit >= 0) {
           HandlePickupClick(window, mx, my);
-        } else if (monHit >= 0) {
-          MonsterInfo info = s_ctx->monsterMgr->GetMonsterInfo(monHit);
-          s_ctx->hero->AttackMonster(monHit, info.position);
-          s_ctx->hero
-              ->ClearPendingPickup(); // Cancel pickup if attacking monster
+        } else if (monHit >= 0 &&
+                   !s_ctx->monsterMgr->IsSummon(s_ctx->monsterMgr->GetServerIndex(monHit))) {
+          if (!CheckRangedAmmo()) {
+            // Block attack — wrong or missing ammo for bow/crossbow
+          } else {
+            MonsterInfo info = s_ctx->monsterMgr->GetMonsterInfo(monHit);
+            s_ctx->hero->AttackMonster(monHit, info.position);
+            s_ctx->hero->ClearPendingPickup();
+          }
         } else {
           // Check interactive world objects (chairs, pose boxes)
           // Skip if already sitting/posing or mounted — can't pose while riding
@@ -424,9 +460,14 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
             }
           } else {
           // Ground click — move to terrain
-          // Block movement cancel before hit frame (prevents animation cancel exploit)
-          if (s_ctx->hero->IsAttacking() && !s_ctx->hero->HasRegisteredHit()) {
-            // Can't cancel before hit frame — must commit to the swing
+          // Block movement cancel before hit frame for melee (prevents animation cancel exploit)
+          // Ranged (bow/crossbow) always cancellable — no melee exploit risk
+          bool swingBlocked =
+              s_ctx->hero->GetAttackState() == AttackState::SWINGING &&
+              !s_ctx->hero->HasRegisteredHit() &&
+              !(s_ctx->hero->HasWeapon() && s_ctx->hero->GetWeaponCategory() == 4);
+          if (swingBlocked) {
+            // Melee: can't cancel before hit frame — must commit to the swing
           } else {
             // Cancel attack target when clicking terrain to move
             if (s_ctx->hero->GetAttackTarget() >= 0)
@@ -471,8 +512,10 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
                                      : (s_ctx->serverMP ? *s_ctx->serverMP : 0);
           if (s_ctx->hero && s_ctx->hero->IsInSafeZone()) {
             InventoryUI::ShowNotification("Cannot use skills in safe zone!");
+            SoundManager::Play(SOUND_ERROR01);
           } else if (currentResource < cost) {
             InventoryUI::ShowNotification(isDK ? "Not enough AG!" : "Not enough Mana!");
+            SoundManager::Play(SOUND_ERROR01);
           } else {
             // Dismount before using any skill (only autoattack allowed on mount)
             if (s_ctx->hero->IsMounted())
@@ -489,6 +532,28 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
                 s_ctx->hero->ClearPendingPickup();
               }
             }
+          } else if (skillId >= 26 && skillId <= 28) {
+            // Elf buff skills — self-cast, instant (no animation)
+            if (skillId == 26 && s_healCooldown > 0.0f) {
+              InventoryUI::ShowNotification("Heal is on cooldown!");
+              SoundManager::Play(SOUND_ERROR01);
+            } else {
+              s_ctx->server->SendSkillAttack(0xFFFF, skillId, 0, 0);
+              // Heal uses warm heart sound, Defense/Damage buffs use mystical evil sound
+              SoundManager::Play(skillId == 26 ? SOUND_HEART : SOUND_SOULBARRIER);
+              if (s_ctx->serverMP) *s_ctx->serverMP -= cost;
+              if (skillId == 26) s_healCooldown = HEAL_COOLDOWN_TIME;
+            }
+          } else if (skillId >= 30 && skillId <= 35) {
+            // Summon skills — self-cast, no target needed
+            // Re-casting same summon = toggle off (server handles despawn)
+            s_ctx->server->SendSkillAttack(0xFFFF, skillId, 0, 0);
+            if (!(s_ctx->monsterMgr && s_ctx->monsterMgr->HasOwnSummon())) {
+              glm::vec3 heroPos = s_ctx->hero->GetPosition();
+              s_ctx->hero->CastSelfAoE(skillId, heroPos);
+            }
+            SoundManager::Play(SOUND_MAGIC);
+            if (s_ctx->serverMP) *s_ctx->serverMP -= cost;
           } else if (skillId == 8 || skillId == 9 || skillId == 10 || skillId == 12 || skillId == 14
                      || skillId == 41 || skillId == 42 || skillId == 43) {
             // AoE skills: DW spells + DK melee AoE (Twisting Slash, Rageful Blow, Death Stab)
@@ -713,6 +778,15 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
       }
     }
   }
+
+  // TAB hold: show minimap while held, hide on release
+  if (key == GLFW_KEY_TAB) {
+    if (action == GLFW_PRESS) {
+      *s_ctx->showMinimap = true;
+    } else if (action == GLFW_RELEASE) {
+      *s_ctx->showMinimap = false;
+    }
+  }
 }
 
 static void char_callback(GLFWwindow *window, unsigned int c) {
@@ -788,6 +862,11 @@ void InputHandler::RestoreQuickSlotState() {
 
 void InputHandler::ProcessInput(GLFWwindow *window, float deltaTime) {
   s_gameReady = true;
+
+  // Tick heal cooldown
+  if (s_healCooldown > 0.0f)
+    s_healCooldown -= deltaTime;
+
   bool wasMoving = s_ctx->hero->IsMoving();
   s_ctx->hero->ProcessMovement(deltaTime);
 

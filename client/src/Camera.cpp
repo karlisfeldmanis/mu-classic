@@ -47,8 +47,12 @@ void Camera::ProcessMouseRotation(float xoffset, float yoffset) {
 }
 
 void Camera::ProcessMouseScroll(float yoffset) {
-  // Zoom disabled - locked to 800.0 per user request
-  TargetZoom = 800.0f;
+  constexpr float ZOOM_STEP = 40.0f;
+  constexpr float MIN_ZOOM = 400.0f;
+  constexpr float MAX_ZOOM = 1200.0f;
+  TargetZoom -= yoffset * ZOOM_STEP;
+  if (TargetZoom < MIN_ZOOM) TargetZoom = MIN_ZOOM;
+  if (TargetZoom > MAX_ZOOM) TargetZoom = MAX_ZOOM;
 }
 
 void Camera::Update(float deltaTime) {

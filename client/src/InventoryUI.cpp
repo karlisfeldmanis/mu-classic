@@ -1,4 +1,5 @@
 #include "HeroCharacter.hpp"
+#include "InputHandler.hpp"
 #include "InventoryUI_Internal.hpp"
 #include "ItemDatabase.hpp"
 #include "ServerConnection.hpp"
@@ -107,11 +108,30 @@ const SkillDef g_dwSpells[] = {
 };
 // NUM_DW_SPELLS defined in InventoryUI_Internal.hpp
 
+// Elf skills (Mana cost) — OpenMU Version075 (0.97d scope)
+const SkillDef g_elfSkills[] = {
+    {26, "Heal", 20, 8, 0, "Heal target player", 100},
+    {27, "Greater Defense", 30, 13, 0, "Buff target defense", 100},
+    {28, "Greater Damage", 40, 18, 0, "Buff target damage", 100},
+    {30, "Summon Goblin", 40, 3, 0, "Summon a Goblin ally", 0},
+    {31, "Summon Stone Golem", 70, 18, 0, "Summon a Stone Golem", 60},
+    {32, "Summon Assassin", 110, 26, 0, "Summon an Assassin", 90},
+    {33, "Summon Elite Yeti", 160, 36, 0, "Summon an Elite Yeti", 130},
+    {34, "Summon Dark Knight", 200, 48, 0, "Summon a Dark Knight", 170},
+    {35, "Summon Bali", 250, 52, 0, "Summon the mighty Bali", 210},
+    {29, "Triple Shot", 0, 1, 0, "Fires three arrows at once", 0},
+};
+// NUM_ELF_SKILLS defined in InventoryUI_Internal.hpp
+
 // Helper to get the skill list for current class
 const SkillDef *GetClassSkills(uint8_t classCode, int &outCount) {
   if (classCode == 0) { // DW
     outCount = NUM_DW_SPELLS;
     return g_dwSpells;
+  }
+  if (classCode == 32) { // ELF
+    outCount = NUM_ELF_SKILLS;
+    return g_elfSkills;
   }
   outCount = NUM_DK_SKILLS;
   return g_dkSkills;
@@ -129,6 +149,7 @@ struct ShopGridSlot {
   int16_t defIndex = -2;
   uint8_t itemLevel = 0;
   uint32_t buyPrice = 0;
+  uint8_t stackQty = 0; // Display stack size (20 for potions/ammo, 0 for non-stackable)
   bool occupied = false;
   bool primary = false;
 };
@@ -137,6 +158,7 @@ static ShopGridSlot s_shopGrid[SHOP_GRID_MAX_SLOTS];
 static int s_shopGridRows = 0;
 static bool s_shopGridDirty = true;
 static size_t s_lastShopItemCount = 0; // Detect new SHOP_LIST arrivals
+static int16_t s_lastShopFirstDef = -1; // Detect shop content change (same count)
 
 // Screen notification (center of screen, fades out)
 static std::string s_notifyText;
@@ -348,7 +370,8 @@ static void DrawPanelText(ImDrawList *dl, const UICoords &c, float px, float py,
   float vx = px + relX * g_uiPanelScale;
   float vy = py + relY * g_uiPanelScale;
   float sx = c.ToScreenX(vx), sy = c.ToScreenY(vy);
-  float fs = (font ? font->LegacySize : 13.0f);
+  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float fs = (font ? font->LegacySize : 13.0f) * uiScale;
 
   if (font) {
     dl->AddText(font, fs, ImVec2(sx + 1, sy + 1), IM_COL32(0, 0, 0, 180), text);
@@ -381,7 +404,8 @@ static void DrawPanelTextCentered(ImDrawList *dl, const UICoords &c, float px,
   float vx = px + relX * g_uiPanelScale;
   float vy = py + relY * g_uiPanelScale;
   float sw = width * g_uiPanelScale;
-  float fs = (font ? font->LegacySize : 13.0f);
+  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float fs = (font ? font->LegacySize : 13.0f) * uiScale;
 
   ImVec2 sz;
   if (font) {
@@ -430,6 +454,12 @@ static void RebuildShopGrid() {
         if (!fits)
           continue;
 
+        // Determine stack quantity for display
+        uint8_t cat = si.defIndex / 32, idx = si.defIndex % 32;
+        bool isAmmo = (cat == 4 && (idx == 7 || idx == 15));
+        bool isPotion = (cat == 14 && iw == 1 && ih == 1);
+        uint8_t stkQty = isAmmo ? 255 : (isPotion ? 20 : 0);
+
         for (int dy = 0; dy < ih; dy++) {
           for (int dx = 0; dx < iw; dx++) {
             int slot = (row + dy) * SHOP_GRID_COLS + (col + dx);
@@ -438,6 +468,7 @@ static void RebuildShopGrid() {
             s_shopGrid[slot].defIndex = si.defIndex;
             s_shopGrid[slot].itemLevel = si.itemLevel;
             s_shopGrid[slot].buyPrice = si.buyPrice;
+            s_shopGrid[slot].stackQty = stkQty;
           }
         }
         if (row + ih > usedRows)
@@ -787,6 +818,10 @@ int GetSkillResourceCost(uint8_t skillId) {
     if (g_dwSpells[i].skillId == skillId)
       return g_dwSpells[i].resourceCost;
   }
+  for (int i = 0; i < NUM_ELF_SKILLS; i++) {
+    if (g_elfSkills[i].skillId == skillId)
+      return g_elfSkills[i].resourceCost;
+  }
   return 0;
 }
 
@@ -818,6 +853,8 @@ void ShowRegionName(const char *name) {
   else if (strcmp(name, "Dungeon") == 0)
     oztFile =
         "Data/Local/Eng/ImgsMapName/dungeun.OZT"; // Original typo in assets
+  else if (strcmp(name, "Noria") == 0)
+    oztFile = "Data/Local/Eng/ImgsMapName/noria.OZT";
 
   if (oztFile) {
     if (TexValid(s_mapNameTexture)) {
@@ -1213,6 +1250,21 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
                                   s_ctx->equipSlots[ep.slot].itemIndex),
                               s_ctx->equipSlots[ep.slot].itemLevel);
       }
+
+      // Arrow/bolt quantity overlay on equipment slot (only for ammo, not weapons/armor)
+      uint8_t eqCat = s_ctx->equipSlots[ep.slot].category;
+      uint8_t eqIdx = s_ctx->equipSlots[ep.slot].itemIndex;
+      bool isEquipAmmo = (eqCat == 4 && (eqIdx == 7 || eqIdx == 15));
+      if (isEquipAmmo && s_ctx->equipSlots[ep.slot].quantity > 0) {
+        DeferredOverlay ov;
+        snprintf(ov.text, sizeof(ov.text), "%d",
+                 s_ctx->equipSlots[ep.slot].quantity);
+        ImVec2 qSize = ImGui::CalcTextSize(ov.text);
+        ov.x = sMax.x - qSize.x - 2;
+        ov.y = sMin.y + 1;
+        ov.color = IM_COL32(255, 210, 80, 255);
+        g_deferredOverlays.push_back(ov);
+      }
     }
   }
 
@@ -1459,10 +1511,13 @@ void RenderShopPanel(ImDrawList *dl, const UICoords &c) {
   DrawCloseButton(dl, c, px, py);
 
   // Detect new shop list from server (items changed)
+  // Compare both count AND first item defIndex to catch same-size shop swaps
   size_t curCount = s_ctx->shopItems->size();
-  if (curCount != s_lastShopItemCount) {
+  int16_t firstDef = (curCount > 0) ? (*s_ctx->shopItems)[0].defIndex : -1;
+  if (curCount != s_lastShopItemCount || firstDef != s_lastShopFirstDef) {
     s_shopGridDirty = true;
     s_lastShopItemCount = curCount;
+    s_lastShopFirstDef = firstDef;
   }
   if (s_shopGridDirty)
     RebuildShopGrid();
@@ -1543,11 +1598,24 @@ void RenderShopPanel(ImDrawList *dl, const UICoords &c) {
                slotY, (int)(iMax.x - iMin.x),
                (int)(iMax.y - iMin.y), hoverItem, s_shopGrid[slot].itemLevel});
         }
+
+        // Stack quantity overlay for potions/ammo
+        if (s_shopGrid[slot].stackQty > 0) {
+          DeferredOverlay ov;
+          snprintf(ov.text, sizeof(ov.text), "x%d",
+                   s_shopGrid[slot].stackQty);
+          ImVec2 qSize = ImGui::CalcTextSize(ov.text);
+          ov.x = iMax.x - qSize.x - 2;
+          ov.y = iMin.y + 1;
+          ov.color = IM_COL32(255, 210, 80, 255);
+          g_deferredOverlays.push_back(ov);
+        }
       }
 
       if (hoverItem && !g_isDragging)
         AddPendingItemTooltip(s_shopGrid[slot].defIndex,
-                              s_shopGrid[slot].itemLevel);
+                              s_shopGrid[slot].itemLevel,
+                              s_shopGrid[slot].buyPrice);
     }
   }
 }
@@ -1778,6 +1846,12 @@ bool HandlePanelClick(float vx, float vy) {
     for (int i = 0; i < 4; i++) {
       float x0 = SkillSlotX(i);
       if (vx >= x0 && vx <= x0 + SLOT && s_ctx->skillBar[i] != -1) {
+        // Block rearrangement while a skill slot is activated (1-4 toggle)
+        if (InputHandler::GetActiveQuickSlot() >= 0) {
+          ShowNotification("Deactivate skill first! (press 1-4)");
+          SoundManager::Play(SOUND_ERROR01);
+          return true;
+        }
         g_isDragging = true;
         g_dragFromSkillSlot = i;
         g_dragDefIndex = -(int)s_ctx->skillBar[i]; // Negative = skill ID
@@ -1859,18 +1933,29 @@ bool HandlePanelClick(float vx, float vy) {
 }
 
 // Map skill orb itemIndex → skillId (matches server orbSkillMap)
-static uint8_t OrbIndexToSkillId(uint8_t orbIndex) {
+// Returns {skillId, requiredClass} where requiredClass: 16=DK, 32=Elf, 0=any
+static std::pair<uint8_t, uint8_t> OrbIndexToSkillInfo(uint8_t orbIndex) {
   static const struct {
     uint8_t orbIdx;
     uint8_t skillId;
+    uint8_t classReq; // 16=DK, 32=Elf
   } map[] = {
-      {20, 19}, {21, 20}, {22, 21}, {23, 22},
-      {24, 23}, {7, 41},  {12, 42}, {19, 43},
+      // DK orbs
+      {20, 19, 16}, {21, 20, 16}, {22, 21, 16}, {23, 22, 16},
+      {24, 23, 16}, {7, 41, 16},  {12, 42, 16}, {19, 43, 16},
+      // Elf orbs
+      {8, 26, 32},  {9, 27, 32},  {10, 28, 32}, {11, 30, 32},
+      {25, 31, 32}, {26, 32, 32}, {27, 33, 32}, {28, 34, 32}, {29, 35, 32},
   };
   for (auto &m : map)
     if (m.orbIdx == orbIndex)
-      return m.skillId;
-  return 0;
+      return {m.skillId, m.classReq};
+  return {0, 0};
+}
+
+// Legacy wrapper for scrolls (still needed below)
+static uint8_t OrbIndexToSkillId(uint8_t orbIndex) {
+  return OrbIndexToSkillInfo(orbIndex).first;
 }
 
 // Map scroll itemIndex → skillId (matches server scrollSkillMap)
@@ -1940,12 +2025,14 @@ bool HandlePanelRightClick(float vx, float vy) {
         uint8_t cat = (uint8_t)(item.defIndex / 32);
         uint8_t itemIdx = (uint8_t)(item.defIndex % 32);
 
-        // Skill orb (category 12): right-click to USE (learn skill) — DK only
+        // Skill orb (category 12): right-click to USE (learn skill)
         if (!*s_ctx->shopOpen && cat == 12 && !*s_ctx->isLearningSkill) {
-          uint8_t skillId = OrbIndexToSkillId(itemIdx);
+          auto [skillId, classReq] = OrbIndexToSkillInfo(itemIdx);
           if (skillId > 0) {
-            if (s_ctx->hero->GetClass() != 16) {
-              ShowNotification("Only Dark Knight can use skill orbs!");
+            uint8_t playerClass = s_ctx->hero->GetClass();
+            if (playerClass != classReq) {
+              ShowNotification((classReq == 16) ? "Only Dark Knight can use this orb!"
+                                               : "Only Elf can use this orb!");
               SoundManager::Play(SOUND_ERROR01);
               return true;
             }
@@ -1956,6 +2043,21 @@ bool HandlePanelRightClick(float vx, float vy) {
                   SoundManager::Play(SOUND_ERROR01);
                   return true;
                 }
+            }
+            // Check level and energy requirements before sending to server
+            auto &orbDefs = ItemDatabase::GetItemDefs();
+            auto orbIt = orbDefs.find(item.defIndex);
+            if (orbIt != orbDefs.end()) {
+              if (s_ctx->serverLevel && *s_ctx->serverLevel < (int)orbIt->second.levelReq) {
+                ShowNotification("Level too low!");
+                SoundManager::Play(SOUND_ERROR01);
+                return true;
+              }
+              if (s_ctx->serverEne && *s_ctx->serverEne < (int)orbIt->second.reqEne) {
+                ShowNotification("Not enough Energy!");
+                SoundManager::Play(SOUND_ERROR01);
+                return true;
+              }
             }
             s_ctx->server->SendItemUse((uint8_t)primarySlot);
             *s_ctx->isLearningSkill = true;
@@ -1983,6 +2085,21 @@ bool HandlePanelRightClick(float vx, float vy) {
                   SoundManager::Play(SOUND_ERROR01);
                   return true;
                 }
+            }
+            // Check level and energy requirements before sending to server
+            auto &scrollDefs = ItemDatabase::GetItemDefs();
+            auto scrollIt = scrollDefs.find(item.defIndex);
+            if (scrollIt != scrollDefs.end()) {
+              if (s_ctx->serverLevel && *s_ctx->serverLevel < (int)scrollIt->second.levelReq) {
+                ShowNotification("Level too low!");
+                SoundManager::Play(SOUND_ERROR01);
+                return true;
+              }
+              if (s_ctx->serverEne && *s_ctx->serverEne < (int)scrollIt->second.reqEne) {
+                ShowNotification("Not enough Energy!");
+                SoundManager::Play(SOUND_ERROR01);
+                return true;
+              }
             }
             s_ctx->server->SendItemUse((uint8_t)primarySlot);
             *s_ctx->isLearningSkill = true;
@@ -2110,9 +2227,15 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
               ShowNotification("Not enough Zen!");
               SoundManager::Play(SOUND_ERROR01);
             } else {
-              s_ctx->server->SendShopBuy(
-                  s_shopGrid[g_dragFromShopSlot].defIndex,
-                  s_shopGrid[g_dragFromShopSlot].itemLevel, 1);
+              {
+              int16_t buyDef2 = s_shopGrid[g_dragFromShopSlot].defIndex;
+              uint8_t buyCat2 = buyDef2 / 32, buyIdx2 = buyDef2 % 32;
+              bool isAmmo2 = (buyCat2 == 4 && (buyIdx2 == 7 || buyIdx2 == 15));
+              bool isPotion2 = (buyCat2 == 14);
+              uint8_t buyQty2 = (isAmmo2 || isPotion2) ? 20 : 1;
+              s_ctx->server->SendShopBuy(buyDef2,
+                  s_shopGrid[g_dragFromShopSlot].itemLevel, buyQty2);
+              }
               std::cout << "[Shop] Bought item to bag via drag to Equip"
                         << (int)ep.slot << std::endl;
               ShowNotification("Purchased to bag. Equip manually.");
@@ -2183,9 +2306,12 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
 
           // L.Hand specific checks
           if (ep.slot == 1) {
-            // Check if R.Hand has a 2H weapon
+            // Ammo (arrows/bolts) is always allowed alongside bows
+            bool isAmmo = (cat == 4 && (idx == 7 || idx == 15));
+
+            // Check if R.Hand has a 2H weapon (exempt ammo — bows need arrows)
             bool has2H = false;
-            if (s_ctx->equipSlots[0].equipped) {
+            if (!isAmmo && s_ctx->equipSlots[0].equipped) {
               int16_t s0Idx = ItemDatabase::GetDefIndexFromCategory(
                   s_ctx->equipSlots[0].category,
                   s_ctx->equipSlots[0].itemIndex);
@@ -2203,8 +2329,8 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
               return;
             }
 
-            // Dual-wield/Shield logic
-            if (cat <= 5) { // Weapon
+            // Dual-wield/Shield logic (exempt ammo)
+            if (cat <= 5 && !isAmmo) { // Weapon (not ammo)
               uint8_t baseClass = s_ctx->hero->GetClass() >> 4;
               bool canDualWield =
                   (baseClass == 1 || baseClass == 3); // 1=DK, 3=MG
@@ -2419,9 +2545,15 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
             // CHECK BAG FIT FIRST
             if (CheckBagFit(s_shopGrid[g_dragFromShopSlot].defIndex,
                             targetSlot)) {
+              // Arrows/bolts buy in stacks of 20
+              int16_t buyDef = s_shopGrid[g_dragFromShopSlot].defIndex;
+              uint8_t buyCat = buyDef / 32, buyIdx = buyDef % 32;
+              bool isAmmo = (buyCat == 4 && (buyIdx == 7 || buyIdx == 15));
+              bool isPotion = (buyCat == 14);
+              uint8_t buyQty = (isAmmo || isPotion) ? 20 : 1;
               s_ctx->server->SendShopBuy(
-                  s_shopGrid[g_dragFromShopSlot].defIndex,
-                  s_shopGrid[g_dragFromShopSlot].itemLevel, 1, targetSlot);
+                  buyDef,
+                  s_shopGrid[g_dragFromShopSlot].itemLevel, buyQty, targetSlot);
               std::cout << "[Shop] Bought item via drag (def="
                         << s_shopGrid[g_dragFromShopSlot].defIndex << ")"
                         << std::endl;

@@ -83,6 +83,7 @@ struct ClientEquipSlot {
   uint8_t category = 0xFF;
   uint8_t itemIndex = 0;
   uint8_t itemLevel = 0;
+  uint8_t quantity = 0;    // Stack count (arrows/bolts)
   std::string modelFile;
   bool equipped = false;
 };
@@ -131,6 +132,7 @@ struct ServerData {
   bool connected = false;
   uint8_t spawnGridX = 0; // Character spawn position from CharInfo (F3:03)
   uint8_t spawnGridY = 0;
+  uint8_t spawnMapId = 0; // Character map from CharInfo
   bool hasSpawnPos = false;
 };
 

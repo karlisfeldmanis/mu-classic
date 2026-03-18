@@ -51,6 +51,8 @@ enum class ParticleType {
   DUNGEON_MIST,  // Ground-level fog particles in dungeon
   // Main 5.2: BITMAP_WATERFALL_2 SubType 3 — rising columnar stream for armor set bonus
   SET_WATERFALL, // Rising energy column particles (full set +10+)
+  // Elf buff aura — orbiting particles around character (Main 5.2: MODEL_SPEARSKILL joints)
+  BUFF_AURA,
 };
 
 class VFXManager {
@@ -130,6 +132,9 @@ public:
 
   // Main 5.2: AT_SKILL_FLASH (Aqua Beam) — 20-segment laser beam from caster forward
   void SpawnAquaBeam(const glm::vec3 &casterPos, float facing);
+
+  // Elf buff cast flash — colored expanding ground circle (Main 5.2: BITMAP_MAGIC+1)
+  void SpawnBuffCastFlash(const glm::vec3 &position, const glm::vec3 &color);
 
   // Main 5.2: MODEL_SKILL_FURY_STRIKE — Rageful Blow ground VFX (EarthQuake cracks)
   void SpawnRagefulBlow(const glm::vec3 &casterPos, float facing);

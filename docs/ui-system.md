@@ -34,6 +34,47 @@ Skills are class-resticted abilities with unique costs and ranges.
 - **Stun/Status**: Twister and Evil Spirit apply a brief movement stun (`stormTime`) to targets.
 - **DoT**: Poison spells apply a 10-second server-side debuff.
 
+## Font System
+
+Two-font design: readable body text paired with a WoW-style decorative title font.
+
+| Font | File | Use | Base Size |
+|------|------|-----|-----------|
+| Verdana | `/System/Library/Fonts/Supplemental/Verdana.ttf` | Body text, tooltips, labels, stats | 14px |
+| Cinzel | `fonts/Cinzel.ttf` (bundled) | Panel titles, region names, headers | 16px (titles), 28px (region) |
+
+- **`g_fontDefault`**: Verdana — used for all readable text (inventory, tooltips, system messages, nameplates)
+- **`g_fontBold`**: Cinzel — used for panel headers and short decorative text
+- **`g_fontRegion`**: Cinzel at 28px — used for region name display overlay
+- Fonts loaded via ImGui atlas at init, scaled by macOS content scale factor
+
+## Fullscreen Scaling
+
+All UI scales correctly between windowed and fullscreen modes via two mechanisms:
+
+### UICoords Dynamic Offsets
+`UICoords::SetCenteredScale(0.7f)` applies a centered 70% scale to all panel coordinates. Offsets are computed **dynamically** per-call from the current window size — never cached — so fullscreen toggling works without re-initialization.
+
+### FontGlobalScale
+`ImGui::GetIO().FontGlobalScale = winH / 768.0f` is set each frame before `ImGui::NewFrame()`. This auto-scales simple `AddText(pos, col, text)` calls. However, explicit-size `AddText(font, fontSize, ...)` calls and container dimensions require manual `* uiScale` multiplication:
+
+```cpp
+float uiScale = ImGui::GetIO().FontGlobalScale;
+float fontSize = 13.0f * uiScale;  // Scale explicit font sizes
+float barW = 60.0f * uiScale;      // Scale container dimensions
+```
+
+Files with manual uiScale: `GroundItemRenderer.cpp`, `SystemMessageLog.cpp`, `MonsterManagerRender.cpp`, `InventoryUI.cpp`, `InventoryUITooltip.cpp`, `HUD.cpp`, `main.cpp` (quest/menu panels).
+
+## Camera System
+
+Isometric camera pivoting around the player position, implemented in `Camera.cpp`.
+
+- **Zoom**: Mouse scroll, range 400 (close-up) to 1200 (zoomed out), default 800, step 40/scroll
+- **Smooth zoom**: `Zoom` lerps toward `TargetZoom` at rate `5.0 * deltaTime`
+- **Rotation**: Right-click drag, pitch constrained -89° to -5°
+- **State persistence**: Zoom, yaw, pitch saved to `camera_save.txt`
+
 ## Diablo HUD (Resource Orbs)
 
 The main HUD is inspired by Diablo, featuring large circular orbs for primary resources.

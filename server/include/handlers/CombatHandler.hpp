@@ -15,7 +15,7 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
 void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
                        GameWorld &world, Server &server);
 void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
-                    GameWorld &world);
+                    GameWorld &world, Server &server);
 
 } // namespace CombatHandler
 

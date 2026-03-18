@@ -13,6 +13,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 struct ImDrawList;
@@ -111,12 +112,23 @@ public:
   void SpawnArrow(const glm::vec3 &from, const glm::vec3 &to,
                   float speed = 1500.0f);
 
-  // Player position for cosmetic facing during CHASING/ATTACKING states
+  // Player position/facing for cosmetic facing during CHASING/ATTACKING states
   void SetPlayerPosition(const glm::vec3 &pos) { m_playerPos = pos; }
+  void SetPlayerFacing(float facing) { m_playerFacing = facing; }
   void SetPlayerDead(bool dead) { m_playerDead = dead; }
-
+  void SetPlayerInSafeZone(bool safe) { m_playerInSafeZone = safe; }
   // Main 5.2: PushingCharacter — apply StormTime spin stun (Twister hit)
   void ApplyStormTime(uint16_t serverIndex, int ticks = 10);
+
+  // Summon tracking (Elf summon pets)
+  void MarkAsSummon(uint16_t serverIndex, bool isOwn, int level = 0);
+  void ClearSummon(uint16_t serverIndex);
+  bool IsSummon(uint16_t serverIndex) const;
+  bool IsOwnSummon(int monsterLocalIndex) const;
+  bool HasOwnSummon() const { return m_ownSummonIndex != 0; }
+
+  // Face one monster toward another (used for summon attack animations)
+  void FaceTarget(int attackerIdx, int targetIdx);
 
   // ── External data linkage ──
 
@@ -198,7 +210,8 @@ private:
     int maxHp = 30;
     float corpseTimer = 0.0f;
     float corpseAlpha = 1.0f;
-    float spawnAlpha = 1.0f; // Fade-in on spawn (0→1)
+    float spawnAlpha = 1.0f;      // Fade-in on spawn (0→1)
+    float summonFadeAlpha = 1.0f; // Safe zone fade (1=visible, 0=hidden)
     int swordCount = 0;      // Attack alternation counter (ATTACK1/ATTACK2)
     float instanceScale =
         0.0f; // Per-instance scale override (0=use model default)
@@ -210,6 +223,8 @@ private:
     int stormTime = 0;
     float stormTickTimer = 0.0f;
 
+    int levelOverride = 0; // Scaled level from server (summons); 0 = use model default
+
     // Blending state (cross-fade on stop)
     int priorAction = -1;
     float priorAnimFrame = 0.0f;
@@ -220,6 +235,9 @@ private:
     // Server-driven position target (from 0x35 packet)
     glm::vec3 serverTargetPos{0.0f};
     bool serverChasing = false;
+
+    // Attack target (local index) — set by FaceTarget for summon attack facing
+    int attackTargetLocalIdx = -1;
 
     // A* path following with Catmull-Rom spline smoothing
     std::vector<glm::vec3> splinePoints; // World-space waypoints from A* path
@@ -299,6 +317,10 @@ private:
   std::unordered_map<uint16_t, int> m_typeToModel;
   bool m_modelsLoaded = false;
 
+  // Summon tracking
+  std::unordered_set<uint16_t> m_summonServerIndices;
+  uint16_t m_ownSummonIndex = 0;
+
   // ── Monster action constants (_define.h: MONSTER01_*) ──
   static constexpr int ACTION_STOP1 = 0;
   static constexpr int ACTION_STOP2 = 1;
@@ -323,9 +345,11 @@ private:
   static constexpr float WANDER_SPEED =
       220.0f; // Slightly slower than chase for relaxed feel (server: 250)
 
-  // Player position for cosmetic facing (not used for AI — that's server-side)
+  // Player position/facing for cosmetic facing (not used for AI — server-side)
   glm::vec3 m_playerPos{0.0f};
+  float m_playerFacing = 0.0f;
   bool m_playerDead = false;
+  bool m_playerInSafeZone = false;
 
   int m_boneModelIdx = -1;
   int m_stoneModelIdx = -1;

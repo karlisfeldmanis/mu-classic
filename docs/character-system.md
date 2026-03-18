@@ -152,7 +152,7 @@ Category 13 items equipped in slot 8 (Pet/Helper slot). Floating orbit companion
 | Guardian Angel | 0 | Helper01.bmd | +50 Max HP, 20% Damage Reduction |
 | Imp | 1 | Helper02.bmd | 30% Attack Damage Increase |
 
-- **Tick-based AI**: Idle wandering (smooth random orbit, radius 100), follow mode (lateral weave, ramp-up delay, max distance 180)
+- **Tick-based AI**: Idle wandering (smooth random orbit, radius 100, 1.5s cooldown after owner stops), follow mode (lateral weave, ramp-up delay, max distance 180)
 - **Sparkle VFX**: `PET_SPARKLE` (white dots) for Angel, `IMP_SPARKLE` (dark red embers) for Imp
 - **Two-pass rendering**: Body meshes normal alpha, wing meshes additive blend
 - **Body exclusion**: Soft spring pushes pet away from character body

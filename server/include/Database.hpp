@@ -52,6 +52,7 @@ struct CharacterData {
   int8_t skillBar[10];
   int16_t potionBar[3];
   int8_t rmcSkillId = -1;
+  int16_t summonType = -1; // -1 = no active summon
 };
 
 // Equipment slot constants (matching original MU inventory layout)
@@ -104,6 +105,7 @@ struct EquipmentSlot {
   uint8_t category = 0;  // ItemCategory
   uint8_t itemIndex = 0; // Index within category
   uint8_t itemLevel = 0; // +0 to +15 enhancement
+  uint8_t quantity = 0;  // Stack count (arrows/bolts)
 };
 
 struct ItemDropInfo {
@@ -145,7 +147,8 @@ public:
                          uint16_t levelUpPoints, uint64_t experience,
                          uint32_t money, uint8_t posX, uint8_t posY,
                          uint8_t mapId, const int8_t *skillBar,
-                         const int16_t *potionBar, int8_t rmcSkillId);
+                         const int16_t *potionBar, int8_t rmcSkillId,
+                         int16_t summonType = -1);
   void CreateDefaultAccount();
 
   // NPC spawns
@@ -165,7 +168,8 @@ public:
   void SeedDefaultEquipment(int characterId);
 
   void UpdateEquipment(int characterId, uint8_t slot, uint8_t category,
-                       uint8_t itemIndex, uint8_t itemLevel);
+                       uint8_t itemIndex, uint8_t itemLevel,
+                       uint8_t quantity = 0);
 
   // Inventory bag (8x8 grid of picked-up items)
   struct InventorySlotData {
@@ -194,23 +198,15 @@ public:
   bool HasSkill(int characterId, uint8_t skillId);
   void SetRmcSkillId(int characterId, int8_t skillId);
 
-  // Quest system
-  struct QuestState {
-    int questIndex = 0;
-    int killCount0 = 0;
-    int killCount1 = 0;
-    int killCount2 = 0;
-    bool accepted = false;
-    // Devias chain (independent)
-    int deviasQuestIndex = 12;
-    int deviasKc0 = 0;
-    int deviasKc1 = 0;
-    int deviasKc2 = 0;
-    bool deviasAccepted = false;
+  // Quest system — per-quest tracking
+  struct QuestProgress {
+    int questId = 0;
+    int kc[3] = {};
+    bool completed = false;
   };
-  QuestState LoadQuestState(int characterId);
-  void SaveQuestState(int characterId, int questIndex, int kc0, int kc1, int kc2, bool accepted);
-  void SaveDeviasQuestState(int characterId, int questIndex, int kc0, int kc1, int kc2, bool accepted);
+  std::vector<QuestProgress> LoadAllQuestProgress(int characterId);
+  void SaveQuestProgress(int characterId, int questId, int kc0, int kc1, int kc2, bool completed);
+  void DeleteQuestProgress(int characterId, int questId);
 
   // Chat log persistence
   struct ChatLogEntry {

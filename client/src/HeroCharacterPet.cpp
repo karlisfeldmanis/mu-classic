@@ -110,10 +110,11 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
     if (!ownerMoving && m_pet.wasOwnerMoving) {
       float edx = m_pet.pos.x - m_pos.x;
       float edz = m_pet.pos.z - m_pos.z;
-      m_pet.dirAngle = atan2f(edz, edx); // Continue moving in current direction
-      m_pet.speed = 0.3f;                // Slow drift, not a snap
+      m_pet.dirAngle = atan2f(edz, edx);
+      m_pet.speed = 0.0f;                // Stop immediately on owner stop
       m_pet.heightVel *= 0.5f;           // Dampen vertical momentum
       m_pet.tickAccum = 0.0f;            // Prevent burst of accumulated ticks
+      m_pet.idleTime = 0.0f;             // Reset idle timer
     }
     if (ownerMoving) {
       m_pet.followDelay += deltaTime; // Ramps up from 0
@@ -179,6 +180,7 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
       }
     } else {
       // ── IDLE: wander smoothly around owner, always face toward character ──
+      m_pet.idleTime += deltaTime;
       while (m_pet.tickAccum >= TICK_INTERVAL) {
         m_pet.tickAccum -= TICK_INTERVAL;
 
@@ -210,12 +212,12 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
         }
 
         // Gentle random direction drift: ~1.5% chance per tick, small angle change
-        if (rand() % 64 == 0) {
-          // New target direction: small random offset from current (±60°)
+        // Only start wandering after 1.5s idle to prevent sliding on owner stop
+        if (m_pet.idleTime > 1.5f && rand() % 64 == 0) {
           float angleOffset = glm::radians((float)(rand() % 120 - 60));
           m_pet.dirAngle += angleOffset;
-          m_pet.speed = 0.5f + (float)(rand() % 15) * 0.1f; // 0.5-2.0 units/tick
-          m_pet.heightVel += ((float)(rand() % 20 - 10)) * 0.05f; // Gentle nudge
+          m_pet.speed = 0.3f + (float)(rand() % 10) * 0.07f; // 0.3-1.0 units/tick
+          m_pet.heightVel += ((float)(rand() % 20 - 10)) * 0.05f;
         }
 
         // Soft wander radius — pull back gradually, never snap

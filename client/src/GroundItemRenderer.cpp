@@ -106,7 +106,8 @@ void UpdateAndRender(FloatingDamage *pool, int poolSize, float deltaTime,
 
     // Draw with shadow
     // Main 5.2: scale 15 → 20px base, scale 50 → ~67px for crits
-    float fontSize = d.scale * (20.0f / 15.0f);
+    float uiScale = ImGui::GetIO().FontGlobalScale;
+    float fontSize = d.scale * (20.0f / 15.0f) * uiScale;
     ImVec2 tpos(sx, sy);
     dl->AddText(font, fontSize, ImVec2(tpos.x + 1, tpos.y + 1),
                 IM_COL32(0, 0, 0, (int)(alpha * 200)), text);
@@ -275,7 +276,9 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
     else
       snprintf(label, sizeof(label), "%s", name);
 
-    ImVec2 ts = font->CalcTextSizeA(13.0f, FLT_MAX, 0, label);
+    float uiScale = ImGui::GetIO().FontGlobalScale;
+    float labelFs = 13.0f * uiScale;
+    ImVec2 ts = font->CalcTextSizeA(labelFs, FLT_MAX, 0, label);
     float tx = sx - ts.x * 0.5f, ty = sy - ts.y * 0.5f;
 
     bool isHovered = (i == hoveredGroundItem);
@@ -285,15 +288,15 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
 
     if (isHovered) {
       col = IM_COL32(255, 255, 255, 255);
-      dl->AddText(font, 13.0f, ImVec2(tx + 2, ty + 1), IM_COL32(0, 0, 0, 200),
+      dl->AddText(font, labelFs, ImVec2(tx + 2, ty + 1), IM_COL32(0, 0, 0, 200),
                   label);
-      dl->AddText(font, 13.0f, ImVec2(tx - 1, ty - 1), IM_COL32(0, 0, 0, 200),
+      dl->AddText(font, labelFs, ImVec2(tx - 1, ty - 1), IM_COL32(0, 0, 0, 200),
                   label);
     }
 
-    dl->AddText(font, 13.0f, ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 160),
+    dl->AddText(font, labelFs, ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 160),
                 label);
-    dl->AddText(font, 13.0f, ImVec2(tx, ty), col, label);
+    dl->AddText(font, labelFs, ImVec2(tx, ty), col, label);
 
     // Hover tooltip — reuse full inventory tooltip system
     if (isHovered && gi.defIndex != -1) {

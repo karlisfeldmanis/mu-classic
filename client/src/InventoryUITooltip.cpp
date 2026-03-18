@@ -68,7 +68,7 @@ static const char *GetTypeText(uint8_t category) {
 
 namespace InventoryUI {
 
-void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
+void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPrice) {
   auto &g_itemDefs = ItemDatabase::GetItemDefs();
   auto it = g_itemDefs.find(defIndex);
   const ClientItemDefinition *def = nullptr;
@@ -190,6 +190,9 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
     static const uint8_t orbMap[][2] = {
         {20, 19}, {21, 20}, {22, 21}, {23, 22},
         {24, 23}, {7, 41}, {12, 42}, {19, 43},
+        // Elf orbs (OpenMU Version075)
+        {8, 26}, {9, 27}, {10, 28}, {11, 30},
+        {25, 31}, {26, 32}, {27, 33}, {28, 34}, {29, 35},
     };
     uint8_t idx = (uint8_t)(defIndex % 32);
     for (auto &m : orbMap)
@@ -206,6 +209,9 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
     if (!skillDef)
       for (int i = 0; i < NUM_DW_SPELLS; i++)
         if (g_dwSpells[i].skillId == scrollSkillId) { skillDef = &g_dwSpells[i]; break; }
+    if (!skillDef)
+      for (int i = 0; i < NUM_ELF_SKILLS; i++)
+        if (g_elfSkills[i].skillId == scrollSkillId) { skillDef = &g_elfSkills[i]; break; }
   }
 
   // ─── Calculate height ──────────────────────────────────────────────────
@@ -270,10 +276,12 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
     if (!scrollAlreadyLearned) th += lineH; // "Right-click to learn" hint
   }
 
-  // Skip item-level levelReq if skill section already showed it
+  // Skip item-level levelReq/energyReq if skill section already showed it
   bool skipItemLevel = (skillDef && skillDef->levelReq > 0);
+  bool skipItemEnergy = (skillDef && skillDef->energyReq > 0);
   bool hasReqs = ((!skipItemLevel && def->levelReq > 0) || def->reqStr > 0 ||
-                  def->reqDex > 0 || def->reqVit > 0 || def->reqEne > 0);
+                  def->reqDex > 0 || def->reqVit > 0 ||
+                  (!skipItemEnergy && def->reqEne > 0));
   bool hasClassReqs = (def->classFlags > 0 && (def->classFlags & 0x0F) != 0x0F);
   if (hasReqs || hasClassReqs) {
     th += sepH;
@@ -281,7 +289,7 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
     if (def->reqStr > 0) th += lineH;
     if (def->reqDex > 0) th += lineH;
     if (def->reqVit > 0) th += lineH;
-    if (def->reqEne > 0) th += lineH;
+    if (!skipItemEnergy && def->reqEne > 0) th += lineH;
     if (hasClassReqs) {
       if (def->classFlags & 1) th += lineH;
       if (def->classFlags & 2) th += lineH;
@@ -496,7 +504,7 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
     if (def->reqStr > 0) addReq("Strength", *s_ctx->serverStr, def->reqStr);
     if (def->reqDex > 0) addReq("Agility", *s_ctx->serverDex, def->reqDex);
     if (def->reqVit > 0) addReq("Vitality", *s_ctx->serverVit, def->reqVit);
-    if (def->reqEne > 0) addReq("Energy", *s_ctx->serverEne, def->reqEne);
+    if (!skipItemEnergy && def->reqEne > 0) addReq("Energy", *s_ctx->serverEne, def->reqEne);
 
     if (hasClassReqs) {
       uint32_t myFlag = (1 << (s_ctx->hero->GetClass() / 16));
@@ -512,14 +520,25 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel) {
 
   // ─── Price ──────────────────────────────────────────────────────────────
 
-  if (def->buyPrice > 0) {
+  if (shopBuyPrice > 0) {
+    // Shop item: show buy price (already includes stack multiplier from server)
     AddTooltipSeparator();
-    std::string sStr = std::to_string(def->buyPrice / 3);
+    std::string bStr = std::to_string(shopBuyPrice);
+    int bn = (int)bStr.length() - 3;
+    while (bn > 0) { bStr.insert(bn, ","); bn -= 3; }
+    char buf[64];
+    snprintf(buf, sizeof(buf), "Buy Price: %s Zen", bStr.c_str());
+    AddPendingTooltipLine(TT_GOLD, buf);
+  } else if (def->buyPrice > 0) {
+    // Inventory item: show sell price (accounts for stack size)
+    AddTooltipSeparator();
+    bool isAmmo = (def->category == 4 && (def->itemIndex == 7 || def->itemIndex == 15));
+    bool isPotion = (def->category == 14 && def->width == 1 && def->height == 1);
+    uint32_t stackQty = isAmmo ? 255 : (isPotion ? 20 : 1);
+    uint32_t sellTotal = (def->buyPrice * stackQty) / 3;
+    std::string sStr = std::to_string(sellTotal);
     int n = (int)sStr.length() - 3;
-    while (n > 0) {
-      sStr.insert(n, ",");
-      n -= 3;
-    }
+    while (n > 0) { sStr.insert(n, ","); n -= 3; }
     char buf[64];
     snprintf(buf, sizeof(buf), "Sell Price: %s Zen", sStr.c_str());
     AddPendingTooltipLine(TT_GOLD, buf);
@@ -537,15 +556,18 @@ void FlushPendingTooltip() {
   ImDrawList *dl = ImGui::GetForegroundDrawList();
   float tw = g_pendingTooltip.w;
 
-  // Measure actual height from lines
-  float th = 12.0f;
+  // Measure actual height from lines (scaled for fullscreen)
+  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float lineH = 18.0f * uiScale;
+  float sepH = 10.0f * uiScale;
+  float th = 12.0f * uiScale;
   for (auto &line : g_pendingTooltip.lines) {
     if (line.flags & 2)
-      th += 10.0f;
+      th += sepH;
     else
-      th += 18.0f;
+      th += lineH;
   }
-  th += 8.0f;
+  th += 8.0f * uiScale;
 
   // Position near cursor, clamp to screen
   ImVec2 mp = ImGui::GetIO().MousePos;
@@ -584,16 +606,16 @@ void FlushPendingTooltip() {
   if (s_ctx->fontDefault)
     ImGui::PushFont(s_ctx->fontDefault);
 
-  float curY = tPos.y + 8.0f;
-  float padX = 10.0f;
+  float curY = tPos.y + 8.0f * uiScale;
+  float padX = 10.0f * uiScale;
 
   for (auto &line : g_pendingTooltip.lines) {
     if (line.flags & 2) {
       // Separator
-      float sy = curY + 4.0f;
+      float sy = curY + 4.0f * uiScale;
       dl->AddLine(ImVec2(tPos.x + 6, sy), ImVec2(br.x - 6, sy),
                   IM_COL32(60, 55, 40, 120), 1.0f);
-      curY += 10.0f;
+      curY += sepH;
     } else if (line.flags & 8) {
       // Split line: "Left|Right"
       size_t sep = line.text.find('|');
@@ -608,18 +630,18 @@ void FlushPendingTooltip() {
                          right.c_str());
         }
       }
-      curY += 18.0f;
+      curY += lineH;
     } else if (line.flags & 1) {
       // Centered
       ImVec2 textSize = ImGui::CalcTextSize(line.text.c_str());
       float cx = tPos.x + (tw - textSize.x) * 0.5f;
       DrawShadowText(dl, ImVec2(cx, curY), line.color, line.text.c_str());
-      curY += 18.0f;
+      curY += lineH;
     } else {
       // Normal left-aligned with shadow
       DrawShadowText(dl, ImVec2(tPos.x + padX, curY), line.color,
                      line.text.c_str());
-      curY += 18.0f;
+      curY += lineH;
     }
   }
 

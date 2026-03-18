@@ -97,19 +97,22 @@ public:
     // Clear all creatures on map change — prevents stale entities
     for (auto &b : m_boids) { b.live = false; b.respawnDelay = 2.0f; }
     for (auto &b : m_bats) { b.live = false; b.respawnDelay = 2.0f; }
+    for (auto &b : m_butterflies) { b.live = false; b.respawnDelay = 2.0f; }
     for (auto &f : m_fishs) f.live = false;
     for (auto &l : m_leaves) l.live = false;
   }
 
 private:
-  static constexpr int MAX_BOIDS = 5;  // Lorencia bird count (Main 5.2: GOBoid.cpp)
-  static constexpr int MAX_BATS = 5;   // Dungeon bat count (Main 5.2: GOBoid.cpp)
-  static constexpr int MAX_FISHS = 3;  // Lorencia fish count (GOBoid.cpp:1661)
-  static constexpr int MAX_LEAVES = 80; // Lorencia leaf count (ZzzEffectFireLeave.cpp)
+  static constexpr int MAX_BOIDS = 5;       // Lorencia bird count (Main 5.2: GOBoid.cpp)
+  static constexpr int MAX_BATS = 5;        // Dungeon bat count (Main 5.2: GOBoid.cpp)
+  static constexpr int MAX_BUTTERFLIES = 3; // Noria butterfly count (reduced from 5)
+  static constexpr int MAX_FISHS = 3;       // Lorencia fish count (GOBoid.cpp:1661)
+  static constexpr int MAX_LEAVES = 80;     // Lorencia leaf count (ZzzEffectFireLeave.cpp)
   static constexpr int MAX_POINT_LIGHTS = 64;
 
   Boid m_boids[MAX_BOIDS];
-  Boid m_bats[MAX_BATS]; // Dungeon bats (reuse Boid struct)
+  Boid m_bats[MAX_BATS];               // Dungeon bats (reuse Boid struct)
+  Boid m_butterflies[MAX_BUTTERFLIES];  // Noria butterflies (reuse Boid struct)
   Fish m_fishs[MAX_FISHS];
   LeafParticle m_leaves[MAX_LEAVES];
 
@@ -123,6 +126,11 @@ private:
   std::vector<MeshBuffers> m_batMeshes;
   std::vector<BoneWorldMatrix> m_batBones;
 
+  // Butterfly model (Main 5.2: MODEL_BUTTERFLY01 = Object1/Butterfly01.bmd)
+  std::unique_ptr<BMDData> m_butterflyBmd;
+  std::vector<MeshBuffers> m_butterflyMeshes;
+  std::vector<BoneWorldMatrix> m_butterflyBones;
+
   // Fish model
   std::unique_ptr<BMDData> m_fishBmd;
   std::vector<MeshBuffers> m_fishMeshes;
@@ -135,6 +143,7 @@ private:
   };
   ShadowMesh m_birdShadow;
   ShadowMesh m_batShadow;
+  ShadowMesh m_butterflyShadow;
   ShadowMesh m_fishShadow;
 
   std::unique_ptr<Shader> m_shader;
@@ -157,24 +166,31 @@ private:
 
   void updateBoids(float dt, const glm::vec3 &heroPos, int heroAction);
   void updateBats(float dt, const glm::vec3 &heroPos);
+  void updateButterflies(float dt, const glm::vec3 &heroPos);
   void updateFishs(float dt, const glm::vec3 &heroPos);
   void moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction);
   void moveBat(Boid &b, const glm::vec3 &heroPos);
+  void moveButterfly(Boid &b, const glm::vec3 &heroPos);
   void moveBoidGroup(Boid &b);
   void moveBoidFlock(Boid &b, int selfIdx);
   void alphaFade(float &alpha, float target, float dt);
 
-  void renderBoid(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj);
-  void renderBat(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj);
-  void renderFish(const Fish &f, const glm::mat4 &view, const glm::mat4 &proj);
+  void renderBoid(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
+  void renderBat(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
+  void renderButterfly(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
+  void renderFish(const Fish &f, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
 
   // Falling leaves (Main 5.2: ZzzEffectFireLeave.cpp)
   std::unique_ptr<Shader> m_leafShader;
   TexHandle m_leafTexture = kInvalidTex;
-  bgfx::VertexBufferHandle m_leafVBO = BGFX_INVALID_HANDLE;
-  bgfx::IndexBufferHandle m_leafEBO = BGFX_INVALID_HANDLE;
+  bgfx::DynamicVertexBufferHandle m_leafDynVBO = BGFX_INVALID_HANDLE;
+  bgfx::DynamicIndexBufferHandle m_leafDynEBO = BGFX_INVALID_HANDLE;
   void updateLeaves(float dt, const glm::vec3 &heroPos);
   void spawnLeaf(LeafParticle &leaf, const glm::vec3 &heroPos);
+
+  // Devias snow (Main 5.2: CreateDeviasSnow / MoveEtcLeaf)
+  void updateSnow(float dt, const glm::vec3 &heroPos);
+  void spawnSnow(LeafParticle &s, const glm::vec3 &heroPos);
 };
 
 #endif // BOID_MANAGER_HPP

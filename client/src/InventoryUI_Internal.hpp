@@ -26,6 +26,7 @@ inline constexpr float SKILL_TEX_SIZE = 512.0f;
 
 inline constexpr int NUM_DK_SKILLS = 8;
 inline constexpr int NUM_DW_SPELLS = 14;
+inline constexpr int NUM_ELF_SKILLS = 10;
 
 // ─── Shared structs ─────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ extern std::vector<DeferredCooldown> g_deferredCooldowns;
 
 extern const SkillDef g_dkSkills[];
 extern const SkillDef g_dwSpells[];
+extern const SkillDef g_elfSkills[];
 
 // ─── Shared helper functions (defined in InventoryUI.cpp) ───────────────────
 

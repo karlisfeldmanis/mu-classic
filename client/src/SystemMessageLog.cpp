@@ -114,14 +114,20 @@ void Update(float /*deltaTime*/) {
 
 void Render(ImDrawList *dl, ImFont *font, float screenW, float screenH,
             float hudBarHeight, float mouseX, float mouseY) {
+  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float sTabH = TAB_H * uiScale;
+  float sLineH = LINE_H * uiScale;
+  float sContW = CONTAINER_W * uiScale;
+  float sContH = sTabH + MAX_VISIBLE * sLineH + 6.0f * uiScale;
+  float sFontSz = 11.0f * uiScale;
   float cx = 8.0f;
-  float cy = screenH - CONTAINER_H - 30.0f; // raised above XP bar
+  float cy = screenH - sContH - 30.0f; // raised above XP bar
 
   // Store log area bounds for scroll hit-test
   s_logX = cx;
   s_logY = cy;
-  s_logW = CONTAINER_W;
-  s_logH = CONTAINER_H;
+  s_logW = sContW;
+  s_logH = sContH;
 
   float dt = ImGui::GetIO().DeltaTime;
   s_activityTimer += dt;
@@ -134,8 +140,8 @@ void Render(ImDrawList *dl, ImFont *font, float screenW, float screenH,
   }
 
   // Track hover for scrollbar and to override fade
-  bool hovered = (mouseX >= cx && mouseX <= cx + CONTAINER_W && mouseY >= cy &&
-                  mouseY <= cy + CONTAINER_H);
+  bool hovered = (mouseX >= cx && mouseX <= cx + sContW && mouseY >= cy &&
+                  mouseY <= cy + sContH);
   float fadeSpeed = 6.0f;
   if (hovered)
     s_hoverAlpha = std::min(1.0f, s_hoverAlpha + dt * fadeSpeed);
@@ -151,11 +157,11 @@ void Render(ImDrawList *dl, ImFont *font, float screenW, float screenH,
   const char *tabNames[] = {"General", "Combat", "System"};
   float tabX = cx + 4.0f;
   s_tabY = cy;
-  s_tabEndY = cy + TAB_H;
+  s_tabEndY = cy + sTabH;
 
   for (int t = 0; t < 3; t++) {
-    ImVec2 ts = font->CalcTextSizeA(11.0f, FLT_MAX, 0, tabNames[t]);
-    float tw = ts.x + 12.0f;
+    ImVec2 ts = font->CalcTextSizeA(sFontSz, FLT_MAX, 0, tabNames[t]);
+    float tw = ts.x + 12.0f * uiScale;
     s_tabX[t] = tabX;
     s_tabW[t] = tw;
 
@@ -167,23 +173,23 @@ void Render(ImDrawList *dl, ImFont *font, float screenW, float screenH,
                                 ta);
 
       if (active)
-        dl->AddRectFilled(ImVec2(tabX, cy + 1), ImVec2(tabX + tw, cy + TAB_H),
+        dl->AddRectFilled(ImVec2(tabX, cy + 1), ImVec2(tabX + tw, cy + sTabH),
                           ScaleAlpha(IM_COL32(255, 200, 50, 20), ta), 2.0f);
 
-      dl->AddText(font, 11.0f, ImVec2(tabX + 6, cy + (TAB_H - ts.y) * 0.5f),
+      dl->AddText(font, sFontSz, ImVec2(tabX + 6, cy + (sTabH - ts.y) * 0.5f),
                   tabCol, tabNames[t]);
 
       if (active) {
-        dl->AddLine(ImVec2(tabX + 2, cy + TAB_H - 1),
-                    ImVec2(tabX + tw - 2, cy + TAB_H - 1), tabCol, 1.5f);
+        dl->AddLine(ImVec2(tabX + 2, cy + sTabH - 1),
+                    ImVec2(tabX + tw - 2, cy + sTabH - 1), tabCol, 1.5f);
       }
     }
     tabX += tw + 2.0f;
   }
 
   // Message area
-  float msgTop = cy + TAB_H + 2.0f;
-  float msgBottom = cy + CONTAINER_H - 2.0f;
+  float msgTop = cy + sTabH + 2.0f;
+  float msgBottom = cy + sContH - 2.0f;
 
   // Collect ALL filtered messages
   struct VisMsg {
@@ -220,21 +226,21 @@ void Render(ImDrawList *dl, ImFont *font, float screenW, float screenH,
   int startIdx = std::max(0, endIdx - MAX_VISIBLE); // inclusive
 
   for (int i = startIdx; i < endIdx; i++) {
-    float y = msgTop + (float)(i - startIdx) * LINE_H;
-    if (y + LINE_H > msgBottom)
+    float y = msgTop + (float)(i - startIdx) * sLineH;
+    if (y + sLineH > msgBottom)
       break;
 
     ImU32 shadowCol = ScaleAlpha(IM_COL32(0, 0, 0, 140), alpha);
-    dl->AddText(font, 11.0f, ImVec2(cx + 5, y + 1), shadowCol,
+    dl->AddText(font, sFontSz, ImVec2(cx + 5, y + 1), shadowCol,
                 filtered[i].text);
-    dl->AddText(font, 11.0f, ImVec2(cx + 4, y),
+    dl->AddText(font, sFontSz, ImVec2(cx + 4, y),
                 ScaleAlpha(filtered[i].color, alpha), filtered[i].text);
   }
 
   // Scrollbar (WoW-style thin gold bar) — only on hover
   if (totalFiltered > MAX_VISIBLE && s_hoverAlpha > 0.01f) {
     float sbAlpha = s_hoverAlpha; // fade with hover
-    float trackX = cx + CONTAINER_W - SCROLLBAR_W - 2.0f;
+    float trackX = cx + sContW - SCROLLBAR_W - 2.0f;
     float trackTop = msgTop;
     float trackH = msgBottom - msgTop;
 

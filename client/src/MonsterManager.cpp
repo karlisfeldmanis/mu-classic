@@ -37,7 +37,16 @@ static const std::unordered_map<uint16_t, std::string> s_monsterNames = {
     {22, "Ice Monster"},
     {23, "Hommerd"},
     {24, "Worm"},
-    {25, "Ice Queen"}};
+    {25, "Ice Queen"},
+    // Noria monsters (types 26-33)
+    {26, "Goblin"},
+    {27, "Chain Scorpion"},
+    {28, "Beetle Monster"},
+    {29, "Hunter"},
+    {30, "Forest Monster"},
+    {31, "Agon"},
+    {32, "Stone Golem"},
+    {33, "Elite Goblin"}};
 
 glm::vec3
 MonsterManager::sampleTerrainLightAt(const glm::vec3 &worldPos) const {
@@ -322,8 +331,9 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   }
 
   // Dark Knight (type 10): Monster04.bmd (Main 5.2: MONSTER_MODEL_DARK_KNIGHT)
+  // Main 5.2: Scale=0.8f, Level=1
   {
-    int idx = loadMonsterModel("Monster04.bmd", "Dark Knight", 1.0f, 90.0f, 170.0f);
+    int idx = loadMonsterModel("Monster04.bmd", "Dark Knight", 0.8f, 90.0f, 170.0f);
     if (idx >= 0) {
       m_models[idx].level = 80;
       m_models[idx].defense = 80;
@@ -334,7 +344,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   }
 
   // Ghost (type 11): Monster08.bmd (Main 5.2: MONSTER_MODEL_GHOST)
-  // BlendMesh=1: staff mesh renders additive (glowing staff effect)
+  // Main 5.2: AlphaTarget=0.4f, no BlendMesh, no weapon, no Scale override
   {
     int idx = loadMonsterModel("Monster08.bmd", "Ghost", 1.0f, 70.0f, 140.0f);
     if (idx >= 0) {
@@ -342,8 +352,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
       m_models[idx].defense = 40;
       m_models[idx].defenseRate = 40;
       m_models[idx].attackRate = 145;
-      m_models[idx].blendMesh = 1; // Main 5.2: BlendMesh=1 (staff glow)
-      m_models[idx].typeAlpha = 0.4f; // Main 5.2: Ghost is semi-transparent
+      m_models[idx].typeAlpha = 0.4f; // Main 5.2: AlphaTarget=0.4f
     }
     m_typeToModel[11] = idx;
   }
@@ -386,6 +395,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   }
 
   // Gorgon (type 18): Monster12.bmd (Main 5.2: MONSTER_MODEL_GORGON)
+  // Main 5.2: Scale=1.5f, BlendMesh=1, BlendMeshLight=1.0f, Weapon=MODEL_GORGON_STAFF
   {
     int idx = loadMonsterModel("Monster12.bmd", "Gorgon", 1.5f, 120.0f, 200.0f);
     if (idx >= 0) {
@@ -393,6 +403,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
       m_models[idx].defense = 100;
       m_models[idx].defenseRate = 100;
       m_models[idx].attackRate = 220;
+      m_models[idx].blendMesh = 1;
     }
     m_typeToModel[18] = idx;
   }
@@ -487,6 +498,106 @@ void MonsterManager::InitModels(const std::string &dataPath) {
       m_models[idx].blendMesh = 2; // Boss glow effect
     }
     m_typeToModel[25] = idx;
+  }
+
+  // ── Noria monsters (OpenMU Version075) ──
+  // Main 5.2 enum+1 = BMD number: GOBLIN=19→Monster20, CHAIN_SCORPION=20→Monster21, etc.
+
+  // Goblin (type 26): Monster20.bmd (Main 5.2: Scale=0.8, weapon=AXE)
+  {
+    int idx = loadMonsterModel("Monster20.bmd", "Goblin", 0.8f, 70.0f, 100.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 3;
+      m_models[idx].defense = 2;
+      m_models[idx].defenseRate = 2;
+      m_models[idx].attackRate = 13;
+    }
+    m_typeToModel[26] = idx;
+  }
+
+  // Chain Scorpion (type 27): Monster21.bmd (Main 5.2: Scale=1.1)
+  {
+    int idx = loadMonsterModel("Monster21.bmd", "Chain Scorpion", 1.1f, 80.0f, 120.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 5;
+      m_models[idx].defense = 4;
+      m_models[idx].defenseRate = 4;
+      m_models[idx].attackRate = 23;
+    }
+    m_typeToModel[27] = idx;
+  }
+
+  // Beetle Monster (type 28): Monster22.bmd (Main 5.2: Scale=0.8, BlendMesh=1)
+  {
+    int idx = loadMonsterModel("Monster22.bmd", "Beetle Monster", 0.8f, 80.0f, 130.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 10;
+      m_models[idx].defense = 10;
+      m_models[idx].defenseRate = 10;
+      m_models[idx].attackRate = 44;
+      m_models[idx].blendMesh = 1;
+    }
+    m_typeToModel[28] = idx;
+  }
+
+  // Hunter (type 29): Monster23.bmd (Main 5.2: Scale=0.95, ranged)
+  {
+    int idx = loadMonsterModel("Monster23.bmd", "Hunter", 0.95f, 80.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 13;
+      m_models[idx].defense = 13;
+      m_models[idx].defenseRate = 13;
+      m_models[idx].attackRate = 56;
+    }
+    m_typeToModel[29] = idx;
+  }
+
+  // Forest Monster (type 30): Monster24.bmd (Main 5.2: Scale=0.75)
+  {
+    int idx = loadMonsterModel("Monster24.bmd", "Forest Monster", 0.75f, 80.0f, 140.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 15;
+      m_models[idx].defense = 15;
+      m_models[idx].defenseRate = 15;
+      m_models[idx].attackRate = 68;
+    }
+    m_typeToModel[30] = idx;
+  }
+
+  // Agon (type 31): Monster25.bmd (Main 5.2: Scale=1.3)
+  {
+    int idx = loadMonsterModel("Monster25.bmd", "Agon", 1.3f, 90.0f, 160.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 16;
+      m_models[idx].defense = 16;
+      m_models[idx].defenseRate = 16;
+      m_models[idx].attackRate = 74;
+    }
+    m_typeToModel[31] = idx;
+  }
+
+  // Stone Golem (type 32): Monster26.bmd (Main 5.2: default scale ~0.9)
+  {
+    int idx = loadMonsterModel("Monster26.bmd", "Stone Golem", 0.9f, 100.0f, 180.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 18;
+      m_models[idx].defense = 20;
+      m_models[idx].defenseRate = 20;
+      m_models[idx].attackRate = 86;
+    }
+    m_typeToModel[32] = idx;
+  }
+
+  // Elite Goblin (type 33): Monster20.bmd (same as Goblin, Main 5.2: Scale=1.2)
+  {
+    int idx = loadMonsterModel("Monster20.bmd", "Elite Goblin", 1.2f, 80.0f, 130.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 8;
+      m_models[idx].defense = 8;
+      m_models[idx].defenseRate = 8;
+      m_models[idx].attackRate = 33;
+    }
+    m_typeToModel[33] = idx;
   }
 
   // ── Skeleton monsters: Player.bmd animation rig + Skeleton0x.bmd mesh skins
@@ -663,13 +774,14 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     // Main 5.2: c->Weapon[0].LinkBone = 41 (Monster05.bmd "knife_gdf")
     loadMonsterWeapon(6, "Staff03.bmd", 41, noRot, noOff);
 
-    // Thunder Lich (type 9): same model + staff as Lich
-    loadMonsterWeapon(9, "Staff03.bmd", 41, noRot, noOff);
+    // Thunder Lich (type 9): MODEL_THUNDER_STAFF = Staff04.bmd
+    // Main 5.2: shares Monster05.bmd with Lich, LinkBone = 41
+    loadMonsterWeapon(9, "Staff04.bmd", 41, noRot, noOff);
 
     // Hell Hound (type 5): MODEL_FALCHION = Sword08.bmd + MODEL_PLATE_SHIELD = Shield02.bmd
-    // Main 5.2: c->Weapon[0].LinkBone = 33, c->Weapon[1].LinkBone = 42
-    loadMonsterWeapon(5, "Sword08.bmd", 33, noRot, noOff);
-    loadMonsterWeapon(5, "Shield02.bmd", 42, noRot, noOff);
+    // Main 5.2: MODEL_HOUND LinkBone[0]=19, LinkBone[1]=14
+    loadMonsterWeapon(5, "Sword08.bmd", 19, noRot, noOff);
+    loadMonsterWeapon(5, "Shield02.bmd", 14, noRot, noOff);
 
     // Giant (type 7): MODEL_AXE+2 = Axe03.bmd, DUAL WIELD (both hands)
     // Main 5.2: c->Weapon[0].LinkBone = 41, c->Weapon[1].LinkBone = 32
@@ -677,9 +789,37 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     loadMonsterWeapon(7, "Axe03.bmd", 41, noRot, noOff);
     loadMonsterWeapon(7, "Axe03.bmd", 32, noRot, noOff);
 
-    // Poison Bull (type 8): MODEL_GREAT_SCYTHE
+    // Poison Bull (type 8): MODEL_GREAT_SCYTHE = MODEL_SPEAR+8 = Spear09.bmd
     // Main 5.2: c->Weapon[0].LinkBone = 42 (Monster01.bmd same bone as Bull Fighter)
-    loadMonsterWeapon(8, "Spear10.bmd", 42, noRot, noOff);
+    loadMonsterWeapon(8, "Spear09.bmd", 42, noRot, noOff);
+
+    // Dark Knight (type 10): MODEL_DOUBLE_BLADE = MODEL_SWORD+13 = Sword14.bmd
+    // Main 5.2: c->Weapon[0].LinkBone = 26
+    loadMonsterWeapon(10, "Sword14.bmd", 26, noRot, noOff);
+
+    // Hell Spider (type 13): MODEL_SERPENT_STAFF = MODEL_STAFF+2 = Staff03.bmd
+    // Main 5.2: c->Weapon[0].LinkBone = 29
+    loadMonsterWeapon(13, "Staff03.bmd", 29, noRot, noOff);
+
+    // Cyclops (type 17): MODEL_CRESCENT_AXE = MODEL_AXE+8 = Axe09.bmd
+    // Main 5.2: c->Weapon[0].LinkBone = 41 (shares with Lich/Giant)
+    loadMonsterWeapon(17, "Axe09.bmd", 41, noRot, noOff);
+
+    // Gorgon (type 18): MODEL_GORGON_STAFF = MODEL_STAFF+4 = Staff05.bmd
+    // Main 5.2: c->Weapon[0].LinkBone = 30
+    loadMonsterWeapon(18, "Staff05.bmd", 30, noRot, noOff);
+  }
+
+  // Bali (type 150) — Elf summon
+  {
+    int idx = loadMonsterModel("Monster151.bmd", "Bali", 1.3f, 100.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].level = 52;
+      m_models[idx].defense = 100;
+      m_models[idx].defenseRate = 75;
+      m_models[idx].attackRate = 260;
+    }
+    m_typeToModel[150] = idx;
   }
 
   // Load Debris models (not mapped to server types)
@@ -702,6 +842,15 @@ void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
                                 uint8_t gridY, uint8_t dir,
                                 uint16_t serverIndex, int hp, int maxHp,
                                 uint8_t state) {
+  // Dedup: if monster with this serverIndex already exists, update instead
+  int existing = FindByServerIndex(serverIndex);
+  if (existing >= 0) {
+    auto &em = m_monsters[existing];
+    em.hp = hp;
+    em.maxHp = maxHp;
+    return;
+  }
+
   auto it = m_typeToModel.find(monsterType);
   if (it == m_typeToModel.end()) {
     std::cerr << "[Monster] Unknown monster type " << monsterType << " at ("
@@ -872,24 +1021,43 @@ float MonsterManager::getAnimSpeed(uint16_t monsterType, int action) const {
   }
 
   // Global per-type multipliers (ZzzOpenData.cpp:2370-2376)
-  if (monsterType == 3) { // Spider
+  // NOTE: These use monster MODEL indices (not type IDs):
+  //   Model 3 = Dark Knight (type 10), Model 5 = Giant (type 7)
+  if (monsterType == 10) { // Dark Knight (model 3)
     speed *= 1.2f;
-  } else if (monsterType == 5) { // Larva
+  } else if (monsterType == 7) { // Giant (model 5)
+    speed *= 0.7f;
+  } else if (monsterType == 32) { // Stone Golem (model 25)
     speed *= 0.7f;
   }
 
-  // Specific walk speed overrides (ZzzOpenData.cpp:2430-2438)
+  // Specific walk speed overrides (ZzzOpenData.cpp:2378-2392)
+  // NOTE: These use MONSTER_MODEL_* enum → our type mapping
   if (action == ACTION_WALK) {
     if (monsterType == 2)
-      speed = 0.7f; // Budge Dragon (flying)
-    else if (monsterType == 6)
-      speed = 0.6f; // Lich (slower walk)
+      speed = 0.7f; // Budge Dragon (MONSTER_MODEL_BUDGE_DRAGON=2)
+    else if (monsterType == 12)
+      speed = 0.6f; // Larva (MONSTER_MODEL_LARVA=6)
+    else if (monsterType == 13)
+      speed = 0.7f; // Hell Spider (MONSTER_MODEL_HELL_SPIDER=8)
+    else if (monsterType == 3)
+      speed = 1.2f; // Spider (MONSTER_MODEL_SPIDER=9)
+    else if (monsterType == 17)
+      speed = 0.28f; // Cyclops (MONSTER_MODEL_CYCLOPS=10)
     else if (monsterType == 19)
-      speed = 0.3f; // Yeti
+      speed = 0.3f; // Yeti (MONSTER_MODEL_YETI=12)
     else if (monsterType == 20)
-      speed = 0.28f; // Elite Yeti
+      speed = 0.28f; // Elite Yeti (MONSTER_MODEL_ELITE_YETI=13)
     else if (monsterType == 24)
-      speed = 0.5f; // Worm
+      speed = 0.5f; // Worm (MONSTER_MODEL_WORM=17)
+    else if (monsterType == 26)
+      speed = 0.6f; // Goblin (MONSTER_MODEL_GOBLIN=19)
+    else if (monsterType == 27)
+      speed = 0.4f; // Chain Scorpion (MONSTER_MODEL_CHAIN_SCORPION=20)
+    else if (monsterType == 28)
+      speed = 0.5f; // Beetle Monster (MONSTER_MODEL_BEETLE_MONSTER=21)
+    else if (monsterType == 33)
+      speed = 0.6f; // Elite Goblin (shares MODEL_GOBLIN=19 with Goblin)
   }
 
   return speed * 25.0f; // Scale to 25fps base
@@ -932,6 +1100,55 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
 
   switch (mon.state) {
   case MonsterState::IDLE: {
+    // Own summon: Guardian Angel-style follow when idle (not in combat)
+    // Continuously lerp toward a position behind the player
+    if (mon.serverIndex == m_ownSummonIndex && m_ownSummonIndex != 0) {
+      // Target: 150 units behind player's facing direction
+      float behindX = m_playerPos.x - cosf(m_playerFacing) * 150.0f;
+      float behindZ = m_playerPos.z - sinf(m_playerFacing) * 150.0f;
+      glm::vec3 target(behindX, 0.0f, behindZ);
+      glm::vec3 toTarget = target - mon.position;
+      toTarget.y = 0.0f;
+      float dist = glm::length(toTarget);
+
+      if (dist > 40.0f) {
+        // Speed scaling: decelerate smoothly when approaching target
+        float baseSpeed = CHASE_SPEED * 1.5f; // 375 units/sec max
+        float rampStart = 40.0f;
+        float rampEnd = 150.0f;
+        float speedScale = glm::clamp((dist - rampStart) / (rampEnd - rampStart),
+                                       0.0f, 1.0f);
+        float speed = baseSpeed * speedScale;
+        float step = speed * dt;
+        if (step > dist)
+          step = dist;
+        glm::vec3 dir = toTarget / dist;
+        mon.position.x += dir.x * step;
+        mon.position.z += dir.z * step;
+        mon.facing = smoothFacing(mon.facing, facingFromDir(dir), dt * 5.0f);
+        // Only show walk animation if moving fast enough to be visible
+        // Below 70 units the speed is too slow for walk to look natural
+        if (dist > 70.0f)
+          setAction(mon, ACTION_WALK);
+        else
+          setAction(mon, ACTION_STOP1); // Sliding stop — smooth deceleration
+      } else {
+        // Close enough — face player and idle
+        glm::vec3 toPlayer = m_playerPos - mon.position;
+        toPlayer.y = 0.0f;
+        if (glm::length(toPlayer) > 1.0f) {
+          glm::vec3 fpDir = glm::normalize(toPlayer);
+          mon.facing = smoothFacing(mon.facing, facingFromDir(fpDir), dt * 2.0f);
+        }
+        setAction(mon, ACTION_STOP1);
+      }
+
+      float terrainY = snapToTerrain(mon.position.x, mon.position.z);
+      mon.position.y = terrainY + mdl.bodyOffset;
+      mon.stateTimer -= dt;
+      break;
+    }
+
     // If we just entered IDLE or finished an idle cycle, pick a new action and
     // duration
     if (mon.stateTimer <= 0.0f) {
@@ -956,7 +1173,7 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
       float dx = mon.position.x - m_playerPos.x;
       float dz = mon.position.z - m_playerPos.z;
       float distSq = dx * dx + dz * dz;
-      if (distSq < 600.0f * 600.0f && rand() % (int)(512.0f / (dt * 25.0f + 0.01f)) == 0) {
+      if (distSq < 1200.0f * 1200.0f && rand() % (int)(512.0f / (dt * 25.0f + 0.01f)) == 0) {
       float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
       switch (mon.monsterType) {
       case 0: // Bull Fighter
@@ -1032,6 +1249,25 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
       case 25: // Ice Queen — Sounds[0]=mIceQueen1, Sounds[1]=mIceQueen2
         SoundManager::Play3D(SOUND_MONSTER_ICEQUEEN1 + rand() % 2, px, py, pz);
         break;
+      // Noria monsters (types 26-33)
+      case 26: // Goblin
+      case 33: // Elite Goblin — same model/sounds as Goblin
+        SoundManager::Play3D(SOUND_MONSTER_GOBLIN1 + rand() % 2, px, py, pz);
+        break;
+      case 27: // Chain Scorpion
+        SoundManager::Play3D(SOUND_MONSTER_SCORPION1 + rand() % 2, px, py, pz);
+        break;
+      case 28: // Beetle Monster
+        SoundManager::Play3D(SOUND_MONSTER_BEETLE1, px, py, pz);
+        break;
+      case 29: // Hunter
+        SoundManager::Play3D(SOUND_MONSTER_HUNTER1 + rand() % 2, px, py, pz);
+        break;
+      case 30: // Forest Monster — no unique sounds, use Golem
+      case 31: // Agon — no unique sounds, use Golem
+      case 32: // Stone Golem
+        SoundManager::Play3D(SOUND_MONSTER_GOLEM1 + rand() % 2, px, py, pz);
+        break;
       default: break;
       }
     }}
@@ -1091,13 +1327,24 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
         mon.facing =
             smoothFacing(mon.facing, facingFromDir(glm::normalize(tang)), dt);
     } else {
-      // Path exhausted — idle, face player, wait for server attack packet
+      // Path exhausted — idle, face target, wait for server attack packet
       setAction(mon, ACTION_STOP1);
-      if (!m_playerDead) {
-        glm::vec3 toPlayer = m_playerPos - mon.position;
-        toPlayer.y = 0.0f;
-        if (glm::length(toPlayer) > 1.0f) {
-          glm::vec3 fdir = glm::normalize(toPlayer);
+      glm::vec3 facePos = m_playerPos;
+      bool hasFace = !m_playerDead;
+      // Monster with an attack target (summon or monster): face that target
+      if (mon.attackTargetLocalIdx >= 0 &&
+          mon.attackTargetLocalIdx < (int)m_monsters.size()) {
+        auto &tgt = m_monsters[mon.attackTargetLocalIdx];
+        if (tgt.state != MonsterState::DEAD) {
+          facePos = tgt.position;
+          hasFace = true;
+        }
+      }
+      if (hasFace) {
+        glm::vec3 toTarget = facePos - mon.position;
+        toTarget.y = 0.0f;
+        if (glm::length(toTarget) > 1.0f) {
+          glm::vec3 fdir = glm::normalize(toTarget);
           mon.facing = smoothFacing(mon.facing, facingFromDir(fdir), dt);
         }
       }
@@ -1112,12 +1359,25 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
   }
 
   case MonsterState::ATTACKING: {
-    // Face the player during attack
-    if (!m_playerDead) {
-      glm::vec3 toPlayer = m_playerPos - mon.position;
-      toPlayer.y = 0.0f;
-      if (glm::length(toPlayer) > 1.0f) {
-        glm::vec3 dir = glm::normalize(toPlayer);
+    // Face the attack target during attack animation
+    glm::vec3 facePos = m_playerPos; // Default: face player
+    bool hasFaceTarget = !m_playerDead;
+
+    // Monster with an attack target (summon or monster): face that target
+    if (mon.attackTargetLocalIdx >= 0 &&
+        mon.attackTargetLocalIdx < (int)m_monsters.size()) {
+      auto &tgt = m_monsters[mon.attackTargetLocalIdx];
+      if (tgt.state != MonsterState::DEAD) {
+        facePos = tgt.position;
+        hasFaceTarget = true;
+      }
+    }
+
+    if (hasFaceTarget) {
+      glm::vec3 toTarget = facePos - mon.position;
+      toTarget.y = 0.0f;
+      if (glm::length(toTarget) > 1.0f) {
+        glm::vec3 dir = glm::normalize(toTarget);
         mon.facing = smoothFacing(mon.facing, facingFromDir(dir), dt);
       }
     }
@@ -1298,33 +1558,7 @@ void MonsterManager::Update(float deltaTime) {
     idx++;
   }
 
-  // Monster separation: push overlapping monsters apart (O(n^2), n~50-100)
-  static constexpr float SEP_RADIUS = 80.0f;
-  static constexpr float SEP_RADIUS_SQ = SEP_RADIUS * SEP_RADIUS;
-  int n = (int)m_monsters.size();
-  for (int i = 0; i < n; ++i) {
-    auto &a = m_monsters[i];
-    if (a.state == MonsterState::DYING || a.state == MonsterState::DEAD)
-      continue;
-    for (int j = i + 1; j < n; ++j) {
-      auto &b = m_monsters[j];
-      if (b.state == MonsterState::DYING || b.state == MonsterState::DEAD)
-        continue;
-      float dx = b.position.x - a.position.x;
-      float dz = b.position.z - a.position.z;
-      float distSq = dx * dx + dz * dz;
-      if (distSq < SEP_RADIUS_SQ && distSq > 0.01f) {
-        float dist = std::sqrt(distSq);
-        float overlap = SEP_RADIUS - dist;
-        float push = overlap * 0.5f;
-        float nx = dx / dist, nz = dz / dist;
-        a.position.x -= nx * push;
-        a.position.z -= nz * push;
-        b.position.x += nx * push;
-        b.position.z += nz * push;
-      }
-    }
-  }
+  // Original MU: monsters ghost through each other — no separation
 
   updateDebris(deltaTime);
   updateArrows(deltaTime);
@@ -1346,6 +1580,8 @@ void MonsterManager::ClearMonsters() {
   }
   m_monsters.clear();
   m_arrows.clear();
+  m_summonServerIndices.clear();
+  m_ownSummonIndex = 0;
 }
 
 MonsterInfo MonsterManager::GetMonsterInfo(int index) const {
@@ -1363,7 +1599,7 @@ MonsterInfo MonsterManager::GetMonsterInfo(int index) const {
   info.name = mon.name;
   info.type = mon.monsterType;
   info.serverIndex = mon.serverIndex;
-  info.level = mdl.level;
+  info.level = (mon.levelOverride > 0) ? mon.levelOverride : mdl.level;
   info.hp = mon.hp;
   info.maxHp = mon.maxHp;
   info.defense = mdl.defense;
@@ -1400,6 +1636,65 @@ void MonsterManager::ApplyStormTime(uint16_t serverIndex, int ticks) {
   }
 }
 
+// ─── Summon tracking ────────────────────────────────────────────────────────
+
+void MonsterManager::MarkAsSummon(uint16_t serverIndex, bool isOwn, int level) {
+  m_summonServerIndices.insert(serverIndex);
+  if (isOwn)
+    m_ownSummonIndex = serverIndex;
+  if (level > 0) {
+    int idx = FindByServerIndex(serverIndex);
+    if (idx >= 0)
+      m_monsters[idx].levelOverride = level;
+  }
+}
+
+void MonsterManager::ClearSummon(uint16_t serverIndex) {
+  m_summonServerIndices.erase(serverIndex);
+  if (m_ownSummonIndex == serverIndex)
+    m_ownSummonIndex = 0;
+
+  // Force the monster to disappear immediately (skip death animation)
+  int idx = FindByServerIndex(serverIndex);
+  if (idx >= 0) {
+    auto &mon = m_monsters[idx];
+    mon.hp = 0;
+    mon.state = MonsterState::DEAD;
+    mon.corpseAlpha = 0.0f;
+    mon.corpseTimer = 999.0f; // Already faded
+  }
+}
+
+bool MonsterManager::IsSummon(uint16_t serverIndex) const {
+  return m_summonServerIndices.count(serverIndex) > 0;
+}
+
+bool MonsterManager::IsOwnSummon(int monsterLocalIndex) const {
+  if (monsterLocalIndex < 0 || monsterLocalIndex >= (int)m_monsters.size())
+    return false;
+  return m_monsters[monsterLocalIndex].serverIndex == m_ownSummonIndex &&
+         m_ownSummonIndex != 0;
+}
+
+void MonsterManager::FaceTarget(int attackerIdx, int targetIdx) {
+  if (attackerIdx < 0 || attackerIdx >= (int)m_monsters.size())
+    return;
+  if (targetIdx < 0 || targetIdx >= (int)m_monsters.size())
+    return;
+  auto &attacker = m_monsters[attackerIdx];
+  auto &target = m_monsters[targetIdx];
+  attacker.attackTargetLocalIdx = targetIdx;
+  glm::vec3 dir = target.position - attacker.position;
+  dir.y = 0.0f;
+  float dist = glm::length(dir);
+
+  // Own summon: don't snap position — let spline movement handle approach.
+  // Only face the target.
+
+  if (glm::length(dir) > 0.01f)
+    attacker.facing = atan2f(dir.z, -dir.x);
+}
+
 void MonsterManager::SetMonsterHP(int index, int hp, int maxHp) {
   if (index < 0 || index >= (int)m_monsters.size())
     return;
@@ -1426,7 +1721,7 @@ void MonsterManager::SetMonsterDying(int index) {
     {
       float dx = mon.position.x - m_playerPos.x;
       float dz = mon.position.z - m_playerPos.z;
-      if (dx * dx + dz * dz < 600.0f * 600.0f) {
+      if (dx * dx + dz * dz < 1200.0f * 1200.0f) {
       float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
       switch (mon.monsterType) {
       case 0: // Bull Fighter
@@ -1498,6 +1793,25 @@ void MonsterManager::SetMonsterDying(int index) {
       case 25: // Ice Queen
         SoundManager::Play3D(SOUND_MONSTER_ICEQUEENDIE, px, py, pz);
         break;
+      // Noria monsters (types 26-33)
+      case 26: // Goblin
+      case 33: // Elite Goblin
+        SoundManager::Play3D(SOUND_MONSTER_GOBLINDIE, px, py, pz);
+        break;
+      case 27: // Chain Scorpion
+        SoundManager::Play3D(SOUND_MONSTER_SCORPIONDIE, px, py, pz);
+        break;
+      case 28: // Beetle Monster
+        SoundManager::Play3D(SOUND_MONSTER_BEETLEDIE, px, py, pz);
+        break;
+      case 29: // Hunter
+        SoundManager::Play3D(SOUND_MONSTER_HUNTERDIE, px, py, pz);
+        break;
+      case 30: // Forest Monster
+      case 31: // Agon
+      case 32: // Stone Golem
+        SoundManager::Play3D(SOUND_MONSTER_GOLEMDIE, px, py, pz);
+        break;
       default: break;
       }
       }
@@ -1542,6 +1856,7 @@ void MonsterManager::TriggerAttackAnimation(int index) {
   // Server-authoritative: attack packet means monster is ready to attack
   // (server APPROACHING delay ensures client walk anim finished)
   mon.serverChasing = true;
+
   mon.state = MonsterState::ATTACKING;
   // Attack animation duration based on action keys / speed
   auto &mdl = m_models[mon.modelIdx];
@@ -1562,7 +1877,7 @@ void MonsterManager::TriggerAttackAnimation(int index) {
   {
     float dx = mon.position.x - m_playerPos.x;
     float dz = mon.position.z - m_playerPos.z;
-    if (dx * dx + dz * dz < 600.0f * 600.0f) {
+    if (dx * dx + dz * dz < 1200.0f * 1200.0f) {
     float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
     switch (mon.monsterType) {
     case 0: // Bull Fighter
@@ -1623,22 +1938,45 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     // Devias monsters (types 19-25) — Main 5.2 SetMonsterSound attack slots
     case 19: // Yeti — Sounds[2]=mYetiAttack1, Sounds[3]=mYetiAttack1
     case 20: // Elite Yeti — same attack sounds as Yeti
-      SoundManager::Play3D(SOUND_MONSTER_YETIATTACK1, px, py, pz);
+      // Main 5.2 only has one Yeti attack sound; pitch-vary to reduce monotony
+      SoundManager::Play3DPitched(SOUND_MONSTER_YETIATTACK1, px, py, pz,
+                                  0.85f, 1.15f);
       break;
     case 21: // Assassin — Sounds[2]=mAssassinAttack1, Sounds[3]=mAssassinAttack2
       SoundManager::Play3D(SOUND_MONSTER_ASSASSINATTACK1 + rand() % 2, px, py, pz);
       break;
     case 22: // Ice Monster — Sounds[2]=mIceMonster1, Sounds[3]=mIceMonster1 (reuse idle)
-      SoundManager::Play3D(SOUND_MONSTER_ICEMONSTER1, px, py, pz);
+      SoundManager::Play3DPitched(SOUND_MONSTER_ICEMONSTER1, px, py, pz,
+                                  0.9f, 1.1f);
       break;
     case 23: // Hommerd — Sounds[2]=mHomordAttack1, Sounds[3]=mHomordAttack1
-      SoundManager::Play3D(SOUND_MONSTER_HOMMERDATTACK1, px, py, pz);
+      SoundManager::Play3DPitched(SOUND_MONSTER_HOMMERDATTACK1, px, py, pz,
+                                  0.9f, 1.1f);
       break;
     case 24: // Worm — Sounds[2]=mWormDie, Sounds[3]=mWormDie (uses die sound!)
       SoundManager::Play3D(SOUND_MONSTER_WORMDIE, px, py, pz);
       break;
     case 25: // Ice Queen — Sounds[2]=mIceQueenAttack1, Sounds[3]=mIceQueenAttack2
       SoundManager::Play3D(SOUND_MONSTER_ICEQUEENATTACK1 + rand() % 2, px, py, pz);
+      break;
+    // Noria monsters (types 26-33)
+    case 26: // Goblin
+    case 33: // Elite Goblin
+      SoundManager::Play3D(SOUND_MONSTER_GOBLINATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 27: // Chain Scorpion
+      SoundManager::Play3D(SOUND_MONSTER_SCORPIONATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 28: // Beetle Monster
+      SoundManager::Play3D(SOUND_MONSTER_BEETLEATTACK1, px, py, pz);
+      break;
+    case 29: // Hunter
+      SoundManager::Play3D(SOUND_MONSTER_HUNTERATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 30: // Forest Monster
+    case 31: // Agon
+    case 32: // Stone Golem
+      SoundManager::Play3D(SOUND_MONSTER_GOLEMATTACK1 + rand() % 2, px, py, pz);
       break;
     default: break;
     }
@@ -1693,7 +2031,25 @@ void MonsterManager::TriggerAttackAnimation(int index) {
       glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
       arrowStart = boneWorld * mon.scale + mon.position;
     }
-    SpawnArrow(arrowStart, m_playerPos + glm::vec3(0, 50, 0), 1200.0f);
+    SpawnArrow(arrowStart, m_playerPos + glm::vec3(0, 50, 0), 1800.0f);
+  }
+
+  // Hunter (type 29): ranged monster, fire arrow toward player
+  if (mon.monsterType == 29) {
+    glm::vec3 arrowStart = mon.position + glm::vec3(0, 80.0f * mon.scale, 0);
+    if (42 < (int)mon.cachedBones.size()) {
+      glm::mat4 modelRot = glm::mat4(1.0f);
+      modelRot =
+          glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+      modelRot =
+          glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+      modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+      const auto &bm = mon.cachedBones[42];
+      glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+      glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+      arrowStart = boneWorld * mon.scale + mon.position;
+    }
+    SpawnArrow(arrowStart, m_playerPos + glm::vec3(0, 50, 0), 1600.0f);
   }
 }
 
@@ -1761,6 +2117,36 @@ void MonsterManager::SetMonsterServerPosition(int index, float worldX,
     mon.splineRate = 0.0f;
     mon.spawnAlpha = 0.0f; // Restart fade from invisible at new position
     mon.state = chasing ? MonsterState::CHASING : MonsterState::IDLE;
+    return;
+  }
+
+  // Own summon: separate follow (smooth IDLE) from chase (direct spline)
+  bool isOwnSummon = (mon.serverIndex == m_ownSummonIndex &&
+                      m_ownSummonIndex != 0);
+  if (isOwnSummon) {
+    if (!chasing) {
+      // Non-combat follow: let the IDLE Guardian Angel follow handle movement.
+      // Only transition out of combat states so IDLE follow can take over.
+      if (mon.state == MonsterState::CHASING ||
+          mon.state == MonsterState::ATTACKING) {
+        mon.state = MonsterState::IDLE;
+        mon.stateTimer = 0.0f;
+        mon.splinePoints.clear();
+        mon.splineT = 0.0f;
+        setAction(mon, ACTION_STOP1); // Reset to idle animation
+      }
+      return;
+    }
+    // Combat chase: direct 2-point spline to target position
+    mon.splinePoints.clear();
+    mon.splineT = 0.0f;
+    mon.splinePoints.push_back(mon.position);
+    mon.splinePoints.push_back(newTarget);
+    glm::vec3 d = newTarget - mon.position;
+    d.y = 0.0f;
+    float dist = glm::length(d);
+    mon.splineRate = (dist > 1.0f) ? CHASE_SPEED / dist : 2.5f;
+    mon.state = MonsterState::CHASING;
     return;
   }
 

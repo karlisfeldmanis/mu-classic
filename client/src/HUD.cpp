@@ -264,7 +264,8 @@ void HUD::RenderMenuIcons(ImDrawList *dl, const UICoords &coords) {
 
 void HUD::RenderTextOverlays(ImDrawList *dl, const UICoords &coords) {
   ImFont *font = hudFont ? hudFont : ImGui::GetFont();
-  float fontSize = font->LegacySize;
+  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float fontSize = font->LegacySize * uiScale;
 
   // Helper: draw centered text with shadow using the HUD font
   auto drawCentered = [&](float vx, float vy, float vw, const char *text,
