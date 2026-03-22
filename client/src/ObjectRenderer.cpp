@@ -1107,11 +1107,19 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
          (inst.type >= 22 && inst.type <= 24) ||
          inst.type == 11 || inst.type == 53));
 
+    // Two-pass rendering: opaque meshes first (write depth), then
+    // alpha/additive meshes (read depth only).
+    auto &meshBufs = it->second.meshBuffers;
+
+    int passOrder[2] = {0, 1}; // 0=opaque pass, 1=alpha pass
+    for (int pass : passOrder) {
     int meshIdx = 0;
-    for (auto &mb : it->second.meshBuffers) {
+    for (auto &mb : meshBufs) {
       if (mb.indexCount == 0 || mb.hidden) { ++meshIdx; continue; }
       if (!TexValid(mb.texture)) { ++meshIdx; continue; }
-
+      bool isTransparent = mb.hasAlpha || mb.isWindowLight || mb.bright;
+      if (pass == 0 && isTransparent) { ++meshIdx; continue; }
+      if (pass == 1 && !isTransparent) { ++meshIdx; continue; }
       bgfx::setTransform(glm::value_ptr(inst.modelMatrix));
 
       // Bind vertex/index buffers
@@ -1213,11 +1221,32 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
 
       // Set uniforms
       activeShader->setVec4("u_params", glm::vec4(instAlpha, blendLight, 0.0f, 0.0f));
-      activeShader->setVec4("u_params2", glm::vec4(m_luminosity, (float)plCount, 0.0f, 0.0f));
+      float cliffFadeFlag = 0.0f;
+      float cliffTopH = 0.0f;
+      if (inst.type == 11 && terrainHeightmap.size() >= 256 * 256) {
+        cliffFadeFlag = 1.0f;
+        float wx = inst.modelMatrix[3][0];
+        float wz = inst.modelMatrix[3][2];
+        int cz = std::clamp((int)(wx / 100.0f), 0, 255);
+        int cx = std::clamp((int)(wz / 100.0f), 0, 255);
+        for (int dz = -3; dz <= 3; dz++)
+          for (int dx = -3; dx <= 3; dx++) {
+            int iz = std::clamp(cz + dz, 0, 255);
+            int ix = std::clamp(cx + dx, 0, 255);
+            cliffTopH = std::max(cliffTopH, terrainHeightmap[iz * 256 + ix]);
+          }
+      }
+      activeShader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, cliffFadeFlag, cliffTopH));
       activeShader->setVec4("u_lightPos", glm::vec4(sunPos, 0.0f));
       activeShader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
       activeShader->setVec4("u_viewPos", glm::vec4(cameraPos, 0.0f));
-      activeShader->setVec4("u_terrainLight", glm::vec4(inst.terrainLight, 0.0f));
+      // w=1.0 enables per-pixel lightmap sampling in shader (smooth across meshes)
+      if (TexValid(m_lightmapTex)) {
+        activeShader->setVec4("u_terrainLight", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+        activeShader->setTexture(2, "s_lightMap", m_lightmapTex);
+      } else {
+        activeShader->setVec4("u_terrainLight", glm::vec4(inst.terrainLight, 0.0f));
+      }
       activeShader->setVec4("u_glowColor", glm::vec4(0.0f));
       activeShader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
       activeShader->setVec4("u_fogParams", glm::vec4(m_fogNear, m_fogFar, useFog, 0.0f));
@@ -1229,6 +1258,7 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       bgfx::submit(0, activeShader->program);
       ++meshIdx;
     }
+    } // end pass loop
   }
 }
 

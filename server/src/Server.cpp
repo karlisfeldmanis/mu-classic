@@ -384,7 +384,7 @@ void Server::Run() {
 
             // Quest kill tracking
             if (mon)
-              QuestHandler::OnMonsterKill(*ownerSession, mon->type, m_db);
+              QuestHandler::OnMonsterKill(*ownerSession, mon->type, mon->isSummon(), m_db);
 
             // Clear stale target on session
             ownerSession->attackTargetMonsterIdx = 0;
@@ -723,6 +723,18 @@ void Server::Run() {
           printf("[Server] Deferred viewport sent: %zu NPCs, %zu monsters\n",
                  m_world.GetNpcs().size(),
                  m_world.GetMonsterInstances().size());
+
+          // Re-send SUMMON_SPAWN after viewport so client can mark the summon
+          if (session->activeSummonIndex > 0 && session->activeSummonType >= 0) {
+            PMSG_SUMMON_SPAWN_SEND spkt{};
+            spkt.h = MakeC1Header(sizeof(spkt), Opcode::SUMMON_SPAWN);
+            spkt.monsterIndex = session->activeSummonIndex;
+            spkt.ownerCharId = session->characterId;
+            spkt.level = session->level;
+            session->Send(&spkt, sizeof(spkt));
+            printf("[Server] Re-sent SUMMON_SPAWN index=%d (deferred)\n",
+                   session->activeSummonIndex);
+          }
         }
       }
 
@@ -840,8 +852,13 @@ void Server::Run() {
                              SaveSession(*s);
                            // Despawn summon on disconnect
                            if (s->activeSummonIndex > 0) {
+                             PMSG_SUMMON_DESPAWN_SEND dpkt{};
+                             dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+                             dpkt.monsterIndex = s->activeSummonIndex;
+                             Broadcast(&dpkt, sizeof(dpkt));
                              m_world.DespawnSummon(s->activeSummonIndex);
                              s->activeSummonIndex = 0;
+                             s->activeSummonType = -1;
                            }
                            m_world.ClearGuardInteractionsForPlayer(s->GetFd());
                            printf("[Server] Client fd=%d disconnected\n",
@@ -881,7 +898,10 @@ void Server::SaveSession(Session &session) {
                          session.levelUpPoints, session.experience, session.zen,
                          posX, posY, session.mapId, session.skillBar,
                          session.potionBar, session.rmcSkillId,
-                         session.activeSummonType);
+                         session.activeSummonType, &session);
+
+  // Save camera zoom setting
+  m_db.UpdateCameraZoom(session.characterId, session.cameraZoom);
 
   // Save full inventory (clear + rewrite all occupied slots)
   m_db.DeleteCharacterInventoryAll(session.characterId);

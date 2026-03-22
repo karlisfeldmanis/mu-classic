@@ -347,7 +347,7 @@ void HandleCharSave(Session &session, const std::vector<uint8_t> &packet,
       static_cast<uint16_t>(session.maxAg), session.levelUpPoints,
       save->experienceLo | (static_cast<uint64_t>(save->experienceHi) << 32),
       session.zen, posX, posY, session.mapId, session.skillBar,
-      session.potionBar, save->rmcSkillId);
+      session.potionBar, save->rmcSkillId, -1, &session);
 
   if (session.dead && save->life > 0) {
     // Respawn: enforce full HP and AG/mana server-side
@@ -873,7 +873,7 @@ void HandleStatAlloc(Session &session, const std::vector<uint8_t> &packet,
         static_cast<uint16_t>(std::max(session.ag, 0)),
         static_cast<uint16_t>(session.maxAg), session.levelUpPoints,
         session.experience, session.zen, posX, posY, session.mapId,
-        session.skillBar, session.potionBar, session.rmcSkillId);
+        session.skillBar, session.potionBar, session.rmcSkillId, -1, &session);
   }
 
   printf("[Character] Stat alloc: type=%d newVal=%d pts=%d maxHP=%d\n",

@@ -134,6 +134,7 @@ struct ServerData {
   uint8_t spawnGridY = 0;
   uint8_t spawnMapId = 0; // Character map from CharInfo
   bool hasSpawnPos = false;
+  uint16_t cameraZoom = 8000; // Camera zoom * 10 (from server)
 };
 
 #endif // MU_CLIENT_TYPES_HPP

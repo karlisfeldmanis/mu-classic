@@ -41,10 +41,16 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     fogParams = glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f);
   }
 
+  // Point lights: proper upload (matching hero/NPC). The static terrain
+  // lightmap (from JPEG) does NOT include fire — fire light comes only from
+  // per-pixel point lights. The depth prepass prevents fire world object
+  // meshes from rendering on top of monsters.
+  int plCount = std::min((int)m_pointLights.size(), MAX_POINT_LIGHTS);
+
   // Helper: set all per-submit uniforms and draw a mesh buffer
   auto monDrawMesh = [&](const glm::mat4 &modelMat, MeshBuffers &mb,
                          float objAlpha, float bml, const glm::vec3 &tLight,
-                         uint64_t state) {
+                         uint64_t state, const glm::vec3 &baseTint = glm::vec3(1.0f)) {
     bgfx::setTransform(glm::value_ptr(modelMat));
     if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
     else bgfx::setVertexBuffer(0, mb.vbo);
@@ -52,11 +58,16 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setTexture(0, "s_texColor", mb.texture);
     m_shader->setVec4("u_params", glm::vec4(objAlpha, bml, 0.0f, 0.0f));
     m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
     m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
-    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
     m_shader->setVec4("u_fogParams", fogParams);
     m_shader->setVec4("u_fogColor", fogColor);
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->uploadPointLights(plCount, m_pointLights.data());
     // Shadow map
     float shadowEnabled = bgfx::isValid(m_shadowMapTex) ? 1.0f : 0.0f;
     m_shader->setVec4("u_shadowParams", glm::vec4(shadowEnabled, 0.0f, 0.0f, 0.0f));
@@ -68,6 +79,8 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     bgfx::submit(0, m_shader->program);
   };
 
+  // Standard depth test (no prepass). Fire glow meshes are replaced by VFX
+  // billboard particles, so normal depth sorting handles everything.
   uint64_t normalState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
                         | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
                         | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
@@ -128,8 +141,15 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
                             m_ownSummonIndex != 0);
         if (isOwnSummon && (mon.state == MonsterState::WALKING ||
                             mon.state == MonsterState::IDLE)) {
-          // Own summon follow speed (Guardian Angel follow or server-driven)
-          animSpeed *= (CHASE_SPEED * 1.5f) / refMoveSpeed;
+          // Scale walk anim to actual movement speed (spring-damper velocity)
+          float actualSpeed = glm::length(glm::vec2(m_summonVelocity.x, m_summonVelocity.z));
+          // For server-driven WALKING, use chase speed as baseline
+          if (mon.state == MonsterState::WALKING && actualSpeed < 10.0f)
+            actualSpeed = CHASE_SPEED;
+          if (actualSpeed > 10.0f)
+            animSpeed *= actualSpeed / refMoveSpeed;
+          else
+            animSpeed *= 0.5f; // Gentle idle sway when nearly stopped
         } else if (mon.state == MonsterState::WALKING) {
           animSpeed *= WANDER_SPEED / refMoveSpeed;
         } else if (mon.state == MonsterState::CHASING) {
@@ -167,14 +187,15 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     int mappedPrior = (mon.priorAction >= 0 && mon.priorAction < 7)
                           ? mdl.actionMap[mon.priorAction]
                           : mon.priorAction;
-    std::vector<BoneWorldMatrix> bones;
+    // Reuse pre-allocated bone buffer (no heap alloc after first frame)
+    auto &bones = mon.cachedBones;
     if (mon.isBlending && mon.priorAction != -1) {
-      bones = ComputeBoneMatricesBlended(animBmd, mappedPrior,
-                                         mon.priorAnimFrame, mappedAction,
-                                         mon.animFrame, mon.blendAlpha);
+      ComputeBoneMatricesBlended(animBmd, mappedPrior,
+                                 mon.priorAnimFrame, mappedAction,
+                                 mon.animFrame, mon.blendAlpha, bones);
     } else {
-      bones =
-          ComputeBoneMatricesInterpolated(animBmd, mappedAction, mon.animFrame);
+      ComputeBoneMatricesInterpolated(animBmd, mappedAction, mon.animFrame,
+                                      bones);
     }
 
     // LockPositions: cancel root bone X/Y displacement to prevent animation
@@ -397,37 +418,6 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         }
       }
 
-      // Ghost (type 11): ambient fire along staff (body bones 31=R Hand, 34=topp)
-      // Main 5.2: Ghost has fire VFX similar to Lich, but staff is body mesh
-      if (mon.monsterType == 11 && mon.ambientVfxTimer >= 0.08f) {
-        if (31 < (int)bones.size() && 34 < (int)bones.size()) {
-          glm::mat4 modelRot = glm::mat4(1.0f);
-          modelRot =
-              glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
-          modelRot =
-              glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
-
-          glm::vec3 handLocal(bones[31][0][3], bones[31][1][3],
-                              bones[31][2][3]);
-          glm::vec3 tipLocal(bones[34][0][3], bones[34][1][3],
-                             bones[34][2][3]);
-
-          for (int i = 0; i < 2; ++i) {
-            float t = (float)(rand() % 100) / 100.0f;
-            glm::vec3 p = glm::mix(handLocal, tipLocal, t);
-            glm::vec3 scatter((float)(rand() % 10 - 5),
-                              (float)(rand() % 10 - 5),
-                              (float)(rand() % 10 - 5));
-            glm::vec3 worldPos =
-                glm::vec3(modelRot * glm::vec4(p + scatter, 1.0f));
-            glm::vec3 firePos = worldPos * mon.scale + mon.position;
-            m_vfxManager->SpawnBurst(ParticleType::FIRE, firePos, 1);
-          }
-          mon.ambientVfxTimer = 0.0f;
-        }
-      }
-
       // Gorgon (type 18): ambient fire from random bones + red terrain glow
       // Main 5.2: 10 fire particles per tick from random bones, red light (1,0.2,0)
       if (mon.monsterType == 18 && mon.ambientVfxTimer >= 0.08f) {
@@ -508,17 +498,19 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     model = glm::rotate(model, mon.facing, glm::vec3(0, 0, 1));
     model = glm::scale(model, glm::vec3(mon.scale));
 
-    // Terrain lightmap at monster position
+    // Terrain lightmap at monster position (static JPEG baseline — no fire).
+    // Fire light comes from per-pixel point lights only.
     glm::vec3 tLight = sampleTerrainLightAt(mon.position);
+    glm::vec3 monTint(1.0f); // Per-monster color tint (via u_baseTint)
     // Elite Bull Fighter (type 4): darker skin tone (Main 5.2 visual reference)
     if (mon.monsterType == 4)
       tLight *= 0.45f;
     else if (mon.monsterType == 5) // Hell Hound: darker body
       tLight *= 0.3f;
     else if (mon.monsterType == 8) // Poison Bull: green tint
-      tLight *= glm::vec3(0.5f, 0.9f, 0.5f);
+      monTint = glm::vec3(0.55f, 1.0f, 0.55f);
     else if (mon.monsterType == 11) // Ghost: spectral blue tint, darken skin
-      tLight *= glm::vec3(0.3f, 0.4f, 0.6f);
+      monTint = glm::vec3(0.5f, 0.6f, 0.9f);
 
     // Spawn fade-in (0->1 over ~0.4s)
     if (mon.spawnAlpha < 1.0f) {
@@ -569,13 +561,15 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
       bool isBlendMesh = hasBlendMesh && (mb.bmdTextureId == mdl.blendMesh);
       if (isBlendMesh) {
-        monDrawMesh(model, mb, renderAlpha, blendMeshLightVal, tLight, additiveState);
+        // Reduce additive glow light to prevent overbright near fire sources
+        glm::vec3 blendLight = tLight * 0.4f;
+        monDrawMesh(model, mb, renderAlpha, blendMeshLightVal, blendLight, additiveState, monTint);
       } else if (mb.noneBlend) {
-        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, noneBlendState);
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, noneBlendState, monTint);
       } else if (mb.bright) {
-        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, additiveState);
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight * 0.5f, additiveState, monTint);
       } else {
-        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState);
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState, monTint);
       }
     }
 
@@ -778,6 +772,74 @@ void MonsterManager::SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &ligh
   m_lightMtx = lightMtx;
 }
 
+void MonsterManager::RenderDepthPrepass(const glm::mat4 &view,
+                                         const glm::mat4 &proj,
+                                         const glm::vec3 &camPos) {
+  if (!m_shader || m_monsters.empty())
+    return;
+
+  // Depth-only state: write Z but no color. The fragment shader still runs
+  // (for alpha-test discard), but no color reaches the framebuffer.
+  uint64_t depthState = BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS;
+
+  // Frustum culling reuses the same logic as Render()
+  glm::mat4 vp = proj * view;
+  glm::vec4 frustum[6];
+  frustum[0] = glm::vec4(vp[0][3]+vp[0][0], vp[1][3]+vp[1][0], vp[2][3]+vp[2][0], vp[3][3]+vp[3][0]);
+  frustum[1] = glm::vec4(vp[0][3]-vp[0][0], vp[1][3]-vp[1][0], vp[2][3]-vp[2][0], vp[3][3]-vp[3][0]);
+  frustum[2] = glm::vec4(vp[0][3]+vp[0][1], vp[1][3]+vp[1][1], vp[2][3]+vp[2][1], vp[3][3]+vp[3][1]);
+  frustum[3] = glm::vec4(vp[0][3]-vp[0][1], vp[1][3]-vp[1][1], vp[2][3]-vp[2][1], vp[3][3]-vp[3][1]);
+  frustum[4] = glm::vec4(vp[0][3]+vp[0][2], vp[1][3]+vp[1][2], vp[2][3]+vp[2][2], vp[3][3]+vp[3][2]);
+  frustum[5] = glm::vec4(vp[0][3]-vp[0][2], vp[1][3]-vp[1][2], vp[2][3]-vp[2][2], vp[3][3]-vp[3][2]);
+  for (int i = 0; i < 6; ++i)
+    frustum[i] /= glm::length(glm::vec3(frustum[i]));
+
+  for (auto &mon : m_monsters) {
+    if (mon.cachedBones.empty()) continue;
+    if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f) continue;
+    if (mon.spawnAlpha < 0.5f) continue; // skip mostly-faded spawning monsters
+
+    auto &mdl = m_models[mon.modelIdx];
+
+    // Frustum cull
+    float cullRadius = mdl.collisionHeight * mon.scale * 2.0f;
+    glm::vec3 center = mon.position + glm::vec3(0, cullRadius * 0.4f, 0);
+    bool outside = false;
+    for (int p = 0; p < 6; ++p) {
+      if (frustum[p].x*center.x + frustum[p].y*center.y +
+          frustum[p].z*center.z + frustum[p].w < -cullRadius) {
+        outside = true; break;
+      }
+    }
+    if (outside) continue;
+
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, mon.facing, glm::vec3(0, 0, 1));
+    model = glm::scale(model, glm::vec3(mon.scale));
+
+    // Only opaque meshes (skip BlendMesh, bright/additive)
+    bool hasBlendMesh = (mdl.blendMesh >= 0);
+    for (auto &mb : mon.meshBuffers) {
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      if (mdl.hiddenMesh >= 0 && mb.bmdTextureId == mdl.hiddenMesh) continue;
+      if (hasBlendMesh && mb.bmdTextureId == mdl.blendMesh) continue;
+      if (mb.noneBlend || mb.bright) continue;
+
+      bgfx::setTransform(glm::value_ptr(model));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      m_shader->setTexture(0, "s_texColor", mb.texture);
+      // Minimal uniforms for shader alpha-test (discard)
+      m_shader->setVec4("u_params", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
+      bgfx::setState(depthState);
+      bgfx::submit(0, m_shader->program);
+    }
+  }
+}
+
 void MonsterManager::RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram) {
   if (m_monsters.empty()) return;
 
@@ -961,7 +1023,7 @@ static void renderSingleNameplate(MonsterManager *mgr, ImDrawList *dl,
       threatCol = IM_COL32(255, 60, 60, 200);
   }
 
-  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
   float nameFs = 12.0f * uiScale;
   float lvlFs = 10.0f * uiScale;
 

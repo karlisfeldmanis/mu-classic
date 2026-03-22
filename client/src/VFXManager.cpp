@@ -753,8 +753,17 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       p.alpha = 0.5f;
       break;
     }
-    case ParticleType::DUNGEON_MIST:
-      break; // Removed — not needed
+    case ParticleType::DUNGEON_MIST: {
+      // Void edge mist — massive fog billboards covering entire void area
+      float drift = 1.0f + (float)(rand() % 2);
+      p.velocity = glm::vec3(
+          std::cos(angle) * drift, 0.0f, std::sin(angle) * drift);
+      p.scale = 800.0f + (float)(rand() % 400); // 800-1200 unit billboards
+      p.maxLifetime = 12.0f + (float)(rand() % 600) / 100.0f; // 12-18s
+      p.color = glm::vec3(0.15f, 0.13f, 0.12f); // visible dark grey fog
+      p.alpha = 0.0f;
+      break;
+    }
     case ParticleType::SET_WATERFALL: {
       // Main 5.2: BITMAP_WATERFALL_2 SubType 3 — rising columnar energy stream
       // Rises upward, fades out, shrinks. Used for full armor set bonus effect.
@@ -1364,8 +1373,20 @@ void VFXManager::Update(float deltaTime) {
       p.velocity *= (1.0f - 1.5f * deltaTime);
       p.scale *= (1.0f - 0.8f * deltaTime);
       break;
-    case ParticleType::DUNGEON_MIST:
-      break; // Removed
+    case ParticleType::DUNGEON_MIST: {
+      // Void edge mist: thick fog bank blanketing terrain edge
+      p.velocity *= (1.0f - 0.15f * deltaTime);
+      p.scale *= (1.0f + 0.05f * deltaTime); // slowly expand
+      float life = 1.0f - p.lifetime / p.maxLifetime; // 0→1
+      // Quick fade in, long sustain, slow fade out
+      if (life < 0.08f)
+        p.alpha = life / 0.08f * 0.9f;
+      else if (life > 0.85f)
+        p.alpha = (1.0f - life) / 0.15f * 0.9f;
+      else
+        p.alpha = 0.9f;
+      break;
+    }
     case ParticleType::SET_WATERFALL:
       // Main 5.2: BITMAP_WATERFALL_2 — rises upward, shrinks, fades
       // Continuous upward drift, gentle deceleration, color fades exponentially
@@ -1674,6 +1695,8 @@ void VFXManager::Update(float deltaTime) {
   updateDeathStabEffects(deltaTime);
   updateDeathStabShocks(deltaTime);
   updateDeathStabSpirals(deltaTime);
+  updateBuffAuras(deltaTime);
+  updateAmbientFires(deltaTime);
 
 }
 
@@ -1791,6 +1814,7 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
   // Normal alpha blend particles
   drawBatchBgfx(ParticleType::BLOOD, m_bloodTexture, false);
   drawBatchBgfx(ParticleType::SMOKE, m_smokeTexture, false);
+  drawBatchBgfx(ParticleType::DUNGEON_MIST, m_smokeTexture, false);
   drawBatchBgfx(ParticleType::SPELL_POISON,
                 TexValid(m_smokeTexture) ? m_smokeTexture : m_flareTexture, false);
 
@@ -1879,6 +1903,169 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
   renderWeaponTrail(view, projection);
   renderDeathStabShocks(view, projection);
   renderDeathStabSpirals(view, projection);
+  renderBuffAuras(view, projection);
+}
+
+// ── Elf buff aura ribbon trails (Main 5.2: MODEL_SPEARSKILL SubType 3/4) ──
+
+void VFXManager::SetBuffAura(int type, bool active, const glm::vec3 &center) {
+  int idx = (type == 1) ? 0 : 1; // 0=defense, 1=damage
+  auto &aura = m_buffAuras[idx];
+  if (active && !aura.active) {
+    aura.active = true;
+    aura.type = type;
+    aura.center = center;
+    // Main 5.2: Defense = blue-green, Damage = orange-red
+    if (type == 1) {
+      aura.radius = 40.0f;
+      aura.trailWidth = 8.0f;
+      aura.color = glm::vec3(0.4f, 1.0f, 0.6f);
+    } else {
+      aura.radius = 35.0f;
+      aura.trailWidth = 10.0f;
+      aura.color = glm::vec3(1.0f, 0.6f, 0.2f);
+    }
+    // Initialize 5 trails with evenly distributed phases
+    for (int i = 0; i < BUFF_AURA_TRAILS; ++i) {
+      auto &trail = aura.trails[i];
+      trail.phase = (float)i * (2.0f * 3.14159f / BUFF_AURA_TRAILS);
+      trail.orbitSpeed = 2.5f + (float)(rand() % 10) * 0.1f; // 2.5-3.5 rad/s
+      trail.height = 20.0f + (float)(rand() % 120); // 20-140 initial height
+      trail.heightDir = (i % 2 == 0) ? 1.0f : -1.0f;
+      trail.numTails = 0;
+    }
+  } else if (!active) {
+    aura.active = false;
+  }
+}
+
+void VFXManager::UpdateBuffAuraCenter(int type, const glm::vec3 &center) {
+  int idx = (type == 1) ? 0 : 1;
+  auto &aura = m_buffAuras[idx];
+  if (!aura.active) return;
+  glm::vec3 delta = center - aura.center;
+  aura.center = center;
+  // Shift all tail positions so trails follow character movement
+  for (int i = 0; i < BUFF_AURA_TRAILS; ++i) {
+    for (int t = 0; t < aura.trails[i].numTails; ++t)
+      aura.trails[i].tails[t] += delta;
+  }
+}
+
+void VFXManager::SpawnWeaponSparkle(const glm::vec3 &bonePos, const glm::vec3 &color) {
+  // Main 5.2: BITMAP_SHINY+1 at weapon bone — small bright sparkle
+  SpawnBurstColored(ParticleType::BUFF_AURA, bonePos, color, 1);
+}
+
+void VFXManager::updateBuffAuras(float deltaTime) {
+  for (int idx = 0; idx < 2; ++idx) {
+    auto &aura = m_buffAuras[idx];
+    if (!aura.active) continue;
+
+    // Tick-based update (25fps like Main 5.2)
+    float tickDt = deltaTime * 25.0f;
+
+    for (int i = 0; i < BUFF_AURA_TRAILS; ++i) {
+      auto &trail = aura.trails[i];
+
+      // Advance orbit phase
+      trail.phase += trail.orbitSpeed * deltaTime;
+      if (trail.phase > 6.28318f) trail.phase -= 6.28318f;
+
+      // Oscillate height — full body coverage (feet to above head)
+      trail.height += trail.heightDir * 60.0f * deltaTime;
+      if (trail.height > 150.0f) { trail.height = 150.0f; trail.heightDir = -1.0f; }
+      if (trail.height < 10.0f) { trail.height = 10.0f; trail.heightDir = 1.0f; }
+
+      // Compute current head position
+      float ox = std::cos(trail.phase) * aura.radius;
+      float oz = -std::sin(trail.phase) * aura.radius;
+      glm::vec3 headPos = aura.center + glm::vec3(ox, trail.height, oz);
+
+      // Shift tails down and insert new head (tick-rate)
+      trail.tailAccum += tickDt;
+      while (trail.tailAccum >= 1.0f) {
+        trail.tailAccum -= 1.0f;
+        if (trail.numTails < BUFF_AURA_MAX_TAILS)
+          trail.numTails++;
+        for (int t = trail.numTails - 1; t > 0; --t)
+          trail.tails[t] = trail.tails[t - 1];
+        trail.tails[0] = headPos;
+      }
+    }
+  }
+}
+
+void VFXManager::renderBuffAuras(const glm::mat4 &view, const glm::mat4 &projection) {
+  bool anyActive = false;
+  for (int idx = 0; idx < 2; ++idx)
+    if (m_buffAuras[idx].active) anyActive = true;
+  if (!anyActive || !m_lineShader) return;
+
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
+  m_lineShader->setVec4("u_lineMode", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+
+  for (int idx = 0; idx < 2; ++idx) {
+    const auto &aura = m_buffAuras[idx];
+    if (!aura.active) continue;
+
+    // Select texture: defense=flareBlue, damage=jointSpirit
+    TexHandle tex = (aura.type == 1)
+      ? (TexValid(m_flareBlueTexture) ? m_flareBlueTexture : m_energyTexture)
+      : (TexValid(m_jointSpiritTexture) ? m_jointSpiritTexture : m_energyTexture);
+    if (!TexValid(tex)) continue;
+
+    for (int i = 0; i < BUFF_AURA_TRAILS; ++i) {
+      const auto &trail = aura.trails[i];
+      if (trail.numTails < 2) continue;
+
+      int nSegs = trail.numTails - 1;
+      std::vector<RibbonVertex> verts;
+      verts.reserve(nSegs * 12);
+
+      float hw = aura.trailWidth;
+      for (int j = 0; j < nSegs; ++j) {
+        glm::vec3 p0 = trail.tails[j];
+        glm::vec3 p1 = trail.tails[j + 1];
+
+        // Taper from head (full width) to tail (thin)
+        float L0 = (float)(trail.numTails - j) / (float)BUFF_AURA_MAX_TAILS;
+        float L1 = (float)(trail.numTails - (j + 1)) / (float)BUFF_AURA_MAX_TAILS;
+        float taper0 = 0.2f + 0.8f * L0;
+        float taper1 = 0.2f + 0.8f * L1;
+        float hw0 = hw * taper0, hw1 = hw * taper1;
+
+        // Horizontal face (XZ plane ribbon)
+        verts.push_back({p0 + glm::vec3(-hw0, 0, 0), {L0, 0.0f}});
+        verts.push_back({p0 + glm::vec3(+hw0, 0, 0), {L0, 1.0f}});
+        verts.push_back({p1 + glm::vec3(+hw1, 0, 0), {L1, 1.0f}});
+        verts.push_back({p0 + glm::vec3(-hw0, 0, 0), {L0, 0.0f}});
+        verts.push_back({p1 + glm::vec3(+hw1, 0, 0), {L1, 1.0f}});
+        verts.push_back({p1 + glm::vec3(-hw1, 0, 0), {L1, 0.0f}});
+        // Vertical face (Y axis ribbon)
+        verts.push_back({p0 + glm::vec3(0, -hw0, 0), {L0, 1.0f}});
+        verts.push_back({p0 + glm::vec3(0, +hw0, 0), {L0, 0.0f}});
+        verts.push_back({p1 + glm::vec3(0, +hw1, 0), {L1, 0.0f}});
+        verts.push_back({p0 + glm::vec3(0, -hw0, 0), {L0, 1.0f}});
+        verts.push_back({p1 + glm::vec3(0, +hw1, 0), {L1, 0.0f}});
+        verts.push_back({p1 + glm::vec3(0, -hw1, 0), {L1, 1.0f}});
+      }
+      if (verts.empty()) continue;
+
+      uint32_t nv = (uint32_t)verts.size();
+      bgfx::TransientVertexBuffer tvb;
+      if (bgfx::getAvailTransientVertexBuffer(nv, m_ribbonLayout) < nv) continue;
+      bgfx::allocTransientVertexBuffer(&tvb, nv, m_ribbonLayout);
+      memcpy(tvb.data, verts.data(), nv * sizeof(RibbonVertex));
+
+      m_lineShader->setVec4("u_lineColor", glm::vec4(aura.color, 0.7f));
+      m_lineShader->setTexture(0, "s_ribbonTex", tex);
+      bgfx::setVertexBuffer(0, &tvb);
+      bgfx::setState(state);
+      bgfx::submit(0, m_lineShader->program);
+    }
+  }
 }
 
 void VFXManager::UpdateLevelUpCenter(const glm::vec3 &position) {
@@ -2496,5 +2683,66 @@ void VFXManager::Cleanup() {
   m_twisterStorms.clear();
   m_aquaBeams.clear();
   m_infernoEffects.clear();
+  m_ambientFires.clear();
+}
+
+// ── Ambient fire billboard system ──────────────────────────────────────────
+// Replaces BlendMesh fire glow meshes on world objects. Spawns FIRE particles
+// at registered positions each frame. Particles render as additive billboards
+// AFTER monsters, so they layer naturally without clipping through 3D geometry.
+
+void VFXManager::ClearAmbientFires() {
+  // Keep existing emitters' timers but mark for re-registration.
+  // Positions are re-registered each frame from main.cpp.
+  m_ambientFires.clear();
+}
+
+void VFXManager::AddAmbientFire(const glm::vec3 &pos, float intensity) {
+  // Distance cull: skip fires far from camera (>3000 units)
+  float dx = pos.x - m_cameraPos.x;
+  float dz = pos.z - m_cameraPos.z;
+  if (dx * dx + dz * dz > 3000.0f * 3000.0f) return;
+
+  AmbientFireEmitter e;
+  e.position = pos;
+  e.intensity = intensity;
+  e.spawnTimer = 0.0f;
+  m_ambientFires.push_back(e);
+}
+
+void VFXManager::updateAmbientFires(float dt) {
+  // Spawn rate: ~6 particles/sec per intensity unit
+  const float spawnInterval = 1.0f / 6.0f;
+
+  for (auto &e : m_ambientFires) {
+    e.spawnTimer += dt * e.intensity;
+    while (e.spawnTimer >= spawnInterval) {
+      e.spawnTimer -= spawnInterval;
+
+      // Spawn a fire particle at the emitter position with some randomness
+      if (m_particles.size() >= MAX_PARTICLES) break;
+
+      Particle p;
+      p.type = ParticleType::FIRE;
+      float rx = ((float)(rand() % 40) - 20.0f); // -20..+20 horizontal spread
+      float rz = ((float)(rand() % 40) - 20.0f);
+      p.position = e.position + glm::vec3(rx, 0.0f, rz);
+
+      // Rise upward with slight drift (Main 5.2 BITMAP_FIRE style)
+      float speed = 15.0f + (float)(rand() % 20);
+      float angle = (float)(rand() % 360) * 0.01745f;
+      p.velocity = glm::vec3(std::cos(angle) * speed * 0.3f,
+                              40.0f + (float)(rand() % 30),
+                              std::sin(angle) * speed * 0.3f);
+      p.scale = (20.0f + (float)(rand() % 25)) * e.intensity;
+      p.maxLifetime = 0.35f + (float)(rand() % 20) / 100.0f;
+      p.lifetime = p.maxLifetime;
+      p.color = glm::vec3(1.0f, 0.7f, 0.25f); // Warm orange fire
+      p.alpha = 0.9f;
+      p.rotation = (float)(rand() % 360) * 0.01745f;
+      p.frame = 0.0f;
+      m_particles.push_back(p);
+    }
+  }
 }
 

@@ -29,11 +29,6 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
     return;
   }
 
-  // Only log non-spam packets (skip D7 PrecisePosition)
-  if (headcode != 0xD7)
-    printf("[PacketHandler] Received packet type: %02X, headcode: %02X, size: %zu\n",
-           type, headcode, packet.size());
-
   switch (headcode) {
   // Auth / World entry
   case Opcode::AUTH:
@@ -138,8 +133,6 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       else if (mapId == 3) { sx = 174; sy = 110; }   // Noria center
     }
     if (mapId <= 3) { // Allow maps 0-3
-      printf("[PacketHandler] Warp command: fd=%d -> map %d (%d,%d)\n",
-             session.GetFd(), mapId, sx, sy);
       server.TransitionMap(session, mapId, sx, sy);
     }
     break;
@@ -153,6 +146,15 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       QuestHandler::HandleQuestComplete(session, packet, db, server);
     else if (subcode == Opcode::SUB_QUEST_ABANDON)
       QuestHandler::HandleQuestAbandon(session, packet, db);
+    break;
+
+  // Client settings (camera zoom)
+  case Opcode::CLIENT_SETTINGS:
+    if (packet.size() >= sizeof(PMSG_CLIENT_SETTINGS)) {
+      auto *settings =
+          reinterpret_cast<const PMSG_CLIENT_SETTINGS *>(packet.data());
+      session.cameraZoom = settings->cameraZoom;
+    }
     break;
 
   default:

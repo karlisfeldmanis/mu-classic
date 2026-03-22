@@ -4,6 +4,7 @@ $input v_texcoord0, v_normal, v_fragpos
 
 SAMPLER2D(s_texColor, 0);
 SAMPLER2D(s_shadowMap, 1);
+SAMPLER2D(s_lightMap, 2);
 
 // Packed parameters: x=objectAlpha, y=blendMeshLight, z=chromeMode, w=chromeTime
 uniform vec4 u_params;
@@ -22,8 +23,9 @@ uniform vec4 u_lightColor;    // xyz = sun color
 uniform vec4 u_fogParams;
 uniform vec4 u_fogColor;
 
-// Terrain lightmap sample at object position
-uniform vec4 u_terrainLight;  // xyz = lightmap color
+// Terrain lightmap: xyz = lightmap color (per-object uniform fallback),
+// w = useLightmapTex flag (1.0 = sample from s_lightMap per-pixel)
+uniform vec4 u_terrainLight;
 // Glow color for +7/+9/+11 items
 uniform vec4 u_glowColor;
 // Base tint for +3/+5 enhancement
@@ -58,7 +60,25 @@ void main()
     vec3 norm = normalize(v_normal);
     vec3 lightDir = normalize(u_lightPos.xyz - v_fragpos);
     float diff = max(abs(dot(norm, lightDir)), 0.5); // Two-sided lighting
-    vec3 tLight = max(u_terrainLight.xyz, vec3_splat(0.30));
+    vec3 tLight;
+    if (u_terrainLight.w > 0.5) {
+        // Per-pixel lightmap sampling (world objects): smooth across meshes
+        vec2 lmUV = vec2(v_fragpos.z / 25600.0, v_fragpos.x / 25600.0);
+        vec4 lmVal = texture2D(s_lightMap, lmUV);
+        tLight = max(lmVal.rgb, vec3_splat(0.03));
+        // Cliff-face lighting for void areas: use heightFade as primary
+        // brightness when lightmap is dark (void cells have RGB near 0).
+        float terrainH = lmVal.a;
+        float heightFade = smoothstep(terrainH - 600.0, terrainH, v_fragpos.y);
+        float lmBright = max(tLight.r, max(tLight.g, tLight.b));
+        float voidBright = 0.35 + heightFade * 0.65;
+        // Blend: dark lightmap → use voidBright; bright lightmap → keep as-is
+        float voidMix = 1.0 - smoothstep(0.20, 0.45, lmBright);
+        tLight = vec3_splat(mix(lmBright, voidBright, voidMix));
+    } else {
+        // Per-object uniform (characters/monsters/NPCs)
+        tLight = max(u_terrainLight.xyz, vec3_splat(0.30));
+    }
     vec3 sunLit = diff * u_lightColor.xyz * tLight;
 
     // Shadow map: subtly darken sun contribution in shadowed areas
@@ -121,7 +141,8 @@ void main()
     }
 
     vec4 texColor = texture2D(s_texColor, finalUV);
-    if (texColor.a < 0.1) discard;
+    float alphaRef = max(u_params2.y, 0.01);
+    if (texColor.a < alphaRef) discard;
 
     // Item glow: additive enhancement pass
     vec3 glowC = u_glowColor.xyz;
@@ -156,5 +177,13 @@ void main()
         float edgeFactor = computeEdgeFog(v_fragpos);
         float edgeBlend = mix(0.75, 1.0, edgeFactor);
         gl_FragColor.xyz = gl_FragColor.xyz * edgeBlend;
+    }
+
+    // Cliff bottom fade: darken to black (matches void)
+    float cliffFade = u_params2.z;
+    if (cliffFade > 0.5) {
+        float cliffTopH = u_params2.w;
+        float fadeFactor = smoothstep(cliffTopH - 500.0, cliffTopH - 200.0, v_fragpos.y);
+        gl_FragColor.rgb *= fadeFactor;
     }
 }

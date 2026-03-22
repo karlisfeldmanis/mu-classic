@@ -53,6 +53,14 @@ struct CharacterData {
   int16_t potionBar[3];
   int8_t rmcSkillId = -1;
   int16_t summonType = -1; // -1 = no active summon
+  uint16_t cameraZoom = 8000; // Zoom * 10 (default 800.0)
+  // Elf buff aura persistence
+  uint8_t buffDefType = 0;    // 0=inactive, 1=defense
+  float buffDefRemaining = 0; // Seconds left
+  int buffDefValue = 0;
+  uint8_t buffDmgType = 0;    // 0=inactive, 2=damage
+  float buffDmgRemaining = 0;
+  int buffDmgValue = 0;
 };
 
 // Equipment slot constants (matching original MU inventory layout)
@@ -133,6 +141,7 @@ public:
   bool DeleteCharacter(int accountId, int charId);
 
   void UpdatePosition(int charId, uint8_t x, uint8_t y, int mapId = -1);
+  void UpdateCameraZoom(int charId, uint16_t zoom);
   void UpdateCharacterStats(int charId, uint16_t level, uint16_t strength,
                             uint16_t dexterity, uint16_t vitality,
                             uint16_t energy, uint16_t life, uint16_t maxLife,
@@ -148,7 +157,8 @@ public:
                          uint32_t money, uint8_t posX, uint8_t posY,
                          uint8_t mapId, const int8_t *skillBar,
                          const int16_t *potionBar, int8_t rmcSkillId,
-                         int16_t summonType = -1);
+                         int16_t summonType = -1,
+                         const struct Session *session = nullptr);
   void CreateDefaultAccount();
 
   // NPC spawns

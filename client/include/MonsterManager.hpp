@@ -43,6 +43,7 @@ struct ServerMonsterSpawn {
   int hp = 30;
   int maxHp = 30;
   uint8_t state = 0;
+  uint8_t level = 0;
 };
 
 struct MonsterInfo {
@@ -66,11 +67,13 @@ public:
   void InitModels(const std::string &dataPath);
   void AddMonster(uint16_t monsterType, uint8_t gridX, uint8_t gridY,
                   uint8_t dir, uint16_t serverIndex = 0, int hp = 30,
-                  int maxHp = 30, uint8_t state = 0);
+                  int maxHp = 30, uint8_t state = 0, int level = 0);
 
   void Update(float deltaTime);
   void Render(const glm::mat4 &view, const glm::mat4 &proj,
               const glm::vec3 &camPos, float deltaTime);
+  void RenderDepthPrepass(const glm::mat4 &view, const glm::mat4 &proj,
+                          const glm::vec3 &camPos);
   void RenderShadows(const glm::mat4 &view, const glm::mat4 &proj);
   void RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram);
   void SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx);
@@ -113,10 +116,13 @@ public:
                   float speed = 1500.0f);
 
   // Player position/facing for cosmetic facing during CHASING/ATTACKING states
-  void SetPlayerPosition(const glm::vec3 &pos) { m_playerPos = pos; }
+  void SetPlayerPosition(const glm::vec3 &pos) { m_prevPlayerPos = m_playerPos; m_playerPos = pos; }
   void SetPlayerFacing(float facing) { m_playerFacing = facing; }
   void SetPlayerDead(bool dead) { m_playerDead = dead; }
   void SetPlayerInSafeZone(bool safe) { m_playerInSafeZone = safe; }
+  void SetPlayerMoveTarget(const glm::vec3 &target, bool moving) {
+    m_playerMoveTarget = target; m_playerIsMoving = moving;
+  }
   // Main 5.2: PushingCharacter — apply StormTime spin stun (Twister hit)
   void ApplyStormTime(uint16_t serverIndex, int ticks = 10);
 
@@ -126,6 +132,14 @@ public:
   bool IsSummon(uint16_t serverIndex) const;
   bool IsOwnSummon(int monsterLocalIndex) const;
   bool HasOwnSummon() const { return m_ownSummonIndex != 0; }
+  // Get own summon's info (for HUD display). Returns false if no own summon.
+  bool GetOwnSummonInfo(MonsterInfo &out) const {
+    if (m_ownSummonIndex == 0) return false;
+    int idx = FindByServerIndex(m_ownSummonIndex);
+    if (idx < 0) return false;
+    out = GetMonsterInfo(idx);
+    return out.state != MonsterState::DEAD && out.state != MonsterState::DYING;
+  }
 
   // Face one monster toward another (used for summon attack animations)
   void FaceTarget(int attackerIdx, int targetIdx);
@@ -217,12 +231,14 @@ private:
         0.0f; // Per-instance scale override (0=use model default)
     bool deathSmokeDone = false;  // Giant death smoke burst (one-shot)
     float ambientVfxTimer = 0.0f; // Throttle for ambient VFX (smoke, etc.)
+    float lastIdleSoundTime = -10.0f; // Cooldown: time of last idle sound play
 
     // Main 5.2: StormTime — spinning stun from Twister hit
     // Angle[2] += StormTime*10 each tick, StormTime-- (10→0 over 0.4s)
     int stormTime = 0;
     float stormTickTimer = 0.0f;
 
+    int level = 0;         // Server-authoritative level (from viewport packet)
     int levelOverride = 0; // Scaled level from server (summons); 0 = use model default
 
     // Blending state (cross-fade on stop)
@@ -238,6 +254,10 @@ private:
 
     // Attack target (local index) — set by FaceTarget for summon attack facing
     int attackTargetLocalIdx = -1;
+
+    // Deferred attack: when server sends attack while still mid-spline,
+    // queue it and play when chase walk finishes (smooth approach).
+    bool pendingAttack = false;
 
     // A* path following with Catmull-Rom spline smoothing
     std::vector<glm::vec3> splinePoints; // World-space waypoints from A* path
@@ -347,8 +367,12 @@ private:
 
   // Player position/facing for cosmetic facing (not used for AI — server-side)
   glm::vec3 m_playerPos{0.0f};
+  glm::vec3 m_prevPlayerPos{0.0f};   // Previous frame position for velocity calc
+  glm::vec3 m_summonVelocity{0.0f};  // Spring-damper velocity for summon follow
+  glm::vec3 m_playerMoveTarget{0.0f}; // Click-to-move destination for predictive follow
   float m_playerFacing = 0.0f;
   bool m_playerDead = false;
+  bool m_playerIsMoving = false;       // Player actively pathing to move target
   bool m_playerInSafeZone = false;
 
   int m_boneModelIdx = -1;
@@ -361,6 +385,7 @@ private:
                        const std::string &texDirOverride = "");
   float snapToTerrain(float worldX, float worldZ);
   glm::vec3 sampleTerrainLightAt(const glm::vec3 &worldPos) const;
+  void playIdleSound(MonsterInstance &mon);
   void updateStateMachine(MonsterInstance &mon, float dt);
 
   void spawnDebris(int modelIdx, const glm::vec3 &pos, int count);

@@ -101,16 +101,10 @@ TerrainData TerrainParser::LoadWorld(int world_id,
 
         result.lightmap[idx] *= luminosity;
 
-        // Prevent pitch-black cells at steep terrain edges (water/cliff drops).
-        // Original per-vertex lighting has min 0.2 (IntensityTransform floor),
-        // but BodyLight can still be near-zero from dark lightmap JPEG pixels.
-        // Floor ensures objects and terrain at water edges remain visible.
-        // Skip for void cells (TW_NOGROUND) — they should stay dark per the
-        // pre-baked lightmap JPEG (Main 5.2 void edge rendering).
-        bool isVoid = !result.mapping.attributes.empty() &&
-                      (result.mapping.attributes[idx] & 0x08) != 0;
-        if (!isVoid)
-          result.lightmap[idx] = glm::max(result.lightmap[idx], glm::vec3(0.30f));
+        // No minimum clamp here — Main 5.2 has no per-cell lightmap floor.
+        // Terrain::Load() applies a void-distance-aware floor to prevent
+        // pitch-black walkable terrain far from voids while preserving
+        // the natural pre-baked darkness at cliff edges.
       }
     }
     std::cout << "[TerrainParser] Applied directional sun lighting (sunDir="

@@ -9,15 +9,15 @@
 #include <string>
 #include <vector>
 
-// ─── Shared constants (inline constexpr — safe in headers) ──────────────────
+// ─── Shared constants ────────────────────────────────────────────────────────
 
-inline constexpr float g_uiPanelScale = 1.5f;
+inline float g_uiPanelScale = 1.5f; // constant panel scale in virtual coords
 inline constexpr float BASE_PANEL_W = 190.0f;
 inline constexpr float BASE_PANEL_H = 429.0f;
-inline constexpr float PANEL_W = BASE_PANEL_W * g_uiPanelScale;
-inline constexpr float PANEL_H = BASE_PANEL_H * g_uiPanelScale;
 inline constexpr float PANEL_Y = 20.0f;
-inline constexpr float PANEL_X_RIGHT = 1270.0f - PANEL_W;
+inline float PanelW()      { return BASE_PANEL_W * g_uiPanelScale; }
+inline float PanelH()      { return BASE_PANEL_H * g_uiPanelScale; }
+inline float PanelXRight() { return 1270.0f - PanelW(); }
 
 inline constexpr int SKILL_ICON_COLS = 25;
 inline constexpr float SKILL_ICON_W = 20.0f;

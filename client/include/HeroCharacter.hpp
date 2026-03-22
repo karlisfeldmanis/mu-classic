@@ -231,6 +231,7 @@ public:
   int weaponIdleAction() const;
   int defaultIdleAction() const;  // CLASS_ELF → STOP_FEMALE, others → STOP_MALE
   int defaultWalkAction() const;  // CLASS_ELF → WALK_FEMALE, others → WALK_MALE
+  float idlePlaySpeed(int action) const; // Main 5.2 ZzzOpenData.cpp per-weapon idle speed
   void SetSlowAnimDuration(float d) { m_slowAnimDuration = d; }
 
   // Ground item pickup logic
@@ -271,6 +272,7 @@ public:
 
   // Accessors
   glm::vec3 GetPosition() const { return m_pos; }
+  glm::vec3 GetMoveTarget() const { return m_target; }
   void SetPosition(const glm::vec3 &pos) { m_pos = pos; }
   float GetFacing() const { return m_facing; }
   bool IsMoving() const { return m_moving; }
@@ -317,6 +319,7 @@ private:
   // Animation
   int m_action = 1; // PLAYER_STOP1 (male idle)
   float m_animFrame = 0.0f;
+  bool m_idleReversing = false; // Ping-pong: true = playing backward
   static constexpr float ANIM_SPEED = 8.25f;
   int m_rootBone = -1;
   bool m_foot[2] = {false, false}; // Main 5.2: c->Foot[0/1] for walk sound
@@ -326,7 +329,7 @@ private:
   float m_priorAnimFrame = 0.0f;
   float m_blendAlpha = 1.0f;
   bool m_isBlending = false;
-  static constexpr float BLEND_DURATION = 0.12f; // seconds
+  static constexpr float BLEND_DURATION = 0.25f; // seconds (Main 5.2: ~2 frames)
 
   // ── Weapon-specific idle/walk actions (_enum.h) ──
   static constexpr int ACTION_STOP_SWORD = 4;
@@ -604,6 +607,7 @@ private:
     float followDelay = 0.0f;      // Reaction delay before chasing (seconds)
     bool wasOwnerMoving = false;    // Previous frame owner movement state
     float idleTime = 0.0f;          // Time spent idle (seconds) — gates wander
+    float modelRadius = 50.0f;      // Bounding sphere radius (scaled) — drives follow distances
   };
   PetCompanion m_pet;
 
@@ -681,7 +685,9 @@ private:
   // Elf buff aura VFX state (Main 5.2: eBuff_Defense / eBuff_Attack)
   bool m_buffDefenseActive = false;
   bool m_buffDamageActive = false;
-  float m_buffAuraTimer = 0.0f; // Orbiting particle spawn accumulator
+  bool m_prevBuffDefense = false;  // Edge detection for SetBuffAura calls
+  bool m_prevBuffDamage = false;
+  float m_buffAuraTimer = 0.0f; // Weapon sparkle spawn accumulator
 };
 
 #endif // HERO_CHARACTER_HPP

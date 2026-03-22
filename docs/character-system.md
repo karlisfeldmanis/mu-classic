@@ -32,10 +32,20 @@ Enum values map **1:1 to BMD action indices**. No offset needed. `MAX_PLAYER_ACT
 | Action | PlaySpeed | Keys/sec |
 |--------|-----------|----------|
 | Idle (STOP_MALE) | 0.28 | 7.0 |
+| Idle (STOP_SWORD) | 0.26 | 6.5 |
+| Idle (STOP_TWO_HAND_SWORD) | 0.24 | 6.0 |
+| Idle (STOP_SPEAR/SCYTHE) | 0.24 | 6.0 |
+| Idle (STOP_BOW/CROSSBOW) | 0.22 | 5.5 |
+| Idle (STOP_WAND) | 0.30 | 7.5 |
+| Idle (STOP_FEMALE) | 0.20 | 5.0 |
 | Walk (WALK_MALE) | 0.30 | 7.5 |
 | Combat (attacks) | 0.32 | 8.0 |
 | Shock | 0.40 | 10.0 |
 | Die | 0.45 | 11.25 |
+
+### Idle Animation Ping-Pong
+
+Idle animations use **ping-pong** (forward then backward) playback to eliminate the visible seam/pop when looping. The animation plays forward to the last keyframe, then reverses back to frame 0, creating a smooth breathing cycle. Non-idle animations use standard wrap-around looping.
 
 ### Weapon-Specific Idle/Walk Actions
 

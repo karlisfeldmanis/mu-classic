@@ -690,7 +690,8 @@ static void InitSlotMeshes(int slot) {
         // Main 5.2: Wing05/06 (biped, >60 bones) use standard RENDER_TEXTURE —
         // no additive blending. Only standalone JPEG wings (01-04) need additive
         // to hide black backgrounds. TGA wings (Wing07) have proper alpha.
-        bool isBipedWingModel = ((int)bmd->Bones.size() > 60);
+        bool isBipedWingModel =
+            ((int)bmd->Bones.size() > MuMath::PLAYER_BONE_COUNT);
         if (!isBipedWingModel) {
           for (auto &mb : s_slotRender[slot].wingMeshes) {
             if (!mb.hasAlpha)
@@ -719,14 +720,15 @@ static void ReskinAttachedItem(const std::vector<BoneWorldMatrix> &charBones,
                                std::vector<MeshBuffers> &meshBuffers,
                                const glm::vec3 &rotDeg,
                                const glm::vec3 &offset) {
-  static constexpr int BONE_BACK = 47;
-  if (!bmd || meshBuffers.empty() || BONE_BACK >= (int)charBones.size())
+  if (!bmd || meshBuffers.empty() ||
+      MuMath::BONE_BACK >= (int)charBones.size())
     return;
 
   BoneWorldMatrix offsetMat =
       MuMath::BuildWeaponOffsetMatrix(rotDeg, offset);
   BoneWorldMatrix parentMat;
-  MuMath::ConcatTransforms((const float(*)[4])charBones[BONE_BACK].data(),
+  MuMath::ConcatTransforms(
+      (const float(*)[4])charBones[MuMath::BONE_BACK].data(),
                            (const float(*)[4])offsetMat.data(),
                            (float(*)[4])parentMat.data());
 
@@ -844,43 +846,45 @@ static void ReskinSlot(int slot) {
     }
   }
 
-  // Re-skin weapon on back: rotation(70,0,90) + offset(-20,5,40)
-  ReskinAttachedItem(bones, s_slotRender[slot].weaponBmd.get(),
-                     s_slotRender[slot].weaponLocalBones,
-                     s_slotRender[slot].weaponMeshes,
-                     glm::vec3(70.f, 0.f, 90.f), glm::vec3(-20.f, 5.f, 40.f));
+  // Re-skin weapon on back (shared crossbow offset logic with in-game renderer)
+  {
+    auto &rh = s_slots[slot].equip[0];
+    glm::vec3 wRot, wOff;
+    MuMath::GetWeaponBackOffsets(rh.category, rh.itemIndex, wRot, wOff);
+    ReskinAttachedItem(bones, s_slotRender[slot].weaponBmd.get(),
+                       s_slotRender[slot].weaponLocalBones,
+                       s_slotRender[slot].weaponMeshes, wRot, wOff);
+  }
 
-  // Re-skin shield on back: rotation(70,0,90) + offset(-10,0,0)
-  ReskinAttachedItem(bones, s_slotRender[slot].shieldBmd.get(),
-                     s_slotRender[slot].shieldLocalBones,
-                     s_slotRender[slot].shieldMeshes,
-                     glm::vec3(70.f, 0.f, 90.f), glm::vec3(-10.f, 0.f, 0.f));
+  // Re-skin shield on back (shared offsets with in-game renderer)
+  {
+    glm::vec3 sRot, sOff;
+    MuMath::GetShieldBackOffsets(false, false, sRot, sOff);
+    ReskinAttachedItem(bones, s_slotRender[slot].shieldBmd.get(),
+                       s_slotRender[slot].shieldLocalBones,
+                       s_slotRender[slot].shieldMeshes, sRot, sOff);
+  }
 
   // Re-skin wings — biped wings (05/06, >60 bones) use player bones directly,
   // standalone wings (01-04, 07) attach to bone 47 with offset.
   if (s_slotRender[slot].wingBmd && !s_slotRender[slot].wingMeshes.empty()) {
     auto *wingBmd = s_slotRender[slot].wingBmd.get();
     float wingFrame = s_slotRender[slot].wingAnimFrame;
-    static constexpr int PLAYER_BONE_COUNT = 60;
-    bool isBipedWing = ((int)wingBmd->Bones.size() > PLAYER_BONE_COUNT);
+    bool isBipedWing =
+        ((int)wingBmd->Bones.size() > MuMath::PLAYER_BONE_COUNT);
 
     if (isBipedWing) {
       // Hybrid bone approach: biped wing BMDs (75-80 bones) share the player
       // skeleton layout for bones 0-59 and add wing-specific bones at 60+.
-      // Bones 0-59: use player's animated bones (prevents body clipping).
-      // Bones 60+: compute from wing BMD's own animation, parented to the
-      // appropriate bone in wingBones (player bone if parent < 60).
       int wingBoneCount = (int)wingBmd->Bones.size();
       std::vector<BoneWorldMatrix> wingBones(wingBoneCount);
 
-      // Copy player bones for body range (0-59)
-      int copyCount = std::min(PLAYER_BONE_COUNT, wingBoneCount);
+      int copyCount = std::min(MuMath::PLAYER_BONE_COUNT, wingBoneCount);
       for (int bi = 0; bi < copyCount && bi < (int)bones.size(); ++bi) {
         wingBones[bi] = bones[bi];
       }
 
-      // Compute wing-specific bones (60+) from wing animation
-      for (int bi = PLAYER_BONE_COUNT; bi < wingBoneCount; ++bi) {
+      for (int bi = MuMath::PLAYER_BONE_COUNT; bi < wingBoneCount; ++bi) {
         glm::vec3 pos;
         glm::vec4 q;
         if (!GetInterpolatedBoneData(wingBmd, 0, wingFrame, bi, pos, q))
@@ -917,7 +921,7 @@ static void ReskinSlot(int slot) {
       }
       ReskinAttachedItem(bones, wingBmd, localBones,
                          s_slotRender[slot].wingMeshes,
-                         glm::vec3(0.f, 0.f, 0.f), glm::vec3(0.f, 0.f, 15.f));
+                         glm::vec3(0.f, 0.f, 0.f), MuMath::WING_BACK_OFFSET);
     }
   }
 }
@@ -2057,6 +2061,22 @@ void Render(int windowWidth, int windowHeight) {
     if (ImGui::Button("Delete", ImVec2(btnW, btnH))) {
       SoundManager::Play(SOUND_CLICK01);
       s_deleteConfirm = true;
+    }
+    ImGui::End();
+  }
+
+  // Center button: [Fullscreen / Windowed]
+  {
+    bool isFull = glfwGetWindowMonitor(s_ctx.window) != nullptr;
+    const char *fsLabel = isFull ? "Windowed" : "Full Screen";
+    float fsBtnW = 110;
+    float fsX = (windowWidth - fsBtnW) * 0.5f - 10;
+    ImGui::SetNextWindowPos(ImVec2(fsX, btnY - 5));
+    ImGui::SetNextWindowSize(ImVec2(fsBtnW + 20, btnH + 10));
+    ImGui::Begin("##CSBtnFS", nullptr, kBtnFlags);
+    if (ImGui::Button(fsLabel, ImVec2(fsBtnW, btnH))) {
+      SoundManager::Play(SOUND_CLICK01);
+      if (s_ctx.onToggleFullscreen) s_ctx.onToggleFullscreen();
     }
     ImGui::End();
   }

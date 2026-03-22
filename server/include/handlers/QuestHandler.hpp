@@ -29,7 +29,7 @@ void HandleQuestAbandon(Session &session, const std::vector<uint8_t> &packet,
                         Database &db);
 
 // Called by CombatHandler when a monster is killed
-void OnMonsterKill(Session &session, uint16_t monsterType, Database &db);
+void OnMonsterKill(Session &session, uint16_t monsterType, bool isSummon, Database &db);
 
 } // namespace QuestHandler
 

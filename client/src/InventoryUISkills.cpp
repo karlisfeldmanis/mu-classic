@@ -246,10 +246,10 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
             IM_COL32(140, 115, 60, 200), // frame: gold
             hpLabel);
 
-    // "HP" label above orb
+    // "HP" label inside orb (upper portion)
     ImVec2 hpsz = ImGui::CalcTextSize("HP");
     float hlx = orbSX - hpsz.x * 0.5f;
-    float hly = orbSY - orbSR - hpsz.y - 3.0f;
+    float hly = orbSY - hpsz.y * 0.5f - orbSR * 0.3f;
     dl->AddText(ImVec2(hlx + 1, hly + 1), IM_COL32(0, 0, 0, 200), "HP");
     dl->AddText(ImVec2(hlx, hly), IM_COL32(200, 80, 80, 200), "HP");
   }
@@ -287,10 +287,10 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
             IM_COL32(140, 115, 60, 200), // frame: gold
             resLabel);
 
-    // Resource name above orb
+    // Resource name inside orb (upper portion)
     ImVec2 nsz = ImGui::CalcTextSize(resName);
     float nlx = orbSX - nsz.x * 0.5f;
-    float nly = orbSY - orbSR - nsz.y - 3.0f;
+    float nly = orbSY - nsz.y * 0.5f - orbSR * 0.3f;
     dl->AddText(ImVec2(nlx + 1, nly + 1), IM_COL32(0, 0, 0, 200), resName);
     ImU32 nameCol =
         isDK ? IM_COL32(230, 170, 50, 200) : IM_COL32(80, 120, 220, 200);

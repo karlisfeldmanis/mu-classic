@@ -10,8 +10,9 @@ SAMPLER2D(s_attributeMap, 4);
 SAMPLER2D(s_symmetryMap, 5);
 SAMPLER2D(s_lightMap, 6);
 SAMPLER2D(s_shadowMap, 7);
+SAMPLER2D(s_voidDistMap, 8);
 
-// u_terrainParams: x=uTime, y=debugMode, z=luminosity, w=unused
+// u_terrainParams: x=uTime, y=debugMode, z=luminosity, w=passType (0=terrain, 1=cliff, -1=minimap)
 uniform vec4 u_terrainParams;
 
 // Shadow mapping
@@ -38,8 +39,8 @@ vec2 applySymmetry(vec2 uv, uint symmetry) {
 }
 
 float computeEdgeFog(vec3 worldPos) {
-    float edgeWidth = 1200.0;   // Narrower fade band (was 2500)
-    float edgeMargin = 300.0;   // Start darkening closer to edge
+    float edgeWidth = 600.0;    // Short fade band — only darken very close to edge
+    float edgeMargin = 100.0;   // Start darkening almost at the edge
     float terrainMax = 25600.0;
     float dEdge = min(min(worldPos.x, terrainMax - worldPos.x),
                       min(worldPos.z, terrainMax - worldPos.z));
@@ -222,6 +223,11 @@ void main()
     float fogHeightFade = u_fogParams.w;
     vec3 viewPos = u_viewPos.xyz;
 
+    // Minimap pass
+    if (u_terrainParams.w < -0.5) {
+        // Minimap: simplified rendering (no fog/shadow)
+    }
+
     vec2 uvBase = v_texcoord0 * 256.0;
 
     // Smooth alpha sampling
@@ -233,7 +239,8 @@ void main()
     vec3 finalColor = mix(l1.rgb, l2.rgb, alpha * l2.a);
 
     // Apply lightmap and day/night luminosity
-    vec3 lightColor = texture2D(s_lightMap, v_texcoord0).rgb;
+    vec4 lmVal = texture2D(s_lightMap, v_texcoord0);
+    vec3 lightColor = lmVal.rgb;
     finalColor *= lightColor * v_color0.rgb * luminosity;
 
     // Shadow map: darken terrain in shadowed areas
@@ -269,9 +276,9 @@ void main()
     float fogFactor = distFog * (1.0 - heightMist * mistBuild * 0.55);
     finalColor = mix(fogColor * luminosity, finalColor, fogFactor);
 
-    // Edge fog: dark mist at map boundaries (blends to black at very edge)
+    // Edge fog: subtle darkening at map boundaries
     float edgeFactor = computeEdgeFog(v_fragpos);
-    finalColor *= mix(0.05, 1.0, edgeFactor);
+    finalColor *= mix(0.30, 1.0, edgeFactor);
 
     gl_FragColor = vec4(finalColor, 1.0);
 }

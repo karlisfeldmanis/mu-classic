@@ -65,6 +65,13 @@ void ServerConnection::SendWarpCommand(uint8_t mapId, uint8_t spawnX,
   m_client.Send(&pkt, sizeof(pkt));
 }
 
+void ServerConnection::SendCameraZoom(uint16_t zoomTimes10) {
+  PMSG_CLIENT_SETTINGS pkt{};
+  pkt.h = MakeC1Header(sizeof(pkt), Opcode::CLIENT_SETTINGS);
+  pkt.cameraZoom = zoomTimes10;
+  m_client.Send(&pkt, sizeof(pkt));
+}
+
 void ServerConnection::SendPickup(uint16_t dropIndex) {
   PMSG_PICKUP_RECV pkt{};
   pkt.h = MakeC1Header(sizeof(pkt), Opcode::PICKUP);

@@ -89,6 +89,19 @@ void HandlePrecisePosition(Session &session,
       session.Send(v2pkt.data(), v2pkt.size());
     printf("[PrecisePos] Viewport sent on client ready: %zu NPCs, %zu monsters\n",
            world.GetNpcs().size(), world.GetMonsterInstances().size());
+
+    // Re-send SUMMON_SPAWN after viewport so client can mark the summon.
+    // The original SUMMON_SPAWN arrived before ClearMonsters() wiped tracking.
+    if (session.activeSummonIndex > 0 && session.activeSummonType >= 0) {
+      PMSG_SUMMON_SPAWN_SEND spkt{};
+      spkt.h = MakeC1Header(sizeof(spkt), Opcode::SUMMON_SPAWN);
+      spkt.monsterIndex = session.activeSummonIndex;
+      spkt.ownerCharId = session.characterId;
+      spkt.level = session.level;
+      session.Send(&spkt, sizeof(spkt));
+      printf("[PrecisePos] Re-sent SUMMON_SPAWN index=%d for fd=%d\n",
+             session.activeSummonIndex, session.GetFd());
+    }
   }
 }
 

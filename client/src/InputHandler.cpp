@@ -195,7 +195,7 @@ static void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
     GLFWcursor *cursor = s_cursorDefault;
     if (s_gameReady && !mouseOverUI) {
       if (*s_ctx->hoveredMonster >= 0 && s_ctx->monsterMgr &&
-          !s_ctx->monsterMgr->IsSummon(s_ctx->monsterMgr->GetServerIndex(*s_ctx->hoveredMonster))) {
+          !s_ctx->monsterMgr->IsOwnSummon(*s_ctx->hoveredMonster)) {
         cursor = s_cursorAttack;
       } else if (*s_ctx->hoveredNpc >= 0) {
         cursor = s_cursorTalk;
@@ -233,7 +233,12 @@ static void scroll_callback(GLFWwindow *window, double xoffset,
   if (SystemMessageLog::HandleScroll((float)mx, (float)my, (float)yoffset))
     return;
 
-  s_ctx->camera->ProcessMouseScroll(yoffset);
+  if (s_gameReady) {
+    s_ctx->camera->ProcessMouseScroll(yoffset);
+    // Persist zoom to server
+    uint16_t z = static_cast<uint16_t>(s_ctx->camera->GetZoom() * 10.0f);
+    s_ctx->server->SendCameraZoom(z);
+  }
 }
 
 static void HandlePickupClick(GLFWwindow *window, double mx, double my) {

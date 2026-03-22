@@ -136,6 +136,13 @@ public:
   // Elf buff cast flash — colored expanding ground circle (Main 5.2: BITMAP_MAGIC+1)
   void SpawnBuffCastFlash(const glm::vec3 &position, const glm::vec3 &color);
 
+  // Elf buff aura ribbon trails (Main 5.2: MODEL_SPEARSKILL SubType 3/4)
+  void SetBuffAura(int type, bool active, const glm::vec3 &center); // type: 1=defense, 2=damage
+  void UpdateBuffAuraCenter(int type, const glm::vec3 &center);
+
+  // Weapon sparkles for Damage buff (Main 5.2: BITMAP_SHINY+1 at weapon bones)
+  void SpawnWeaponSparkle(const glm::vec3 &bonePos, const glm::vec3 &color);
+
   // Main 5.2: MODEL_SKILL_FURY_STRIKE — Rageful Blow ground VFX (EarthQuake cracks)
   void SpawnRagefulBlow(const glm::vec3 &casterPos, float facing);
 
@@ -148,6 +155,12 @@ public:
 
   // Camera shake magnitude (applied by main.cpp each frame)
   float GetCameraShake() const { return m_cameraShake; }
+
+  // Ambient fire billboard system — replaces BlendMesh fire glow meshes.
+  // Main.cpp registers fire positions each frame; VFX spawns particles.
+  void ClearAmbientFires();
+  void AddAmbientFire(const glm::vec3 &pos, float intensity);
+  void SetCameraPos(const glm::vec3 &pos) { m_cameraPos = pos; }
 
   // Kill all active aqua beams (called when casting animation ends)
   void KillAquaBeams();
@@ -263,6 +276,30 @@ private:
     float lifetime;
     float maxLifetime;
     glm::vec3 color;
+  };
+
+  // Main 5.2: Elf buff aura — 5 orbiting ribbon trails per buff
+  // Defense (eBuff_Defense): blue-green (flareBlue.OZJ), orbital motion
+  // Damage (eBuff_Attack): orange-red (JointSpirit01.OZJ), swirling upward
+  static constexpr int BUFF_AURA_TRAILS = 5;
+  static constexpr int BUFF_AURA_MAX_TAILS = 30;
+  struct BuffAuraTrail {
+    float phase;      // Orbit phase angle (radians)
+    float orbitSpeed; // Orbit angular velocity (radians/sec)
+    float height;     // Current height offset
+    float heightDir;  // Oscillation direction (+1/-1)
+    float tailAccum = 0.0f; // Fractional tick accumulator for tail insertion
+    int numTails;
+    glm::vec3 tails[BUFF_AURA_MAX_TAILS];
+  };
+  struct BuffAura {
+    bool active = false;
+    int type;           // 1=defense, 2=damage
+    glm::vec3 center;   // Follows character position
+    float radius;       // Orbit radius
+    float trailWidth;   // Half-width of ribbon
+    glm::vec3 color;    // Tint color
+    BuffAuraTrail trails[BUFF_AURA_TRAILS];
   };
 
   // Main 5.2: Level-up orbiting flare effect (ZzzEffectJoint.cpp)
@@ -583,6 +620,7 @@ private:
   std::vector<Ribbon> m_ribbons;
   std::vector<GroundCircle> m_groundCircles;
   std::vector<LevelUpEffect> m_levelUpEffects;
+  BuffAura m_buffAuras[2]; // [0]=defense (type 1), [1]=damage (type 2)
   std::vector<SpellProjectile> m_spellProjectiles;
   std::vector<LightningBolt> m_lightningBolts;
   std::vector<MeteorBolt> m_meteorBolts;
@@ -607,6 +645,16 @@ private:
 
   // Per-frame hero bone world positions (for bone-attached particles)
   std::vector<glm::vec3> m_heroBoneWorldPositions;
+
+  // Ambient fire billboard emitters (replaces BlendMesh fire glow meshes)
+  struct AmbientFireEmitter {
+    glm::vec3 position;
+    float spawnTimer = 0.0f;
+    float intensity = 1.0f; // particle count/size multiplier
+  };
+  std::vector<AmbientFireEmitter> m_ambientFires;
+  glm::vec3 m_cameraPos{0.0f};
+  void updateAmbientFires(float dt);
 
   // Dungeon ground mist state
   // Textures
@@ -714,6 +762,8 @@ private:
   void renderRibbons(const glm::mat4 &view, const glm::mat4 &projection);
   void renderGroundCircles(const glm::mat4 &view, const glm::mat4 &projection);
   void renderLevelUpEffects(const glm::mat4 &view, const glm::mat4 &projection);
+  void updateBuffAuras(float deltaTime);
+  void renderBuffAuras(const glm::mat4 &view, const glm::mat4 &projection);
   void updateSpellProjectiles(float dt);
   void renderSpellProjectiles(const glm::mat4 &view,
                               const glm::mat4 &projection);

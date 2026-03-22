@@ -42,11 +42,20 @@ public:
   // Physics helper
   float GetHeight(float x, float y);
 
+  // World positions of cells adjacent to void (for mist spawning)
+  const std::vector<glm::vec3> &GetVoidEdgePositions() const { return m_voidEdgePositions; }
+
+  // GPU lightmap texture handle (for per-pixel lighting on world objects)
+  TexHandle GetLightmapTexture() const { return lightmapTex; }
+
 private:
   void setupMesh(const std::vector<float> &heightmap,
                  const std::vector<glm::vec3> &lightmap,
                  const std::vector<uint8_t> &rawAttributes,
-                 const std::vector<bool> &bridgeMask = {});
+                 const std::vector<bool> &bridgeMask = {},
+                 const std::vector<float> &voidDist = {},
+                 const std::vector<float> &terrainDist = {},
+                 const std::vector<float> &bridgeDist = {});
   void setupTextures(const TerrainData &data, const std::string &base_path);
   void applyDynamicLights();
 
@@ -77,6 +86,11 @@ private:
   bgfx::VertexBufferHandle vbo = BGFX_INVALID_HANDLE;
   bgfx::IndexBufferHandle ebo = BGFX_INVALID_HANDLE;
 
+  // Separate void floor mesh (own vertices, not shared with main terrain)
+  bgfx::VertexBufferHandle voidVbo = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle voidEbo = BGFX_INVALID_HANDLE;
+  size_t voidIndexCount = 0;
+
   // Shadow map state
   bgfx::TextureHandle m_shadowMapTex = BGFX_INVALID_HANDLE;
   glm::mat4 m_lightMtx{1.0f};
@@ -90,10 +104,14 @@ private:
   TexHandle attributeMap = kInvalidTex;
   TexHandle symmetryMap = kInvalidTex;
   TexHandle lightmapTex = kInvalidTex;
+  TexHandle voidDistMap = kInvalidTex;
 
   // CPU-side dynamic lightmap (RGBA32F for BGFX upload)
   std::vector<float> m_baselineLightRGBA;
   std::vector<float> m_workingLightRGBA;
+
+  // Void edge world positions (cells with voidDist ~1, for mist spawning)
+  std::vector<glm::vec3> m_voidEdgePositions;
 };
 
 #endif

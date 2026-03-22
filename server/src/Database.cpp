@@ -1,4 +1,5 @@
 #include "Database.hpp"
+#include "Session.hpp"
 #include <cstdio>
 
 bool Database::Open(const std::string &dbPath) {
@@ -196,6 +197,11 @@ void Database::CreateTables() {
   sqlite3_exec(m_db, "ALTER TABLE characters ADD COLUMN potion_bar BLOB",
                nullptr, nullptr, nullptr);
 
+  // Migration: camera zoom per character (default 800.0 stored as 8000)
+  sqlite3_exec(m_db,
+               "ALTER TABLE characters ADD COLUMN camera_zoom INTEGER DEFAULT 8000",
+               nullptr, nullptr, nullptr);
+
   // Character skills table (learned skills)
   const char *skillSql = R"(
         CREATE TABLE IF NOT EXISTS character_skills (
@@ -252,6 +258,26 @@ void Database::CreateTables() {
   // Migration: add summon_type to characters (default -1 = no summon)
   sqlite3_exec(m_db,
       "ALTER TABLE characters ADD COLUMN summon_type INTEGER DEFAULT -1",
+      nullptr, nullptr, nullptr);
+
+  // Migration: add buff aura columns for persistence across logout
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN buff_def_type INTEGER DEFAULT 0",
+      nullptr, nullptr, nullptr);
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN buff_def_remaining REAL DEFAULT 0",
+      nullptr, nullptr, nullptr);
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN buff_def_value INTEGER DEFAULT 0",
+      nullptr, nullptr, nullptr);
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN buff_dmg_type INTEGER DEFAULT 0",
+      nullptr, nullptr, nullptr);
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN buff_dmg_remaining REAL DEFAULT 0",
+      nullptr, nullptr, nullptr);
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN buff_dmg_value INTEGER DEFAULT 0",
       nullptr, nullptr, nullptr);
 }
 
@@ -513,7 +539,10 @@ CharacterData Database::GetCharacter(const std::string &name) {
       "pos_x, pos_y, direction, strength, dexterity, vitality, "
       "energy, life, max_life, mana, max_mana, ag, max_ag, money, "
       "experience, level_up_points, skill_bar, potion_bar, "
-      "rmc_skill_id, summon_type FROM characters WHERE name=?";
+      "rmc_skill_id, summon_type, camera_zoom, "
+      "buff_def_type, buff_def_remaining, buff_def_value, "
+      "buff_dmg_type, buff_dmg_remaining, buff_dmg_value "
+      "FROM characters WHERE name=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return c;
 
@@ -558,6 +587,13 @@ CharacterData Database::GetCharacter(const std::string &name) {
 
     c.rmcSkillId = static_cast<int8_t>(sqlite3_column_int(stmt, 25));
     c.summonType = static_cast<int16_t>(sqlite3_column_int(stmt, 26));
+    c.cameraZoom = static_cast<uint16_t>(sqlite3_column_int(stmt, 27));
+    c.buffDefType = static_cast<uint8_t>(sqlite3_column_int(stmt, 28));
+    c.buffDefRemaining = static_cast<float>(sqlite3_column_double(stmt, 29));
+    c.buffDefValue = sqlite3_column_int(stmt, 30);
+    c.buffDmgType = static_cast<uint8_t>(sqlite3_column_int(stmt, 31));
+    c.buffDmgRemaining = static_cast<float>(sqlite3_column_double(stmt, 32));
+    c.buffDmgValue = sqlite3_column_int(stmt, 33);
   }
   sqlite3_finalize(stmt);
   return c;
@@ -571,7 +607,10 @@ CharacterData Database::GetCharacterById(int id) {
       "pos_x, pos_y, direction, strength, dexterity, vitality, "
       "energy, life, max_life, mana, max_mana, ag, max_ag, money, "
       "experience, level_up_points, skill_bar, potion_bar, "
-      "rmc_skill_id, summon_type FROM characters WHERE id=?";
+      "rmc_skill_id, summon_type, camera_zoom, "
+      "buff_def_type, buff_def_remaining, buff_def_value, "
+      "buff_dmg_type, buff_dmg_remaining, buff_dmg_value "
+      "FROM characters WHERE id=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return c;
 
@@ -616,9 +655,27 @@ CharacterData Database::GetCharacterById(int id) {
 
     c.rmcSkillId = static_cast<int8_t>(sqlite3_column_int(stmt, 25));
     c.summonType = static_cast<int16_t>(sqlite3_column_int(stmt, 26));
+    c.cameraZoom = static_cast<uint16_t>(sqlite3_column_int(stmt, 27));
+    c.buffDefType = static_cast<uint8_t>(sqlite3_column_int(stmt, 28));
+    c.buffDefRemaining = static_cast<float>(sqlite3_column_double(stmt, 29));
+    c.buffDefValue = sqlite3_column_int(stmt, 30);
+    c.buffDmgType = static_cast<uint8_t>(sqlite3_column_int(stmt, 31));
+    c.buffDmgRemaining = static_cast<float>(sqlite3_column_double(stmt, 32));
+    c.buffDmgValue = sqlite3_column_int(stmt, 33);
   }
   sqlite3_finalize(stmt);
   return c;
+}
+
+void Database::UpdateCameraZoom(int charId, uint16_t zoom) {
+  sqlite3_stmt *stmt = nullptr;
+  const char *sql = "UPDATE characters SET camera_zoom=? WHERE id=?";
+  if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    return;
+  sqlite3_bind_int(stmt, 1, zoom);
+  sqlite3_bind_int(stmt, 2, charId);
+  sqlite3_step(stmt);
+  sqlite3_finalize(stmt);
 }
 
 void Database::UpdateCharacterStats(
@@ -671,13 +728,15 @@ void Database::SaveCharacterFull(int charId, uint16_t level, uint16_t strength,
                                  uint32_t money, uint8_t posX, uint8_t posY,
                                  uint8_t mapId, const int8_t *skillBar,
                                  const int16_t *potionBar, int8_t rmcSkillId,
-                                 int16_t summonType) {
+                                 int16_t summonType, const Session *session) {
   sqlite3_stmt *stmt = nullptr;
   const char *sql =
       "UPDATE characters SET level=?, strength=?, dexterity=?, vitality=?, "
       "energy=?, life=?, max_life=?, mana=?, max_mana=?, ag=?, max_ag=?, "
       "level_up_points=?, experience=?, money=?, pos_x=?, pos_y=?, "
-      "map_id=?, skill_bar=?, potion_bar=?, rmc_skill_id=?, summon_type=? WHERE id=?";
+      "map_id=?, skill_bar=?, potion_bar=?, rmc_skill_id=?, summon_type=?, "
+      "buff_def_type=?, buff_def_remaining=?, buff_def_value=?, "
+      "buff_dmg_type=?, buff_dmg_remaining=?, buff_dmg_value=? WHERE id=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return;
   sqlite3_bind_int(stmt, 1, level);
@@ -701,7 +760,23 @@ void Database::SaveCharacterFull(int charId, uint16_t level, uint16_t strength,
   sqlite3_bind_blob(stmt, 19, potionBar, 8, SQLITE_TRANSIENT); // 4 × int16_t
   sqlite3_bind_int(stmt, 20, rmcSkillId);
   sqlite3_bind_int(stmt, 21, summonType);
-  sqlite3_bind_int(stmt, 22, charId);
+  // Buff aura persistence
+  if (session) {
+    sqlite3_bind_int(stmt, 22, session->buffs[0].active ? session->buffs[0].type : 0);
+    sqlite3_bind_double(stmt, 23, session->buffs[0].active ? session->buffs[0].remaining : 0.0);
+    sqlite3_bind_int(stmt, 24, session->buffs[0].active ? session->buffs[0].value : 0);
+    sqlite3_bind_int(stmt, 25, session->buffs[1].active ? session->buffs[1].type : 0);
+    sqlite3_bind_double(stmt, 26, session->buffs[1].active ? session->buffs[1].remaining : 0.0);
+    sqlite3_bind_int(stmt, 27, session->buffs[1].active ? session->buffs[1].value : 0);
+  } else {
+    sqlite3_bind_int(stmt, 22, 0);
+    sqlite3_bind_double(stmt, 23, 0.0);
+    sqlite3_bind_int(stmt, 24, 0);
+    sqlite3_bind_int(stmt, 25, 0);
+    sqlite3_bind_double(stmt, 26, 0.0);
+    sqlite3_bind_int(stmt, 27, 0);
+  }
+  sqlite3_bind_int(stmt, 28, charId);
 
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);

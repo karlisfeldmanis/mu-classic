@@ -43,33 +43,33 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // ════════════════════════════════════════════════════════
     // Lorencia quests (Q0-Q7) — 1 monster type per quest
     // ════════════════════════════════════════════════════════
-    // Q0: Kael — Bull Fighter x10
-    {248, 1, {{0, 10}, {0, 0}, {0, 0}},
+    // Q0: Brynn — Bull Fighter x10
+    {246, 1, {{0, 10}, {0, 0}, {0, 0}},
      {"Bull Fighter", "", ""},
      "The Road's First Threat", "Lorencia", 1, 3000, 25000,
      {{{160, 0}, {483, 0}},  // DW: Skull Staff + Scroll of Fire Ball
-      {{0, 0}, {396, 0}},    // DK: Kris + Orb of Falling Slash
-      {{128, 0}, {388, 0}},  // ELF: Short Bow + Orb of Goblin
+      {{0, 0}, {404, 0}},    // DK: Kris + Orb of Falling Slash
+      {{128, 0}, {395, 0}},  // ELF: Short Bow + Orb of Goblin
       {{1, 0}, {192, 0}}},   // MG: Short Sword + Small Shield
      "The roads around Lorencia grow\n"
      "dangerous. Bull Fighters charge at\n"
      "travelers without warning. Slay 10\n"
      "near the eastern fields to secure\n"
      "the path."},
-    // Q1: Kael — Hound x10
-    {248, 1, {{1, 10}, {0, 0}, {0, 0}},
+    // Q1: Brynn — Hound x10
+    {246, 1, {{1, 10}, {0, 0}, {0, 0}},
      {"Hound", "", ""},
      "Hounds of Lorencia", "Lorencia", 5, 5000, 40000,
      {{{226, 0}, {196, 0}},  // DW: Pad Helm + Buckler
-      {{224, 0}, {397, 0}},  // DK: Bronze Helm + Orb of Lunge
+      {{224, 0}, {405, 0}},  // DK: Bronze Helm + Orb of Lunge
       {{234, 0}, {330, 0}},  // ELF: Vine Helm + Vine Gloves
       {{2, 0}, {196, 0}}},   // MG: Rapier + Buckler
      "Feral Hounds roam the plains at night,\n"
      "picking off livestock and stragglers.\n"
      "The farmers plead for help. Hunt down\n"
      "10 Hounds before they grow bolder."},
-    // Q2: Brynn — Budge Dragon x10
-    {246, 1, {{2, 10}, {0, 0}, {0, 0}},
+    // Q2: Kael — Budge Dragon x10
+    {248, 1, {{2, 10}, {0, 0}, {0, 0}},
      {"Budge Dragon", "", ""},
      "Dragon Whelps", "Lorencia", 8, 8000, 60000,
      {{{228, 0}, {482, 0}},  // DW: Bone Helm + Scroll of Lightning
@@ -80,20 +80,20 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "outcrops south of town. They are small\n"
      "but their fire breath is deadly to the\n"
      "unprepared. Destroy 10 of them."},
-    // Q3: Brynn — Spider x10
-    {246, 1, {{3, 10}, {0, 0}, {0, 0}},
+    // Q3: Kael — Spider x10
+    {248, 1, {{3, 10}, {0, 0}, {0, 0}},
      {"Spider", "", ""},
      "Vermin in the Shadows", "Lorencia", 10, 10000, 80000,
      {{{258, 1}, {481, 0}},  // DW: Pad Armor+1 + Scroll of Meteorite
       {{65, 0}, {230, 0}},   // DK: Morning Star + Scale Helm
-      {{266, 1}, {385, 0}},  // ELF: Vine Armor+1 + Orb of Healing
+      {{266, 1}, {392, 0}},  // ELF: Vine Armor+1 + Orb of Healing
       {{101, 0}, {192, 1}}}, // MG: Double Poleaxe + Small Shield+1
      "Giant Spiders infest the sewers\n"
      "beneath the city. Their webs block the\n"
      "tunnels and their venom sickens all who\n"
      "venture below. Clear out 10 Spiders."},
-    // Q4: Dorian — Elite Bull Fighter x10
-    {247, 1, {{4, 10}, {0, 0}, {0, 0}},
+    // Q4: Aldric — Elite Bull Fighter x10
+    {245, 1, {{4, 10}, {0, 0}, {0, 0}},
      {"Elite Bull Fighter", "", ""},
      "The Elite Vanguard", "Lorencia", 14, 15000, 100000,
      {{{292, 0}, {485, 0}},  // DW: Bone Pants + Scroll of Teleport
@@ -129,8 +129,8 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "men in full plate. Strike down 7 of\n"
      "these behemoths before they breach\n"
      "the walls."},
-    // Q7: Marcus — Skeleton Warrior x7
-    {249, 1, {{14, 7}, {0, 0}, {0, 0}},
+    // Q7: Dorian — Skeleton Warrior x7
+    {247, 1, {{14, 7}, {0, 0}, {0, 0}},
      {"Skeleton Warrior", "", ""},
      "The Undead March", "Lorencia", 24, 40000, 250000,
      {{{231, 0}, {484, 0}},  // DW: Sphinx Mask + Scroll of Flame
@@ -150,7 +150,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "Descent Into Darkness", "Dungeon", 28, 40000, 300000,
      {{{359, 0}, {487, 0}},  // DW: Sphinx Boots + Scroll of Twister
       {{66, 0}, {232, 0}},   // DK: Flail + Brass Helm
-      {{364, 0}, {386, 0}},  // ELF: Wind Boots + Orb of Greater Defense
+      {{364, 0}, {393, 0}},  // ELF: Wind Boots + Orb of Greater Defense
       {{99, 0}, {200, 1}}},  // MG: Giant Trident + Tower Shield+1
      "The dungeon entrance is overrun with\n"
      "Skeleton Warriors. They guard the\n"
@@ -161,8 +161,8 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      {"Larva", "", ""},
      "The Larvae Nests", "Dungeon", 30, 45000, 350000,
      {{{162, 0}, {356, 1}},  // DW: Serpent Staff + Bone Boots+1
-      {{262, 1}, {384, 0}},  // DK: Scale Armor+1 + Orb of Twisting Slash
-      {{268, 0}, {387, 0}},  // ELF: Wind Armor + Orb of Greater Damage
+      {{262, 1}, {391, 0}},  // DK: Scale Armor+1 + Orb of Twisting Slash
+      {{268, 0}, {394, 0}},  // ELF: Wind Armor + Orb of Greater Damage
       {{5, 0}, {198, 2}}},   // MG: Blade + Skull Shield+2
      "Larvae crawl through the dungeon's\n"
      "narrow tunnels, leaving trails of\n"
@@ -186,7 +186,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "The Venomous Herd", "Dungeon", 34, 55000, 400000,
      {{{327, 1}, {489, 0}},  // DW: Sphinx Gloves+1 + Scroll of Hellfire
       {{67, 0}, {264, 0}},   // DK: Great Hammer + Brass Armor
-      {{333, 0}, {402, 0}},  // ELF: Spirit Gloves + Orb of Assassin Summoning
+      {{333, 0}, {410, 0}},  // ELF: Spirit Gloves + Orb of Assassin Summoning
       {{96, 0}, {203, 1}}},  // MG: Light Spear + Serpent Shield+1
      "Poison Bulls fill the corridors with\n"
      "toxic fumes. Their very breath is\n"
@@ -222,7 +222,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "Web of Nightmares", "Dungeon", 40, 70000, 500000,
      {{{163, 0}, {291, 0}},  // DW: Thunder Staff + Legendary Pants
       {{39, 0}, {233, 0}},   // DK: Larkan Axe + Plate Helm
-      {{269, 0}, {403, 0}},  // ELF: Spirit Armor + Orb of Yeti Summoning
+      {{269, 0}, {411, 0}},  // ELF: Spirit Armor + Orb of Yeti Summoning
       {{10, 0}, {203, 3}}},  // MG: Light Saber + Serpent Shield+3
      "Hell Spiders weave webs of shadow and\n"
      "fire in the deep tunnels. Their venom\n"
@@ -246,7 +246,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "The Bone Commanders", "Dungeon", 44, 80000, 600000,
      {{{164, 0}, {355, 1}},  // DW: Gorgon Staff + Legendary Boots+1
       {{11, 0}, {265, 0}},   // DK: Legendary Sword + Plate Armor
-      {{238, 0}, {404, 0}},  // ELF: Guardian Helm + Orb of Knight Summoning
+      {{238, 0}, {412, 0}},  // ELF: Guardian Helm + Orb of Knight Summoning
       {{104, 0}, {203, 4}}}, // MG: Great Scythe + Serpent Shield+4
      "Elite Skeletons command the undead\n"
      "legions. They are ancient warriors of\n"
@@ -256,7 +256,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {249, 1, {{17, 15}, {0, 0}, {0, 0}},
      {"Cyclops", "", ""},
      "The One-Eyed Terror", "Dungeon", 48, 90000, 700000,
-     {{{291, 1}, {494, 0}},  // DW: Legendary Pants+1 + Scroll of Aqua Beam
+     {{{291, 1}, {491, 0}},  // DW: Legendary Pants+1 + Scroll of Aqua Beam
       {{329, 0}, {199, 0}},  // DK: Plate Gloves + Spiked Shield
       {{133, 0}, {334, 0}},  // ELF: Silver Bow + Guardian Gloves
       {{105, 0}, {200, 5}}}, // MG: Bill of Balrog + Tower Shield+5
@@ -270,7 +270,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "Fallen Champions", "Dungeon", 52, 100000, 800000,
      {{{165, 0}, {227, 1}},  // DW: Legendary Staff + Legendary Helm+1
       {{15, 0}, {225, 0}},   // DK: Giant Sword + Dragon Helm
-      {{302, 0}, {405, 0}},  // ELF: Guardian Pants + Orb of Bali Summoning
+      {{302, 0}, {413, 0}},  // ELF: Guardian Pants + Orb of Bali Summoning
       {{14, 0}, {203, 5}}},  // MG: Lightning Sword + Serpent Shield+5
      "Dark Knights were once heroes who fell\n"
      "to corruption. Their swordplay is\n"
@@ -280,10 +280,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {249, 1, {{18, 3}, {0, 0}, {0, 0}},
      {"Gorgon", "", ""},
      "Heart of Darkness", "Dungeon", 55, 120000, 1000000,
-     {{{166, 0}, {495, 0}},  // DW: Staff of Resurrection + Scroll of Cometfall
+     {{{166, 0}, {492, 0}},  // DW: Staff of Resurrection + Scroll of Cometfall
       {{12, 0}, {353, 0}},   // DK: Heliacal Sword + Dragon Boots
       {{270, 0}, {206, 0}},  // ELF: Guardian Armor + Legendary Shield
-      {{19, 0}, {407, 0}}},  // MG: Sword of Destruction + Jewel of Chaos
+      {{19, 0}, {399, 0}}},  // MG: Sword of Destruction + Jewel of Chaos
      "At the dungeon's heart lurks the\n"
      "Gorgon -- a creature of terrible power.\n"
      "Only 3 exist, each guarding ancient\n"
@@ -298,7 +298,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "Beneath the Snow", "Devias", 22, 25000, 200000,
      {{{356, 2}, {485, 0}},  // DW: Bone Boots+2 + Scroll of Teleport
       {{326, 1}, {34, 0}},   // DK: Scale Gloves+1 + Double Axe
-      {{332, 1}, {385, 0}},  // ELF: Wind Gloves+1 + Orb of Healing
+      {{332, 1}, {392, 0}},  // ELF: Wind Gloves+1 + Orb of Healing
       {{98, 1}, {198, 1}}},  // MG: Dragon Lance+1 + Skull Shield+1
      "Worms burrow beneath the frozen\n"
      "ground of Devias, emerging without\n"
@@ -346,7 +346,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
      "The Yeti Hordes", "Devias", 40, 80000, 600000,
      {{{163, 0}, {227, 0}},  // DW: Thunder Staff + Legendary Helm
       {{39, 0}, {233, 0}},   // DK: Larkan Axe + Plate Helm
-      {{269, 1}, {403, 0}},  // ELF: Spirit Armor+1 + Orb of Yeti Summoning
+      {{269, 1}, {411, 0}},  // ELF: Spirit Armor+1 + Orb of Yeti Summoning
       {{10, 0}, {203, 3}}},  // MG: Light Saber + Serpent Shield+3
      "Elite Yetis have overrun the southern\n"
      "reaches of Devias. Their numbers seem\n"
@@ -792,7 +792,8 @@ void HandleQuestAbandon(Session &session, const std::vector<uint8_t> &packet,
 // Monster kill — check all active quests
 // ═══════════════════════════════════════════════════════
 
-void OnMonsterKill(Session &session, uint16_t monsterType, Database &db) {
+void OnMonsterKill(Session &session, uint16_t monsterType, bool isSummon, Database &db) {
+  if (isSummon) return; // Killing a summon doesn't count for quests
   for (auto &aq : session.activeQuests) {
     if (aq.questId < 0 || aq.questId >= QUEST_COUNT)
       continue;

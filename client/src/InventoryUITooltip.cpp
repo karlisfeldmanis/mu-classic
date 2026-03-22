@@ -84,18 +84,23 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
     def = &fallback;
   }
 
-  // Find equipped item for comparison
+  // Find equipped item for comparison (use ClientItemDefinition for accurate stats)
   int equipSlot = GetEquipSlotForCategory(def->category);
-  const DropDef *equippedDef = GetEquippedDropDef(equipSlot);
+  const ClientItemDefinition *equippedCID = nullptr;
   int equippedLevel = 0;
-  if (equippedDef && equipSlot >= 0 && s_ctx->equipSlots[equipSlot].equipped) {
+  if (equipSlot >= 0 && equipSlot < 12 && s_ctx->equipSlots[equipSlot].equipped) {
     equippedLevel = s_ctx->equipSlots[equipSlot].itemLevel;
     int16_t eqDi = ItemDatabase::GetDefIndexFromCategory(
         s_ctx->equipSlots[equipSlot].category,
         s_ctx->equipSlots[equipSlot].itemIndex);
-    if (eqDi == defIndex &&
-        s_ctx->equipSlots[equipSlot].itemLevel == (uint8_t)itemLevel)
-      equippedDef = nullptr;
+    // Don't compare item against itself
+    if (eqDi != defIndex ||
+        s_ctx->equipSlots[equipSlot].itemLevel != (uint8_t)itemLevel) {
+      auto &defs = ItemDatabase::GetItemDefs();
+      auto eit = defs.find(eqDi);
+      if (eit != defs.end())
+        equippedCID = &eit->second;
+    }
   }
 
   // ─── Pre-calculate data ─────────────────────────────────────────────────
@@ -243,7 +248,7 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
     th += lineH; hasStats = true;
   }
 
-  if (equippedDef) {
+  if (equippedCID) {
     if (def->category <= 5 && (def->dmgMin > 0 || def->dmgMax > 0))
       th += lineH;
     if ((def->category == 6 || (def->category >= 7 && def->category <= 11)) &&
@@ -355,10 +360,10 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
       snprintf(buf, sizeof(buf), "%d - %d Damage", dMin, dMax);
     AddPendingTooltipLine(TT_WHITE, buf);
 
-    if (equippedDef) {
+    if (equippedCID) {
       int eqDmgBonus = kEnhanceTable[std::min(equippedLevel, 15)];
       int avgNew = (dMin + dMax) / 2;
-      int avgOld = (equippedDef->dmgMin + eqDmgBonus + equippedDef->dmgMax + eqDmgBonus) / 2;
+      int avgOld = ((int)equippedCID->dmgMin + eqDmgBonus + (int)equippedCID->dmgMax + eqDmgBonus) / 2;
       int diff = avgNew - avgOld;
       char cmpBuf[48];
       if (diff > 0) {
@@ -393,11 +398,11 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
       snprintf(buf, sizeof(buf), "%d Defense", totalDef);
     AddPendingTooltipLine(TT_WHITE, buf);
 
-    if (equippedDef) {
-      int eqDefBonus = (def->category >= 7 && def->category <= 11)
+    if (equippedCID) {
+      int eqDefBonus = (equippedCID->category >= 7 && equippedCID->category <= 11)
           ? kEnhanceTable[std::min(equippedLevel, 15)]  // Armor: enhancement table
           : std::min(equippedLevel, 15);                 // Shield: +1/level
-      int diff = totalDef - ((int)equippedDef->defense + eqDefBonus);
+      int diff = totalDef - ((int)equippedCID->defense + eqDefBonus);
       char cmpBuf[48];
       if (diff > 0) {
         snprintf(cmpBuf, sizeof(cmpBuf), "  (+%d vs equipped)", diff);
@@ -556,18 +561,46 @@ void FlushPendingTooltip() {
   ImDrawList *dl = ImGui::GetForegroundDrawList();
   float tw = g_pendingTooltip.w;
 
-  // Measure actual height from lines (scaled for fullscreen)
-  float uiScale = ImGui::GetIO().FontGlobalScale;
+  // Measure actual height and width from lines (scaled for fullscreen)
+  float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
   float lineH = 18.0f * uiScale;
   float sepH = 10.0f * uiScale;
+  float padX = 10.0f * uiScale;
   float th = 12.0f * uiScale;
+
+  // Push font early so CalcTextSize uses the correct font metrics
+  if (s_ctx->fontDefault)
+    ImGui::PushFont(s_ctx->fontDefault);
+
+  float maxTextW = 0.0f;
   for (auto &line : g_pendingTooltip.lines) {
-    if (line.flags & 2)
+    if (line.flags & 2) {
       th += sepH;
-    else
+    } else {
       th += lineH;
+      // Measure text width to auto-size tooltip
+      const char *measureText = line.text.c_str();
+      // For split lines, measure both halves with gap
+      if (line.flags & 8) {
+        size_t sep = line.text.find('|');
+        if (sep != std::string::npos) {
+          std::string left = line.text.substr(0, sep);
+          std::string right = line.text.substr(sep + 1);
+          float splitW = ImGui::CalcTextSize(left.c_str()).x +
+                         ImGui::CalcTextSize(right.c_str()).x + padX;
+          if (splitW > maxTextW) maxTextW = splitW;
+          continue;
+        }
+      }
+      float textW = ImGui::CalcTextSize(measureText).x;
+      if (textW > maxTextW) maxTextW = textW;
+    }
   }
   th += 8.0f * uiScale;
+
+  // Expand tooltip width to fit longest line (with padding on both sides)
+  float minW = maxTextW + padX * 2.0f;
+  if (minW > tw) tw = minW;
 
   // Position near cursor, clamp to screen
   ImVec2 mp = ImGui::GetIO().MousePos;
@@ -602,12 +635,8 @@ void FlushPendingTooltip() {
   dl->AddLine(ImVec2(tPos.x + 1, tPos.y), ImVec2(br.x - 1, tPos.y), qDim,
               2.0f);
 
-  // Render lines
-  if (s_ctx->fontDefault)
-    ImGui::PushFont(s_ctx->fontDefault);
-
+  // Render lines (font already pushed above for measurement)
   float curY = tPos.y + 8.0f * uiScale;
-  float padX = 10.0f * uiScale;
 
   for (auto &line : g_pendingTooltip.lines) {
     if (line.flags & 2) {

@@ -114,6 +114,9 @@ constexpr uint8_t WARP_COMMAND = 0x62;     // C->S: warp to map
 // Chat log
 constexpr uint8_t CHAT_LOG_HISTORY = 0x60; // S->C: chat history on login (C2)
 constexpr uint8_t CHAT_LOG_SAVE = 0x61;    // C->S: save chat message
+
+// Client settings
+constexpr uint8_t CLIENT_SETTINGS = 0x63; // C->S: client settings (camera zoom)
 } // namespace Opcode
 
 // =====================================================
@@ -264,6 +267,13 @@ struct PMSG_CHARINFO_SEND {
   int8_t skillBar[10];
   int16_t potionBar[4];
   int8_t rmcSkillId;
+  uint16_t cameraZoom; // Zoom * 10 (e.g. 8000 = 800.0f)
+};
+
+// C->S: Client settings update (camera zoom etc.)
+struct PMSG_CLIENT_SETTINGS {
+  PBMSG_HEAD h; // C1:0x63
+  uint16_t cameraZoom; // Zoom * 10
 };
 
 // =====================================================
@@ -599,6 +609,7 @@ struct PMSG_MONSTER_VIEWPORT_ENTRY_V2 {
   uint16_t hp;    // Current HP
   uint16_t maxHp; // Max HP
   uint8_t state;  // 0=alive, 1=dying, 2=dead
+  uint8_t level;  // Monster level (from MonsterTypeDef)
 };
 
 // S->C: Monster Move/Chase (0x35)

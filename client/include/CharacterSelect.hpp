@@ -46,6 +46,8 @@ struct Context {
   std::function<void()> onCharSelected;
   // Callback for exit/quit
   std::function<void()> onExit;
+  // Callback for fullscreen toggle (uses main.cpp's saved window geometry)
+  std::function<void()> onToggleFullscreen;
 };
 
 void Init(const Context &ctx);

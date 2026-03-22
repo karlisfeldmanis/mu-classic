@@ -77,7 +77,8 @@ TexHandle TextureLoader::LoadOZJ(const std::string &path) {
   }
   return bgfx::createTexture2D(
       (uint16_t)w, (uint16_t)h, false, 1,
-      bgfx::TextureFormat::RGBA8, 0,
+      bgfx::TextureFormat::RGBA8,
+      BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC,
       bgfx::copy(rgba.data(), (uint32_t)rgba.size()));
 }
 
@@ -212,7 +213,8 @@ TexHandle TextureLoader::LoadOZT(const std::string &path) {
     // Data is BGRA — upload directly as BGRA8
     return bgfx::createTexture2D(
         (uint16_t)parsed.width, (uint16_t)parsed.height, false, 1,
-        bgfx::TextureFormat::BGRA8, 0,
+        bgfx::TextureFormat::BGRA8,
+        BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC,
         bgfx::copy(parsed.pixels.data(),
                    (uint32_t)(parsed.width * parsed.height * 4)));
   } else {
@@ -225,8 +227,9 @@ TexHandle TextureLoader::LoadOZT(const std::string &path) {
       rgba[i * 4 + 3] = 255;
     }
     return bgfx::createTexture2D(
-        (uint16_t)parsed.width, (uint16_t)parsed.height, false, 1,
-        bgfx::TextureFormat::RGBA8, 0,
+        (uint16_t)parsed.width, (uint16_t)parsed.height, true, 1,
+        bgfx::TextureFormat::RGBA8,
+        BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC,
         bgfx::copy(rgba.data(), (uint32_t)rgba.size()));
   }
 }

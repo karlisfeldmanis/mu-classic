@@ -29,6 +29,7 @@ public:
                       const std::vector<glm::vec3> &colors,
                       const std::vector<float> &ranges);
   void SetTerrainLightmap(const std::vector<glm::vec3> &lightmap);
+  void SetLightmapTexture(TexHandle tex) { m_lightmapTex = tex; }
   void SetTerrainMapping(const MapData *mapping) { terrainMapping = mapping; }
   void SetTerrainHeightmap(const std::vector<float> &hm) { terrainHeightmap = hm; }
   void SetTypeAlpha(const std::unordered_map<int, float> &alphaMap);
@@ -135,6 +136,7 @@ private:
   std::vector<int> m_typeFilter; // If non-empty, only render these types
   int m_mapId = 0; // 0=Lorencia, 1=Dungeon
   std::vector<InteractiveObject> m_interactiveObjects;
+  TexHandle m_lightmapTex = kInvalidTex; // Terrain lightmap GPU texture for per-pixel lighting
   TexHandle m_chromeTexture = kInvalidTex;
   TexHandle m_lightningSpriteTex = kInvalidTex;
   // Devias type 100 object world positions (model hidden, sprites only)

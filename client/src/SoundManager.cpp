@@ -457,6 +457,12 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_MONSTER_GOLEMATTACK2, sndPath + "mGolemAttack2.wav", 2, true);
   LoadSound(SOUND_MONSTER_GOLEMDIE, sndPath + "mGolemDie.wav", 2, true);
 
+  // Bali (type 150) — Elf summon
+  LoadSound(SOUND_MONSTER_BALI1, sndPath + "mBali1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BALI2, sndPath + "mBali2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BALIATTACK1, sndPath + "mBaliAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BALIATTACK2, sndPath + "mBaliAttack2.wav", 2, true);
+
   // Bow/crossbow release sounds
   LoadSound(SOUND_BOW, sndPath + "eBow.wav", 3, false);
   LoadSound(SOUND_CROSSBOW, sndPath + "eCrossbow.wav", 3, false);

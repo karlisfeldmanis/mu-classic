@@ -243,6 +243,16 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
 
   // Save old character before switching (prevent stat contamination)
   if (session.characterId > 0 && session.characterId != c.id && session.inWorld) {
+    // Despawn summon before switching characters
+    if (session.activeSummonIndex > 0) {
+      PMSG_SUMMON_DESPAWN_SEND dpkt{};
+      dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::SUMMON_DESPAWN);
+      dpkt.monsterIndex = session.activeSummonIndex;
+      server.Broadcast(&dpkt, sizeof(dpkt));
+      world.DespawnSummon(session.activeSummonIndex);
+      session.activeSummonIndex = 0;
+      session.activeSummonType = -1;
+    }
     server.SaveSession(session);
     printf("[CharSelect] Saved old character %d before switching to %d\n",
            session.characterId, c.id);
@@ -290,11 +300,13 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
   info.pkLevel = 3;
   info.ctlCode = 0;
   info.rmcSkillId = c.rmcSkillId;
+  info.cameraZoom = c.cameraZoom;
 
   session.Send(&info, sizeof(info));
   session.inWorld = true;
 
   // Cache stats
+  session.cameraZoom = c.cameraZoom;
   session.strength = c.strength;
   session.dexterity = c.dexterity;
   session.vitality = c.vitality;
@@ -524,6 +536,25 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
         printf("[CharSelect] Restored summon type=%d at (%d,%d) for '%s'\n",
                c.summonType, summonGX, summonGY, name);
       }
+    }
+  }
+
+  // Restore elf buff auras from DB
+  for (int b = 0; b < 2; b++) {
+    uint8_t btype = (b == 0) ? c.buffDefType : c.buffDmgType;
+    float brem = (b == 0) ? c.buffDefRemaining : c.buffDmgRemaining;
+    int bval = (b == 0) ? c.buffDefValue : c.buffDmgValue;
+    if (btype > 0 && brem > 0.0f) {
+      session.buffs[b] = {btype, brem, bval, true};
+      PMSG_BUFF_EFFECT_SEND bpkt{};
+      bpkt.h = MakeC1Header(sizeof(bpkt), Opcode::BUFF_EFFECT);
+      bpkt.buffType = btype;
+      bpkt.active = 1;
+      bpkt.value = static_cast<uint16_t>(bval);
+      bpkt.duration = brem;
+      session.Send(&bpkt, sizeof(bpkt));
+      printf("[CharSelect] Restored buff type=%d val=%d rem=%.0fs for '%s'\n",
+             btype, bval, brem, name);
     }
   }
 

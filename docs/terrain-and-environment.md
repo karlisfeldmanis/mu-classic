@@ -20,12 +20,26 @@ The original MU engine for Lorencia renders water as a **regular tile** (layer1 
 
 Layer1/layer2 may contain tile index 255 as "empty/invalid" marker. Fill unloaded texture slots with **neutral dark brown (80, 70, 55)** to blend with surrounding terrain. Magenta debug fill causes pink artifacts through bilinear blending.
 
+## Terrain Void Mesh Generation
+
+Terrain mesh generation skips quads where the **top-left corner** has the void flag (`TW_NOGROUND` 0x08). Only the primary corner is checked — this intentionally lets terrain quads extend one cell into void areas, filling gaps behind world objects placed at void edges.
+
+**Lesson learned**: Checking all 4 corners of each quad for void status creates larger terrain mesh gaps, exposing geometry holes in world objects (tentacles, cliff walls) placed at void edges. The single-corner check is correct.
+
+## Lightmap Alpha Channel
+
+The terrain lightmap (RGBA32F) stores height data in the alpha channel:
+- **Terrain cells**: `alpha = -1.0f` (sentinel value)
+- **Void cells**: `alpha = nearTerrainH[i]` (height of nearest terrain cell, propagated via multi-pass sweep)
+
+This is used by `fs_model.sc` for cliff-face lighting in void areas — height-based brightness when lightmap RGB is dark.
+
 ## Terrain Lightmap on Objects
 
-Objects sample the 256x256 RGB lightmap at their world position for ambient lighting.
-- `ObjectRenderer::SetTerrainLightmap()` stores lightmap copy
-- `ObjectRenderer::SampleTerrainLight()` bilinear-samples at world position
-- `terrainLight` uniform in `model.frag` multiplies final lighting color
+Objects use **per-pixel lightmap sampling** in the fragment shader for smooth lighting across large meshes.
+- `u_terrainLight.w = 1.0` → per-pixel sampling from `s_lightMap` texture (sampler slot 2)
+- `u_terrainLight.w = 0.0` → per-object uniform fallback (characters/NPCs)
+- UV derived from world position: `lmUV = vec2(fragpos.z / 25600, fragpos.x / 25600)`
 
 ## Point Light System
 
@@ -59,14 +73,17 @@ Marks specific mesh indices for additive blending (window glow, lamp light).
 
 ### Face Culling Disabled Objects
 
-Thin/double-sided geometry in the dungeon requires `glDisable(GL_CULL_FACE)`:
+Thin/double-sided geometry in the dungeon disables backface culling (`BGFX_STATE_CULL_CW` removed):
 
 | Types | Object | Notes |
 |-------|--------|-------|
-| 11 | Squid tentacle (1 mesh, 8 bones) | Animated organic |
-| 22-24 | Squid water (2 meshes, 7 bones) | Mesh 1 = water scroll |
+| 11 | Cliff/rock wall (Object11.bmd) | Cliff fade to black at base |
+| 22-24 | Tentacle/steam objects | OZJ texture (no alpha), mesh extends into void |
+| 35 | Tentacle/steam variant | Same behavior as 22-24 |
 | 44-46 | Coffins/sarcophagi | Thin lids |
 | 53 | Squid tentacle (2 meshes, 9 bones) | squid01.jpg + bons.jpg |
+
+**Tentacle mesh gaps (types 23, 24, 35)**: These meshes have geometry that doesn't fully cover the void area behind them. The terrain mesh at void edges fills this gap — this is why the terrain void check must use single-corner (top-left only), not all-4-corners. The tentacle textures are OZJ (JPEG, no alpha channel) so `texColor.a = 1.0` always.
 
 ### Dungeon Water (Types 22-24)
 

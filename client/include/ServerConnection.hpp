@@ -57,6 +57,9 @@ public:
   // Warp
   void SendWarpCommand(uint8_t mapId, uint8_t spawnX = 0, uint8_t spawnY = 0);
 
+  // Client settings
+  void SendCameraZoom(uint16_t zoomTimes10);
+
   // Shop
   void SendShopOpen(uint16_t npcType);
   void SendShopBuy(int16_t defIndex, uint8_t itemLevel, uint8_t quantity,

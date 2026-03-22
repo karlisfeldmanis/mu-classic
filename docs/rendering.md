@@ -21,16 +21,38 @@ The renderer has been migrated from raw OpenGL 3.3 to **BGFX** (cross-platform r
 - Terrain grid mapping: MU_Y (outer loop z) -> WorldX, MU_X (inner loop x) -> WorldZ
 - World position = `(z * 100, height, x * 100)` where z/x are grid indices
 
-## Per-Mesh Blend State
-```
-Global state: glEnable(GL_BLEND), glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+## Per-Mesh Blend State (BGFX)
 
-For each mesh:
-  if hidden -> skip
-  if noneBlend -> glDisable(GL_BLEND), draw, glEnable(GL_BLEND)
-  if bright -> glBlendFunc(GL_ONE, GL_ONE) + glDepthMask(FALSE), draw, restore
-  else -> normal draw (uses global alpha blend)
+World objects use **two-pass rendering**: opaque meshes first (depth write ON), then alpha/additive meshes (depth write OFF). This prevents opaque geometry from cutting through transparent parts of the same model.
+
 ```
+Pass 0 (opaque): meshes where !hasAlpha && !isWindowLight && !bright
+  state = WRITE_RGB | WRITE_A | WRITE_Z | DEPTH_TEST_LESS | CULL_CW | MSAA
+
+Pass 1 (transparent/additive): meshes where hasAlpha || isWindowLight || bright
+  noneBlend  -> opaque, CULL_CW
+  bright     -> BLEND_FUNC(ONE, ONE), no WRITE_Z (additive)
+  hasAlpha   -> BLEND_FUNC(SRC_ALPHA, INV_SRC_ALPHA)
+  windowLight -> BLEND_FUNC(ONE, ONE), no WRITE_Z + flicker intensity
+```
+
+## Per-Pixel Lightmap Sampling for World Objects
+
+World objects now sample the terrain lightmap **per-pixel** in the fragment shader (`fs_model.sc`) instead of using a single per-object uniform. This provides smooth lighting across large meshes that span multiple lightmap cells.
+
+- `u_terrainLight.w = 1.0` enables per-pixel sampling; `w = 0.0` uses per-object uniform (characters/NPCs)
+- Lightmap texture bound to `s_lightMap` (sampler slot 2)
+- UV derived from world position: `lmUV = vec2(v_fragpos.z / 25600.0, v_fragpos.x / 25600.0)`
+- **Void area lighting**: When lightmap RGB is dark (void cells), shader blends in a height-based brightness (`voidBright = 0.35 + heightFade * 0.65`) to keep cliff faces visible
+
+## Cliff Bottom Fade (Type 11)
+
+Cliff wall objects (type 11) use RGB darkening to blend into the black void at their base. Implemented as a per-object uniform approach (not per-pixel lightmap) to avoid jagged artifacts at terrain/void boundaries.
+
+- CPU: `ObjectRenderer` computes `cliffTopH` from 7x7 terrain heightmap area around object position
+- Shader: `fadeFactor = smoothstep(cliffTopH - 500, cliffTopH - 200, v_fragpos.y)` darkens RGB
+- Uses `u_params2.z` (flag) and `u_params2.w` (cliffTopH) uniforms
+- **RGB darkening, not alpha transparency** — avoids Z-fighting with terrain at void edges
 
 ## Chrome Glow Rendering (Item Enhancement)
 

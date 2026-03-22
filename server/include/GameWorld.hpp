@@ -184,6 +184,7 @@ struct MonsterInstance {
   // Summon ownership (Elf summon pets)
   int ownerFd = -1;          // FD of summoner (-1 = wild monster)
   int ownerCharId = -1;       // Character ID of summoner
+  int lastAttackedMonIdx = -1; // Track last attack target for approach delay
   bool isSummon() const { return ownerFd >= 0; }
 
   // Broadcast dedup (event-driven: only emit when something changes)

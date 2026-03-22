@@ -217,6 +217,12 @@ enum SoundId {
   SOUND_MONSTER_GOLEMATTACK2 = 331,
   SOUND_MONSTER_GOLEMDIE = 332,
 
+  // Bali (type 150) — Elf summon
+  SOUND_MONSTER_BALI1 = 333,
+  SOUND_MONSTER_BALI2 = 334,
+  SOUND_MONSTER_BALIATTACK1 = 335,
+  SOUND_MONSTER_BALIATTACK2 = 336,
+
   // Door sounds (Main 5.2: aDoor.wav, aCastleDoor.wav)
   SOUND_DOOR01 = 280, // Swinging wood door
   SOUND_DOOR02 = 281, // Sliding castle door

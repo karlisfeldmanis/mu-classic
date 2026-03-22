@@ -620,7 +620,7 @@ void HandleItemUse(Session &session, const std::vector<uint8_t> &packet,
           static_cast<uint16_t>(std::max(session.ag, 0)),
           static_cast<uint16_t>(session.maxAg), session.levelUpPoints,
           session.experience, session.zen, posX, posY, session.mapId,
-          session.skillBar, session.potionBar, session.rmcSkillId);
+          session.skillBar, session.potionBar, session.rmcSkillId, -1, &session);
     }
   }
 }

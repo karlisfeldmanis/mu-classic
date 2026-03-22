@@ -1,3 +1,4 @@
+#include "ClientPacketHandler.hpp"
 #include "HeroCharacter.hpp"
 #include "InputHandler.hpp"
 #include "InventoryUI_Internal.hpp"
@@ -370,10 +371,9 @@ static void DrawPanelText(ImDrawList *dl, const UICoords &c, float px, float py,
   float vx = px + relX * g_uiPanelScale;
   float vy = py + relY * g_uiPanelScale;
   float sx = c.ToScreenX(vx), sy = c.ToScreenY(vy);
-  float uiScale = ImGui::GetIO().FontGlobalScale;
-  float fs = (font ? font->LegacySize : 13.0f) * uiScale;
 
   if (font) {
+    float fs = font->LegacySize * ImGui::GetIO().FontGlobalScale;
     dl->AddText(font, fs, ImVec2(sx + 1, sy + 1), IM_COL32(0, 0, 0, 180), text);
     dl->AddText(font, fs, ImVec2(sx, sy), color, text);
   } else {
@@ -404,11 +404,11 @@ static void DrawPanelTextCentered(ImDrawList *dl, const UICoords &c, float px,
   float vx = px + relX * g_uiPanelScale;
   float vy = py + relY * g_uiPanelScale;
   float sw = width * g_uiPanelScale;
-  float uiScale = ImGui::GetIO().FontGlobalScale;
-  float fs = (font ? font->LegacySize : 13.0f) * uiScale;
 
   ImVec2 sz;
+  float fs = 0;
   if (font) {
+    fs = font->LegacySize * ImGui::GetIO().FontGlobalScale;
     sz = font->CalcTextSizeA(fs, FLT_MAX, 0.0f, text);
   } else {
     sz = ImGui::CalcTextSize(text);
@@ -940,59 +940,103 @@ void UpdateAndRenderRegionName(float deltaTime) {
 
 void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   float px = GetCharInfoPanelX(), py = PANEL_Y;
-  float pw = PANEL_W, ph = PANEL_H + 60.0f * g_uiPanelScale;
-
-  // WoW-style palette
-  const ImU32 colTitle = IM_COL32(255, 210, 80, 255);
-  const ImU32 colSection = IM_COL32(200, 170, 60, 220);
-  const ImU32 colLabel = IM_COL32(160, 160, 180, 255);
-  const ImU32 colValue = IM_COL32(255, 255, 255, 255);
-  const ImU32 colGreen = IM_COL32(100, 255, 100, 255);
-  const ImU32 colSepLine = IM_COL32(100, 85, 50, 140);
-  const ImU32 colRowA = IM_COL32(20, 20, 35, 180);
-  const ImU32 colRowB = IM_COL32(28, 28, 45, 180);
+  float pw = PanelW();
   char buf[256];
 
   float W = BASE_PANEL_W; // internal layout width (unscaled)
   float margin = 10;
-  float rowH = 20;      // stat row height
+  float rowH = 18;      // stat row height (compact)
   float rowGap = 1;     // gap between rows
-  float sectionGap = 8; // extra gap before each section header
+  float sectionGap = 6; // extra gap before each section header
+
+  // ─── Class identification ──────────────────────────────────────────
+  uint8_t classCode = s_ctx->hero ? s_ctx->hero->GetClass() : 16;
+  bool isDK  = (classCode == 16);
+  bool isDW  = (classCode == 0);
+  bool isELF = (classCode == 32);
+  bool isMG  = (classCode == 48);
+  bool showMagicSpeed = isDW || isMG;
+
+  // WoW-style class colors
+  ImU32 classColor;
+  const char *className;
+  if (isDK)       { classColor = IM_COL32(200, 70, 55, 255);  className = "Dark Knight"; }
+  else if (isDW)  { classColor = IM_COL32(100, 170, 255, 255); className = "Dark Wizard"; }
+  else if (isELF) { classColor = IM_COL32(100, 210, 120, 255); className = "Elf"; }
+  else            { classColor = IM_COL32(190, 120, 255, 255); className = "Magic Gladiator"; }
+
+  // WoW palette
+  const ImU32 colSection = IM_COL32(200, 170, 60, 220);
+  const ImU32 colLabel   = IM_COL32(160, 160, 180, 255);
+  const ImU32 colValue   = IM_COL32(255, 255, 255, 255);
+  const ImU32 colGreen   = IM_COL32(100, 255, 100, 255);
+  const ImU32 colSepLine = IM_COL32(100, 85, 50, 140);
+  const ImU32 colRowA    = IM_COL32(20, 20, 35, 180);
+  const ImU32 colRowB    = IM_COL32(28, 28, 45, 180);
+  const ImU32 colDim     = IM_COL32(140, 140, 130, 180);
+  const ImU32 colBuff    = IM_COL32(255, 220, 100, 255);
+
+  // Pet & buff state
+  bool hasPet = s_ctx->hero && s_ctx->hero->IsPetActive();
+  uint8_t petIdx = hasPet ? s_ctx->hero->GetPetItemIndex() : 0;
+  bool hasPoints = *s_ctx->serverLevelUpPoints > 0;
+  const auto *buffs = ClientPacketHandler::GetActiveBuffs();
+  bool hasDefBuff = buffs && buffs[0].active;
+  bool hasDmgBuff = buffs && buffs[1].active;
+  bool hasAnyBuff = hasDefBuff || hasDmgBuff || hasPet;
+
+  // ─── Pre-compute panel height ──────────────────────────────────────
+  float contentH = 62; // header + XP bar
+  contentH += 16 + 4 * (rowH + rowGap); // Attributes
+  if (hasPoints) contentH += 16;
+  contentH += sectionGap + 16; // Offense header
+  contentH += (showMagicSpeed ? 6 : 5) * (rowH + rowGap); // Offense rows
+  contentH += sectionGap + 16; // Defense header
+  contentH += 2 * (rowH + rowGap); // Defense rows
+  if (hasAnyBuff) {
+    contentH += sectionGap + 16; // Buffs header
+    if (hasDefBuff) contentH += (rowH + rowGap);
+    if (hasDmgBuff) contentH += (rowH + rowGap);
+    if (hasPet)     contentH += (rowH + rowGap);
+  }
+  contentH += sectionGap + 18 * 2 + 4; // Resources (HP + MP bars)
+  contentH += sectionGap + 16 + 4 * (rowH + rowGap); // Class Scaling
+  contentH += 8; // bottom padding
+  float ph = contentH * g_uiPanelScale;
 
   DrawStyledPanel(dl, c.ToScreenX(px), c.ToScreenY(py), c.ToScreenX(px + pw),
                   c.ToScreenY(py + ph));
   DrawCloseButton(dl, c, px, py);
 
-  // ─── Header: Character name + class/level ────────────────────────
-  DrawPanelTextCentered(dl, c, px, py, 0, 10, W, s_ctx->characterName, colTitle,
-                        s_ctx->fontDefault);
+  // ─── Header: class-colored name + level ────────────────────────────
+  DrawPanelTextCentered(dl, c, px, py, 0, 8, W, s_ctx->characterName,
+                        classColor, s_ctx->fontBold);
 
+  snprintf(buf, sizeof(buf), "Level %d  %s", *s_ctx->serverLevel, className);
+  DrawPanelTextCentered(dl, c, px, py, 0, 28, W, buf, colLabel);
+
+  // Class color accent line
   {
-    const char *className = "Dark Knight";
-    if (s_ctx->hero) {
-      uint8_t cc = s_ctx->hero->GetClass();
-      if (cc == 0)
-        className = "Dark Wizard";
-      else if (cc == 32)
-        className = "Elf";
-      else if (cc == 48)
-        className = "Magic Gladiator";
-    }
-    snprintf(buf, sizeof(buf), "Level %d %s", *s_ctx->serverLevel, className);
-    DrawPanelTextCentered(dl, c, px, py, 0, 30, W, buf, colLabel);
+    float lx0 = c.ToScreenX(px + (margin + 20) * g_uiPanelScale);
+    float lx1 = c.ToScreenX(px + (W - margin - 20) * g_uiPanelScale);
+    float ly  = c.ToScreenY(py + 43 * g_uiPanelScale);
+    uint8_t cr = (classColor >> 0) & 0xFF;
+    uint8_t cg = (classColor >> 8) & 0xFF;
+    uint8_t cb = (classColor >> 16) & 0xFF;
+    dl->AddLine(ImVec2(lx0, ly), ImVec2(lx1, ly),
+                IM_COL32(cr, cg, cb, 100), 1.5f);
   }
 
-  // ─── XP progress bar ─────────────────────────────────────────────
+  // ─── XP progress bar ──────────────────────────────────────────────
   float xpFrac = 0.0f;
   uint64_t nextXp = s_ctx->hero->GetNextExperience();
-  uint64_t curXp = (uint64_t)*s_ctx->serverXP;
+  uint64_t curXp  = (uint64_t)*s_ctx->serverXP;
   uint64_t prevXp = s_ctx->hero->CalcXPForLevel(*s_ctx->serverLevel);
   if (nextXp > prevXp)
     xpFrac = (float)(curXp - prevXp) / (float)(nextXp - prevXp);
   xpFrac = std::clamp(xpFrac, 0.0f, 1.0f);
-
   {
-    float bx = margin, by = 48, bw = W - margin * 2, bh = 10;
+    float bx = margin, by = 46, bw = W - margin * 2, bh = 10;
     snprintf(buf, sizeof(buf), "%.1f%%", xpFrac * 100.0f);
     float sx0 = c.ToScreenX(px + bx * g_uiPanelScale);
     float sy0 = c.ToScreenY(py + by * g_uiPanelScale);
@@ -1002,11 +1046,11 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
                   IM_COL32(60, 200, 100, 230), IM_COL32(30, 140, 60, 230), buf);
   }
 
-  // Helper: section header with decorative lines "── Title ──"
+  // ─── Section header helper ─────────────────────────────────────────
   auto drawSectionHeader = [&](float relY, const char *text) {
     float sx0 = c.ToScreenX(px + margin * g_uiPanelScale);
     float sx1 = c.ToScreenX(px + (W - margin) * g_uiPanelScale);
-    float sy = c.ToScreenY(py + (relY + 7) * g_uiPanelScale);
+    float sy  = c.ToScreenY(py + (relY + 6) * g_uiPanelScale);
     ImVec2 tsz = ImGui::CalcTextSize(text);
     float tw = tsz.x + 12;
     float cx0 = (sx0 + sx1 - tw) * 0.5f;
@@ -1016,7 +1060,7 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
     DrawPanelTextCentered(dl, c, px, py, 0, relY, W, text, colSection);
   };
 
-  // Helper: stat row with alternating background
+  // ─── Stat row helper ───────────────────────────────────────────────
   int rowIdx = 0;
   auto drawStatRow = [&](float relY, const char *label, const char *value,
                          ImU32 valColor = IM_COL32(255, 255, 255, 255)) {
@@ -1026,41 +1070,37 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
     float ry1 = c.ToScreenY(py + (relY + rowH) * g_uiPanelScale);
     dl->AddRectFilled(ImVec2(rx0, ry0), ImVec2(rx1, ry1),
                       (rowIdx & 1) ? colRowB : colRowA, 2.0f);
-    DrawPanelText(dl, c, px, py, margin + 8, relY + 3, label, colLabel);
-    DrawPanelTextRight(dl, c, px, py, margin + 8, relY + 3, W - margin * 2 - 38,
+    DrawPanelText(dl, c, px, py, margin + 6, relY + 2, label, colLabel);
+    DrawPanelTextRight(dl, c, px, py, margin + 6, relY + 2, W - margin * 2 - 34,
                        value, valColor);
     rowIdx++;
   };
 
-  // ─── Attributes ──────────────────────────────────────────────────
-  float curY = 64;
+  // ─── Attributes ────────────────────────────────────────────────────
+  float curY = 62;
   drawSectionHeader(curY, "Attributes");
-  curY += 18;
+  curY += 16;
 
   const char *statLabels[] = {"Strength", "Agility", "Vitality", "Energy"};
   int statValues[] = {*s_ctx->serverStr, *s_ctx->serverDex, *s_ctx->serverVit,
                       *s_ctx->serverEne};
-  float attrStartY = curY;
   rowIdx = 0;
   for (int i = 0; i < 4; i++) {
     float ry = curY + i * (rowH + rowGap);
     snprintf(buf, sizeof(buf), "%d", statValues[i]);
     drawStatRow(ry, statLabels[i], buf);
 
-    if (*s_ctx->serverLevelUpPoints > 0) {
-      float btnX = c.ToScreenX(px + (W - margin - 18) * g_uiPanelScale);
+    if (hasPoints) {
+      float btnX = c.ToScreenX(px + (W - margin - 16) * g_uiPanelScale);
       float btnY = c.ToScreenY(py + (ry + 2) * g_uiPanelScale);
       float btnS = c.ToScreenY(py + (ry + rowH - 2) * g_uiPanelScale) - btnY;
       ImVec2 bp0(btnX, btnY), bp1(btnX + btnS, btnY + btnS);
       ImVec2 mp = ImGui::GetIO().MousePos;
       bool hov = mp.x >= bp0.x && mp.x < bp1.x && mp.y >= bp0.y && mp.y < bp1.y;
-      ImU32 btnCol =
-          hov ? IM_COL32(80, 200, 80, 255) : IM_COL32(50, 140, 50, 230);
-      dl->AddRectFilled(bp0, bp1, btnCol, 3.0f);
+      dl->AddRectFilled(bp0, bp1,
+          hov ? IM_COL32(80, 200, 80, 255) : IM_COL32(50, 140, 50, 230), 3.0f);
       dl->AddRect(bp0, bp1,
-                  hov ? IM_COL32(130, 255, 130, 180)
-                      : IM_COL32(40, 100, 40, 180),
-                  3.0f);
+          hov ? IM_COL32(130, 255, 130, 180) : IM_COL32(40, 100, 40, 180), 3.0f);
       ImVec2 ps = ImGui::CalcTextSize("+");
       float ptx = btnX + (btnS - ps.x) * 0.5f;
       float pty = btnY + (btnS - ps.y) * 0.5f;
@@ -1070,64 +1110,41 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   }
   curY += 4 * (rowH + rowGap);
 
-  if (*s_ctx->serverLevelUpPoints > 0) {
+  if (hasPoints) {
     snprintf(buf, sizeof(buf), "%d points", *s_ctx->serverLevelUpPoints);
-    DrawPanelTextCentered(dl, c, px, py, 0, curY + 2, W, buf, colGreen);
-    curY += 18;
+    DrawPanelTextCentered(dl, c, px, py, 0, curY + 1, W, buf, colGreen);
+    curY += 16;
   }
 
-  // ─── Offense ─────────────────────────────────────────────────────
+  // ─── Offense ───────────────────────────────────────────────────────
   curY += sectionGap;
   drawSectionHeader(curY, "Offense");
-  curY += 18;
+  curY += 16;
 
-  bool isDKChar = s_ctx->hero && s_ctx->hero->GetClass() == 16;
-  int dMin, dMax;
-  if (isDKChar) {
-    dMin = *s_ctx->serverStr / 6 + s_ctx->hero->GetWeaponBonusMin();
-    dMax = *s_ctx->serverStr / 4 + s_ctx->hero->GetWeaponBonusMax();
-  } else {
-    dMin = *s_ctx->serverEne / 9 + s_ctx->hero->GetWeaponBonusMin();
-    dMax = *s_ctx->serverEne / 4 + s_ctx->hero->GetWeaponBonusMax();
-  }
+  // Use HeroCharacter computed damage (proper per-class formulas)
+  int dMin = s_ctx->hero->GetDamageMin();
+  int dMax = s_ctx->hero->GetDamageMax();
 
   rowIdx = 0;
+  const char *dmgLabel = "Damage";
+  if (isDW) dmgLabel = "Wizardry";
+  else if (isELF && s_ctx->hero->GetWeaponCategory() == 4) dmgLabel = "Ranged Dmg";
   snprintf(buf, sizeof(buf), "%d - %d", dMin, dMax);
-  drawStatRow(curY, isDKChar ? "Damage" : "Wizardry", buf);
+  drawStatRow(curY, dmgLabel, buf);
   curY += rowH + rowGap;
 
   snprintf(buf, sizeof(buf), "%d", *s_ctx->serverAttackSpeed);
   drawStatRow(curY, "Attack Speed", buf);
   curY += rowH + rowGap;
 
-  int atkRate;
-  if (isDKChar)
-    atkRate = *s_ctx->serverLevel * 5 + (*s_ctx->serverDex * 3) / 2 +
-              *s_ctx->serverStr / 4;
-  else
-    atkRate = *s_ctx->serverLevel * 5 + (*s_ctx->serverEne * 3) / 2;
-  snprintf(buf, sizeof(buf), "%d", atkRate);
+  if (showMagicSpeed) {
+    snprintf(buf, sizeof(buf), "%d", *s_ctx->serverMagicSpeed);
+    drawStatRow(curY, "Magic Speed", buf, IM_COL32(150, 180, 255, 255));
+    curY += rowH + rowGap;
+  }
+
+  snprintf(buf, sizeof(buf), "%d", s_ctx->hero->GetAttackSuccessRate());
   drawStatRow(curY, "Attack Rate", buf);
-  curY += rowH + rowGap;
-
-  // ─── Defenses ────────────────────────────────────────────────────
-  curY += sectionGap;
-  drawSectionHeader(curY, "Defenses");
-  curY += 18;
-
-  int baseDef = isDKChar ? *s_ctx->serverDex / 3 : *s_ctx->serverDex / 4;
-  int addDef = s_ctx->hero->GetDefenseBonus();
-  if (addDef > 0)
-    snprintf(buf, sizeof(buf), "%d (+%d)", baseDef, addDef);
-  else
-    snprintf(buf, sizeof(buf), "%d", baseDef);
-  rowIdx = 0;
-  drawStatRow(curY, "Defense", buf);
-  curY += rowH + rowGap;
-
-  int defRate = isDKChar ? *s_ctx->serverDex / 3 : *s_ctx->serverDex / 4;
-  snprintf(buf, sizeof(buf), "%d", defRate);
-  drawStatRow(curY, "Defense Rate", buf);
   curY += rowH + rowGap;
 
   drawStatRow(curY, "Critical", "5%", IM_COL32(100, 200, 255, 255));
@@ -1136,21 +1153,64 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   drawStatRow(curY, "Excellent", "1%", colGreen);
   curY += rowH + rowGap;
 
-  // ─── Resources ───────────────────────────────────────────────────
+  // ─── Defense ───────────────────────────────────────────────────────
+  curY += sectionGap;
+  drawSectionHeader(curY, "Defense");
+  curY += 16;
+
+  int totalDef = s_ctx->hero->GetDefense();
+  int equipDef = s_ctx->hero->GetDefenseBonus();
+  rowIdx = 0;
+  if (equipDef > 0)
+    snprintf(buf, sizeof(buf), "%d (+%d)", totalDef - equipDef, equipDef);
+  else
+    snprintf(buf, sizeof(buf), "%d", totalDef);
+  drawStatRow(curY, "Defense", buf);
+  curY += rowH + rowGap;
+
+  snprintf(buf, sizeof(buf), "%d", s_ctx->hero->GetDefenseSuccessRate());
+  drawStatRow(curY, "Defense Rate", buf);
+  curY += rowH + rowGap;
+
+  // ─── Active Buffs (Elf auras + Pet bonuses) ────────────────────────
+  if (hasAnyBuff) {
+    curY += sectionGap;
+    drawSectionHeader(curY, "Active Buffs");
+    curY += 16;
+    rowIdx = 0;
+
+    if (hasDefBuff) {
+      snprintf(buf, sizeof(buf), "+%d Defense", buffs[0].value);
+      drawStatRow(curY, "Greater Def", buf, colBuff);
+      curY += rowH + rowGap;
+    }
+    if (hasDmgBuff) {
+      snprintf(buf, sizeof(buf), "+%d Damage", buffs[1].value);
+      drawStatRow(curY, "Greater Dmg", buf, colBuff);
+      curY += rowH + rowGap;
+    }
+    if (hasPet) {
+      if (petIdx == 0) // Guardian Angel
+        drawStatRow(curY, "Angel", "20% Absorb", IM_COL32(180, 220, 255, 255));
+      else // Imp
+        drawStatRow(curY, "Imp", "+30% Damage", IM_COL32(255, 160, 100, 255));
+      curY += rowH + rowGap;
+    }
+  }
+
+  // ─── Resources ─────────────────────────────────────────────────────
   curY += sectionGap;
 
   int curHP = s_ctx->hero->GetHP();
   int maxHP = s_ctx->hero->GetMaxHP();
-  bool isDKBars = (s_ctx->hero->GetClass() == 16);
-  int curMP = isDKBars ? s_ctx->hero->GetAG() : s_ctx->hero->GetMana();
-  int maxMP = isDKBars ? s_ctx->hero->GetMaxAG() : s_ctx->hero->GetMaxMana();
-
+  int curMP = isDK ? s_ctx->hero->GetAG() : s_ctx->hero->GetMana();
+  int maxMP = isDK ? s_ctx->hero->GetMaxAG() : s_ctx->hero->GetMaxMana();
   float hpFrac = (maxHP > 0) ? (float)curHP / maxHP : 0.0f;
   float mpFrac = (maxMP > 0) ? (float)curMP / maxMP : 0.0f;
 
   // HP bar
   {
-    float bx = margin, bw = W - margin * 2, bh = 16;
+    float bx = margin, bw = W - margin * 2, bh = 14;
     snprintf(buf, sizeof(buf), "HP  %d / %d", std::max(curHP, 0), maxHP);
     float sx0 = c.ToScreenX(px + bx * g_uiPanelScale);
     float sy0 = c.ToScreenY(py + curY * g_uiPanelScale);
@@ -1159,31 +1219,67 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
     DrawStyledBar(dl, sx0, sy0, sx1 - sx0, sy1 - sy0, hpFrac,
                   IM_COL32(220, 50, 50, 230), IM_COL32(160, 30, 30, 230), buf);
   }
-  curY += 20;
+  curY += 18;
 
-  // AG/Mana bar
+  // AG/Mana bar (class-themed colors)
   {
-    const char *manaLabel = isDKBars ? "AG" : "Mana";
-    float bx = margin, bw = W - margin * 2, bh = 16;
-    snprintf(buf, sizeof(buf), "%s  %d / %d", manaLabel, std::max(curMP, 0),
-             maxMP);
+    const char *resLabel = isDK ? "AG" : "Mana";
+    float bx = margin, bw = W - margin * 2, bh = 14;
+    snprintf(buf, sizeof(buf), "%s  %d / %d", resLabel, std::max(curMP, 0), maxMP);
     float sx0 = c.ToScreenX(px + bx * g_uiPanelScale);
     float sy0 = c.ToScreenY(py + curY * g_uiPanelScale);
     float sx1 = c.ToScreenX(px + (bx + bw) * g_uiPanelScale);
     float sy1 = c.ToScreenY(py + (curY + bh) * g_uiPanelScale);
-    ImU32 barTop =
-        isDKBars ? IM_COL32(180, 160, 40, 230) : IM_COL32(40, 100, 220, 230);
-    ImU32 barBot =
-        isDKBars ? IM_COL32(130, 115, 20, 230) : IM_COL32(25, 60, 160, 230);
-    DrawStyledBar(dl, sx0, sy0, sx1 - sx0, sy1 - sy0, mpFrac, barTop, barBot,
-                  buf);
+    ImU32 barTop, barBot;
+    if (isDK)       { barTop = IM_COL32(180, 160, 40, 230);  barBot = IM_COL32(130, 115, 20, 230); }
+    else if (isDW)  { barTop = IM_COL32(40, 100, 220, 230);  barBot = IM_COL32(25, 60, 160, 230); }
+    else if (isELF) { barTop = IM_COL32(40, 180, 120, 230);  barBot = IM_COL32(25, 120, 80, 230); }
+    else            { barTop = IM_COL32(140, 60, 200, 230);  barBot = IM_COL32(90, 35, 140, 230); }
+    DrawStyledBar(dl, sx0, sy0, sx1 - sx0, sy1 - sy0, mpFrac, barTop, barBot, buf);
+  }
+  curY += 18;
+
+  // ─── Class Scaling (what stats do for this class) ──────────────────
+  curY += sectionGap;
+  drawSectionHeader(curY, "Stat Scaling");
+  curY += 16;
+
+  struct ScalingRow { const char *stat; const char *effect; };
+  ScalingRow scaling[4];
+
+  if (isDK) {
+    scaling[0] = {"STR", "+1 Dmg / 4-6 pts"};
+    scaling[1] = {"AGI", "+1 Def / 3 pts"};
+    scaling[2] = {"VIT", "+3 HP / point"};
+    scaling[3] = {"ENE", "+1.0 AG / point"};
+  } else if (isDW) {
+    scaling[0] = {"STR", "+1 Dmg / 4-6 pts"};
+    scaling[1] = {"AGI", "+1 Def / 4 pts"};
+    scaling[2] = {"VIT", "+2 HP / point"};
+    scaling[3] = {"ENE", "Wiz/4-9, +2 Mana"};
+  } else if (isELF) {
+    scaling[0] = {"STR", "+1 Dmg / 8-14 pts"};
+    scaling[1] = {"AGI", "Dmg/4-7, Def/10"};
+    scaling[2] = {"VIT", "+2 HP / point"};
+    scaling[3] = {"ENE", "+1.5 Mana / point"};
+  } else { // MG
+    scaling[0] = {"STR", "+1 Dmg / 4-6 pts"};
+    scaling[1] = {"AGI", "+1 Def / 4 pts"};
+    scaling[2] = {"VIT", "+2 HP / point"};
+    scaling[3] = {"ENE", "Dmg/8-12, +2 Mana"};
+  }
+
+  rowIdx = 0;
+  for (int i = 0; i < 4; i++) {
+    float ry = curY + i * (rowH + rowGap);
+    drawStatRow(ry, scaling[i].stat, scaling[i].effect, colDim);
   }
 }
 
 void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
   auto &g_itemDefs = ItemDatabase::GetItemDefs();
   float px = GetInventoryPanelX(), py = PANEL_Y;
-  float pw = PANEL_W, ph = PANEL_H;
+  float pw = PanelW(), ph = PanelH();
   ImVec2 mp = ImGui::GetIO().MousePos;
 
   // Colors
@@ -1496,7 +1592,7 @@ void RenderShopPanel(ImDrawList *dl, const UICoords &c) {
     return;
   auto &g_itemDefs = ItemDatabase::GetItemDefs();
   float px = GetShopPanelX(), py = PANEL_Y;
-  float pw = PANEL_W, ph = PANEL_H;
+  float pw = PanelW(), ph = PanelH();
   ImVec2 mp = ImGui::GetIO().MousePos;
 
   const ImU32 colTitle = IM_COL32(255, 210, 80, 255);
@@ -1698,13 +1794,16 @@ bool HandlePanelClick(float vx, float vy) {
       return true;
     }
 
-    // Stat "+" buttons (attrStartY=82, rowH=20, rowGap=1)
-    float statRowYOffsets[] = {82, 103, 124, 145};
+    // Stat "+" buttons — must match RenderCharInfoPanel layout:
+    // curY=62 (Attributes header) + 16 = 78, rowH=18, rowGap=1
+    constexpr float statStartY = 78.0f;
+    constexpr float statRowStep = 19.0f; // rowH(18) + rowGap(1)
     if (*s_ctx->serverLevelUpPoints > 0) {
       for (int i = 0; i < 4; i++) {
-        float btnX = BASE_PANEL_W - 28, btnY = statRowYOffsets[i] + 2;
-        if (relX >= btnX && relX < btnX + 18 && relY >= btnY &&
-            relY < btnY + 18) {
+        float btnX = BASE_PANEL_W - 10 - 16, btnY = statStartY + i * statRowStep + 2;
+        float btnS = 14.0f; // rowH - 4
+        if (relX >= btnX && relX < btnX + btnS && relY >= btnY &&
+            relY < btnY + btnS) {
           s_ctx->server->SendStatAlloc(static_cast<uint8_t>(i));
           SoundManager::Play(SOUND_CLICK01);
           return true;
@@ -2708,17 +2807,21 @@ void LoadSlotBackgrounds(const std::string &dataPath) {
   }
 }
 
-float GetCharInfoPanelX() { return PANEL_X_RIGHT; }
-
-float GetInventoryPanelX() {
-  return *s_ctx->showCharInfo ? PANEL_X_RIGHT - PANEL_W - 5.0f : PANEL_X_RIGHT;
+void UpdatePanelScale(int /*windowHeight*/) {
+  g_uiPanelScale = 1.5f; // constant — UICoords handles resolution scaling
 }
 
-float GetShopPanelX() { return GetInventoryPanelX() - PANEL_W - 5.0f; }
+float GetCharInfoPanelX() { return PanelXRight(); }
+
+float GetInventoryPanelX() {
+  return *s_ctx->showCharInfo ? PanelXRight() - PanelW() - 5.0f : PanelXRight();
+}
+
+float GetShopPanelX() { return GetInventoryPanelX() - PanelW() - 5.0f; }
 
 bool IsPointInPanel(float vx, float vy, float panelX) {
-  return vx >= panelX && vx < panelX + PANEL_W && vy >= PANEL_Y &&
-         vy < PANEL_Y + PANEL_H;
+  return vx >= panelX && vx < panelX + PanelW() && vy >= PANEL_Y &&
+         vy < PANEL_Y + PanelH();
 }
 
 } // namespace InventoryUI

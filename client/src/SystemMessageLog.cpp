@@ -114,7 +114,7 @@ void Update(float /*deltaTime*/) {
 
 void Render(ImDrawList *dl, ImFont *font, float screenW, float screenH,
             float hudBarHeight, float mouseX, float mouseY) {
-  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
   float sTabH = TAB_H * uiScale;
   float sLineH = LINE_H * uiScale;
   float sContW = CONTAINER_W * uiScale;

@@ -138,6 +138,7 @@ public:
   // Elf summon pet
   uint16_t activeSummonIndex = 0; // Monster index of active summon (0 = none)
   int16_t activeSummonType = -1;  // Monster type of active summon (-1 = none)
+  uint16_t cameraZoom = 8000;     // Camera zoom * 10 (persisted per character)
   uint16_t attackTargetMonsterIdx = 0; // Last monster player attacked (for summon assist)
   bool wasInSafeZone = false; // Previous tick safe zone state (for despawn/respawn transitions)
 

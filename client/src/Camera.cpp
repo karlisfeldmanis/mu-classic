@@ -47,9 +47,9 @@ void Camera::ProcessMouseRotation(float xoffset, float yoffset) {
 }
 
 void Camera::ProcessMouseScroll(float yoffset) {
-  constexpr float ZOOM_STEP = 40.0f;
-  constexpr float MIN_ZOOM = 400.0f;
-  constexpr float MAX_ZOOM = 1200.0f;
+  constexpr float ZOOM_STEP = 30.0f;
+  constexpr float MIN_ZOOM = 700.0f;
+  constexpr float MAX_ZOOM = 950.0f;
   TargetZoom -= yoffset * ZOOM_STEP;
   if (TargetZoom < MIN_ZOOM) TargetZoom = MIN_ZOOM;
   if (TargetZoom > MAX_ZOOM) TargetZoom = MAX_ZOOM;

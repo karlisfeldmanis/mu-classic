@@ -232,11 +232,13 @@ bool GetInterpolatedBoneData(const BMDData *bmd, int action, float frame,
   return true;
 }
 
-std::vector<BoneWorldMatrix>
-ComputeBoneMatricesInterpolated(const BMDData *bmd, int action, float frame,
-                                const glm::vec3 &bodyAngle) {
+// ── Output-parameter versions (reuse pre-allocated vector, zero allocs) ──
+
+void ComputeBoneMatricesInterpolated(const BMDData *bmd, int action, float frame,
+                                     std::vector<BoneWorldMatrix> &world,
+                                     const glm::vec3 &bodyAngle) {
   int numBones = (int)bmd->Bones.size();
-  std::vector<BoneWorldMatrix> world(numBones);
+  world.resize(numBones); // No-op if already correct size (capacity preserved)
 
   // Identity init
   for (int i = 0; i < numBones; ++i)
@@ -280,16 +282,14 @@ ComputeBoneMatricesInterpolated(const BMDData *bmd, int action, float frame,
       memcpy(world[i].data(), result, sizeof(float) * 12);
     }
   }
-
-  return world;
 }
 
-std::vector<BoneWorldMatrix>
-ComputeBoneMatricesBlended(const BMDData *bmd, int action1, float frame1,
-                           int action2, float frame2, float blendAlpha,
-                           const glm::vec3 &bodyAngle) {
+void ComputeBoneMatricesBlended(const BMDData *bmd, int action1, float frame1,
+                                int action2, float frame2, float blendAlpha,
+                                std::vector<BoneWorldMatrix> &world,
+                                const glm::vec3 &bodyAngle) {
   int numBones = (int)bmd->Bones.size();
-  std::vector<BoneWorldMatrix> world(numBones);
+  world.resize(numBones);
 
   // Identity init
   for (int i = 0; i < numBones; ++i)
@@ -350,7 +350,25 @@ ComputeBoneMatricesBlended(const BMDData *bmd, int action1, float frame1,
       memcpy(world[i].data(), result, sizeof(float) * 12);
     }
   }
+}
 
+// ── Legacy return-by-value wrappers (for call sites that don't need perf) ──
+
+std::vector<BoneWorldMatrix>
+ComputeBoneMatricesInterpolated(const BMDData *bmd, int action, float frame,
+                                const glm::vec3 &bodyAngle) {
+  std::vector<BoneWorldMatrix> world;
+  ComputeBoneMatricesInterpolated(bmd, action, frame, world, bodyAngle);
+  return world;
+}
+
+std::vector<BoneWorldMatrix>
+ComputeBoneMatricesBlended(const BMDData *bmd, int action1, float frame1,
+                           int action2, float frame2, float blendAlpha,
+                           const glm::vec3 &bodyAngle) {
+  std::vector<BoneWorldMatrix> world;
+  ComputeBoneMatricesBlended(bmd, action1, frame1, action2, frame2, blendAlpha,
+                             world, bodyAngle);
   return world;
 }
 

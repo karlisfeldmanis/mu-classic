@@ -106,7 +106,7 @@ void UpdateAndRender(FloatingDamage *pool, int poolSize, float deltaTime,
 
     // Draw with shadow
     // Main 5.2: scale 15 → 20px base, scale 50 → ~67px for crits
-    float uiScale = ImGui::GetIO().FontGlobalScale;
+    float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
     float fontSize = d.scale * (20.0f / 15.0f) * uiScale;
     ImVec2 tpos(sx, sy);
     dl->AddText(font, fontSize, ImVec2(tpos.x + 1, tpos.y + 1),
@@ -276,7 +276,7 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
     else
       snprintf(label, sizeof(label), "%s", name);
 
-    float uiScale = ImGui::GetIO().FontGlobalScale;
+    float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
     float labelFs = 13.0f * uiScale;
     ImVec2 ts = font->CalcTextSizeA(labelFs, FLT_MAX, 0, label);
     float tx = sx - ts.x * 0.5f, ty = sy - ts.y * 0.5f;

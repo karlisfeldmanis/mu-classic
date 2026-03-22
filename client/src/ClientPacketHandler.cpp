@@ -264,7 +264,7 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
     // Monster viewport V2
     if (headcode == Opcode::MON_VIEWPORT_V2) {
       uint8_t count = pkt[4];
-      int entrySize = 12;
+      int entrySize = (int)sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2);
       for (int i = 0; i < count; i++) {
         int off = 5 + i * entrySize;
         if (off + entrySize > pktSize)
@@ -279,6 +279,7 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
         mon.hp = (uint16_t)(pkt[off + 7] | (pkt[off + 8] << 8));
         mon.maxHp = (uint16_t)(pkt[off + 9] | (pkt[off + 10] << 8));
         mon.state = pkt[off + 11];
+        mon.level = pkt[off + 12];
         result.monsters.push_back(mon);
       }
       std::cout << "[Net] Monster viewport V2: " << (int)count << " monsters"
@@ -427,6 +428,7 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
       result.spawnGridY = info->y;
       result.spawnMapId = info->map;
       result.hasSpawnPos = true;
+      result.cameraZoom = info->cameraZoom;
       std::cout << "[Net] CharInfo spawn: map=" << (int)info->map
                 << " grid=(" << (int)info->x << "," << (int)info->y << ")"
                 << std::endl;
@@ -529,6 +531,17 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
       g_state->monsterManager->ClearSummon(p->monsterIndex);
       std::cout << "[Net] Summon despawn (initial): index=" << p->monsterIndex
                 << std::endl;
+    }
+
+    // Buff effect (0x47) — restore elf auras from DB on login
+    if (headcode == Opcode::BUFF_EFFECT &&
+        pktSize >= (int)sizeof(PMSG_BUFF_EFFECT_SEND)) {
+      auto *p = reinterpret_cast<const PMSG_BUFF_EFFECT_SEND *>(pkt);
+      if (p->buffType >= 1 && p->buffType <= 2 && p->active) {
+        int idx = p->buffType - 1;
+        g_state->activeBuffs[idx] = {true, p->buffType, (int)p->value,
+                                     p->duration, p->duration};
+      }
     }
   }
 }
@@ -662,8 +675,11 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         }
 
         uint8_t dmgType = 0;
+        bool isOwnSummon = g_state->monsterManager->IsOwnSummon(idx);
         if (p->damageType == 0)
           dmgType = 7; // Miss
+        else if (isOwnSummon && p->damageType == 1)
+          dmgType = 8; // Own summon receiving damage: red
         else if (p->damageType == 2)
           dmgType = 2; // Critical
         else if (p->damageType == 3)
@@ -790,7 +806,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           if (g_state->vfxManager)
             g_state->vfxManager->SpawnBuffCastFlash(heroPos, glm::vec3(0.4f, 0.6f, 1.0f));
         }
-        SoundManager::Play(SOUND_HEART); // Warm heal sound
+        SoundManager::Play(SOUND_SOULBARRIER); // Same sound as aura casting
       } else if (p->buffType >= 1 && p->buffType <= 2) {
         int idx = p->buffType - 1; // 0=defense, 1=damage
         if (p->active) {
@@ -1199,9 +1215,10 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
     // Monster viewport V2 (0x34) — spawns monsters after map change
     if (headcode == Opcode::MON_VIEWPORT_V2 && g_state->monsterManager) {
       uint8_t count = pkt[4];
+      int entrySize = (int)sizeof(PMSG_MONSTER_VIEWPORT_ENTRY_V2);
       for (int i = 0; i < count; i++) {
-        int off = 5 + i * 12;
-        if (off + 12 > pktSize) break;
+        int off = 5 + i * entrySize;
+        if (off + entrySize > pktSize) break;
         uint16_t serverIndex = (uint16_t)((pkt[off] << 8) | pkt[off + 1]);
         uint16_t monType = (uint16_t)((pkt[off + 2] << 8) | pkt[off + 3]);
         uint8_t gx = pkt[off + 4], gy = pkt[off + 5];
@@ -1209,8 +1226,9 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         uint16_t hp = (uint16_t)(pkt[off + 7] | (pkt[off + 8] << 8));
         uint16_t maxHp = (uint16_t)(pkt[off + 9] | (pkt[off + 10] << 8));
         uint8_t state = pkt[off + 11];
+        uint8_t level = pkt[off + 12];
         g_state->monsterManager->AddMonster(monType, gx, gy, dir, serverIndex,
-                                            hp, maxHp, state);
+                                            hp, maxHp, state, level);
       }
       std::cout << "[Net] Monster viewport V2 (game): " << (int)count << " monsters\n";
     }

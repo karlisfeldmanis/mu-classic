@@ -46,7 +46,9 @@ static const std::unordered_map<uint16_t, std::string> s_monsterNames = {
     {30, "Forest Monster"},
     {31, "Agon"},
     {32, "Stone Golem"},
-    {33, "Elite Goblin"}};
+    {33, "Elite Goblin"},
+    // Elf summon
+    {150, "Bali"}};
 
 glm::vec3
 MonsterManager::sampleTerrainLightAt(const glm::vec3 &worldPos) const {
@@ -295,7 +297,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster02.bmd", "Hell Hound", 1.1f, 90.0f, 160.0f);
     if (idx >= 0) {
-      m_models[idx].level = 55;
+      // level comes from server viewport packet
       m_models[idx].defense = 55;
       m_models[idx].defenseRate = 55;
       m_models[idx].attackRate = 165;
@@ -309,7 +311,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster01.bmd", "Poison Bull", 1.0f, 90.0f, 130.0f);
     if (idx >= 0) {
-      m_models[idx].level = 75;
+      // level comes from server viewport packet
       m_models[idx].defense = 75;
       m_models[idx].defenseRate = 75;
       m_models[idx].attackRate = 190;
@@ -321,7 +323,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster05.bmd", "Thunder Lich", 1.1f, 80.0f, 150.0f);
     if (idx >= 0) {
-      m_models[idx].level = 70;
+      // level comes from server viewport packet
       m_models[idx].defense = 70;
       m_models[idx].defenseRate = 70;
       m_models[idx].attackRate = 180;
@@ -335,7 +337,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster04.bmd", "Dark Knight", 0.8f, 90.0f, 170.0f);
     if (idx >= 0) {
-      m_models[idx].level = 80;
+      // level comes from server viewport packet
       m_models[idx].defense = 80;
       m_models[idx].defenseRate = 80;
       m_models[idx].attackRate = 200;
@@ -348,7 +350,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster08.bmd", "Ghost", 1.0f, 70.0f, 140.0f);
     if (idx >= 0) {
-      m_models[idx].level = 40;
+      // level comes from server viewport packet
       m_models[idx].defense = 40;
       m_models[idx].defenseRate = 40;
       m_models[idx].attackRate = 145;
@@ -361,7 +363,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster07.bmd", "Larva", 0.6f, 60.0f, 100.0f);
     if (idx >= 0) {
-      m_models[idx].level = 31;
+      // level comes from server viewport packet
       m_models[idx].defense = 31;
       m_models[idx].defenseRate = 31;
       m_models[idx].attackRate = 120;
@@ -374,7 +376,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster09.bmd", "Hell Spider", 1.1f, 80.0f, 100.0f);
     if (idx >= 0) {
-      m_models[idx].level = 60;
+      // level comes from server viewport packet
       m_models[idx].defense = 60;
       m_models[idx].defenseRate = 60;
       m_models[idx].attackRate = 170;
@@ -386,7 +388,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster11.bmd", "Cyclops", 0.9f, 110.0f, 190.0f);
     if (idx >= 0) {
-      m_models[idx].level = 35;
+      // level comes from server viewport packet
       m_models[idx].defense = 35;
       m_models[idx].defenseRate = 35;
       m_models[idx].attackRate = 130;
@@ -399,7 +401,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster12.bmd", "Gorgon", 1.5f, 120.0f, 200.0f);
     if (idx >= 0) {
-      m_models[idx].level = 100;
+      // level comes from server viewport packet
       m_models[idx].defense = 100;
       m_models[idx].defenseRate = 100;
       m_models[idx].attackRate = 220;
@@ -418,7 +420,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster13.bmd", "Yeti", 1.1f, 90.0f, 170.0f);
     if (idx >= 0) {
-      m_models[idx].level = 30;
+      // level comes from server viewport packet
       m_models[idx].defense = 37;
       m_models[idx].defenseRate = 37;
       m_models[idx].attackRate = 150;
@@ -430,7 +432,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster14.bmd", "Elite Yeti", 1.4f, 100.0f, 190.0f);
     if (idx >= 0) {
-      m_models[idx].level = 36;
+      // level comes from server viewport packet
       m_models[idx].defense = 50;
       m_models[idx].defenseRate = 50;
       m_models[idx].attackRate = 180;
@@ -442,7 +444,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster15.bmd", "Assassin", 0.95f, 80.0f, 150.0f);
     if (idx >= 0) {
-      m_models[idx].level = 26;
+      // level comes from server viewport packet
       m_models[idx].defense = 33;
       m_models[idx].defenseRate = 33;
       m_models[idx].attackRate = 130;
@@ -454,7 +456,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster16.bmd", "Ice Monster", 1.0f, 80.0f, 140.0f);
     if (idx >= 0) {
-      m_models[idx].level = 22;
+      // level comes from server viewport packet
       m_models[idx].defense = 27;
       m_models[idx].defenseRate = 27;
       m_models[idx].attackRate = 110;
@@ -467,7 +469,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster17.bmd", "Hommerd", 1.15f, 90.0f, 160.0f);
     if (idx >= 0) {
-      m_models[idx].level = 24;
+      // level comes from server viewport packet
       m_models[idx].defense = 29;
       m_models[idx].defenseRate = 29;
       m_models[idx].attackRate = 120;
@@ -479,7 +481,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster18.bmd", "Worm", 1.0f, 70.0f, 100.0f);
     if (idx >= 0) {
-      m_models[idx].level = 20;
+      // level comes from server viewport packet
       m_models[idx].defense = 25;
       m_models[idx].defenseRate = 25;
       m_models[idx].attackRate = 100;
@@ -491,7 +493,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster19.bmd", "Ice Queen", 1.1f, 100.0f, 180.0f);
     if (idx >= 0) {
-      m_models[idx].level = 52;
+      // level comes from server viewport packet
       m_models[idx].defense = 90;
       m_models[idx].defenseRate = 90;
       m_models[idx].attackRate = 260;
@@ -507,7 +509,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster20.bmd", "Goblin", 0.8f, 70.0f, 100.0f);
     if (idx >= 0) {
-      m_models[idx].level = 3;
+      // level comes from server viewport packet
       m_models[idx].defense = 2;
       m_models[idx].defenseRate = 2;
       m_models[idx].attackRate = 13;
@@ -519,7 +521,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster21.bmd", "Chain Scorpion", 1.1f, 80.0f, 120.0f);
     if (idx >= 0) {
-      m_models[idx].level = 5;
+      // level comes from server viewport packet
       m_models[idx].defense = 4;
       m_models[idx].defenseRate = 4;
       m_models[idx].attackRate = 23;
@@ -531,7 +533,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster22.bmd", "Beetle Monster", 0.8f, 80.0f, 130.0f);
     if (idx >= 0) {
-      m_models[idx].level = 10;
+      // level comes from server viewport packet
       m_models[idx].defense = 10;
       m_models[idx].defenseRate = 10;
       m_models[idx].attackRate = 44;
@@ -544,7 +546,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster23.bmd", "Hunter", 0.95f, 80.0f, 150.0f);
     if (idx >= 0) {
-      m_models[idx].level = 13;
+      // level comes from server viewport packet
       m_models[idx].defense = 13;
       m_models[idx].defenseRate = 13;
       m_models[idx].attackRate = 56;
@@ -556,7 +558,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster24.bmd", "Forest Monster", 0.75f, 80.0f, 140.0f);
     if (idx >= 0) {
-      m_models[idx].level = 15;
+      // level comes from server viewport packet
       m_models[idx].defense = 15;
       m_models[idx].defenseRate = 15;
       m_models[idx].attackRate = 68;
@@ -568,7 +570,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster25.bmd", "Agon", 1.3f, 90.0f, 160.0f);
     if (idx >= 0) {
-      m_models[idx].level = 16;
+      // level comes from server viewport packet
       m_models[idx].defense = 16;
       m_models[idx].defenseRate = 16;
       m_models[idx].attackRate = 74;
@@ -580,7 +582,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster26.bmd", "Stone Golem", 0.9f, 100.0f, 180.0f);
     if (idx >= 0) {
-      m_models[idx].level = 18;
+      // level comes from server viewport packet
       m_models[idx].defense = 20;
       m_models[idx].defenseRate = 20;
       m_models[idx].attackRate = 86;
@@ -592,7 +594,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   {
     int idx = loadMonsterModel("Monster20.bmd", "Elite Goblin", 1.2f, 80.0f, 130.0f);
     if (idx >= 0) {
-      m_models[idx].level = 8;
+      // level comes from server viewport packet
       m_models[idx].defense = 8;
       m_models[idx].defenseRate = 8;
       m_models[idx].attackRate = 33;
@@ -810,11 +812,12 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     loadMonsterWeapon(18, "Staff05.bmd", 30, noRot, noOff);
   }
 
-  // Bali (type 150) — Elf summon
+  // Bali (type 150) — Elf summon (MONSTER_MODEL_BALI=32 → Monster33.bmd)
+  // Kayito: Scale=0.12, melee (attackRange=1), no weapons
   {
-    int idx = loadMonsterModel("Monster151.bmd", "Bali", 1.3f, 100.0f, 150.0f);
+    int idx = loadMonsterModel("Monster33.bmd", "Bali", 0.12f, 80.0f, 150.0f);
     if (idx >= 0) {
-      m_models[idx].level = 52;
+      // level comes from server viewport packet
       m_models[idx].defense = 100;
       m_models[idx].defenseRate = 75;
       m_models[idx].attackRate = 260;
@@ -841,7 +844,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
 void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
                                 uint8_t gridY, uint8_t dir,
                                 uint16_t serverIndex, int hp, int maxHp,
-                                uint8_t state) {
+                                uint8_t state, int level) {
   // Dedup: if monster with this serverIndex already exists, update instead
   int existing = FindByServerIndex(serverIndex);
   if (existing >= 0) {
@@ -928,6 +931,7 @@ void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
 
   mon.hp = hp;
   mon.maxHp = maxHp > 0 ? maxHp : hp;
+  mon.level = level;
   mon.state = static_cast<MonsterState>(state);
   // Fade in all monsters (including initial sync) so they don't pop in
   mon.spawnAlpha = 0.0f;
@@ -971,8 +975,6 @@ void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
   }
 
   m_monsters.push_back(std::move(mon));
-  std::cout << "[Monster] Spawned type=" << monsterType << " at grid ("
-            << (int)gridX << "," << (int)gridY << ")" << std::endl;
 }
 
 void MonsterManager::setAction(MonsterInstance &mon, int action) {
@@ -1095,50 +1097,146 @@ static float facingFromDir(const glm::vec3 &dir) {
   return atan2f(dir.z, -dir.x);
 }
 
+// Play idle sound for a monster transitioning to idle (with cooldown + range check)
+void MonsterManager::playIdleSound(MonsterInstance &mon) {
+  constexpr float COOLDOWN = 8.0f; // Min seconds between idle sounds per monster
+  constexpr float MAX_DIST_SQ = 1200.0f * 1200.0f;
+  if (m_worldTime - mon.lastIdleSoundTime < COOLDOWN) return;
+  float dx = mon.position.x - m_playerPos.x;
+  float dz = mon.position.z - m_playerPos.z;
+  if (dx * dx + dz * dz > MAX_DIST_SQ) return;
+  mon.lastIdleSoundTime = m_worldTime;
+  float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
+  switch (mon.monsterType) {
+  case 0: SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz); break;
+  case 1: SoundManager::Play3D(SOUND_MONSTER_HOUND1 + rand() % 2, px, py, pz); break;
+  case 2: SoundManager::Play3D(SOUND_MONSTER_BUDGE1, px, py, pz); break;
+  case 3: SoundManager::Play3D(SOUND_MONSTER_SPIDER1, px, py, pz); break;
+  case 4: SoundManager::Play3D(SOUND_MONSTER_WIZARD1 + rand() % 2, px, py, pz); break;
+  case 5: SoundManager::Play3D(SOUND_MONSTER_HOUND1 + rand() % 2, px, py, pz); break;
+  case 6: SoundManager::Play3D(SOUND_MONSTER_LARVA1 + rand() % 2, px, py, pz); break;
+  case 7: SoundManager::Play3D(SOUND_MONSTER_GIANT1 + rand() % 2, px, py, pz); break;
+  case 8: SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz); break;
+  case 9: SoundManager::Play3D(SOUND_MONSTER_WIZARD1 + rand() % 2, px, py, pz); break;
+  case 10: SoundManager::Play3D(SOUND_MONSTER_DARKKNIGHT1 + rand() % 2, px, py, pz); break;
+  case 11: SoundManager::Play3D(SOUND_MONSTER_GHOST1 + rand() % 2, px, py, pz); break;
+  case 12: SoundManager::Play3D(SOUND_MONSTER_LARVA1 + rand() % 2, px, py, pz); break;
+  case 13: SoundManager::Play3D(SOUND_MONSTER_SHADOW1 + rand() % 2, px, py, pz); break;
+  case 14: case 15: case 16: SoundManager::Play3D(SOUND_BONE1, px, py, pz); break;
+  case 17: SoundManager::Play3D(SOUND_MONSTER_OGRE1 + rand() % 2, px, py, pz); break;
+  case 18: SoundManager::Play3D(SOUND_MONSTER_GORGON1 + rand() % 2, px, py, pz); break;
+  case 19: SoundManager::Play3D(SOUND_MONSTER_YETI1, px, py, pz); break;
+  case 20: SoundManager::Play3D(SOUND_MONSTER_YETI1 + rand() % 2, px, py, pz); break;
+  case 22: SoundManager::Play3D(SOUND_MONSTER_ICEMONSTER1 + rand() % 2, px, py, pz); break;
+  case 23: SoundManager::Play3D(SOUND_MONSTER_HOMMERD1 + rand() % 2, px, py, pz); break;
+  case 24: SoundManager::Play3D(SOUND_MONSTER_WORM1, px, py, pz); break;
+  case 25: SoundManager::Play3D(SOUND_MONSTER_ICEQUEEN1 + rand() % 2, px, py, pz); break;
+  case 26: case 33: SoundManager::Play3D(SOUND_MONSTER_GOBLIN1 + rand() % 2, px, py, pz); break;
+  case 27: SoundManager::Play3D(SOUND_MONSTER_SCORPION1 + rand() % 2, px, py, pz); break;
+  case 28: SoundManager::Play3D(SOUND_MONSTER_BEETLE1, px, py, pz); break;
+  case 29: SoundManager::Play3D(SOUND_MONSTER_HUNTER1 + rand() % 2, px, py, pz); break;
+  case 30: case 31: case 32: SoundManager::Play3D(SOUND_MONSTER_GOLEM1 + rand() % 2, px, py, pz); break;
+  case 150: SoundManager::Play3D(SOUND_MONSTER_BALI1 + rand() % 2, px, py, pz); break;
+  default: break;
+  }
+}
+
 void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
   auto &mdl = m_models[mon.modelIdx];
+  // Compute local index for TriggerAttackAnimation (deferred attack)
+  int monIdx = (int)(&mon - m_monsters.data());
 
   switch (mon.state) {
   case MonsterState::IDLE: {
-    // Own summon: Guardian Angel-style follow when idle (not in combat)
-    // Continuously lerp toward a position behind the player
+    // Own summon: spring-damper follow when idle (not in combat)
+    // Reacts instantly to player movement with smooth acceleration/deceleration
     if (mon.serverIndex == m_ownSummonIndex && m_ownSummonIndex != 0) {
-      // Target: 150 units behind player's facing direction
-      float behindX = m_playerPos.x - cosf(m_playerFacing) * 150.0f;
-      float behindZ = m_playerPos.z - sinf(m_playerFacing) * 150.0f;
-      glm::vec3 target(behindX, 0.0f, behindZ);
+      // Estimate player velocity from position delta
+      glm::vec3 playerVel = (m_playerPos - m_prevPlayerPos) / std::max(dt, 0.001f);
+      playerVel.y = 0.0f;
+      float playerSpeed = glm::length(playerVel);
+      bool playerMoving = playerSpeed > 20.0f;
+
+      // Follow distance: behind player, far enough to avoid model overlap
+      // Bigger summons (Bali) need more space than small ones
+      float followDist = playerMoving ? 160.0f : 190.0f;
+
+      // Determine follow direction: use click-to-move path for predictive pathing
+      // When player is walking, summon trails behind the travel direction
+      // When stopped, summon stays behind player's facing
+      glm::vec3 target;
+      if (m_playerIsMoving && playerMoving) {
+        // Player actively pathing — use travel direction (from velocity)
+        // so summon follows behind the direction of travel, not behind facing
+        glm::vec3 travelDir = glm::normalize(playerVel);
+        target.x = m_playerPos.x - travelDir.x * followDist;
+        target.z = m_playerPos.z - travelDir.z * followDist;
+        target.y = 0.0f;
+
+        // Lead toward the click-to-move destination so summon anticipates turns
+        glm::vec3 toGoal = m_playerMoveTarget - m_playerPos;
+        toGoal.y = 0.0f;
+        float goalDist = glm::length(toGoal);
+        if (goalDist > 50.0f) {
+          glm::vec3 goalDir = toGoal / goalDist;
+          // Blend 20% toward the destination direction for turn anticipation
+          target.x += goalDir.x * playerSpeed * 0.2f;
+          target.z += goalDir.z * playerSpeed * 0.2f;
+        }
+      } else {
+        // Player standing — offset behind facing direction
+        target.x = m_playerPos.x - cosf(m_playerFacing) * followDist;
+        target.z = m_playerPos.z - sinf(m_playerFacing) * followDist;
+        target.y = 0.0f;
+      }
+
       glm::vec3 toTarget = target - mon.position;
       toTarget.y = 0.0f;
       float dist = glm::length(toTarget);
 
-      if (dist > 40.0f) {
-        // Speed scaling: decelerate smoothly when approaching target
-        float baseSpeed = CHASE_SPEED * 1.5f; // 375 units/sec max
-        float rampStart = 40.0f;
-        float rampEnd = 150.0f;
-        float speedScale = glm::clamp((dist - rampStart) / (rampEnd - rampStart),
-                                       0.0f, 1.0f);
-        float speed = baseSpeed * speedScale;
-        float step = speed * dt;
-        if (step > dist)
-          step = dist;
-        glm::vec3 dir = toTarget / dist;
-        mon.position.x += dir.x * step;
-        mon.position.z += dir.z * step;
-        mon.facing = smoothFacing(mon.facing, facingFromDir(dir), dt * 5.0f);
-        // Only show walk animation if moving fast enough to be visible
-        // Below 70 units the speed is too slow for walk to look natural
-        if (dist > 70.0f)
+      // Spring-damper: F = -k*displacement - c*velocity
+      // High stiffness for instant response, strong damping to prevent overshoot
+      const float SPRING_K = 12.0f;  // Spring stiffness
+      const float DAMPING = 5.5f;    // Damping coefficient
+      const float MAX_SPEED = 500.0f;
+
+      if (dist > 15.0f) {
+        glm::vec3 springForce = toTarget * SPRING_K;
+        glm::vec3 dampForce = -m_summonVelocity * DAMPING;
+        glm::vec3 accel = springForce + dampForce;
+
+        m_summonVelocity.x += accel.x * dt;
+        m_summonVelocity.z += accel.z * dt;
+
+        // Clamp max speed
+        float vel = glm::length(glm::vec2(m_summonVelocity.x, m_summonVelocity.z));
+        if (vel > MAX_SPEED) {
+          m_summonVelocity.x *= MAX_SPEED / vel;
+          m_summonVelocity.z *= MAX_SPEED / vel;
+        }
+
+        mon.position.x += m_summonVelocity.x * dt;
+        mon.position.z += m_summonVelocity.z * dt;
+
+        // Face movement direction
+        if (vel > 30.0f) {
+          glm::vec3 moveDir = glm::normalize(glm::vec3(m_summonVelocity.x, 0, m_summonVelocity.z));
+          mon.facing = smoothFacing(mon.facing, facingFromDir(moveDir), dt * 8.0f);
+        }
+
+        // Walk animation when moving visibly
+        if (vel > 60.0f)
           setAction(mon, ACTION_WALK);
         else
-          setAction(mon, ACTION_STOP1); // Sliding stop — smooth deceleration
+          setAction(mon, ACTION_STOP1);
       } else {
-        // Close enough — face player and idle
+        // Close enough — decelerate and face player
+        m_summonVelocity *= std::max(0.0f, 1.0f - 8.0f * dt);
         glm::vec3 toPlayer = m_playerPos - mon.position;
         toPlayer.y = 0.0f;
         if (glm::length(toPlayer) > 1.0f) {
           glm::vec3 fpDir = glm::normalize(toPlayer);
-          mon.facing = smoothFacing(mon.facing, facingFromDir(fpDir), dt * 2.0f);
+          mon.facing = smoothFacing(mon.facing, facingFromDir(fpDir), dt * 3.0f);
         }
         setAction(mon, ACTION_STOP1);
       }
@@ -1167,111 +1265,6 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
       mon.position.y += (-std::abs(std::sin(mon.bobTimer)) * 30.0f + 30.0f);
     }
 
-    // Random ambient monster sounds (Main 5.2: rand_fps_check(512) ~5s avg)
-    // Only play within audible range (Main 5.2: ~600 units)
-    {
-      float dx = mon.position.x - m_playerPos.x;
-      float dz = mon.position.z - m_playerPos.z;
-      float distSq = dx * dx + dz * dz;
-      if (distSq < 1200.0f * 1200.0f && rand() % (int)(512.0f / (dt * 25.0f + 0.01f)) == 0) {
-      float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
-      switch (mon.monsterType) {
-      case 0: // Bull Fighter
-        SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz);
-        break;
-      case 1: // Hound
-        SoundManager::Play3D(SOUND_MONSTER_HOUND1 + rand() % 2, px, py, pz);
-        break;
-      case 2: // Budge Dragon
-        SoundManager::Play3D(SOUND_MONSTER_BUDGE1, px, py, pz);
-        break;
-      case 3: // Spider
-        SoundManager::Play3D(SOUND_MONSTER_SPIDER1, px, py, pz);
-        break;
-      case 4: // Elite Bull Fighter (Wizard sounds in Main 5.2)
-        SoundManager::Play3D(SOUND_MONSTER_WIZARD1 + rand() % 2, px, py, pz);
-        break;
-      case 6: // Lich (Larva sounds in Main 5.2)
-        SoundManager::Play3D(SOUND_MONSTER_LARVA1 + rand() % 2, px, py, pz);
-        break;
-      case 5: // Hell Hound — reuses Hound sounds
-        SoundManager::Play3D(SOUND_MONSTER_HOUND1 + rand() % 2, px, py, pz);
-        break;
-      case 7: // Giant
-        SoundManager::Play3D(SOUND_MONSTER_GIANT1 + rand() % 2, px, py, pz);
-        break;
-      case 8: // Poison Bull — reuses Bull sounds
-        SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz);
-        break;
-      case 9: // Thunder Lich — Wizard sound family (Main 5.2)
-        SoundManager::Play3D(SOUND_MONSTER_WIZARD1 + rand() % 2, px, py, pz);
-        break;
-      case 10: // Dark Knight monster
-        SoundManager::Play3D(SOUND_MONSTER_DARKKNIGHT1 + rand() % 2, px, py, pz);
-        break;
-      case 11: // Ghost — Main 5.2: mGhost sounds
-        SoundManager::Play3D(SOUND_MONSTER_GHOST1 + rand() % 2, px, py, pz);
-        break;
-      case 12: // Larva
-        SoundManager::Play3D(SOUND_MONSTER_LARVA1 + rand() % 2, px, py, pz);
-        break;
-      case 13: // Hell Spider — Main 5.2: mShadow sounds
-        SoundManager::Play3D(SOUND_MONSTER_SHADOW1 + rand() % 2, px, py, pz);
-        break;
-      case 17: // Cyclops — Main 5.2: mOgre sounds
-        SoundManager::Play3D(SOUND_MONSTER_OGRE1 + rand() % 2, px, py, pz);
-        break;
-      case 18: // Gorgon — Main 5.2: mGorgon sounds
-        SoundManager::Play3D(SOUND_MONSTER_GORGON1 + rand() % 2, px, py, pz);
-        break;
-      case 14: // Skeleton Warrior — Main 5.2: SOUND_BONE1 idle (rand()%16==0)
-      case 15: // Skeleton Archer
-      case 16: // Skeleton Captain
-        SoundManager::Play3D(SOUND_BONE1, px, py, pz);
-        break;
-      // Devias monsters (types 19-25) — Main 5.2 SetMonsterSound idle slots
-      case 19: // Yeti — Sounds[0]=mYeti1, Sounds[1]=mYeti1 (same)
-        SoundManager::Play3D(SOUND_MONSTER_YETI1, px, py, pz);
-        break;
-      case 20: // Elite Yeti — Sounds[0]=mYeti1, Sounds[1]=mYeti2
-        SoundManager::Play3D(SOUND_MONSTER_YETI1 + rand() % 2, px, py, pz);
-        break;
-      // case 21: Assassin — NO idle sounds (Sounds[0]=-1, Sounds[1]=-1)
-      case 22: // Ice Monster — Sounds[0]=mIceMonster1, Sounds[1]=mIceMonster2
-        SoundManager::Play3D(SOUND_MONSTER_ICEMONSTER1 + rand() % 2, px, py, pz);
-        break;
-      case 23: // Hommerd — Sounds[0]=mHomord1, Sounds[1]=mHomord2
-        SoundManager::Play3D(SOUND_MONSTER_HOMMERD1 + rand() % 2, px, py, pz);
-        break;
-      case 24: // Worm — Sounds[0]=mWorm1, Sounds[1]=mWorm1 (same)
-        SoundManager::Play3D(SOUND_MONSTER_WORM1, px, py, pz);
-        break;
-      case 25: // Ice Queen — Sounds[0]=mIceQueen1, Sounds[1]=mIceQueen2
-        SoundManager::Play3D(SOUND_MONSTER_ICEQUEEN1 + rand() % 2, px, py, pz);
-        break;
-      // Noria monsters (types 26-33)
-      case 26: // Goblin
-      case 33: // Elite Goblin — same model/sounds as Goblin
-        SoundManager::Play3D(SOUND_MONSTER_GOBLIN1 + rand() % 2, px, py, pz);
-        break;
-      case 27: // Chain Scorpion
-        SoundManager::Play3D(SOUND_MONSTER_SCORPION1 + rand() % 2, px, py, pz);
-        break;
-      case 28: // Beetle Monster
-        SoundManager::Play3D(SOUND_MONSTER_BEETLE1, px, py, pz);
-        break;
-      case 29: // Hunter
-        SoundManager::Play3D(SOUND_MONSTER_HUNTER1 + rand() % 2, px, py, pz);
-        break;
-      case 30: // Forest Monster — no unique sounds, use Golem
-      case 31: // Agon — no unique sounds, use Golem
-      case 32: // Stone Golem
-        SoundManager::Play3D(SOUND_MONSTER_GOLEM1 + rand() % 2, px, py, pz);
-        break;
-      default: break;
-      }
-    }}
-
     mon.stateTimer -= dt;
     break;
   }
@@ -1279,8 +1272,15 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
   case MonsterState::WALKING: {
     float maxT = std::max(0.0f, (float)mon.splinePoints.size() - 1.0f);
     if (mon.splinePoints.size() < 2 || mon.splineT >= maxT) {
-      // Path exhausted — idle
+      // Path exhausted — check for deferred attack
+      if (mon.pendingAttack) {
+        mon.pendingAttack = false;
+        TriggerAttackAnimation(monIdx);
+        break;
+      }
+      // Idle
       mon.state = MonsterState::IDLE;
+      playIdleSound(mon);
       mon.stateTimer = 0.0f;
       mon.splinePoints.clear();
       mon.splineT = 0.0f;
@@ -1327,7 +1327,13 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
         mon.facing =
             smoothFacing(mon.facing, facingFromDir(glm::normalize(tang)), dt);
     } else {
-      // Path exhausted — idle, face target, wait for server attack packet
+      // Path exhausted — check for deferred attack from server
+      if (mon.pendingAttack) {
+        mon.pendingAttack = false;
+        TriggerAttackAnimation(monIdx);
+        break;
+      }
+      // Idle, face target, wait for server attack packet
       setAction(mon, ACTION_STOP1);
       glm::vec3 facePos = m_playerPos;
       bool hasFace = !m_playerDead;
@@ -1420,6 +1426,9 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
           mon.state = MonsterState::WALKING;
         } else {
           mon.state = MonsterState::IDLE;
+          if (mon.serverIndex == m_ownSummonIndex && m_ownSummonIndex != 0)
+            m_summonVelocity = glm::vec3(0.0f);
+          playIdleSound(mon);
         }
       }
     }
@@ -1464,6 +1473,9 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
           mon.state = MonsterState::WALKING;
         } else {
           mon.state = MonsterState::IDLE;
+          if (mon.serverIndex == m_ownSummonIndex && m_ownSummonIndex != 0)
+            m_summonVelocity = glm::vec3(0.0f);
+          playIdleSound(mon);
         }
       }
     }
@@ -1517,6 +1529,7 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
 
   default:
     mon.state = MonsterState::IDLE;
+    playIdleSound(mon);
     break;
   }
 }
@@ -1529,9 +1542,6 @@ void MonsterManager::Update(float deltaTime) {
     // (catches missed 0x2A packets or race conditions)
     if (mon.hp <= 0 && mon.state != MonsterState::DYING &&
         mon.state != MonsterState::DEAD) {
-      std::cout << "[Client] Mon " << idx << " (" << mon.name
-                << "): HP=0 but state=" << (int)mon.state << ", forcing DYING"
-                << std::endl;
       mon.state = MonsterState::DYING;
       mon.stateTimer = 0.0f;
       setAction(mon, ACTION_DIE);
@@ -1582,6 +1592,8 @@ void MonsterManager::ClearMonsters() {
   m_arrows.clear();
   m_summonServerIndices.clear();
   m_ownSummonIndex = 0;
+  m_summonVelocity = glm::vec3(0.0f);
+  m_prevPlayerPos = m_playerPos;
 }
 
 MonsterInfo MonsterManager::GetMonsterInfo(int index) const {
@@ -1599,7 +1611,9 @@ MonsterInfo MonsterManager::GetMonsterInfo(int index) const {
   info.name = mon.name;
   info.type = mon.monsterType;
   info.serverIndex = mon.serverIndex;
-  info.level = (mon.levelOverride > 0) ? mon.levelOverride : mdl.level;
+  info.level = (mon.levelOverride > 0) ? mon.levelOverride
+             : (mon.level > 0)        ? mon.level
+                                      : mdl.level;
   info.hp = mon.hp;
   info.maxHp = mon.maxHp;
   info.defense = mdl.defense;
@@ -1698,9 +1712,6 @@ void MonsterManager::FaceTarget(int attackerIdx, int targetIdx) {
 void MonsterManager::SetMonsterHP(int index, int hp, int maxHp) {
   if (index < 0 || index >= (int)m_monsters.size())
     return;
-  std::cout << "[Client] Mon " << index << " (" << m_monsters[index].name
-            << "): HP " << m_monsters[index].hp << " -> " << hp << "/" << maxHp
-            << std::endl;
   m_monsters[index].hp = hp;
   m_monsters[index].maxHp = maxHp;
 }
@@ -1710,11 +1721,10 @@ void MonsterManager::SetMonsterDying(int index) {
     return;
   auto &mon = m_monsters[index];
   if (mon.state != MonsterState::DYING && mon.state != MonsterState::DEAD) {
-    std::cout << "[Client] Mon " << index << " (" << mon.name << "): DYING"
-              << std::endl;
     mon.hp = 0;
     mon.state = MonsterState::DYING;
     mon.stateTimer = 0.0f;
+    mon.pendingAttack = false;
     setAction(mon, ACTION_DIE);
 
     // Monster death sounds (Main 5.2: PlayMonsterSound) — distance gated
@@ -1810,6 +1820,7 @@ void MonsterManager::SetMonsterDying(int index) {
       case 30: // Forest Monster
       case 31: // Agon
       case 32: // Stone Golem
+      case 150: // Bali (Elf summon) — no unique death sound, use Golem
         SoundManager::Play3D(SOUND_MONSTER_GOLEMDIE, px, py, pz);
         break;
       default: break;
@@ -1839,8 +1850,6 @@ void MonsterManager::TriggerHitAnimation(int index) {
   // Damage numbers still appear; only the flinch animation is suppressed.
   if (mon.state == MonsterState::ATTACKING)
     return;
-  std::cout << "[Client] Mon " << index << " (" << mon.name << "): HIT (was "
-            << (int)mon.state << ")" << std::endl;
   mon.state = MonsterState::HIT;
   mon.stateTimer = 0.5f;
 }
@@ -1853,10 +1862,20 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     return;
   if (mon.stormTime > 0)
     return; // Don't attack while spinning from Twister stun
-  // Server-authoritative: attack packet means monster is ready to attack
-  // (server APPROACHING delay ensures client walk anim finished)
+
+  // Server-authoritative: attack packet means monster is ready to attack.
   mon.serverChasing = true;
 
+  // If still mid-spline (walking to target), defer the attack until the walk
+  // finishes so the monster smoothly approaches before attacking — no teleport.
+  if ((mon.state == MonsterState::CHASING || mon.state == MonsterState::WALKING) &&
+      mon.splinePoints.size() >= 2 &&
+      mon.splineT < (float)(mon.splinePoints.size() - 1) - 0.1f) {
+    mon.pendingAttack = true;
+    return;
+  }
+
+  mon.pendingAttack = false;
   mon.state = MonsterState::ATTACKING;
   // Attack animation duration based on action keys / speed
   auto &mdl = m_models[mon.modelIdx];
@@ -1978,6 +1997,9 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     case 32: // Stone Golem
       SoundManager::Play3D(SOUND_MONSTER_GOLEMATTACK1 + rand() % 2, px, py, pz);
       break;
+    case 150: // Bali (Elf summon)
+      SoundManager::Play3D(SOUND_MONSTER_BALIATTACK1 + rand() % 2, px, py, pz);
+      break;
     default: break;
     }
     }
@@ -2058,8 +2080,6 @@ void MonsterManager::RespawnMonster(int index, uint8_t gridX, uint8_t gridY,
   if (index < 0 || index >= (int)m_monsters.size())
     return;
   auto &mon = m_monsters[index];
-  std::cout << "[Client] Mon " << index << " (" << mon.name << "): RESPAWN at ("
-            << (int)gridX << "," << (int)gridY << ") hp=" << hp << std::endl;
   auto &mdl = m_models[mon.modelIdx];
 
   float worldX = (float)gridY * 100.0f;
@@ -2079,6 +2099,11 @@ void MonsterManager::RespawnMonster(int index, uint8_t gridX, uint8_t gridY,
   mon.splineT = 0.0f;
   mon.splineRate = 0.0f;
   mon.deathSmokeDone = false;
+  // Reset spring-damper velocity if this is our own summon
+  if (mon.serverIndex == m_ownSummonIndex && m_ownSummonIndex != 0) {
+    m_summonVelocity = glm::vec3(0.0f);
+    m_prevPlayerPos = m_playerPos;
+  }
   // Play APPEAR animation (action 7) if available, else STOP1
   // Skeleton types use Player.bmd — no monster APPEAR action, just idle
   if (!mdl.animBmd && 7 < (int)mdl.bmd->Actions.size() &&
@@ -2130,6 +2155,8 @@ void MonsterManager::SetMonsterServerPosition(int index, float worldX,
       if (mon.state == MonsterState::CHASING ||
           mon.state == MonsterState::ATTACKING) {
         mon.state = MonsterState::IDLE;
+        playIdleSound(mon);
+        m_summonVelocity = glm::vec3(0.0f);
         mon.stateTimer = 0.0f;
         mon.splinePoints.clear();
         mon.splineT = 0.0f;

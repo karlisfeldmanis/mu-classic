@@ -331,8 +331,8 @@ static const MapConfig MAP_CONFIGS[] = {
         800.f,
         2500.f,
         1.2f, // fogNear, fogFar, luminosity
-        0.7f,
-        0.25f,
+        0.35f,
+        0.55f,
         0.4f, // bloom, threshold, vignette
         0.88f,
         0.93f,
@@ -714,6 +714,7 @@ static ClientEquipSlot g_equipSlots[12] = {};
 static ImFont *g_fontDefault = nullptr;
 static ImFont *g_fontBold = nullptr;
 static ImFont *g_fontRegion = nullptr;
+static float g_fontPreScale = 1.0f; // Font pre-scale for crisp fullscreen rendering
 
 static UICoords g_hudCoords; // File-scope for mouse callback access
 
@@ -1051,8 +1052,7 @@ static void InitPostProcess() {
   pp.screenTriVBO = bgfx::createVertexBuffer(
       bgfx::makeRef(screenTriVerts, sizeof(screenTriVerts)), ppLayout);
 
-  pp.enabled = true;
-  std::cout << "[PostProcess] Initialized (bloom + vignette + color grading)\n";
+  std::cout << "[PostProcess] Initialized successfully\n";
 }
 
 static void ResizePostProcessFBOs(int fbW, int fbH) {
@@ -1197,31 +1197,31 @@ BuildObjectOccupancy(const std::vector<ObjectRenderer::ObjectInstance> &insts) {
 
 // Returns light properties for a given object type, or nullptr if not a light
 static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
-  static const LightTemplate fireLightProps = {glm::vec3(1.5f, 0.9f, 0.5f),
+  static const LightTemplate fireLightProps = {glm::vec3(0.8f, 0.48f, 0.27f),
                                                800.0f, 150.0f};
-  static const LightTemplate bonfireProps = {glm::vec3(1.5f, 0.75f, 0.3f),
+  static const LightTemplate bonfireProps = {glm::vec3(0.8f, 0.4f, 0.16f),
                                              1000.0f, 100.0f};
-  static const LightTemplate gateProps = {glm::vec3(1.5f, 0.9f, 0.5f), 800.0f,
+  static const LightTemplate gateProps = {glm::vec3(0.8f, 0.48f, 0.27f), 800.0f,
                                           200.0f};
-  static const LightTemplate bridgeProps = {glm::vec3(1.2f, 0.7f, 0.4f), 700.0f,
+  static const LightTemplate bridgeProps = {glm::vec3(0.65f, 0.38f, 0.22f), 700.0f,
                                             50.0f};
-  static const LightTemplate streetLightProps = {glm::vec3(0.8f, 0.65f, 0.4f),
+  static const LightTemplate streetLightProps = {glm::vec3(0.55f, 0.45f, 0.28f),
                                                  450.0f, 250.0f};
-  static const LightTemplate candleProps = {glm::vec3(1.2f, 0.7f, 0.3f), 600.0f,
+  static const LightTemplate candleProps = {glm::vec3(0.65f, 0.38f, 0.16f), 600.0f,
                                             80.0f};
-  static const LightTemplate lightFixtureProps = {glm::vec3(1.2f, 0.85f, 0.5f),
+  static const LightTemplate lightFixtureProps = {glm::vec3(0.65f, 0.46f, 0.27f),
                                                   700.0f, 150.0f};
 
   // Dungeon torches (Main 5.2: tall fire stand + standard lantern)
-  static const LightTemplate dungeonTorchProps = {glm::vec3(1.4f, 0.8f, 0.4f),
+  static const LightTemplate dungeonTorchProps = {glm::vec3(0.75f, 0.43f, 0.21f),
                                                   700.0f, 200.0f};
   // Lance Trap (type 100): blue lightning glow (Main 5.2: BITMAP_LIGHTNING)
-  static const LightTemplate lanceTrapProps = {glm::vec3(0.4f, 0.6f, 1.5f),
+  static const LightTemplate lanceTrapProps = {glm::vec3(0.22f, 0.32f, 0.8f),
                                                500.0f, 50.0f};
   // Noria mystical lights — cyan/blue tint (Main 5.2: Vector(L*0.4,L*0.7,L*1.0))
-  static const LightTemplate noriaLightProps = {glm::vec3(0.5f, 0.8f, 1.2f),
+  static const LightTemplate noriaLightProps = {glm::vec3(0.4f, 0.65f, 0.95f),
                                                  600.0f, 150.0f};
-  static const LightTemplate noriaLightLargeProps = {glm::vec3(0.5f, 0.8f, 1.2f),
+  static const LightTemplate noriaLightLargeProps = {glm::vec3(0.4f, 0.65f, 0.95f),
                                                       900.0f, 200.0f};
 
   switch (type) {
@@ -1401,6 +1401,15 @@ int main(int argc, char **argv) {
     glfwGetWindowContentScale(window, &xscale, &yscale);
     contentScale = xscale;
   }
+  // Pre-scale fonts for max monitor resolution so FontGlobalScale never > 1.0
+  {
+    GLFWmonitor *primaryMon = glfwGetPrimaryMonitor();
+    if (primaryMon) {
+      const GLFWvidmode *mode = glfwGetVideoMode(primaryMon);
+      if (mode && mode->height > 768)
+        g_fontPreScale = (float)mode->height / 768.0f;
+    }
+  }
   {
     ImFontConfig cfg;
     const char *fontBody = "/System/Library/Fonts/Supplemental/Verdana.ttf";
@@ -1415,28 +1424,29 @@ int main(int argc, char **argv) {
     };
     cfg.OversampleH = 2;
     cfg.OversampleV = 2;
+    float fs = contentScale * g_fontPreScale; // Full font scale
     // Body font: Verdana (readable) → Almendra → ProggyClean
     if (tryFont(fontBody)) {
       g_fontDefault =
-          io.Fonts->AddFontFromFileTTF(fontBody, 14.0f * contentScale, &cfg);
+          io.Fonts->AddFontFromFileTTF(fontBody, 14.0f * fs, &cfg);
     } else if (tryFont(fontAlmendra)) {
       g_fontDefault =
-          io.Fonts->AddFontFromFileTTF(fontAlmendra, 15.0f * contentScale, &cfg);
+          io.Fonts->AddFontFromFileTTF(fontAlmendra, 15.0f * fs, &cfg);
     } else if (tryFont(fallbackPath)) {
       g_fontDefault =
-          io.Fonts->AddFontFromFileTTF(fallbackPath, 15.0f * contentScale);
+          io.Fonts->AddFontFromFileTTF(fallbackPath, 15.0f * fs);
     }
     // Title font: Cinzel (WoW-style) → Verdana Bold → body font
     if (tryFont(fontTitle)) {
       g_fontBold =
-          io.Fonts->AddFontFromFileTTF(fontTitle, 16.0f * contentScale, &cfg);
+          io.Fonts->AddFontFromFileTTF(fontTitle, 16.0f * fs, &cfg);
       g_fontRegion =
-          io.Fonts->AddFontFromFileTTF(fontTitle, 28.0f * contentScale, &cfg);
+          io.Fonts->AddFontFromFileTTF(fontTitle, 28.0f * fs, &cfg);
     } else if (tryFont(fontBodyBold)) {
       g_fontBold =
-          io.Fonts->AddFontFromFileTTF(fontBodyBold, 16.0f * contentScale, &cfg);
+          io.Fonts->AddFontFromFileTTF(fontBodyBold, 16.0f * fs, &cfg);
       g_fontRegion =
-          io.Fonts->AddFontFromFileTTF(fontBodyBold, 28.0f * contentScale, &cfg);
+          io.Fonts->AddFontFromFileTTF(fontBodyBold, 28.0f * fs, &cfg);
     }
     if (!g_fontDefault)
       g_fontDefault = io.Fonts->AddFontDefault(&cfg);
@@ -1753,6 +1763,7 @@ int main(int argc, char **argv) {
       std::cout << "[State] -> LOADING (waiting for world data)" << std::endl;
     };
     csCtx.onExit = [&]() { glfwSetWindowShouldClose(window, GLFW_TRUE); };
+    csCtx.onToggleFullscreen = [&]() { ToggleFullscreen(window); };
     ChromeGlow::LoadTextures(g_dataPath);
     CharacterSelect::Init(csCtx);
   }
@@ -1798,10 +1809,16 @@ int main(int argc, char **argv) {
 
   ImVec4 &clear_color = g_clearColor;
   float lastFrame = 0.0f;
+  float smoothedDelta = 1.0f / 60.0f; // Initialize to 60fps assumption
   while (!glfwWindowShouldClose(window)) {
     float currentFrame = glfwGetTime();
-    float deltaTime = currentFrame - lastFrame;
+    float rawDelta = currentFrame - lastFrame;
     lastFrame = currentFrame;
+    // Smooth delta time to reduce animation/movement jitter from frame time spikes.
+    // Clamp raw to prevent extreme values (e.g. after breakpoint, window drag).
+    if (rawDelta > 0.0f && rawDelta < 0.25f)
+      smoothedDelta += (rawDelta - smoothedDelta) * 0.2f;
+    float deltaTime = smoothedDelta;
 
     glfwPollEvents();
 
@@ -1946,6 +1963,7 @@ int main(int argc, char **argv) {
       // happens at ImGui_ImplOpenGL3_RenderDrawData() after post-processing.
       ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
+      ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
       ImGui::NewFrame();
 
       CharacterSelect::Render(winW, winH);
@@ -2072,17 +2090,20 @@ int main(int argc, char **argv) {
 
     // Main 5.2 Lorencia uses static daylight (no day/night cycle)
     g_worldTime += deltaTime * 25.0f; // Still tick for chrome/sun animation
-    // Per-map luminosity from config
-    g_luminosity = g_mapCfg->luminosity;
-
-    // Push luminosity to all renderers
-    g_terrain.SetLuminosity(g_luminosity);
-    g_objectRenderer.SetLuminosity(g_luminosity);
-    g_hero.SetLuminosity(g_luminosity);
-    g_npcManager.SetLuminosity(g_luminosity);
-    g_monsterManager.SetLuminosity(g_luminosity);
-    g_boidManager.SetLuminosity(g_luminosity);
-    g_grass.SetLuminosity(g_luminosity);
+    // Per-map luminosity from config (only push to renderers when changed)
+    {
+      float newLum = g_mapCfg->luminosity;
+      if (newLum != g_luminosity) {
+        g_luminosity = newLum;
+        g_terrain.SetLuminosity(g_luminosity);
+        g_objectRenderer.SetLuminosity(g_luminosity);
+        g_hero.SetLuminosity(g_luminosity);
+        g_npcManager.SetLuminosity(g_luminosity);
+        g_monsterManager.SetLuminosity(g_luminosity);
+        g_boidManager.SetLuminosity(g_luminosity);
+        g_grass.SetLuminosity(g_luminosity);
+      }
+    }
 
     // Send player position to server periodically (~4Hz)
     {
@@ -2116,7 +2137,7 @@ int main(int argc, char **argv) {
       static float posTimer = 0.0f;
       static int lastGridX = -1, lastGridY = -1;
       posTimer += deltaTime;
-      if (posTimer >= 0.25f && !g_mapTransitionActive) {
+      if (posTimer >= 0.10f && !g_mapTransitionActive) {
         posTimer = 0.0f;
         glm::vec3 hp = g_hero.GetPosition();
         g_server.SendPrecisePosition(hp.x, hp.z);
@@ -2166,6 +2187,7 @@ int main(int argc, char **argv) {
     g_monsterManager.SetPlayerFacing(g_hero.GetFacing());
     g_monsterManager.SetPlayerDead(g_hero.IsDead());
     g_monsterManager.SetPlayerInSafeZone(g_hero.IsInSafeZone());
+    g_monsterManager.SetPlayerMoveTarget(g_hero.GetMoveTarget(), g_hero.IsMoving());
     g_monsterManager.Update(deltaTime);
 
     // Teleport cooldown ticks regardless of safe zone
@@ -2212,8 +2234,6 @@ int main(int argc, char **argv) {
               bool isDK = (g_hero.GetClass() == 16);
               int curResource = isDK ? g_serverAG : g_serverMP;
               if (curResource >= cost) {
-                std::cout << "[Skill] HIT! SendSkillAttack monIdx=" << serverIdx
-                          << " skillId=" << (int)skillId << std::endl;
                 if (skillId == 12) {
                   // Flash: delay damage until beam spawns at frame 7.0
                   g_hero.SetPendingAquaPacket(serverIdx, skillId, 0.0f, 0.0f);
@@ -2305,7 +2325,8 @@ int main(int argc, char **argv) {
             if (targetDead && g_rightMouseHeld && g_rmcSkillId >= 0) {
               // RMC held + target died — switch to hovered monster if any
               if (g_hoveredMonster >= 0 &&
-                  g_hoveredMonster < g_monsterManager.GetMonsterCount()) {
+                  g_hoveredMonster < g_monsterManager.GetMonsterCount() &&
+                  !g_monsterManager.IsOwnSummon(g_hoveredMonster)) {
                 MonsterInfo hmi =
                     g_monsterManager.GetMonsterInfo(g_hoveredMonster);
                 if (hmi.state != MonsterState::DYING &&
@@ -2341,7 +2362,8 @@ int main(int argc, char **argv) {
               int nextTarget = targetIdx;
               glm::vec3 nextPos = mi.position;
               if (g_hoveredMonster >= 0 && g_hoveredMonster != targetIdx &&
-                  g_hoveredMonster < g_monsterManager.GetMonsterCount()) {
+                  g_hoveredMonster < g_monsterManager.GetMonsterCount() &&
+                  !g_monsterManager.IsOwnSummon(g_hoveredMonster)) {
                 MonsterInfo hmi =
                     g_monsterManager.GetMonsterInfo(g_hoveredMonster);
                 if (hmi.state != MonsterState::DYING &&
@@ -2876,8 +2898,8 @@ int main(int argc, char **argv) {
 
     g_terrain.Render(view, projection, currentFrame, camPos);
 
-    // Render world objects first (before grass, so tall grass billboards
-    // don't block thin fence bar meshes via depth buffer)
+    // Lightmap texture is destroyed+recreated each frame by Terrain, so refresh handle
+    g_objectRenderer.SetLightmapTexture(g_terrain.GetLightmapTexture());
     g_objectRenderer.Render(view, projection, g_camera.GetPosition(),
                             currentFrame);
 
@@ -2913,14 +2935,13 @@ int main(int argc, char **argv) {
             // SOUND_TRAP01)
             pos.y += 30.0f + (float)(rand() % 40);
             g_vfxManager.SpawnBurst(ParticleType::SPELL_LIGHTNING, pos, 2);
-          } else if (inst.type == 51) {
-            // Fire Trap: fire sprites (Main 5.2: BITMAP_FIRE+1 + SOUND_FLAME)
-            pos.y += 20.0f + (float)(rand() % 30);
-            g_vfxManager.SpawnBurst(ParticleType::FIRE, pos, 1);
           }
+          // Note: type 51 (Fire Trap) fire particles now handled by ambient
+          // fire emitter system in VFXManager
         }
       }
     }
+
 
     g_vfxManager.Update(deltaTime);
 
@@ -3088,7 +3109,7 @@ int main(int argc, char **argv) {
     ImGui_BackendNewFrame();
 
     ImGui_ImplGlfw_NewFrame();
-    ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f;
+    ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
     ImGui::NewFrame();
 
     // Simplified ImGui HUD
@@ -3109,6 +3130,82 @@ int main(int argc, char **argv) {
 
       InventoryUI::RenderQuickbar(dl, g_hudCoords);
       InventoryUI::RenderCastBar(dl);
+
+      // ── Summon unit frame (WoW-style, left of HP orb) ──
+      {
+        MonsterInfo sumInfo;
+        if (g_monsterManager.GetOwnSummonInfo(sumInfo)) {
+          // HP orb screen position via UICoords (matches InventoryUISkills.cpp)
+          constexpr float HP_ORB_VX = 339.0f;  // HudLayout::HP_ORB_CX
+          constexpr float HP_ORB_VY = 772.0f;  // HudLayout::ORB_CY
+          constexpr float HP_ORB_VR = 56.0f;   // HudLayout::ORB_RADIUS
+
+          float orbSX = g_hudCoords.ToScreenX(HP_ORB_VX);
+          float orbSY = g_hudCoords.ToScreenY(HP_ORB_VY);
+          float orbSR = g_hudCoords.ToScreenX(HP_ORB_VX + HP_ORB_VR) - orbSX;
+
+          // Frame in virtual coords, converted to screen via UICoords
+          constexpr float FRAME_VW = 160.0f;
+          constexpr float FRAME_VH = 46.0f;
+          constexpr float FRAME_VGAP = 8.0f;
+
+          float frameW = g_hudCoords.ToScreenX(FRAME_VW) - g_hudCoords.ToScreenX(0.0f);
+          float frameH = g_hudCoords.ToScreenY(FRAME_VH) - g_hudCoords.ToScreenY(0.0f);
+          float gapSc  = g_hudCoords.ToScreenX(FRAME_VGAP) - g_hudCoords.ToScreenX(0.0f);
+          float fx = orbSX - orbSR - gapSc - frameW;
+          float fy = orbSY - frameH * 0.5f;
+
+          // Dark background with subtle gradient
+          dl->AddRectFilled(ImVec2(fx, fy), ImVec2(fx + frameW, fy + frameH),
+                            IM_COL32(10, 10, 12, 210), 3.0f);
+          // Inner shadow (top/left darker)
+          dl->AddRectFilledMultiColor(
+              ImVec2(fx, fy), ImVec2(fx + frameW, fy + 2),
+              IM_COL32(0, 0, 0, 80), IM_COL32(0, 0, 0, 80),
+              IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 0));
+
+          ImFont *font = g_fontDefault ? g_fontDefault : ImGui::GetFont();
+          float fs = font->LegacySize * ImGui::GetIO().FontGlobalScale;
+          float pad = 4.0f;
+
+          // Name (top half)
+          char nameBuf[64];
+          snprintf(nameBuf, sizeof(nameBuf), "%s Lv.%d", sumInfo.name.c_str(), sumInfo.level);
+          dl->AddText(font, fs, ImVec2(fx + pad + 1, fy + 2 + 1), IM_COL32(0, 0, 0, 180), nameBuf);
+          dl->AddText(font, fs, ImVec2(fx + pad, fy + 2), IM_COL32(180, 220, 160, 240), nameBuf);
+
+          // HP bar (bottom half)
+          float barX = fx + pad;
+          float barY = fy + frameH * 0.52f;
+          float barW = frameW - pad * 2;
+          float barH = frameH * 0.34f;
+          // Bar background
+          dl->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH),
+                            IM_COL32(20, 20, 20, 220), 2.0f);
+          // HP fill
+          float hpFrac = (sumInfo.maxHp > 0)
+              ? std::clamp((float)sumInfo.hp / (float)sumInfo.maxHp, 0.0f, 1.0f) : 0.0f;
+          if (hpFrac > 0.01f) {
+            // WoW-style green gradient
+            ImU32 barTop = (hpFrac > 0.5f) ? IM_COL32(40, 180, 40, 230)
+                         : (hpFrac > 0.25f) ? IM_COL32(200, 180, 30, 230)
+                                            : IM_COL32(200, 40, 40, 230);
+            ImU32 barBot = (hpFrac > 0.5f) ? IM_COL32(20, 120, 20, 230)
+                         : (hpFrac > 0.25f) ? IM_COL32(140, 120, 10, 230)
+                                            : IM_COL32(140, 20, 20, 230);
+            dl->AddRectFilledMultiColor(
+                ImVec2(barX + 1, barY + 1),
+                ImVec2(barX + 1 + (barW - 2) * hpFrac, barY + barH - 1),
+                barTop, barTop, barBot, barBot);
+          }
+
+          // Frame border (dark with subtle highlight)
+          dl->AddRect(ImVec2(fx, fy), ImVec2(fx + frameW, fy + frameH),
+                      IM_COL32(40, 36, 28, 200), 3.0f);
+          dl->AddRect(ImVec2(fx + 1, fy + 1), ImVec2(fx + frameW - 1, fy + frameH - 1),
+                      IM_COL32(60, 55, 40, 120), 2.0f);
+        }
+      }
 
       // ── Floating damage numbers ──
       FloatingDamageRenderer::UpdateAndRender(
@@ -3220,7 +3317,7 @@ int main(int argc, char **argv) {
                  !g_questDialogJustOpened;
         };
 
-        float qs = ImGui::GetIO().FontGlobalScale; // quest UI scale
+        float qs = ImGui::GetIO().DisplaySize.y / 768.0f; // quest UI scale
         float btnW = 80.0f * qs, btnH = 26.0f * qs;
         float panelW = 340.0f * qs;
         const char *npcName = npcInfo.name.c_str();
@@ -3562,30 +3659,32 @@ int main(int argc, char **argv) {
     if (!g_activeQuests.empty()) {
       ImDrawList *dl = ImGui::GetForegroundDrawList();
       ImVec2 dispSize = ImGui::GetIO().DisplaySize;
-      float lineH = 15.0f;
-      float trackerW = 210.0f;
-      float tx = dispSize.x - trackerW - 12.0f;
-      float ty = 60.0f;
+      float qs = ImGui::GetIO().DisplaySize.y / 768.0f;
+      float lineH = 15.0f * qs;
+      float trackerW = 210.0f * qs;
+      float pad = 6.0f * qs;
+      float tx = dispSize.x - trackerW - 12.0f * qs;
+      float ty = 60.0f * qs;
 
       for (auto &aq : g_activeQuests) {
         if (aq.questId < 0 || aq.questId >= (int)g_questCatalog.size()) continue;
         const auto &qd = g_questCatalog[aq.questId];
         bool allDone = IsQuestCompletable(aq);
-        float trackerH = 20.0f + qd.targetCount * lineH +
+        float trackerH = 20.0f * qs + qd.targetCount * lineH +
                          (allDone ? lineH : 0);
         dl->AddRectFilled(ImVec2(tx, ty),
                           ImVec2(tx + trackerW, ty + trackerH),
-                          IM_COL32(0, 0, 0, 120), 3.0f);
-        float cy = ty + 4;
-        dl->AddText(ImVec2(tx + 6, cy), IM_COL32(220, 185, 50, 220),
+                          IM_COL32(0, 0, 0, 120), 3.0f * qs);
+        float cy = ty + 4 * qs;
+        dl->AddText(ImVec2(tx + pad, cy), IM_COL32(220, 185, 50, 220),
                     qd.questName.c_str());
-        cy += lineH + 2;
+        cy += lineH + 2 * qs;
         for (int i = 0; i < qd.targetCount; i++) {
           char buf[48];
           bool done = aq.killCount[i] >= qd.targets[i].killsReq;
           snprintf(buf, sizeof(buf), " %s  %d/%d", qd.targets[i].name.c_str(),
                    aq.killCount[i], (int)qd.targets[i].killsReq);
-          dl->AddText(ImVec2(tx + 6, cy),
+          dl->AddText(ImVec2(tx + pad, cy),
                       done ? IM_COL32(80, 210, 80, 200)
                            : IM_COL32(180, 180, 180, 200),
                       buf);
@@ -3595,10 +3694,10 @@ int main(int argc, char **argv) {
           char turnIn[64];
           snprintf(turnIn, sizeof(turnIn), "Return to %s",
                    GetGuardName(qd.guardType));
-          dl->AddText(ImVec2(tx + 6, cy), IM_COL32(220, 185, 50, 220),
+          dl->AddText(ImVec2(tx + pad, cy), IM_COL32(220, 185, 50, 220),
                       turnIn);
         }
-        ty += trackerH + 6; // Stack next quest below
+        ty += trackerH + pad; // Stack next quest below
       }
     }
 
@@ -3622,7 +3721,7 @@ int main(int argc, char **argv) {
 
       static int qlSelectedQuest = -1;
       int classIdx = g_hero.GetClass() / 16;
-      float qs = ImGui::GetIO().FontGlobalScale; // quest log UI scale
+      float qs = ImGui::GetIO().DisplaySize.y / 768.0f; // quest log UI scale
       float panelW = 340.0f * qs;
 
       // Reset selected if no longer active
@@ -3961,6 +4060,8 @@ int main(int argc, char **argv) {
           for (int i = 0; i < monCount; i++) {
             MonsterInfo mi = g_monsterManager.GetMonsterInfo(i);
             if (mi.hp <= 0) continue;
+            // Skip own summon — don't mark it as quest target
+            if (g_monsterManager.IsOwnSummon(i)) continue;
             bool isTarget = false;
             for (int t = 0; t < nTargets; t++)
               if (mi.type == targetTypes[t]) { isTarget = true; break; }
@@ -4009,6 +4110,12 @@ int main(int argc, char **argv) {
     }
 
     // ── Character Info and Inventory panels ──
+    // Recalculate UI panel scale based on current window height
+    {
+      int ww, wh;
+      glfwGetWindowSize(window, &ww, &wh);
+      InventoryUI::UpdatePanelScale(wh);
+    }
     ImDrawList *panelDl = ImGui::GetForegroundDrawList();
     if (g_shopOpen)
       InventoryUI::RenderShopPanel(panelDl, g_hudCoords);
@@ -4035,7 +4142,7 @@ int main(int argc, char **argv) {
       dl->AddRectFilled(ImVec2(0, 0), dispSize, IM_COL32(0, 0, 0, 160));
 
       // Centered panel
-      float ms = ImGui::GetIO().FontGlobalScale; // menu scale
+      float ms = ImGui::GetIO().DisplaySize.y / 768.0f; // menu scale
       float panelW = 250.0f * ms, panelH = 235.0f * ms;
       float px = (dispSize.x - panelW) * 0.5f;
       float py = (dispSize.y - panelH) * 0.5f;
@@ -4126,6 +4233,7 @@ int main(int argc, char **argv) {
                     << std::endl;
         };
         csCtx.onExit = [&]() { glfwSetWindowShouldClose(window, GLFW_TRUE); };
+        csCtx.onToggleFullscreen = [&]() { ToggleFullscreen(window); };
         CharacterSelect::Init(csCtx);
       }
 
@@ -4146,9 +4254,10 @@ int main(int argc, char **argv) {
     }
     if (g_showCommandTerminal) {
       ImVec2 dispSize = ImGui::GetIO().DisplaySize;
-      float termW = 400.0f, termH = 32.0f;
+      float ts = dispSize.y / 768.0f; // terminal scale
+      float termW = 400.0f * ts, termH = 32.0f * ts;
       float termX = (dispSize.x - termW) * 0.5f;
-      float termY = dispSize.y - 185.0f;
+      float termY = dispSize.y - 185.0f * ts;
 
       ImGui::SetNextWindowPos(ImVec2(termX, termY));
       ImGui::SetNextWindowSize(ImVec2(termW, termH));
@@ -4161,7 +4270,7 @@ int main(int argc, char **argv) {
                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
                        ImGuiWindowFlags_NoCollapse);
 
-      ImGui::PushItemWidth(termW - 12.0f);
+      ImGui::PushItemWidth(termW - 12.0f * ts);
       if (g_commandFocusNeeded) {
         ImGui::SetKeyboardFocusHere();
         g_commandFocusNeeded = false;
@@ -4653,6 +4762,12 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
     }
   }
   g_camera.SetPosition(g_hero.GetPosition());
+
+  // Restore camera zoom from server (persisted per character)
+  if (serverData.cameraZoom >= 7000 && serverData.cameraZoom <= 9500) {
+    g_camera.SetZoom(serverData.cameraZoom / 10.0f);
+  }
+
   g_objectRenderer.ResetDoorStates();
 
   // Choose music based on spawn position terrain attribute
@@ -4846,6 +4961,7 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
   g_objectRenderer.Init();
   g_objectRenderer.SetMapId(cfg.mapId);
   g_objectRenderer.SetTerrainLightmap(g_terrainDataPtr->lightmap);
+  g_objectRenderer.SetLightmapTexture(g_terrain.GetLightmapTexture());
   g_objectRenderer.SetTerrainMapping(&g_terrainDataPtr->mapping);
   g_objectRenderer.SetTerrainHeightmap(g_terrainDataPtr->heightmap);
   if (cfg.useNamedObjects) {
@@ -4908,8 +5024,10 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
     }
   }
 
-  // ── Collect point lights ──
+  // ── Collect point lights + register ambient fire emitters ──
   g_pointLights.clear();
+  g_vfxManager.ClearAmbientFires();
+  g_vfxManager.SetCameraPos(g_camera.GetPosition());
   for (auto &inst : g_objectRenderer.GetInstances()) {
     const LightTemplate *props = GetLightProperties(inst.type, mapId);
     if (!props)
@@ -4921,6 +5039,18 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
     light.range = props->range;
     light.objectType = inst.type;
     g_pointLights.push_back(light);
+
+    // Register fire emitters (BlendMesh glow replaced by VFX particles)
+    bool isFire = (inst.type == 50 || inst.type == 51 || inst.type == 52 ||
+                   inst.type == 150 ||
+                   (mapId == 1 && (inst.type == 41 || inst.type == 42)));
+    if (isFire) {
+      float intensity = (inst.type == 150) ? 0.3f :   // candle
+                        (inst.type == 52)  ? 1.2f :   // bonfire
+                        0.7f;                          // torch
+      g_vfxManager.AddAmbientFire(
+          worldPos + glm::vec3(0.0f, props->heightOffset, 0.0f), intensity);
+    }
   }
   {
     std::vector<glm::vec3> lightPos, lightCol;

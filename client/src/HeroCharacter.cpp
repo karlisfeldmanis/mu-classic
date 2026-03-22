@@ -311,6 +311,21 @@ int HeroCharacter::defaultWalkAction() const {
   return (m_class == 32) ? ACTION_WALK_FEMALE : ACTION_WALK_MALE;
 }
 
+// Main 5.2 ZzzOpenData.cpp:329-338 — per-weapon idle PlaySpeed values
+float HeroCharacter::idlePlaySpeed(int action) const {
+  switch (action) {
+  case ACTION_STOP_SWORD:          return 0.26f;
+  case ACTION_STOP_TWO_HAND_SWORD: return 0.24f;
+  case ACTION_STOP_SPEAR:          return 0.24f;
+  case ACTION_STOP_SCYTHE:         return 0.24f; // Same as spear
+  case ACTION_STOP_BOW:            return 0.22f;
+  case ACTION_STOP_CROSSBOW:       return 0.22f;
+  case ACTION_STOP_WAND:           return 0.30f;
+  case ACTION_STOP_FEMALE:         return 0.20f; // Elf: slower breathing
+  default:                         return 0.28f; // STOP_MALE, etc.
+  }
+}
+
 int HeroCharacter::weaponIdleAction() const {
   if (isMountRiding())
     return m_weaponBmd ? ACTION_STOP_RIDE_WEAPON : ACTION_STOP_RIDE;
@@ -569,6 +584,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
                        m_action == ACTION_STOP_RIDE_WEAPON);
     bool isRideWalk = (m_action == ACTION_RUN_RIDE ||
                        m_action == ACTION_RUN_RIDE_WEAPON);
+    // Main 5.2 ZzzOpenData.cpp:329-338: idle PlaySpeed varies by weapon type
+    bool isIdleAction = (m_action >= 0 && m_action <= 10);
     float speed;
     if (isHealAnim)
       speed = (float)numKeys / m_slowAnimDuration; // Stretch to fit duration
@@ -578,6 +595,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       speed = 7.0f;  // Main 5.2: PlaySpeed 0.28 * 25fps
     else if (isRideWalk)
       speed = 7.5f;  // Main 5.2: PlaySpeed 0.3 * 25fps
+    else if (isIdleAction)
+      speed = idlePlaySpeed(m_action) * 25.0f;
     else
       speed = ANIM_SPEED;
     // Main 5.2: Flash animation slowdown during gathering phase (frames 1.0-3.0)
@@ -585,14 +604,34 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     if (m_activeSkillId == 12 && m_animFrame >= 1.0f && m_animFrame < 3.0f)
       speed *= 0.5f;
 
-    m_animFrame += speed * deltaTime;
-    if (clampAnim) {
-      if (m_animFrame >= (float)(numKeys - 1))
-        m_animFrame = (float)(numKeys - 1);
+    // Idle animations use ping-pong (forward-backward) to eliminate loop seam
+    if (isIdleAction && !clampAnim) {
+      float maxFrame = (float)(numKeys - 1);
+      if (m_idleReversing) {
+        m_animFrame -= speed * deltaTime;
+        if (m_animFrame <= 0.0f) {
+          m_animFrame = -m_animFrame; // Bounce off start
+          m_idleReversing = false;
+        }
+      } else {
+        m_animFrame += speed * deltaTime;
+        if (m_animFrame >= maxFrame) {
+          m_animFrame = maxFrame - (m_animFrame - maxFrame); // Bounce off end
+          m_idleReversing = true;
+        }
+      }
+      // Clamp to valid range
+      m_animFrame = std::clamp(m_animFrame, 0.0f, maxFrame);
     } else {
-      int wrapKeys = lockPos ? (numKeys - 1) : numKeys;
-      if (m_animFrame >= (float)wrapKeys)
-        m_animFrame = std::fmod(m_animFrame, (float)wrapKeys);
+      m_animFrame += speed * deltaTime;
+      if (clampAnim) {
+        if (m_animFrame >= (float)(numKeys - 1))
+          m_animFrame = (float)(numKeys - 1);
+      } else {
+        int wrapKeys = lockPos ? (numKeys - 1) : numKeys;
+        if (m_animFrame >= (float)wrapKeys)
+          m_animFrame = std::fmod(m_animFrame, (float)wrapKeys);
+      }
     }
 
     // Main 5.2: footstep sounds at animation frames 1.5 and 4.5 during walk
@@ -662,16 +701,16 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
   }
 
-  // Compute bones for current animation frame
-  std::vector<BoneWorldMatrix> bones;
+  // Compute bones for current animation frame (reuse pre-allocated buffer)
   if (m_isBlending && m_priorAction != -1) {
-    bones = ComputeBoneMatricesBlended(m_skeleton.get(), m_priorAction,
-                                       m_priorAnimFrame, m_action, m_animFrame,
-                                       m_blendAlpha);
+    ComputeBoneMatricesBlended(m_skeleton.get(), m_priorAction,
+                               m_priorAnimFrame, m_action, m_animFrame,
+                               m_blendAlpha, m_cachedBones);
   } else {
-    bones = ComputeBoneMatricesInterpolated(m_skeleton.get(), m_action,
-                                            m_animFrame);
+    ComputeBoneMatricesInterpolated(m_skeleton.get(), m_action,
+                                    m_animFrame, m_cachedBones);
   }
+  auto &bones = m_cachedBones;
 
   // LockPositions: root bone X/Y locked to frame 0
   if (m_rootBone >= 0) {
@@ -942,44 +981,37 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   // SafeZone: weapon renders on bone 47 (back) with rotation/offset
   // Combat: weapon renders on hand bone (33 or 42) with identity offset
   // Reference: ZzzCharacter.cpp RenderCharacterBackItem (line 14634)
-  static constexpr int BONE_BACK = 47;
+  // Use shared constants from MuMath (BMDUtils.hpp)
+  constexpr int BONE_BACK = MuMath::BONE_BACK;
+  constexpr int BONE_R_HAND = MuMath::BONE_R_HAND;
   auto &wCat = GetWeaponCategoryRender(m_weaponInfo.category);
+
+  // Main 5.2: crossbows are Weapon[0] (right hand, bone 33),
+  // regular bows are Weapon[1] (left hand, bone 42).
+  // Our WeaponCategoryRender table uses bone 42 for all BOW category,
+  // so we override to bone 33 for crossbows in combat.
+  bool isCrossbowWep =
+      MuMath::IsCrossbow(m_weaponInfo.category, m_weaponInfo.itemIndex);
+
+  int combatBone = isCrossbowWep ? BONE_R_HAND : wCat.attachBone;
   int attachBone = (m_inSafeZone && BONE_BACK < (int)bones.size())
                        ? BONE_BACK
-                       : wCat.attachBone;
+                       : combatBone;
   if (m_weaponBmd && !m_weaponMeshBuffers.empty() &&
       attachBone < (int)bones.size()) {
 
-    // Main 5.2 RenderLinkObject / RenderCharacterBackItem:
-    // Crossbows (cat 4, idx 8-14/16/18) have different orientation than bows
-    bool isCrossbowWep = (m_weaponInfo.category == 4 &&
-        ((m_weaponInfo.itemIndex >= 8 && m_weaponInfo.itemIndex <= 14) ||
-         m_weaponInfo.itemIndex == 16 || m_weaponInfo.itemIndex == 18));
-
     BoneWorldMatrix weaponOffsetMat;
     if (m_inSafeZone) {
-      // SafeZone back carry (bone 47)
-      if (isCrossbowWep) {
-        // Crossbow on back: rotated to lay flat across back (Main 5.2)
-        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
-            glm::vec3(0.f, 20.f, 180.f), glm::vec3(-10.f, 8.f, 55.f));
-      } else {
-        // Standard weapon back carry: rotation (70,0,90) + offset (-20,5,40)
-        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
-            glm::vec3(70.f, 0.f, 90.f), glm::vec3(-20.f, 5.f, 40.f));
-      }
+      // SafeZone back carry (bone 47) — shared offsets with char select
+      glm::vec3 backRot, backOff;
+      MuMath::GetWeaponBackOffsets(m_weaponInfo.category, m_weaponInfo.itemIndex,
+                                   backRot, backOff);
+      weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(backRot, backOff);
     } else {
-      // Combat hand attachment
-      if (isCrossbowWep) {
-        // Crossbow combat: Main 5.2 RenderLinkObject (line 6513-6521)
-        // Crossbows have different BMD orientation than bows/swords
-        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
-            glm::vec3(0.f, 20.f, 180.f), glm::vec3(-10.f, 8.f, 40.f));
-      } else {
-        // Other weapons: identity (weapon BMD handles orientation)
-        weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
-            glm::vec3(0, 0, 0), glm::vec3(0, 0, 0));
-      }
+      // Combat hand: identity for ALL weapons (Main 5.2 uses Link=false mode —
+      // no offset matrix, weapon BMD renders at bone position directly)
+      weaponOffsetMat = MuMath::BuildWeaponOffsetMatrix(
+          glm::vec3(0, 0, 0), glm::vec3(0, 0, 0));
     }
 
     // parentMat = CharBone[attachBone] * OffsetMatrix
@@ -1119,24 +1151,18 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   if (m_shieldBmd && !m_shieldMeshBuffers.empty() &&
       shieldBone < (int)bones.size()) {
 
-    // SafeZone back rendering (Main 5.2 RenderLinkObject line 6710-6731):
-    // Shield on back: rotation (70,0,90) + offset (-10,0,0)
-    // Arrows/Bolts quiver: same rotation as bows on back (70,0,90) + offset (-10,5,25)
-    // Dual-wield left weapon: rotation (-110,180,90) + offset (20,15,40)
+    // SafeZone/quiver back rendering — shared offsets from MuMath
     bool dualWieldLeft = m_inSafeZone && isDualWielding();
     bool onBack = m_inSafeZone || isQuiver;
-    BoneWorldMatrix shieldOffsetMat =
-        onBack ? (dualWieldLeft ? MuMath::BuildWeaponOffsetMatrix(
-                                            glm::vec3(-110.f, 180.f, 90.f),
-                                            glm::vec3(20.f, 15.f, 40.f))
-                                : isQuiver ? MuMath::BuildWeaponOffsetMatrix(
-                                            glm::vec3(70.f, 0.f, 90.f),
-                                            glm::vec3(-10.f, 5.f, 25.f))
-                                      : MuMath::BuildWeaponOffsetMatrix(
-                                            glm::vec3(70.f, 0.f, 90.f),
-                                            glm::vec3(-10.f, 0.f, 0.f)))
-                     : MuMath::BuildWeaponOffsetMatrix(glm::vec3(0, 0, 0),
-                                                       glm::vec3(0, 0, 0));
+    BoneWorldMatrix shieldOffsetMat;
+    if (onBack) {
+      glm::vec3 sRot, sOff;
+      MuMath::GetShieldBackOffsets(dualWieldLeft, isQuiver, sRot, sOff);
+      shieldOffsetMat = MuMath::BuildWeaponOffsetMatrix(sRot, sOff);
+    } else {
+      shieldOffsetMat = MuMath::BuildWeaponOffsetMatrix(
+          glm::vec3(0, 0, 0), glm::vec3(0, 0, 0));
+    }
 
     BoneWorldMatrix shieldParentMat;
     MuMath::ConcatTransforms((const float(*)[4])bones[shieldBone].data(),
@@ -1217,29 +1243,23 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     // Their vertices reference player bone indices directly — skin them using
     // the player's animated bones so wings follow body movement naturally.
     // Standalone wings (01-04, 07) attach rigidly to bone 47 with offset.
-    static constexpr int PLAYER_BONE_COUNT = 60;
-    bool isBipedWing = ((int)m_wingBmd->Bones.size() > PLAYER_BONE_COUNT);
+    bool isBipedWing =
+        ((int)m_wingBmd->Bones.size() > MuMath::PLAYER_BONE_COUNT);
 
     std::vector<BoneWorldMatrix> wFinalBones;
 
     if (isBipedWing) {
       // Hybrid bone approach: biped wing BMDs (75-80 bones) share the player
       // skeleton layout for bones 0-59 and add wing-specific bones at 60+.
-      // Bones 0-59: use player's animated bones (prevents body clipping).
-      // Bones 60+: compute from wing BMD's own animation, parented to the
-      // appropriate bone in wFinalBones (player bone if parent < 60).
-      static constexpr int PLAYER_BONE_COUNT = 60;
       int wingBoneCount = (int)m_wingBmd->Bones.size();
       wFinalBones.resize(wingBoneCount);
 
-      // Copy player bones for body range (0-59)
-      int copyCount = std::min(PLAYER_BONE_COUNT, wingBoneCount);
+      int copyCount = std::min(MuMath::PLAYER_BONE_COUNT, wingBoneCount);
       for (int bi = 0; bi < copyCount && bi < (int)bones.size(); ++bi) {
         wFinalBones[bi] = bones[bi];
       }
 
-      // Compute wing-specific bones (60+) from wing animation
-      for (int bi = PLAYER_BONE_COUNT; bi < wingBoneCount; ++bi) {
+      for (int bi = MuMath::PLAYER_BONE_COUNT; bi < wingBoneCount; ++bi) {
         glm::vec3 pos;
         glm::vec4 q;
         if (!GetInterpolatedBoneData(m_wingBmd.get(), 0, m_wingAnimFrame, bi,
@@ -1262,10 +1282,10 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         }
       }
     } else {
-      // Standalone wing: attach to bone 47 with offset (0, 0, 15)
+      // Standalone wing: attach to bone 47 with shared offset
       BoneWorldMatrix wingOffsetMat =
           MuMath::BuildWeaponOffsetMatrix(glm::vec3(0, 0, 0),
-                                          glm::vec3(0, 0, 15));
+                                          MuMath::WING_BACK_OFFSET);
       BoneWorldMatrix wingParentMat;
       MuMath::ConcatTransforms((const float(*)[4])bones[WING_BONE].data(),
                                (const float(*)[4])wingOffsetMat.data(),
@@ -1356,42 +1376,40 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
   }
 
-  // ── Elf buff aura particles (Main 5.2: MODEL_SPEARSKILL SubType 4) ──
-  // Defense = blue-green orbiting particles, Damage = orange-golden particles
-  if ((m_buffDefenseActive || m_buffDamageActive) && m_vfxManager) {
-    m_buffAuraTimer += deltaTime;
-    // Spawn orbiting particles at ~15/sec per active buff
-    const float BUFF_SPAWN_INTERVAL = 1.0f / 15.0f;
-    while (m_buffAuraTimer >= BUFF_SPAWN_INTERVAL) {
-      m_buffAuraTimer -= BUFF_SPAWN_INTERVAL;
-      float cosF = cosf(m_facing), sinF = sinf(m_facing);
-
-      if (m_buffDefenseActive) {
-        // Main 5.2: eBuff_Defense — 5 orbiting ring elements, blue-green color
-        // Spawn at random orbit angle around character, waist height
-        float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
-        float radius = 30.0f + (float)(rand() % 20); // 30-50 unit radius
-        float height = 30.0f + (float)(rand() % 40);  // 30-70 height
-        glm::vec3 offset(cosf(angle) * radius, height, sinf(angle) * radius);
-        glm::vec3 spawnPos = m_pos + offset;
-        // Main 5.2: SubType 2 color = (0.4, 1.0, 0.6) green-cyan
-        m_vfxManager->SpawnBurstColored(ParticleType::BUFF_AURA, spawnPos,
-                                         glm::vec3(0.4f, 1.0f, 0.6f), 1);
-      }
-      if (m_buffDamageActive) {
-        // Main 5.2: eBuff_Attack — golden sparkles, orbit + weapon area
-        float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
-        float radius = 25.0f + (float)(rand() % 25);
-        float height = 40.0f + (float)(rand() % 50);
-        glm::vec3 offset(cosf(angle) * radius, height, sinf(angle) * radius);
-        glm::vec3 spawnPos = m_pos + offset;
-        // Main 5.2: SubType 3 color = (1.0, 0.6, 0.4) warm orange-red
-        m_vfxManager->SpawnBurstColored(ParticleType::BUFF_AURA, spawnPos,
-                                         glm::vec3(1.0f, 0.7f, 0.3f), 1);
-      }
+  // ── Elf buff aura ribbon trails (Main 5.2: MODEL_SPEARSKILL SubType 3/4) ──
+  // Activate/deactivate ribbon auras when buff state changes, update center each frame
+  if (m_vfxManager) {
+    // Defense buff (type 1)
+    if (m_buffDefenseActive != m_prevBuffDefense) {
+      m_vfxManager->SetBuffAura(1, m_buffDefenseActive, m_pos);
+      m_prevBuffDefense = m_buffDefenseActive;
     }
-  } else {
-    m_buffAuraTimer = 0.0f;
+    if (m_buffDefenseActive)
+      m_vfxManager->UpdateBuffAuraCenter(1, m_pos);
+
+    // Damage buff (type 2)
+    if (m_buffDamageActive != m_prevBuffDamage) {
+      m_vfxManager->SetBuffAura(2, m_buffDamageActive, m_pos);
+      m_prevBuffDamage = m_buffDamageActive;
+    }
+    if (m_buffDamageActive) {
+      m_vfxManager->UpdateBuffAuraCenter(2, m_pos);
+      // Main 5.2: BITMAP_SHINY+1 weapon sparkles while damage buff active
+      m_buffAuraTimer += deltaTime;
+      if (m_buffAuraTimer >= 0.1f) { // ~10 sparkles/sec
+        m_buffAuraTimer -= 0.1f;
+        // Spawn sparkle near weapon hand bone (bone 18 = right hand)
+        if (m_cachedBones.size() > 18) {
+          const auto &bone = m_cachedBones[18];
+          glm::vec3 bonePos(bone[0][3], bone[1][3], bone[2][3]);
+          m_vfxManager->SpawnWeaponSparkle(
+            bonePos + glm::vec3((float)(rand()%20-10), (float)(rand()%20-10), (float)(rand()%20-10)),
+            glm::vec3(1.0f, 0.7f, 0.3f));
+        }
+      }
+    } else {
+      m_buffAuraTimer = 0.0f;
+    }
   }
 
   // ── Twisting Slash: render ghost weapon copies orbiting the hero ──
@@ -1600,7 +1618,7 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
 
   // Weapons and shields — compute full bone matrices matching visible rendering
   // (parentMat * weaponLocalBones[i] for per-vertex skinning)
-  static constexpr int SHADOW_BONE_BACK = 47;
+  constexpr int SHADOW_BONE_BACK = MuMath::BONE_BACK;
   if (m_weaponBmd) {
     auto &wCat = GetWeaponCategoryRender(m_weaponInfo.category);
     int bone = (m_inSafeZone && SHADOW_BONE_BACK < (int)m_cachedBones.size())
@@ -1659,7 +1677,7 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
   // Wing shadow
   if (m_wingBmd && !m_wingShadowMeshes.empty()) {
     static constexpr int WING_SHADOW_BONE = 47;
-    bool isBipedShadow = ((int)m_wingBmd->Bones.size() > 60);
+    bool isBipedShadow = ((int)m_wingBmd->Bones.size() > MuMath::PLAYER_BONE_COUNT);
     if (isBipedShadow) {
       // Biped wings use player bones — shadow uses m_cachedBones directly
       renderShadowBatch(m_wingBmd.get(), m_wingShadowMeshes, -1,
@@ -2256,7 +2274,7 @@ void HeroCharacter::EquipWings(const WeaponEquipInfo &wing) {
   // Main 5.2: Wing05/06 (biped, >60 bones) use standard RENDER_TEXTURE —
   // no additive blending. Only standalone JPEG wings (01-04) need additive
   // to hide black backgrounds. TGA wings (Wing07) have proper alpha.
-  bool isBipedWingModel = ((int)m_wingBmd->Bones.size() > 60);
+  bool isBipedWingModel = ((int)m_wingBmd->Bones.size() > MuMath::PLAYER_BONE_COUNT);
   if (!isBipedWingModel) {
     for (auto &mb : m_wingMeshBuffers) {
       if (!mb.hasAlpha)
@@ -3456,6 +3474,7 @@ void HeroCharacter::SetAction(int newAction) {
 
   m_action = newAction;
   m_animFrame = 0.0f;
+  m_idleReversing = false; // New idle always starts playing forward
 
 }
 

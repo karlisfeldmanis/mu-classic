@@ -589,8 +589,9 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
 
     // Compute bone matrices
-    auto bones = ComputeBoneMatricesInterpolated(mdl.skeleton, npc.action,
-                                                 npc.animFrame);
+    ComputeBoneMatricesInterpolated(mdl.skeleton, npc.action,
+                                    npc.animFrame, npc.cachedBones);
+    auto &bones = npc.cachedBones;
 
     // LockPositions: cancel root bone X/Y displacement to prevent walk
     // animation from physically moving the model (same as MonsterManager)

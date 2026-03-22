@@ -89,6 +89,9 @@ void ClearBagItem(int slot);
 void ConsumeQuickSlotItem(int slotIndex);
 void RecalcEquipmentStats();
 
+// Panel scaling
+void UpdatePanelScale(int windowHeight);
+
 // Panel rendering
 void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c);
 void RenderInventoryPanel(ImDrawList *dl, const UICoords &c);

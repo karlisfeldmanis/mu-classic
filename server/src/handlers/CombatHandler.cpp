@@ -331,7 +331,7 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
       }
 
       // Quest kill tracking
-      QuestHandler::OnMonsterKill(session, mon->type, server.GetDB());
+      QuestHandler::OnMonsterKill(session, mon->type, mon->isSummon(), server.GetDB());
 
     }
   }
@@ -856,6 +856,7 @@ void HandleTeleport(Session &session, const std::vector<uint8_t> &packet,
               summon->worldZ = summon->gridX * 100.0f;
               summon->currentPath.clear();
               summon->pathStep = 0;
+              summon->moveTimer = 0.0f;
               summon->lastBroadcastTargetX = (uint8_t)nx;
               summon->lastBroadcastTargetY = (uint8_t)ny;
               found = true;

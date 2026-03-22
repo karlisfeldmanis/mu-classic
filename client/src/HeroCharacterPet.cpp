@@ -70,11 +70,12 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
       }
     } else {
       // ── GUARDIAN ANGEL: flying orbit around owner (Main 5.2 GOBoid.cpp) ──
-      constexpr float FLY_RANGE = 100.0f;         // Max wander distance from owner
-      constexpr float MAX_DIST = 180.0f;           // Hard leash — teleport back if exceeded
+      // Follow distances derived from model bounding radius
+      float FLY_RANGE = m_pet.modelRadius * 2.0f;   // Max wander distance from owner
+      float MAX_DIST = m_pet.modelRadius * 3.5f;     // Hard leash — teleport back if exceeded
       constexpr float MAX_TURN_PER_TICK = 20.0f;   // Degrees per tick
-      constexpr float MIN_HEIGHT = 100.0f;         // Above owner
-      constexpr float MAX_HEIGHT = 200.0f;         // Above owner
+      float MIN_HEIGHT = m_pet.modelRadius * 1.8f;  // Above owner
+      float MAX_HEIGHT = m_pet.modelRadius * 3.5f;  // Above owner
 
     // ── Teleport pet to owner if too far (login, teleport, initial spawn at origin) ──
     float petDistX = m_pet.pos.x - m_pos.x;
@@ -125,7 +126,7 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
 
     if (ownerMoving) {
       // ── MOVING: angel trails behind character, facing same direction ──
-      constexpr float TRAIL_DIST = 60.0f;
+      float TRAIL_DIST = m_pet.modelRadius * 1.2f;
       constexpr float RAMP_DURATION = 0.5f; // Time to reach full follow speed
       float behindX = m_pos.x - cosf(m_facing) * TRAIL_DIST;
       float behindZ = m_pos.z - sinf(m_facing) * TRAIL_DIST;
@@ -198,7 +199,7 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
         m_pet.pos.y += m_pet.heightVel;
 
         // Body exclusion: gently push pet away if too close (soft spring, no snap)
-        constexpr float MIN_RADIUS = 40.0f;
+        float MIN_RADIUS = m_pet.modelRadius * 0.8f;
         float edx = m_pet.pos.x - m_pos.x;
         float edz = m_pet.pos.z - m_pos.z;
         float eDist = sqrtf(edx * edx + edz * edz);
@@ -410,6 +411,10 @@ void HeroCharacter::EquipPet(uint8_t itemIndex) {
     }
   }
 
+  // Compute model radius for size-based follow distances
+  float petScale = (itemIndex == 1) ? 0.55f : 0.6f;
+  m_pet.modelRadius = std::max(petAABB.radius() * petScale, 20.0f);
+
   m_pet.bmd = std::move(bmd);
   m_pet.active = true;
   m_pet.alpha = 0.0f; // Start transparent, exponential fade in
@@ -440,7 +445,7 @@ void HeroCharacter::EquipPet(uint8_t itemIndex) {
   std::cout << "[Hero] Pet companion equipped: Helper0"
             << (int)(itemIndex + 1) << ".bmd ("
             << m_pet.meshBuffers.size() << " meshes, blendMesh="
-            << m_pet.blendMesh << ")" << std::endl;
+            << m_pet.blendMesh << ", radius=" << m_pet.modelRadius << ")" << std::endl;
 }
 
 void HeroCharacter::UnequipPet() {

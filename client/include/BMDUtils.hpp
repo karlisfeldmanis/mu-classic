@@ -47,6 +47,49 @@ void AngleMatrix(const glm::vec3 &anglesDeg, float matrix[3][4]);
 BoneWorldMatrix BuildWeaponOffsetMatrix(const glm::vec3 &rotDeg,
                                         const glm::vec3 &offset);
 
+// ── Equipment attachment constants (Main 5.2 RenderLinkObject / RenderCharacterBackItem) ──
+static constexpr int BONE_BACK = 47;
+static constexpr int BONE_R_HAND = 33;
+static constexpr int BONE_L_HAND = 42;
+static constexpr int PLAYER_BONE_COUNT = 60; // Biped wing threshold
+
+// Main 5.2 crossbow detection: category 4, indices 8-14, 16, 18, 19
+inline bool IsCrossbow(uint8_t category, uint8_t itemIndex) {
+  return category == 4 &&
+         ((itemIndex >= 8 && itemIndex <= 14) || itemIndex == 16 ||
+          itemIndex == 18 || itemIndex == 19);
+}
+
+// Main 5.2 ZzzCharacter.cpp RenderLinkObject — weapon back carry offsets
+inline void GetWeaponBackOffsets(uint8_t category, uint8_t itemIndex,
+                                 glm::vec3 &outRot, glm::vec3 &outOff) {
+  if (IsCrossbow(category, itemIndex)) {
+    outRot = glm::vec3(0.f, 20.f, 180.f);
+    outOff = glm::vec3(-10.f, 8.f, 40.f);
+  } else {
+    outRot = glm::vec3(70.f, 0.f, 90.f);
+    outOff = glm::vec3(-20.f, 5.f, 40.f);
+  }
+}
+
+// Shield/quiver back offsets (Main 5.2 RenderLinkObject lines 6710-6731)
+inline void GetShieldBackOffsets(bool isDualWieldLeft, bool isQuiver,
+                                 glm::vec3 &outRot, glm::vec3 &outOff) {
+  if (isDualWieldLeft) {
+    outRot = glm::vec3(-110.f, 180.f, 90.f);
+    outOff = glm::vec3(20.f, 15.f, 40.f);
+  } else if (isQuiver) {
+    outRot = glm::vec3(70.f, 0.f, 90.f);
+    outOff = glm::vec3(-10.f, 5.f, 25.f);
+  } else {
+    outRot = glm::vec3(70.f, 0.f, 90.f);
+    outOff = glm::vec3(-10.f, 0.f, 0.f);
+  }
+}
+
+// Standalone wing back offset (Main 5.2 RenderCharacterBackItem)
+inline constexpr glm::vec3 WING_BACK_OFFSET{0.f, 0.f, 15.f};
+
 } // namespace MuMath
 
 // Compute bone world matrices for a given action and frame.
@@ -73,6 +116,15 @@ std::vector<BoneWorldMatrix>
 ComputeBoneMatricesBlended(const BMDData *bmd, int action1, float frame1,
                            int action2, float frame2, float blendAlpha,
                            const glm::vec3 &bodyAngle = glm::vec3(0));
+
+// Output-parameter versions: reuse pre-allocated vector (no heap alloc after first call)
+void ComputeBoneMatricesInterpolated(const BMDData *bmd, int action, float frame,
+                                     std::vector<BoneWorldMatrix> &out,
+                                     const glm::vec3 &bodyAngle = glm::vec3(0));
+void ComputeBoneMatricesBlended(const BMDData *bmd, int action1, float frame1,
+                                int action2, float frame2, float blendAlpha,
+                                std::vector<BoneWorldMatrix> &out,
+                                const glm::vec3 &bodyAngle = glm::vec3(0));
 
 // Compute AABB from bone-transformed vertices
 AABB ComputeTransformedAABB(const BMDData *bmd,

@@ -638,9 +638,11 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
       b.respawnDelay = 3.0f + (float)(rand() % 5);
     }
 
-    // Main 5.2 GOBoid.cpp: bat sounds — reduced frequency to prevent spam
-    if (range < 600.0f && rand() % 1024 == 0) {
+    // Main 5.2 GOBoid.cpp: bat sounds — timer-based to be FPS-independent
+    b.timer -= dt;
+    if (range < 600.0f && b.timer <= 0.0f) {
       SoundManager::Play3D(SOUND_BAT01, b.position.x, b.position.y, b.position.z);
+      b.timer = 4.0f + (float)(rand() % 6); // 4-10 second interval
     }
 
     // Random despawn
