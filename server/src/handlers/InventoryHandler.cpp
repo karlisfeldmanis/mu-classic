@@ -335,6 +335,9 @@ void HandleItemUse(Session &session, const std::vector<uint8_t> &packet,
   if (req->slot >= 64)
     return;
 
+  if (session.dead)
+    return;
+
   if (session.potionCooldown > 0.0f) {
     printf("[Inventory] Rejecting item use fd=%d: Cooldown active (%.1fs)\n",
            session.GetFd(), session.potionCooldown);

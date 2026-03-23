@@ -139,6 +139,29 @@ Follows `AccessModel()` convention (MapManager.cpp):
 
 Key ranges: Tree(0-19), Grass(20-29), Stone(30-39), StoneStatue(40-42), Tomb(44-46), FireLight(50-51), Bonfire(52), DoungeonGate(55), SteelWall(65-67), StoneWall(69-74), StoneMuWall(75-78), Bridge(80), Fence(81-84), StreetLight(90), Cannon(91-93), Curtain(95), House(115-119), HouseWall(121-126), Furniture(140-146).
 
+## Ground Item Orientation (ItemAngle)
+
+Ground-dropped items use Main 5.2 `ItemAngle()` (ZzzObject.cpp:5437-5686) for resting orientation.
+
+**Rotation order**: ZYX (matching `AngleMatrix()` in ZzzMathLib.cpp). Angle[0]=X(pitch), Angle[1]=Y(yaw), Angle[2]=Z(roll). Applied as Z first, then Y, then X.
+
+**Default**: Angle=(0,0,-45), Scale=0.8 (ItemObjectAttribute default).
+
+| Category | Angle (X, Y, Z) | Notes |
+|----------|-----------------|-------|
+| 0-1 Swords/Axes | (60, 0, -45) | Blade pitched down 60 degrees |
+| 2 Maces | (0, 270, -45) | Yaw 270 (horizontal) |
+| 3 Spears | (60, 0, -45) | Same as swords |
+| 4 Bows (regular) | (60, 0, -45) | Like swords |
+| 4 Crossbows (idx 8-19) | (90, 0, -45) | Nearly flat |
+| 5 Staffs | (0, 270, -45) | Same as maces |
+| 6 Shields | (0, 270, 225) | Y=270, Z=270-45 |
+| 7 Helms | (0, 0, -45) | Default |
+| 8-11 Armor/Pants/Gloves/Boots | (270, 0, -45) | Spread flat |
+| 14 Potions | (0, 0, -45) | Default |
+
+**Physics**: Items tumble during fall (pitch or yaw spin), bounce with 40% damping, snap to resting angle on landing.
+
 ## GIF Capture Optimizations
 
 - Resolution Downscaling: box-filter averaging during capture

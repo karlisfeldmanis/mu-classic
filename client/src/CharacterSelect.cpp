@@ -1537,7 +1537,45 @@ void Render(int windowWidth, int windowHeight) {
   float aspect = (float)windowWidth / (float)std::max(windowHeight, 1);
   s_projMatrix = glm::perspective(glm::radians(35.0f), aspect, 10.0f, 50000.0f);
 
-  // Camera is locked — no controls
+  // TEMP DEBUG: free-fly WASD + mouse camera for grass inspection
+  {
+    static double lastMX = 0, lastMY = 0;
+    static bool firstMouse = true;
+    double mx, my;
+    glfwGetCursorPos(s_window, &mx, &my);
+
+    // Mouse look (right-click drag)
+    if (glfwGetMouseButton(s_window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+      if (!firstMouse) {
+        float dx = (float)(mx - lastMX) * 0.15f;
+        float dy = (float)(my - lastMY) * 0.15f;
+        s_camYaw += dx;
+        s_camPitch -= dy;
+        s_camPitch = glm::clamp(s_camPitch, -89.0f, 89.0f);
+      }
+      firstMouse = false;
+    } else {
+      firstMouse = true;
+    }
+    lastMX = mx;
+    lastMY = my;
+
+    float yR = glm::radians(s_camYaw), pR = glm::radians(s_camPitch);
+    glm::vec3 fwd(cosf(pR) * cosf(yR), sinf(pR), cosf(pR) * sinf(yR));
+    glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0)));
+    glm::vec3 up(0, 1, 0);
+
+    float speed = 400.0f;
+    if (glfwGetKey(s_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) speed *= 3.0f;
+    if (glfwGetKey(s_window, GLFW_KEY_W) == GLFW_PRESS) s_camPos += fwd * speed * 0.016f;
+    if (glfwGetKey(s_window, GLFW_KEY_S) == GLFW_PRESS) s_camPos -= fwd * speed * 0.016f;
+    if (glfwGetKey(s_window, GLFW_KEY_A) == GLFW_PRESS) s_camPos -= right * speed * 0.016f;
+    if (glfwGetKey(s_window, GLFW_KEY_D) == GLFW_PRESS) s_camPos += right * speed * 0.016f;
+    if (glfwGetKey(s_window, GLFW_KEY_SPACE) == GLFW_PRESS) s_camPos += up * speed * 0.016f;
+    if (glfwGetKey(s_window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) s_camPos -= up * speed * 0.016f;
+
+    s_camTarget = s_camPos + fwd * 1000.0f;
+  }
 
   glm::vec3 camPos = s_camPos;
   s_viewMatrix = glm::lookAt(camPos, s_camTarget, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -1649,7 +1687,7 @@ void Render(int windowWidth, int windowHeight) {
     s_objectRenderer.Render(s_viewMatrix, s_projMatrix, camPos, s_time);
   s_grassRenderer.Render(s_viewMatrix, s_projMatrix, s_time, camPos);
   s_boidManager.Render(s_viewMatrix, s_projMatrix, camPos);
-  s_boidManager.RenderLeaves(s_viewMatrix, s_projMatrix);
+  s_boidManager.RenderLeaves(s_viewMatrix, s_projMatrix, camPos);
 
   // Shadows are now handled by shadow mapping (depth pass on view 8, set up above).
 

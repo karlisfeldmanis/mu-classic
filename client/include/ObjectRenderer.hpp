@@ -108,6 +108,9 @@ private:
     bool isGPUAnimated = false;
     std::vector<glm::mat4> gpuBoneMatrices; // Computed each frame, uploaded as uniforms
 
+    // BMD local-space AABB (for debug visualization)
+    glm::vec3 aabbMin = glm::vec3(0.0f);
+    glm::vec3 aabbMax = glm::vec3(0.0f);
   };
   std::unordered_map<int, ModelCache> modelCache;
 
@@ -126,7 +129,7 @@ private:
 
   std::vector<glm::vec3> terrainLightmap; // Copy of terrain lightmap for sampling
   const MapData *terrainMapping = nullptr; // For grass-on-tile filtering
-  std::vector<float> terrainHeightmap;     // For grass height snapping
+  std::vector<float> terrainHeightmap;     // For cliff fade height lookup
   std::unordered_map<int, float> typeAlphaMap; // Per-type alpha for roof hiding
   float m_luminosity = 1.0f;
   bool m_fogEnabled = true;
@@ -144,7 +147,6 @@ private:
   std::unique_ptr<Shader> m_spriteShader;
   bgfx::VertexBufferHandle m_spriteQuadVBO = BGFX_INVALID_HANDLE;
   bgfx::IndexBufferHandle m_spriteQuadEBO = BGFX_INVALID_HANDLE;
-
   // Bilinear sample terrain lightmap at world position
   glm::vec3 SampleTerrainLight(const glm::vec3 &worldPos) const;
 

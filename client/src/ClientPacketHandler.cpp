@@ -648,9 +648,9 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
             case 4:  SoundManager::Play(SOUND_METEORITE01); break;  // Fire Ball
             case 5:  SoundManager::Play(SOUND_FLAME); break;        // Flame
             case 7:  SoundManager::Play(SOUND_ICE); break;          // Ice
-            case 8:  SoundManager::Play(SOUND_STORM); break;        // Twister
-            case 9:  SoundManager::Play(SOUND_EVIL); break;         // Evil Spirit
-            case 10: SoundManager::Play(SOUND_HELLFIRE); break;     // Hellfire
+            case 8:  break;  // Twister — AoE, cast sound already played client-side
+            case 9:  break;  // Evil Spirit — AoE, cast sound already played client-side
+            case 10: break;  // Hellfire — AoE, cast sound already played client-side
             case 12: SoundManager::Play(SOUND_FLASH); break;        // Aqua Beam
             case 11:                                                 // Power Wave
             case 17:                                                 // Energy Ball

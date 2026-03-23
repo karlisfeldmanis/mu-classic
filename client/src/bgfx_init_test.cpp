@@ -434,7 +434,7 @@ int main() {
       boidManager.Update(0.016f, center, 0, time);
       boidManager.RenderShadows(view, proj);
       boidManager.Render(view, proj, eye);
-      boidManager.RenderLeaves(view, proj);
+      boidManager.RenderLeaves(view, proj, eye);
 
       // Phase 11: Click-to-move ground effect
       if (clickShader) {

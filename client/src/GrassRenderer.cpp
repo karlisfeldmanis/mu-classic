@@ -60,8 +60,7 @@ void GrassRenderer::Init() {
 }
 
 void GrassRenderer::Load(const TerrainData &data, int worldID,
-                          const std::string &dataPath,
-                          const std::vector<bool> *objectOccupancy) {
+                          const std::string &dataPath) {
   m_worldID = worldID;
   const int SIZE = TerrainParser::TERRAIN_SIZE; // 256
 
@@ -126,12 +125,27 @@ void GrassRenderer::Load(const TerrainData &data, int worldID,
 
       uint8_t layer1 = data.mapping.layer1[idx];
       if (layer1 != 0 && layer1 != 1) continue;
-      if (data.mapping.alpha[idx] > 0.0f) continue;
 
+      // Main 5.2: skip grass if ANY of the 4 quad corners has alpha > 0
+      // (ZzzLodTerrain.cpp:1568 — checks all 4 TerrainIndex corners)
+      {
+        int idx00 = z * SIZE + x;
+        int idx10 = z * SIZE + (x + 1);
+        int idx01 = (z + 1) * SIZE + x;
+        int idx11 = (z + 1) * SIZE + (x + 1);
+        if (data.mapping.alpha[idx00] > 0.0f ||
+            data.mapping.alpha[idx10] > 0.0f ||
+            data.mapping.alpha[idx01] > 0.0f ||
+            data.mapping.alpha[idx11] > 0.0f)
+          continue;
+      }
+
+      // TW_NOGROUND (0x08) — bridges/void cells
       if (idx < (int)data.mapping.attributes.size() &&
           (data.mapping.attributes[idx] & 0x08) != 0)
         continue;
 
+      // Skip near TW_NOGROUND cells (rift edges)
       {
         bool nearRift = false;
         const int GRASS_RIFT_MARGIN = 3;

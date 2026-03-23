@@ -40,6 +40,7 @@ public:
   // Terrain attribute flags (from _define.h)
   static constexpr uint8_t TW_SAFEZONE = 0x01;
   static constexpr uint8_t TW_NOMOVE = 0x04;
+  static constexpr uint8_t TW_NOGROUND = 0x08;
   static constexpr int TERRAIN_SIZE = 256;
 };
 

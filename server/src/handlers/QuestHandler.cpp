@@ -159,7 +159,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q9: Marcus — Larva x12
     {249, 1, {{12, 12}, {0, 0}, {0, 0}},
      {"Larva", "", ""},
-     "The Larvae Nests", "Dungeon", 30, 45000, 350000,
+     "The Larvae Nests", "Dungeon", 25, 45000, 350000,
      {{{162, 0}, {356, 1}},  // DW: Serpent Staff + Bone Boots+1
       {{262, 1}, {391, 0}},  // DK: Scale Armor+1 + Orb of Twisting Slash
       {{268, 0}, {394, 0}},  // ELF: Wind Armor + Orb of Greater Damage
@@ -171,7 +171,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q10: Marcus — Hell Hound x10
     {249, 1, {{5, 10}, {0, 0}, {0, 0}},
      {"Hell Hound", "", ""},
-     "Infernal Hounds", "Dungeon", 32, 50000, 380000,
+     "Infernal Hounds", "Dungeon", 36, 50000, 380000,
      {{{263, 0}, {488, 0}},  // DW: Sphinx Armor + Scroll of Evil Spirit
       {{9, 0}, {360, 0}},    // DK: Sword of Salamander + Brass Boots
       {{139, 0}, {237, 0}},  // ELF: Light Crossbow + Spirit Helm
@@ -183,7 +183,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q11: Marcus — Poison Bull x12
     {249, 1, {{8, 12}, {0, 0}, {0, 0}},
      {"Poison Bull", "", ""},
-     "The Venomous Herd", "Dungeon", 34, 55000, 400000,
+     "The Venomous Herd", "Dungeon", 44, 55000, 400000,
      {{{327, 1}, {489, 0}},  // DW: Sphinx Gloves+1 + Scroll of Hellfire
       {{67, 0}, {264, 0}},   // DK: Great Hammer + Brass Armor
       {{333, 0}, {410, 0}},  // ELF: Spirit Gloves + Orb of Assassin Summoning
@@ -207,7 +207,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q13: Marcus — Thunder Lich x12
     {249, 1, {{9, 12}, {0, 0}, {0, 0}},
      {"Thunder Lich", "", ""},
-     "Storm Beneath the Earth", "Dungeon", 38, 65000, 450000,
+     "Storm Beneath the Earth", "Dungeon", 42, 65000, 450000,
      {{{295, 1}, {355, 0}},  // DW: Sphinx Pants+1 + Legendary Boots
       {{35, 2}, {328, 0}},   // DK: Tomahawk+2 + Brass Gloves
       {{132, 0}, {365, 0}},  // ELF: Tiger Bow + Spirit Boots
@@ -231,7 +231,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q15: Marcus — Ghost x20
     {249, 1, {{11, 20}, {0, 0}, {0, 0}},
      {"Ghost", "", ""},
-     "The Restless Dead", "Dungeon", 42, 75000, 550000,
+     "The Restless Dead", "Dungeon", 30, 75000, 550000,
      {{{323, 0}, {259, 0}},  // DW: Legendary Gloves + Legendary Armor
       {{297, 0}, {361, 0}},  // DK: Plate Pants + Plate Boots
       {{195, 0}, {301, 1}},  // ELF: Elven Shield + Spirit Pants+1
@@ -255,7 +255,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q17: Marcus — Cyclops x15
     {249, 1, {{17, 15}, {0, 0}, {0, 0}},
      {"Cyclops", "", ""},
-     "The One-Eyed Terror", "Dungeon", 48, 90000, 700000,
+     "The One-Eyed Terror", "Dungeon", 26, 90000, 700000,
      {{{291, 1}, {491, 0}},  // DW: Legendary Pants+1 + Scroll of Aqua Beam
       {{329, 0}, {199, 0}},  // DK: Plate Gloves + Spiked Shield
       {{133, 0}, {334, 0}},  // ELF: Silver Bow + Guardian Gloves
@@ -319,7 +319,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q22: Nolan — Ice Monster x20
     {311, 1, {{22, 20}, {0, 0}, {0, 0}},
      {"Ice Monster", "", ""},
-     "Frozen Sentinels", "Devias", 30, 50000, 380000,
+     "Frozen Sentinels", "Devias", 22, 50000, 380000,
      {{{162, 1}, {359, 1}},  // DW: Serpent Staff+1 + Sphinx Boots+1
       {{66, 1}, {232, 1}},   // DK: Flail+1 + Brass Helm+1
       {{139, 1}, {268, 1}},  // ELF: Light Crossbow+1 + Wind Armor+1
@@ -331,7 +331,7 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     // Q23: Nolan — Hommerd x20
     {311, 1, {{23, 20}, {0, 0}, {0, 0}},
      {"Hommerd", "", ""},
-     "The Iron Brutes", "Devias", 35, 60000, 450000,
+     "The Iron Brutes", "Devias", 24, 60000, 450000,
      {{{263, 1}, {487, 0}},  // DW: Sphinx Armor+1 + Scroll of Twister
       {{264, 1}, {360, 1}},  // DK: Brass Armor+1 + Brass Boots+1
       {{132, 0}, {237, 1}},  // ELF: Tiger Bow + Spirit Helm+1

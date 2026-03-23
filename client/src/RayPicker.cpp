@@ -57,8 +57,8 @@ bool IsWalkable(float worldX, float worldZ) {
   if (gx < 0 || gz < 0 || gx >= S || gz >= S)
     return false;
   uint8_t attr = s_td->mapping.attributes[gz * S + gx];
-  // Only TW_NOMOVE (0x04) blocks character movement.
-  return (attr & 0x04) == 0;
+  // TW_NOMOVE (0x04) and TW_NOGROUND (0x08) block character movement.
+  return (attr & (0x04 | 0x08)) == 0;
 }
 
 bool ScreenToTerrain(GLFWwindow *window, double mouseX, double mouseY,

@@ -263,6 +263,12 @@ Weapon overrides: Sword 14, Bow 5/13, Staff 5 → cyan.
 
 All glow passes: `glBlendFunc(GL_ONE, GL_ONE)` additive, `glDepthMask(GL_FALSE)`, face culling disabled.
 
+## Spell Sound Deduplication
+
+AoE spells (Evil Spirit, Twister, Hellfire) play their cast sound **client-side only** when the animation starts. The server damage response handler must NOT replay the cast sound — for AoE spells hitting N monsters, this would play N duplicate sounds on top of the cast sound, causing audio clipping/looping when holding RMB for continuous casting.
+
+**Rule**: Server damage response plays hit sounds only for single-target spells. AoE spell hit responses are silent (cast sound already playing).
+
 ## Weapon Blur Trail
 
 - **WeaponTrail**: 30-point tip/base position history captured during attack animations

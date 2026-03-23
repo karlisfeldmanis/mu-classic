@@ -972,11 +972,13 @@ void GameWorld::processApproaching(MonsterInstance &mon, float dt,
   }
 
   // Target moved out of range → resume chasing (with +1 tolerance)
+  // Use larger world-distance tolerance (2.5x) to prevent chase/attack
+  // oscillation when a player moves slightly during approach delay.
   int dist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY, target->gridX,
                                        target->gridY);
   int rechaseRange = mon.attackRange + 1;
   if (dist > rechaseRange ||
-      (mon.attackRange <= 1 && WorldDistSq(mon, *target) > MELEE_ATTACK_DIST_SQ * 1.5f)) {
+      (mon.attackRange <= 1 && dist > 1 && WorldDistSq(mon, *target) > MELEE_ATTACK_DIST_SQ * 2.5f)) {
     mon.aiState = MonsterInstance::AIState::CHASING;
     mon.currentPath.clear();
     mon.pathStep = 0;
@@ -1021,11 +1023,13 @@ void GameWorld::processAttacking(MonsterInstance &mon, float dt,
 
   // Out of attack range → resume chasing (with +1 tolerance to prevent
   // constant re-chase when player shifts 1 cell — reduces jostling)
+  // Skip world-distance check for Chebyshev dist <= 1 (truly adjacent) to
+  // prevent oscillation when player position updates lag slightly.
   int dist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY, target->gridX,
                                        target->gridY);
   int rechaseRange = mon.attackRange + 1;
   if (dist > rechaseRange ||
-      (mon.attackRange <= 1 && WorldDistSq(mon, *target) > MELEE_ATTACK_DIST_SQ * 1.5f)) {
+      (mon.attackRange <= 1 && dist > 1 && WorldDistSq(mon, *target) > MELEE_ATTACK_DIST_SQ * 2.5f)) {
     mon.aiState = MonsterInstance::AIState::CHASING;
     mon.currentPath.clear();
     mon.pathStep = 0;

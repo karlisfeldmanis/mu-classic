@@ -80,7 +80,8 @@ public:
   void Render(const glm::mat4 &view, const glm::mat4 &proj,
               const glm::vec3 &camPos);
   void RenderShadows(const glm::mat4 &view, const glm::mat4 &proj);
-  void RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj);
+  void RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj,
+                    const glm::vec3 &camPos);
   void Cleanup();
 
   // Terrain linkage

@@ -120,11 +120,14 @@ void UpdateAndRender(FloatingDamage *pool, int poolSize, float deltaTime,
 namespace GroundItemRenderer {
 
 void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale) {
-  angle = glm::vec3(90.0f, 0.0f, 0.0f); // Default: lay flat on ground
-  scale = 1.0f;
+  // Main 5.2 ItemAngle() — ZzzObject.cpp:5437-5686
+  // Default: Angle = (0, 0, -45), Scale = 0.8
+  angle = glm::vec3(0.0f, 0.0f, -45.0f);
+  scale = 0.8f; // Main 5.2 ItemObjectAttribute default
 
   if (defIndex == -1) { // Zen
     angle = glm::vec3(0, 0, 0);
+    scale = 1.6f;
     return;
   }
 
@@ -141,35 +144,37 @@ void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale) {
     index = defIndex % 32;
   }
 
-  // Main 5.2 ItemAngle() — resting orientation per category (ZzzObject.cpp:5437-5550)
-  if (category == 0) { // Swords
+  // Main 5.2 ItemAngle() exact values (ZzzObject.cpp:5437-5686)
+  // Angle[0]=X(pitch), Angle[1]=Y(yaw), Angle[2]=Z(roll)
+  if (category >= 0 && category <= 1) { // Swords, Axes
     angle = glm::vec3(60.0f, 0.0f, -45.0f);
-    if (index == 19) scale = 0.7f; // Divine Sword
-  } else if (category == 1) { // Axes
-    angle = glm::vec3(60.0f, 0.0f, -45.0f);
+    if (category == 0 && index == 19) scale = 0.7f; // Divine Sword
   } else if (category == 2) { // Maces
     angle = glm::vec3(0.0f, 270.0f, -45.0f);
   } else if (category == 3) { // Spears
     angle = glm::vec3(60.0f, 0.0f, -45.0f);
-    scale = 0.9f;
   } else if (category == 4) { // Bows/Crossbows
-    angle = glm::vec3(90.0f, 0.0f, -45.0f);
-    scale = 0.9f;
+    // Crossbows (index 8-16, 18-19): pitch 90 flat
+    // Regular bows (index 0-7, 17, 20+): default -45
+    if ((index >= 8 && index < 17) || (index >= 18 && index < 20)) {
+      angle = glm::vec3(90.0f, 0.0f, -45.0f);
+    } else if (index >= 20 && index <= 22) {
+      angle = glm::vec3(0.0f, 0.0f, -45.0f); // Special bows: default angle
+    } else {
+      angle = glm::vec3(60.0f, 0.0f, -45.0f); // Regular bows like swords
+    }
   } else if (category == 5) { // Staffs
     angle = glm::vec3(0.0f, 270.0f, -45.0f);
   } else if (category == 6) { // Shields
-    angle = glm::vec3(0.0f, 270.0f, 225.0f);
-    scale = 0.9f;
-  } else if (category == 7) { // Helms
-    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+    angle = glm::vec3(0.0f, 270.0f, 225.0f); // Y=270, Z=270-45
+  } else if (category == 7) { // Helms — default angles
+    // angle stays (0, 0, -45)
   } else if (category >= 8 && category <= 11) { // Armor/Pants/Gloves/Boots
     angle = glm::vec3(270.0f, 0.0f, -45.0f);
-  } else if (category == 14) { // Potions
-    angle = glm::vec3(90.0f, 0.0f, -45.0f);
-    scale = 0.6f;
-  } else { // Default
-    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+  } else if (category == 14) { // Potions — default angles
+    // angle stays (0, 0, -45)
   }
+  // All other categories: default (0, 0, -45)
 }
 
 void UpdatePhysics(GroundItem &gi, float terrainHeight) {

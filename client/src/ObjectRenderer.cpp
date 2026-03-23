@@ -4,6 +4,7 @@
 #include <cmath>
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <iostream>
 
 // BlendMesh texture ID lookup — returns the BMD texture slot index
@@ -384,6 +385,28 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
       cache.boneMatrices = ComputeBoneMatrices(bmd.get());
       cache.blendMeshTexId = GetBlendMeshTexId(obj.type, m_mapId);
 
+      // Compute post-bone AABB (raw BMD AABB is pre-bone; bone transform changes size)
+      if (!cache.boneMatrices.empty()) {
+        glm::vec3 mn = bmd->Min, mx = bmd->Max;
+        glm::vec3 corners[8] = {
+          {mn.x,mn.y,mn.z}, {mx.x,mn.y,mn.z}, {mx.x,mx.y,mn.z}, {mn.x,mx.y,mn.z},
+          {mn.x,mn.y,mx.z}, {mx.x,mn.y,mx.z}, {mx.x,mx.y,mx.z}, {mn.x,mx.y,mx.z}
+        };
+        glm::vec3 newMin(1e9f), newMax(-1e9f);
+        const auto &bm = cache.boneMatrices[0];
+        for (int i = 0; i < 8; ++i) {
+          glm::vec3 t = MuMath::TransformPoint(
+            (const float(*)[4])bm.data(), corners[i]);
+          newMin = glm::min(newMin, t);
+          newMax = glm::max(newMax, t);
+        }
+        cache.aabbMin = newMin;
+        cache.aabbMax = newMax;
+      } else {
+        cache.aabbMin = bmd->Min;
+        cache.aabbMax = bmd->Max;
+      }
+
       // Detect animated models (>1 keyframe in first action)
       auto shouldCPUAnimate = [](int t) {
         // CPU re-skinning: low instance count types only
@@ -450,39 +473,23 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
       continue;
     }
 
-    // Skip grass objects (types 20-29) on non-grass terrain tiles.
-    // Original engine only renders grass BMDs on grass terrain (layer1 0 or 1).
-    if (obj.type >= 20 && obj.type <= 29 && terrainMapping) {
-      const int S = 256;
-      int gz = (int)(obj.position.x / 100.0f);
-      int gx = (int)(obj.position.z / 100.0f);
-      if (gz >= 0 && gx >= 0 && gz < S && gx < S) {
-        uint8_t tile = terrainMapping->layer1[gz * S + gx];
-        if (tile != 0 && tile != 1) {
+    // Skip grass BMD objects (types 20-29) that float above terrain.
+    // Ground-level grass is kept; only hide ones clearly above rocks/cliffs.
+    if (obj.type >= 20 && obj.type <= 29 && !terrainHeightmap.empty()) {
+      float wx = obj.position.x;  // GL_X
+      float wz = obj.position.z;  // GL_Z
+      int gz = (int)(wx / 100.0f);
+      int gx = (int)(wz / 100.0f);
+      if (gz >= 0 && gz < 256 && gx >= 0 && gx < 256) {
+        float terrH = terrainHeightmap[gz * 256 + gx];
+        if (obj.position.y > terrH + 40.0f) {
           ++skipped;
           continue;
         }
       }
     }
 
-    // Snap grass objects (types 20-29) to terrain heightmap to prevent floating
     glm::vec3 objPos = obj.position;
-    if (obj.type >= 20 && obj.type <= 29 &&
-        terrainHeightmap.size() >= 256 * 256) {
-      const int S = 256;
-      float gz = objPos.x / 100.0f;
-      float gx = objPos.z / 100.0f;
-      gz = std::clamp(gz, 0.0f, (float)(S - 2));
-      gx = std::clamp(gx, 0.0f, (float)(S - 2));
-      int xi = (int)gx, zi = (int)gz;
-      float xd = gx - (float)xi, zd = gz - (float)zi;
-      float h00 = terrainHeightmap[zi * S + xi];
-      float h10 = terrainHeightmap[zi * S + (xi + 1)];
-      float h01 = terrainHeightmap[(zi + 1) * S + xi];
-      float h11 = terrainHeightmap[(zi + 1) * S + (xi + 1)];
-      objPos.y = h00 * (1 - xd) * (1 - zd) + h10 * xd * (1 - zd) +
-                 h01 * (1 - xd) * zd + h11 * xd * zd;
-    }
 
     // Fix floating candle — model origin is above base, lower onto table surface
     if (obj.type == 150)
@@ -618,6 +625,27 @@ void ObjectRenderer::LoadObjectsGeneric(
       ModelCache cache;
       cache.boneMatrices = ComputeBoneMatrices(bmd.get());
       cache.blendMeshTexId = GetBlendMeshTexId(obj.type, m_mapId);
+      // Post-bone AABB
+      if (!cache.boneMatrices.empty()) {
+        glm::vec3 mn = bmd->Min, mx = bmd->Max;
+        glm::vec3 corners[8] = {
+          {mn.x,mn.y,mn.z}, {mx.x,mn.y,mn.z}, {mx.x,mx.y,mn.z}, {mn.x,mx.y,mn.z},
+          {mn.x,mn.y,mx.z}, {mx.x,mn.y,mx.z}, {mx.x,mx.y,mx.z}, {mn.x,mx.y,mx.z}
+        };
+        glm::vec3 newMin(1e9f), newMax(-1e9f);
+        const auto &bm = cache.boneMatrices[0];
+        for (int i = 0; i < 8; ++i) {
+          glm::vec3 t = MuMath::TransformPoint(
+            (const float(*)[4])bm.data(), corners[i]);
+          newMin = glm::min(newMin, t);
+          newMax = glm::max(newMax, t);
+        }
+        cache.aabbMin = newMin;
+        cache.aabbMax = newMax;
+      } else {
+        cache.aabbMin = bmd->Min;
+        cache.aabbMax = bmd->Max;
+      }
 
       // GPU tree sway only for Lorencia (LoadObjects path). Non-Lorencia tree
       // BMDs (ObjectXX.bmd) have different bone/animation structures that the
@@ -1260,7 +1288,7 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       activeShader->setVec4("u_fogParams", glm::vec4(m_fogNear, m_fogFar, useFog, 0.0f));
       activeShader->setVec4("u_fogColor", glm::vec4(m_fogColor, 0.0f));
       activeShader->setVec4("u_texCoordOffset", glm::vec4(texOffset, 0.0f, 0.0f));
-      activeShader->setVec4("u_shadowParams", glm::vec4(0.0f)); // no shadow on world objects
+      activeShader->setVec4("u_shadowParams", glm::vec4(0.0f));
 
       bgfx::setState(state);
       bgfx::submit(0, activeShader->program);
@@ -1460,3 +1488,4 @@ void ObjectRenderer::Cleanup() {
   shader.reset();
   skinnedShader.reset();
 }
+

@@ -2417,29 +2417,29 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
     if (p.alpha <= 0.01f)
       continue;
 
-    // Main 5.2: Luminosity = (rand()%4+7)*0.1f = 0.7-1.0, flickering
-    float L = 0.7f + (float)(rand() % 4) * 0.1f;
+    // Luminosity flicker, toned down from Main 5.2 to avoid overly bright terrain glow
+    float L = 0.4f + (float)(rand() % 4) * 0.05f; // 0.4-0.55 (was 0.7-1.0)
     L *= p.alpha; // Fade with projectile
 
     glm::vec3 lightColor;
     float lightRange;
 
     switch (p.skillId) {
-    case 4: // Fire Ball — Main 5.2: (L*1.0, L*0.1, 0.0)
+    case 4: // Fire Ball
       lightColor = glm::vec3(L * 1.0f, L * 0.1f, 0.0f);
-      lightRange = 200.0f; // Main 5.2: AddTerrainLight range 2 grid cells
+      lightRange = 150.0f;
       break;
-    case 1: // Poison — green (no projectile, but keep for completeness)
+    case 1: // Poison — green
       lightColor = glm::vec3(L * 0.3f, L * 1.0f, L * 0.6f);
-      lightRange = 200.0f;
+      lightRange = 150.0f;
       break;
-    case 3: // Lightning — blue-white (Main 5.2: L*0.2, L*0.4, L*1.0)
+    case 3: // Lightning — blue-white
       lightColor = glm::vec3(L * 0.2f, L * 0.4f, L * 1.0f);
-      lightRange = 200.0f;
+      lightRange = 150.0f;
       break;
     default: // Generic: use projectile color scaled by luminosity
       lightColor = p.color * L * 0.5f;
-      lightRange = 200.0f;
+      lightRange = 150.0f;
       break;
     }
 
@@ -2518,30 +2518,29 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
     objectTypes.push_back(-1);
   }
 
-  // Flame ground fire lights — Main 5.2: AddTerrainLight(pos, (1.0, 0.4, 0.0), 3)
+  // Flame ground fire lights
   for (const auto &fg : m_flameGrounds) {
     float ticksRemaining = fg.lifetime / 0.04f;
     float L = std::min(1.0f, ticksRemaining * 0.05f);
-    L *= (0.7f + (float)(rand() % 4) * 0.1f); // Luminosity flicker
+    L *= (0.4f + (float)(rand() % 4) * 0.05f); // Toned down flicker
     if (L <= 0.01f)
       continue;
     positions.push_back(fg.position);
     colors.push_back(glm::vec3(L * 1.0f, L * 0.4f, L * 0.0f));
-    ranges.push_back(300.0f);
+    ranges.push_back(200.0f);
     objectTypes.push_back(-1);
   }
 
   // Hellfire ground circle — warm orange terrain light
-  // Main 5.2: AddTerrainLight(pos, (Lum, Lum*0.8, Lum*0.2), 4)
   for (const auto &hf : m_hellfireEffects) {
     float ticksRemaining = hf.lifetime / 0.04f;
     float L = std::min(1.0f, ticksRemaining * 0.1f);
-    L *= (0.7f + (float)(rand() % 4) * 0.1f);
+    L *= (0.4f + (float)(rand() % 4) * 0.05f); // Toned down
     if (L <= 0.01f)
       continue;
     positions.push_back(hf.position);
     colors.push_back(glm::vec3(L, L * 0.8f, L * 0.2f));
-    ranges.push_back(300.0f);
+    ranges.push_back(200.0f);
     objectTypes.push_back(-1);
   }
 
@@ -2592,13 +2591,12 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
   }
 
   // Meteorite bolts — orange terrain glow during flight
-  // Main 5.2: AddTerrainLight(pos, (L*1.0, L*0.1, 0.0), 3)
   for (const auto &m : m_meteorBolts) {
     if (m.impacted) continue;
-    float L = (float)(rand() % 4 + 7) * 0.1f; // 0.7-1.0 flicker
+    float L = (float)(rand() % 4 + 4) * 0.1f; // 0.4-0.7 (toned down from 0.7-1.0)
     positions.push_back(m.position);
     colors.push_back(glm::vec3(L * 1.0f, L * 0.3f, 0.0f));
-    ranges.push_back(300.0f);
+    ranges.push_back(200.0f);
     objectTypes.push_back(-1);
   }
 

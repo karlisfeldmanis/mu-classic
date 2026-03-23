@@ -1,8 +1,8 @@
 $input a_position, a_texcoord0, a_texcoord1, a_color0
 $output v_texcoord0, v_color0, v_fragpos, v_alpha
 
-// Grass vertex shader — wind animation + push source bending
-// a_texcoord1: x=windWeight, y=gridX, z=texLayer, w=unused
+// Grass vertex shader — multi-frequency wind + push source bending
+// a_texcoord1: x=windWeight, y=gridX, z=texLayer, w=windPhase
 // v_alpha: carries texLayer to fragment shader (no flat qualifier in BGFX)
 
 #include <bgfx_shader.sh>
@@ -20,14 +20,20 @@ void main() {
     float windWeight = a_texcoord1.x;
     float gridX      = a_texcoord1.y;
     float texLayer   = a_texcoord1.z;
+    float windPhase  = a_texcoord1.w;
 
     float uTime = u_grassParams.x;
     int numPushers = int(u_grassParams.y + 0.5);
 
-    // Wind: sin(windSpeed + gridX * 5.0) * 10.0 * windWeight
+    // Multi-frequency wind: primary sway + slower secondary wave
+    // Each blade has unique phase offset for natural desynchronized movement
     float windSpeed = mod(uTime, 720.0) * 2.0;
-    float wind = sin(windSpeed + gridX * 5.0) * 10.0 * windWeight;
+    float wind1 = sin(windSpeed + gridX * 5.0 + windPhase) * 10.0;
+    float wind2 = sin(windSpeed * 0.37 + gridX * 2.3 + windPhase * 1.7) * 4.0;
+    float wind = (wind1 + wind2) * windWeight;
     pos.x += wind;
+    // Subtle Z-axis sway (perpendicular, smaller amplitude)
+    pos.z += sin(windSpeed * 0.53 + gridX * 3.7 + windPhase * 2.1) * 3.0 * windWeight;
 
     // Grass pushing: top vertices near push sources get pushed away
     if (windWeight > 0.0) {

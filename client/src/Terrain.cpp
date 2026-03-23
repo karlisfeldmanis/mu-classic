@@ -675,7 +675,8 @@ void Terrain::setupTextures(const TerrainData &data,
 
   tileTextureArray = bgfx::createTexture2D(
       tile_res, tile_res, true, max_tiles, bgfx::TextureFormat::RGBA8,
-      BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC);
+      BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC
+      | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
 
   // Helper: upload mip 0 + generate box-filtered mip chain for a tile layer
   auto uploadTileWithMips = [&](int layer, const unsigned char *mip0, int baseW, int baseH) {

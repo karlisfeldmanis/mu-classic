@@ -66,7 +66,7 @@ static constexpr bgfx::ViewId PP_VIEW_BLUR1    = 4;
 static constexpr bgfx::ViewId PP_VIEW_BLUR2    = 5;
 static constexpr bgfx::ViewId PP_VIEW_BLUR3    = 6;
 static constexpr bgfx::ViewId PP_VIEW_COMPOSITE = 9;
-static constexpr uint16_t SHADOW_MAP_SIZE = 2048;
+static constexpr uint16_t SHADOW_MAP_SIZE = 4096;
 
 #include <algorithm>
 #include <cmath>
@@ -293,9 +293,9 @@ static const MapConfig MAP_CONFIGS[] = {
         1500.f,
         3500.f,
         1.0f, // fogNear, fogFar, luminosity
-        0.5f,
-        0.35f,
-        0.15f, // bloom, threshold, vignette
+        0.3f,
+        0.45f,
+        0.1f, // bloom, threshold, vignette
         1.02f,
         1.0f,
         0.96f, // colorTint (warm)
@@ -331,9 +331,9 @@ static const MapConfig MAP_CONFIGS[] = {
         800.f,
         2500.f,
         0.9f, // fogNear, fogFar, luminosity (dungeon is dark)
-        0.35f,
+        0.25f,
         0.55f,
-        0.4f, // bloom, threshold, vignette
+        0.25f, // bloom, threshold, vignette
         0.88f,
         0.93f,
         1.08f, // colorTint (cool blue)
@@ -369,9 +369,9 @@ static const MapConfig MAP_CONFIGS[] = {
         1500.f,
         4000.f,
         1.0f, // fogNear, fogFar, luminosity
+        0.3f,
         0.45f,
-        0.4f,
-        0.1f, // bloom, threshold, vignette
+        0.08f, // bloom, threshold, vignette
         0.92f,
         0.96f,
         1.08f, // colorTint (cool ice)
@@ -407,9 +407,9 @@ static const MapConfig MAP_CONFIGS[] = {
         1500.f,
         4000.f,
         1.0f, // fogNear, fogFar, luminosity
-        0.4f,
-        0.35f,
-        0.1f, // bloom, threshold, vignette
+        0.25f,
+        0.45f,
+        0.08f, // bloom, threshold, vignette
         1.0f,
         1.02f,
         0.96f, // colorTint (slight green warmth)
@@ -1022,10 +1022,12 @@ struct PostProcessState {
   std::unique_ptr<Shader> brightExtract;
   std::unique_ptr<Shader> blur;
   std::unique_ptr<Shader> composite;
-  float bloomIntensity = 0.5f;
-  float vignetteStrength = 0.15f;
+  float bloomIntensity = 0.3f;
+  float vignetteStrength = 0.1f;
   glm::vec3 colorTint = glm::vec3(1.02f, 1.0f, 0.96f);
   float bloomThreshold = 0.35f;
+  float gradingStrength = 0.3f; // 0=no color grading, 1=full grading
+  float sharpStrength = 0.25f;  // 0=no sharpening, ~0.2-0.4=subtle, 1.0=strong
   bgfx::VertexBufferHandle screenTriVBO = BGFX_INVALID_HANDLE;
 };
 static PostProcessState g_postProcess;
@@ -1053,6 +1055,7 @@ static void InitPostProcess() {
   pp.screenTriVBO = bgfx::createVertexBuffer(
       bgfx::makeRef(screenTriVerts, sizeof(screenTriVerts)), ppLayout);
 
+  pp.enabled = true;
   std::cout << "[PostProcess] Initialized successfully\n";
 }
 
@@ -1158,7 +1161,7 @@ static void RenderPostProcess(int fbW, int fbH) {
   bgfx::setViewFrameBuffer(PP_VIEW_COMPOSITE, BGFX_INVALID_HANDLE);
   pp.composite->setTexture(0, "s_scene", pp.sceneColorTex);
   pp.composite->setTexture(1, "s_bloom", pp.bloomTex[0]);
-  pp.composite->setVec4("u_ppComposite", glm::vec4(pp.bloomIntensity, pp.vignetteStrength, 0, 0));
+  pp.composite->setVec4("u_ppComposite", glm::vec4(pp.bloomIntensity, pp.vignetteStrength, pp.gradingStrength, pp.sharpStrength));
   pp.composite->setVec4("u_ppTint", glm::vec4(pp.colorTint, 0.0f));
   bgfx::setVertexBuffer(0, pp.screenTriVBO);
   bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A);
@@ -1171,29 +1174,25 @@ struct LightTemplate {
   float heightOffset; // Y offset above object base for emission point
 };
 
-// Build object occupancy grid for grass exclusion
+// Build pond cell grid: marks cells near Waterspout/Well world objects (types 105-109)
+// so GrassRenderer can force grass (reeds) at those locations.
 static std::vector<bool>
-BuildObjectOccupancy(const std::vector<ObjectRenderer::ObjectInstance> &insts) {
-  std::vector<bool> occ(256 * 256, false);
+BuildPondCells(const std::vector<ObjectRenderer::ObjectInstance> &insts) {
+  std::vector<bool> pond(256 * 256, false);
   for (auto &inst : insts) {
+    if (inst.type < 105 || inst.type > 109) continue;
     glm::vec3 p = glm::vec3(inst.modelMatrix[3]);
-    int cx = (int)(p.x / 100.0f);
-    int cz = (int)(p.z / 100.0f);
-    int r = 1;
-    if (inst.type >= 115 && inst.type <= 129)
-      r = 3; // Buildings/walls
-    else if (inst.type >= 30 && inst.type <= 46)
-      r = 2; // Stones/statues/tombs
-    else if (inst.type >= 65 && inst.type <= 85)
-      r = 2; // Walls/bridges/fences
+    int gz = (int)(p.x / 100.0f); // world.x -> grid z-row
+    int gx = (int)(p.z / 100.0f); // world.z -> grid x-col
+    int r = 2; // 2-cell radius around pond objects
     for (int dz = -r; dz <= r; ++dz)
       for (int dx = -r; dx <= r; ++dx) {
-        int gz = cz + dz, gx = cx + dx;
-        if (gz >= 0 && gz < 256 && gx >= 0 && gx < 256)
-          occ[gz * 256 + gx] = true;
+        int nz = gz + dz, nx = gx + dx;
+        if (nz >= 0 && nz < 256 && nx >= 0 && nx < 256)
+          pond[nz * 256 + nx] = true;
       }
   }
-  return occ;
+  return pond;
 }
 
 // Returns light properties for a given object type, or nullptr if not a light
@@ -1396,19 +1395,18 @@ int main(int argc, char **argv) {
   // Load fonts for high-fidelity UI
   // Body text: Verdana (clean, readable at all sizes) — macOS system font
   // Titles/headers: Cinzel (WoW-style decorative serif)
-  float contentScale = 1.0f;
+  // Pre-scale: content scale (Retina=2, standard=1) * resolution factor
   {
     float xscale, yscale;
     glfwGetWindowContentScale(window, &xscale, &yscale);
-    contentScale = xscale;
+    g_fontPreScale = xscale;
   }
-  // Pre-scale fonts for max monitor resolution so FontGlobalScale never > 1.0
   {
     GLFWmonitor *primaryMon = glfwGetPrimaryMonitor();
     if (primaryMon) {
       const GLFWvidmode *mode = glfwGetVideoMode(primaryMon);
       if (mode && mode->height > 768)
-        g_fontPreScale = (float)mode->height / 768.0f;
+        g_fontPreScale *= (float)mode->height / 768.0f;
     }
   }
   {
@@ -1425,7 +1423,7 @@ int main(int argc, char **argv) {
     };
     cfg.OversampleH = 2;
     cfg.OversampleV = 2;
-    float fs = contentScale * g_fontPreScale; // Full font scale
+    float fs = g_fontPreScale; // contentScale + resolution pre-scale combined
     // Body font: Verdana (readable) → Almendra → ProggyClean
     if (tryFont(fontBody)) {
       g_fontDefault =
@@ -1947,14 +1945,26 @@ int main(int argc, char **argv) {
       { static bool ppInit = false;
         if (!ppInit) { InitPostProcess(); ppInit = true; }
       }
-      // Char select: render directly to backbuffer (no PP).
-      // CharacterSelect::Render() sets its own view order (shadow → face FBO → scene).
-      // Reset to default so only explicitly ordered views are active.
+      // Char select: render to scene FBO for post-processing.
+      // CharacterSelect::Render() sets its own view order (shadow → face FBO → scene → PP).
       bgfx::setViewOrder(0, 0, nullptr);
       bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH | BGFX_CLEAR_STENCIL,
                           0x000000FF, 1.0f, 0);
       bgfx::setViewRect(0, 0, 0, uint16_t(fbW), uint16_t(fbH));
-      bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
+      if (g_postProcess.enabled) {
+        ResizePostProcessFBOs(fbW, fbH);
+        g_postProcess.bloomIntensity = 0.15f;
+        g_postProcess.bloomThreshold = 0.5f;
+        g_postProcess.vignetteStrength = 0.08f;
+        g_postProcess.colorTint = glm::vec3(1.0f, 1.0f, 0.98f);
+        g_postProcess.gradingStrength = 0.2f;
+        if (bgfx::isValid(g_postProcess.sceneFB))
+          bgfx::setViewFrameBuffer(0, g_postProcess.sceneFB);
+        else
+          bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
+      } else {
+        bgfx::setViewFrameBuffer(0, BGFX_INVALID_HANDLE);
+      }
       bgfx::touch(0);
 
       int winW, winH;
@@ -1977,7 +1987,9 @@ int main(int argc, char **argv) {
 
       CharacterSelect::Render(winW, winH);
 
-      // Char select: no post-processing (renders directly to backbuffer)
+      // Post-processing: bloom + vignette + composite (reads scene FBO → backbuffer)
+      if (g_postProcess.enabled)
+        RenderPostProcess(fbW, fbH);
 
       // Draw ImGui UI on top of post-processed scene (sharp, unaffected by
       // bloom)
@@ -2223,6 +2235,12 @@ int main(int argc, char **argv) {
           g_hero.CancelAttack();
         }
         // Don't update attack while in safe zone
+      } else if (g_teleportingToTown) {
+        // Block all attacks during teleport cast
+        if (g_hero.GetAttackTarget() >= 0 || g_hero.IsAttacking()) {
+          g_hero.CancelAttack();
+          g_hero.ClearGlobalCooldown();
+        }
       } else {
         g_hero.UpdateAttack(deltaTime);
         // Cancel attack if player is in safe zone (server rejects these anyway)
@@ -2687,7 +2705,7 @@ int main(int argc, char **argv) {
           float gz = gi.position.x / 100.0f;
           int ix = (int)gx, iz = (int)gz;
           if (ix >= 0 && iz >= 0 && ix < 256 && iz < 256) {
-            float h = g_terrainDataPtr->heightmap[iz * 256 + ix] * 1.5f;
+            float h = g_terrainDataPtr->heightmap[iz * 256 + ix];
             gi.position.y = h + 0.5f;
           }
         }
@@ -2835,8 +2853,8 @@ int main(int argc, char **argv) {
       glm::mat4 lightView = glm::lookAt(lightPos, heroPos, up);
       // Metal uses [0,1] Z clip range; OpenGL uses [-1,1]
       glm::mat4 lightProj = bgfx::getCaps()->homogeneousDepth
-        ? glm::ortho(-1500.0f, 1500.0f, -1500.0f, 1500.0f, 100.0f, 5000.0f)
-        : glm::orthoRH_ZO(-1500.0f, 1500.0f, -1500.0f, 1500.0f, 100.0f, 5000.0f);
+        ? glm::ortho(-3500.0f, 3500.0f, -3500.0f, 3500.0f, 100.0f, 8000.0f)
+        : glm::orthoRH_ZO(-3500.0f, 3500.0f, -3500.0f, 3500.0f, 100.0f, 8000.0f);
       glm::mat4 lightMtx = lightProj * lightView;
 
       // Setup shadow view
@@ -2914,17 +2932,19 @@ int main(int argc, char **argv) {
 
     g_terrain.Render(view, projection, currentFrame, camPos);
 
-    // Lightmap texture is destroyed+recreated each frame by Terrain, so refresh handle
-    g_objectRenderer.SetLightmapTexture(g_terrain.GetLightmapTexture());
-    g_objectRenderer.Render(view, projection, g_camera.GetPosition(),
-                            currentFrame);
-
-    // Render grass billboards (config-driven)
+    // Main 5.2: grass renders WITH terrain (before objects).
+    // Rocks/structures render after and occlude grass via depth buffer.
     if (g_mapCfg->hasGrass) {
       std::vector<GrassRenderer::PushSource> pushSources;
       pushSources.push_back({g_hero.GetPosition(), 100.0f});
       g_grass.Render(view, projection, currentFrame, camPos, pushSources);
     }
+
+    // Lightmap texture is destroyed+recreated each frame by Terrain, so refresh handle
+    g_objectRenderer.SetLightmapTexture(g_terrain.GetLightmapTexture());
+    g_objectRenderer.Render(view, projection, g_camera.GetPosition(),
+                            currentFrame);
+
 
     // Main 5.2 level-up VFX: 15 BITMAP_FLARE joints in a ring
     if (g_hero.LeveledUpThisFrame()) {
@@ -2997,7 +3017,7 @@ int main(int argc, char **argv) {
     g_boidManager.RenderShadows(view, projection);
     g_boidManager.Render(view, projection, camPos);
     if (g_mapCfg->hasLeaves)
-      g_boidManager.RenderLeaves(view, projection);
+      g_boidManager.RenderLeaves(view, projection, camPos);
 
     // Update NPC interaction state (guard faces player only when quest dialog
     // is open)
@@ -4950,6 +4970,7 @@ static void ApplyMapAtmosphere(const MapConfig &cfg) {
   g_postProcess.bloomThreshold = cfg.bloomThreshold;
   g_postProcess.vignetteStrength = cfg.vignetteStrength;
   g_postProcess.colorTint = glm::vec3(cfg.tintR, cfg.tintG, cfg.tintB);
+  g_postProcess.gradingStrength = 0.3f;
 
   // Rebuild roof hiding maps for this map only (no cross-map bleed)
   g_typeAlpha.clear();
@@ -5099,10 +5120,11 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
   if (onProgress) onProgress(0.55f, "Loading grass...");
 
   // ── Grass + doors ──
+  // Main 5.2: grass placement uses only baked .map data (layer1 + alpha).
+  // No runtime object occupancy — rocks occlude grass via depth buffer.
   g_grass.Init();
   if (cfg.hasGrass) {
-    auto occGrid = BuildObjectOccupancy(g_objectRenderer.GetInstances());
-    g_grass.Load(*g_terrainDataPtr, fileWorldId, data_path, &occGrid);
+    g_grass.Load(*g_terrainDataPtr, fileWorldId, data_path);
   }
   if (cfg.hasDoors)
     g_objectRenderer.InitDoors();

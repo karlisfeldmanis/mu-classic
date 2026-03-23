@@ -679,6 +679,8 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
           InventoryUI::ShowNotification(buf);
           SoundManager::Play(SOUND_ERROR01);
         } else {
+          s_ctx->hero->CancelAttack();
+          s_ctx->hero->ClearGlobalCooldown();
           s_ctx->hero->StopMoving();
           if (s_ctx->hero->IsMounted())
             s_ctx->hero->UnequipMount();

@@ -702,8 +702,8 @@ void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
 
     // Spawn new rat — delay spawning so they don't all appear at once
     if (!r.live) {
-      // ~2% chance per frame = average ~0.8s at 60fps before spawn attempt
-      if (rand() % 50 != 0)
+      // ~0.5% chance per frame = average ~3.3s at 60fps before spawn attempt
+      if (rand() % 200 != 0)
         continue;
       float spawnX = heroPos.x + (float)(rand() % 1024 - 512);
       float spawnZ = heroPos.z + (float)(rand() % 1024 - 512);
@@ -955,7 +955,7 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
     float sinA = std::sin(rad);
     float speed = f.velocity * (float)(rand() % 4 + 6);
     float dx = speed * cosA;
-    float dz = -speed * sinA;
+    float dz = speed * sinA;
     f.position.x += dx * dt * 25.0f;
     f.position.z += dz * dt * 25.0f;
     f.position.y = getTerrainHeight(f.position.x, f.position.z);
@@ -1179,6 +1179,11 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
   if (!b.live || b.alpha <= 0.001f || !m_birdBmd)
     return;
 
+  // Fade out when too close to camera
+  float camDist = glm::length(b.position - eye);
+  float camFade = std::clamp((camDist - 150.0f) / 150.0f, 0.0f, 1.0f);
+  if (camFade <= 0.001f) return;
+
   auto bones = ComputeBoneMatricesInterpolated(m_birdBmd.get(), b.action,
                                                 b.animFrame);
   for (int mi = 0; mi < (int)m_birdMeshes.size() && mi < (int)m_birdBmd->Meshes.size(); ++mi) {
@@ -1191,6 +1196,7 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
   model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
+  float alpha = b.alpha * camFade;
   glm::vec3 tLight = sampleTerrainLight(b.position);
   m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (auto &mb : m_birdMeshes) {
@@ -1200,7 +1206,7 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
     else bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
     m_shader->setTexture(0, "s_texColor", mb.texture);
-    m_shader->setVec4("u_params", glm::vec4(b.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0.0f, 0.0f));
     m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
     m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
     m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
@@ -1224,6 +1230,11 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
   if (!b.live || b.alpha <= 0.001f || !m_batBmd)
     return;
 
+  // Fade out when too close to camera
+  float camDist = glm::length(b.position - eye);
+  float camFade = std::clamp((camDist - 150.0f) / 150.0f, 0.0f, 1.0f);
+  if (camFade <= 0.001f) return;
+
   auto bones = ComputeBoneMatricesInterpolated(m_batBmd.get(), b.action,
                                                 b.animFrame);
   for (int mi = 0; mi < (int)m_batMeshes.size() && mi < (int)m_batBmd->Meshes.size(); ++mi) {
@@ -1236,6 +1247,7 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
   model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
+  float alpha = b.alpha * camFade;
   glm::vec3 tLight = sampleTerrainLight(b.position);
   for (auto &mb : m_batMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
@@ -1244,7 +1256,7 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
     else bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
     m_shader->setTexture(0, "s_texColor", mb.texture);
-    m_shader->setVec4("u_params", glm::vec4(b.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0.0f, 0.0f));
     m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
     m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
     m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
@@ -1268,6 +1280,11 @@ void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
   if (!b.live || b.alpha <= 0.001f || !m_butterflyBmd)
     return;
 
+  // Fade out when too close to camera
+  float camDist = glm::length(b.position - eye);
+  float camFade = std::clamp((camDist - 100.0f) / 100.0f, 0.0f, 1.0f);
+  if (camFade <= 0.001f) return;
+
   auto bones = ComputeBoneMatricesInterpolated(m_butterflyBmd.get(), b.action,
                                                 b.animFrame);
   for (int mi = 0; mi < (int)m_butterflyMeshes.size() && mi < (int)m_butterflyBmd->Meshes.size(); ++mi) {
@@ -1280,6 +1297,7 @@ void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
   model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
+  float alpha = b.alpha * camFade;
   glm::vec3 tLight = sampleTerrainLight(b.position);
   for (auto &mb : m_butterflyMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
@@ -1288,7 +1306,7 @@ void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
     else bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
     m_shader->setTexture(0, "s_texColor", mb.texture);
-    m_shader->setVec4("u_params", glm::vec4(b.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0.0f, 0.0f));
     m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
     m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
     m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
@@ -1321,7 +1339,7 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
   glm::mat4 model = glm::translate(glm::mat4(1.0f), f.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(-f.angle.z), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-f.angle.z + 90.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(f.scale));
 
   glm::vec3 tLight = sampleTerrainLight(f.position);
@@ -1598,7 +1616,8 @@ void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
 
 // ── Render Leaves ────────────────────────────────────────────────────
 
-void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj) {
+void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj,
+                                const glm::vec3 &camPos) {
   if (!m_leafShader || !TexValid(m_leafTexture) || !bgfx::isValid(m_leafDynVBO))
     return;
 
@@ -1621,13 +1640,18 @@ void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj) {
     if (!leaf.live || leaf.alpha <= 0.0f)
       continue;
 
+    // Fade out when too close to camera
+    float camDist = glm::length(leaf.position - camPos);
+    float camFade = std::clamp((camDist - 100.0f) / 100.0f, 0.0f, 1.0f);
+    if (camFade <= 0.001f) continue;
+
     // Build rotation matrix on CPU
     glm::mat4 rot(1.0f);
     rot = glm::rotate(rot, glm::radians(leaf.angle.y), glm::vec3(0, 1, 0));
     rot = glm::rotate(rot, glm::radians(leaf.angle.x), glm::vec3(1, 0, 0));
     rot = glm::rotate(rot, glm::radians(leaf.angle.z), glm::vec3(0, 0, 1));
 
-    uint8_t a = (uint8_t)(std::min(leaf.alpha, 1.0f) * 255.0f);
+    uint8_t a = (uint8_t)(std::min(leaf.alpha * camFade, 1.0f) * 255.0f);
     uint32_t col = (uint32_t)a << 24 | 0x00FFFFFF; // ABGR
 
     uint16_t base = (uint16_t)verts.size();

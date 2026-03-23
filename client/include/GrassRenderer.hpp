@@ -16,8 +16,7 @@ public:
   };
 
   void Init();
-  void Load(const TerrainData &data, int worldID, const std::string &dataPath,
-            const std::vector<bool> *objectOccupancy = nullptr);
+  void Load(const TerrainData &data, int worldID, const std::string &dataPath);
   void Render(const glm::mat4 &view, const glm::mat4 &projection, float time,
               const glm::vec3 &viewPos,
               const std::vector<PushSource> &pushSources = {});

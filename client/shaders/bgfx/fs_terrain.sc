@@ -25,6 +25,28 @@ uniform vec4 u_fogColor;
 // u_viewPos: xyz=camera position
 uniform vec4 u_viewPos;
 
+// Tile UV from grid: fract + half-texel inset to avoid seam artifacts at tile boundaries
+vec2 tileFract(vec2 uv) {
+    vec2 t = fract(uv * 0.25);
+    float pad = 0.5 / 256.0; // half texel for 256x256 tile textures
+    return clamp(t, vec2_splat(pad), vec2_splat(1.0 - pad));
+}
+
+// Compute mip level from continuous (pre-fract) UV to avoid derivative discontinuity at tile seams
+// LOD bias -1.0: forces sharper mip selection for crisper textures at native tile size
+float tileLod(vec2 uv) {
+    vec2 contUV = uv * 0.25;            // continuous UV (no fract)
+    vec2 dx = dFdx(contUV) * 256.0;     // 256 = tile texture resolution
+    vec2 dy = dFdy(contUV) * 256.0;
+    float d = max(dot(dx, dx), dot(dy, dy));
+    return max(0.5 * log2(d) - 1.0, 0.0); // -1.0 LOD bias for sharper textures
+}
+
+// Sample tile texture with manual LOD to prevent seam artifacts
+vec4 sampleTile(vec2 tileUV, float layer, float lod) {
+    return texture2DArrayLod(s_tileTextures, vec3(tileUV, layer), lod);
+}
+
 vec2 applySymmetry(vec2 uv, uint symmetry) {
     uint rot = symmetry & 3u;
     bool flipX = (symmetry & 4u) != 0u;
@@ -49,6 +71,7 @@ float computeEdgeFog(vec3 worldPos) {
 
 vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     float uTime = u_terrainParams.x;
+    float tLod = tileLod(uv); // compute once from continuous UV for all tile samples
     vec2 size = vec2(256.0, 256.0);
     vec2 texelSize = vec2_splat(1.0) / size;
     vec2 gridPos = uvBase - vec2_splat(0.5);
@@ -110,84 +133,92 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     {
         bool isWater = (abs(src0 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = fract(uv * 0.25);
+            vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.05;
-                cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                cUV.x += uTime * 0.015;
+                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                cUV = fract(cUV);
             }
-            c0 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
+            c0 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = fract(uv * 0.25);
+            vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym0);
             if (isWater) {
-                tileUV.x += uTime * 0.05;
-                tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                tileUV.x += uTime * 0.015;
+                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                tileUV = fract(tileUV);
             }
-            c0 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src0 + 0.5)));
+            c0 = sampleTile(tileUV, floor(src0 + 0.5), tLod);
         }
     }
     // k=1
     {
         bool isWater = (abs(src1 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = fract(uv * 0.25);
+            vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.05;
-                cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                cUV.x += uTime * 0.015;
+                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                cUV = fract(cUV);
             }
-            c1 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
+            c1 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = fract(uv * 0.25);
+            vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym1);
             if (isWater) {
-                tileUV.x += uTime * 0.05;
-                tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                tileUV.x += uTime * 0.015;
+                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                tileUV = fract(tileUV);
             }
-            c1 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src1 + 0.5)));
+            c1 = sampleTile(tileUV, floor(src1 + 0.5), tLod);
         }
     }
     // k=2
     {
         bool isWater = (abs(src2 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = fract(uv * 0.25);
+            vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.05;
-                cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                cUV.x += uTime * 0.015;
+                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                cUV = fract(cUV);
             }
-            c2 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
+            c2 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = fract(uv * 0.25);
+            vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym2);
             if (isWater) {
-                tileUV.x += uTime * 0.05;
-                tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                tileUV.x += uTime * 0.015;
+                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                tileUV = fract(tileUV);
             }
-            c2 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src2 + 0.5)));
+            c2 = sampleTile(tileUV, floor(src2 + 0.5), tLod);
         }
     }
     // k=3
     {
         bool isWater = (abs(src3 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = fract(uv * 0.25);
+            vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.05;
-                cUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                cUV.x += uTime * 0.015;
+                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                cUV = fract(cUV);
             }
-            c3 = texture2DArray(s_tileTextures, vec3(cUV, floor(centerSrc + 0.5)));
+            c3 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = fract(uv * 0.25);
+            vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym3);
             if (isWater) {
-                tileUV.x += uTime * 0.05;
-                tileUV.y += sin(uTime * 0.4 + (uv.y * 0.25) * 10.0) * 0.02;
+                tileUV.x += uTime * 0.015;
+                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                tileUV = fract(tileUV);
             }
-            c3 = texture2DArray(s_tileTextures, vec3(tileUV, floor(src3 + 0.5)));
+            c3 = sampleTile(tileUV, floor(src3 + 0.5), tLod);
         }
     }
 

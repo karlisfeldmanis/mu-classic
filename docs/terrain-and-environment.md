@@ -16,6 +16,17 @@ The original MU engine for Lorencia renders water as a **regular tile** (layer1 
 
 **Lesson learned**: Do not invent rendering systems that don't exist in the original source. For Lorencia, water is just a tile with animated UVs. Special water overlays only exist for Atlantis (WD_7ATLANSE). When sinking void vertices to hide abyss clipping, only sink interior void vertices — border vertices are shared with rendered terrain quads and sinking them stretches adjacent triangles.
 
+## Terrain Walkability Flags
+
+Terrain attribute flags (from `_define.h`):
+- `TW_SAFEZONE` (0x01) — Safe zone, no PvP
+- `TW_NOMOVE` (0x04) — Movement blocked (walls, obstacles)
+- `TW_NOGROUND` (0x08) — No ground (bridges, voids, cliff edges)
+
+**Movement checks must test BOTH `TW_NOMOVE | TW_NOGROUND`** to block walking into voids. Only `TW_SAFEZONE` is excluded from movement blocking (used only for safe zone detection).
+
+**Lesson learned**: Client-side `RayPicker::IsWalkable()` and `PathFinder` walkability lambda must check `(attr & (TW_NOMOVE | TW_NOGROUND)) == 0`. Checking only `TW_NOMOVE` allows players to walk into void/cliff cells. Server (`GameWorld::IsWalkable`) correctly checks both.
+
 ## Terrain Tile Index 255
 
 Layer1/layer2 may contain tile index 255 as "empty/invalid" marker. Fill unloaded texture slots with **neutral dark brown (80, 70, 55)** to blend with surrounding terrain. Magenta debug fill causes pink artifacts through bilinear blending.
