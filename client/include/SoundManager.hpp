@@ -228,6 +228,8 @@ enum SoundId {
   SOUND_DOOR02 = 281, // Sliding castle door
   // Noria forest ambient (Main 5.2: aForest.wav — intermittent nature sounds)
   SOUND_FOREST01 = 340,
+  // Dungeon critter: mouse/rat squeak (Main 5.2: aMouse.wav — 3D positional)
+  SOUND_MOUSE01 = 341,
 };
 
 namespace SoundManager {

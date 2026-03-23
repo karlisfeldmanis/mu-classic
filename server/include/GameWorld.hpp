@@ -417,6 +417,11 @@ private:
                        std::vector<MonsterAttackResult> &attacks,
                        std::vector<SummonHitResult> *outSummonHits);
 
+  // Trap AI: immobile, damages players who step on/near
+  void processTrapAI(MonsterInstance &mon, float dt,
+                     std::vector<PlayerTarget> &players,
+                     std::vector<MonsterAttackResult> &attacks);
+
   // Monster targeting a summon (threat system: monster chases + attacks summon)
   void processSummonTargeting(MonsterInstance &mon, MonsterInstance &summon,
                               float dt,

@@ -91,6 +91,7 @@ void UploadMeshWithBones(const Mesh_t &mesh, const std::string &textureDir,
   mb.indexCount = (int)indices.size();
   mb.vertexCount = (int)vertices.size();
   mb.isDynamic = dynamic;
+
   if (mb.indexCount == 0) {
     out.push_back(mb);
     return;

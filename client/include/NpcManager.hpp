@@ -83,6 +83,7 @@ public:
     bool isGold;     // true=gold, false=grey
   };
   void SetQuestMarkers(const std::vector<GuardMarker> &markers);
+  const std::vector<GuardMarker> &GetQuestMarkers() const { return m_guardMarkers; }
 
   // Server-driven NPC movement (guard patrol)
   void SetNpcMoveTarget(uint16_t serverIndex, float worldX, float worldZ);

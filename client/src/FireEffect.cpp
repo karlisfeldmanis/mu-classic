@@ -207,11 +207,16 @@ void FireEffect::Update(float deltaTime) {
   // Spawn new particles from emitters
   for (auto &emitter : emitters) {
     // Main 5.2: smoke = rand()%2 (50% at 25fps = 12.5/sec), water = same rate
-    float rate = emitter.water ? 12.5f : (emitter.smoke ? 6.0f : SPAWN_RATE);
+    // Fire: 25/sec base with 50% stochastic rejection = ~12.5 effective (organic flicker)
+    float rate = emitter.water ? 12.5f : (emitter.smoke ? 6.0f : 25.0f);
     emitter.spawnAccum += rate * deltaTime;
     while (emitter.spawnAccum >= 1.0f &&
            (int)particles.size() < MAX_PARTICLES) {
       emitter.spawnAccum -= 1.0f;
+
+      // Main 5.2: CreateFire has 50% spawn chance per call (stochastic flicker)
+      if (!emitter.smoke && !emitter.water && rand() % 2 == 0)
+        continue;
 
       Particle p;
       p.position = emitter.position;

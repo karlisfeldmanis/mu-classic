@@ -1631,12 +1631,10 @@ void Database::SeedMonsterSpawns() {
             (14,1,73,245,2),(14,1,3,232,2),(14,1,3,219,2),(14,1,7,219,2),
             (14,1,17,211,2),
             -- Larva (type 12) — south + mid corridors
-            (12,1,65,205,2),(12,1,87,177,2),(12,1,70,195,2),(12,1,61,213,2),
-            (12,1,69,222,2),(12,1,57,247,2),(12,1,49,246,2),(12,1,86,196,2),
-            (12,1,46,210,2),(12,1,46,205,2),(12,1,137,241,2),(12,1,130,244,2),
-            (12,1,134,240,2),(12,1,193,224,2),(12,1,194,222,2),(12,1,194,221,2),
-            (12,1,79,154,2),(12,1,78,189,2),(12,1,100,198,2),(12,1,95,192,2),
-            (12,1,90,187,2),(12,1,73,241,2),
+            (12,1,65,205,3),(12,1,87,177,7),(12,1,70,195,1),(12,1,61,213,5),
+            (12,1,69,222,8),(12,1,57,247,2),(12,1,86,196,6),
+            (12,1,46,210,4),(12,1,137,241,1),(12,1,130,244,7),
+            (12,1,193,224,3),(12,1,79,154,5),(12,1,100,198,2),(12,1,95,192,8),
             -- Ghost (type 11) — most common, throughout dungeon
             (11,1,69,167,2),(11,1,136,149,2),(11,1,133,212,2),(11,1,135,212,2),
             (11,1,151,212,2),(11,1,168,220,2),(11,1,46,146,2),(11,1,49,182,2),
@@ -1699,6 +1697,53 @@ void Database::SeedMonsterSpawns() {
            "OpenMU Version075 Dungeon.cs)\n");
   }
   } // end Dungeon else
+
+  // Seed Dungeon traps (types 100-102) — separate check so existing DB gets traps
+  sqlite3_prepare_v2(m_db,
+      "SELECT COUNT(*) FROM monster_spawns WHERE map_id=1 AND type>=100 AND type<=102",
+      -1, &stmt, nullptr);
+  int trapCount = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW)
+    trapCount = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  if (trapCount > 0) {
+    printf("[DB] Dungeon trap spawns already seeded (%d entries)\n", trapCount);
+  } else {
+  // 58 trap spawns from OpenMU Version075 Dungeon.cs (lines 560-618)
+  // Type 100 = Lance Trap (27 spawns), Type 101 = Iron Stick Trap (26 spawns),
+  // Type 102 = Fire Trap (5 spawns)
+  // Direction: 2=SouthWest, 4=SouthEast, 6=NorthEast
+  const char *trapSql = R"(
+        INSERT INTO monster_spawns (type, map_id, pos_x, pos_y, direction) VALUES
+            -- Iron Stick Trap (type 101) — pressure plate, 27 spawns
+            (101,1,10,26,2),(101,1,11,26,2),(101,1,27,12,2),(101,1,24,5,2),
+            (101,1,24,4,2),(101,1,27,11,2),(101,1,23,24,2),(101,1,27,21,2),
+            (101,1,19,19,2),(101,1,22,24,2),(101,1,23,29,2),(101,1,23,28,2),
+            (101,1,33,9,2),(101,1,35,9,2),(101,1,39,18,2),(101,1,39,17,2),
+            (101,1,39,16,2),(101,1,48,193,2),(101,1,49,193,2),
+            (101,1,90,164,2),(101,1,92,164,2),(101,1,91,164,2),
+            (101,1,128,212,2),(101,1,130,213,2),(101,1,143,214,2),
+            (101,1,155,230,6),
+            -- Lance Trap (type 100) — 33 spawns
+            (100,1,126,99,2),(100,1,123,99,2),(100,1,120,99,2),(100,1,117,99,2),
+            (100,1,136,95,2),(100,1,139,95,2),(100,1,172,12,2),(100,1,166,12,2),
+            (100,1,178,12,2),(100,1,177,103,2),(100,1,180,103,2),(100,1,183,103,2),
+            (100,1,186,103,2),(100,1,189,103,2),(100,1,186,151,4),
+            (100,1,196,33,2),(100,1,193,33,2),(100,1,202,93,2),(100,1,205,93,2),
+            (100,1,198,130,2),(100,1,202,150,2),(100,1,232,46,4),(100,1,232,40,4),
+            (100,1,232,37,4),(100,1,227,61,2),(100,1,229,93,2),(100,1,232,93,2),
+            -- Fire Trap (type 102) — directional area attack, 8 spawns
+            (102,1,45,224,4),(102,1,66,71,4),(102,1,80,61,2),
+            (102,1,169,12,2),(102,1,175,12,2)
+    )";
+  err = nullptr;
+  if (sqlite3_exec(m_db, trapSql, nullptr, nullptr, &err) != SQLITE_OK) {
+    printf("[DB] SeedMonsterSpawns (dungeon traps) error: %s\n", err);
+    sqlite3_free(err);
+  } else {
+    printf("[DB] Seeded Dungeon trap spawns (types 100-102 from OpenMU Version075)\n");
+  }
+  } // end trap else
 
   // Seed Devias (map_id=2) spawns if not already present
   sqlite3_prepare_v2(m_db, "SELECT COUNT(*) FROM monster_spawns WHERE map_id=2",

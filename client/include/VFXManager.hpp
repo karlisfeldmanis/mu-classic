@@ -371,6 +371,8 @@ private:
     bool impacted;
     float impactTimer;
     float trailTimer = 0.0f;
+    float animFrame = 0.0f;  // Fire01.bmd animation
+    float rotation = 0.0f;   // Spin during flight (degrees)
   };
 
   // Main 5.2: MODEL_POISON — green cloud at target (BlendMesh=1, LifeTime=40 ticks)

@@ -36,22 +36,22 @@ static const SkillDef g_skillDefs[] = {
     {41, 10, 25, 200, false},  // Twisting Slash (AoE range 2 grid)
     {42, 20, 60, 300, false},  // Rageful Blow (AoE range 3 grid)
     {43, 12, 70, 100, false},  // Death Stab (splash range 1 grid around target)
-    // DW spells (Mana cost) — OpenMU Version075 skill definitions
-    {11, 5, 14, 0, true},       // Power Wave (ranged, OpenMU: damage=14, mana=5)
-    {17, 1, 8, 0, true},        // Energy Ball (basic ranged)
-    {1, 42, 20, 0, true},       // Poison (DoT effect, single target)
-    {2, 12, 40, 0, true},       // Meteorite (single target ranged)
-    {3, 15, 30, 0, true},       // Lightning (single target)
-    {4, 3, 22, 0, true},        // Fire Ball (basic ranged)
-    {5, 50, 50, 0, true},       // Flame (single target)
+    // DW spells (Mana cost) — OpenMU Version075 skill damage values
+    {11, 5, 14, 0, true},       // Power Wave (ranged)
+    {17, 1, 3, 0, true},        // Energy Ball (basic ranged)
+    {1, 42, 12, 0, true},       // Poison (DoT effect, single target)
+    {2, 12, 21, 0, true},       // Meteorite (single target ranged)
+    {3, 15, 17, 0, true},       // Lightning (single target)
+    {4, 3, 8, 0, true},         // Fire Ball (basic ranged)
+    {5, 50, 25, 0, true},       // Flame (single target)
     {6, 30, 0, 0, true},        // Teleport (no damage, utility)
-    {7, 38, 35, 0, true},       // Ice (single target)
-    {8, 60, 55, 200, true},     // Twister (AoE)
-    {9, 90, 80, 400, true},     // Evil Spirit (AoE, Main 5.2 range)
-    {10, 160, 100, 300, true},   // Hellfire (large AoE)
-    {12, 140, 90, 90, true},    // Aqua Beam (beam, line AoE — width matches visible beam)
-    {13, 90, 120, 150, true},   // Cometfall (AoE sky-strike)
-    {14, 200, 150, 400, true},  // Inferno (ring of explosions AoE)
+    {7, 38, 10, 0, true},       // Ice (single target)
+    {8, 60, 35, 200, true},     // Twister (AoE)
+    {9, 90, 45, 400, true},     // Evil Spirit (AoE, Main 5.2 range)
+    {10, 160, 120, 300, true},   // Hellfire (large AoE)
+    {12, 140, 80, 90, true},    // Aqua Beam (beam, line AoE — width matches visible beam)
+    {13, 90, 60, 150, true},    // Cometfall (AoE sky-strike, scaled from 075 ratios)
+    {14, 200, 100, 400, true},  // Inferno (ring of explosions AoE)
     // Elf skills (Mana cost) — OpenMU Version075
     {26, 20, 0, 0, true},       // Heal (buff, no damage)
     {27, 30, 0, 0, true},       // Greater Defense (buff)
@@ -71,6 +71,67 @@ static const SkillDef *FindSkillDef(uint8_t skillId) {
   return nullptr;
 }
 
+// Main 5.2: gObjBackSpring — push monster 1 grid cell away from attacker
+// 67% straight back, 33% perpendicular. Returns true if knockback applied.
+static bool TryKnockback(Session &session, MonsterInstance *mon,
+                         GameWorld &world, Server &server) {
+  if (!mon || mon->hp <= 0)
+    return false;
+
+  // Direction from attacker to monster
+  float dx = mon->worldX - session.worldX;
+  float dz = mon->worldZ - session.worldZ;
+  float len = sqrtf(dx * dx + dz * dz);
+  if (len < 1.0f)
+    return false;
+  dx /= len;
+  dz /= len;
+
+  // 33% perpendicular, 67% straight back
+  if (rand() % 3 == 0) {
+    // Rotate 90° (randomly left or right)
+    float tmp = dx;
+    if (rand() % 2 == 0) {
+      dx = -dz;
+      dz = tmp;
+    } else {
+      dx = dz;
+      dz = -tmp;
+    }
+  }
+
+  // Round to nearest grid offset (gridX=worldZ/100, gridY=worldX/100)
+  int offsetGX = (dz > 0.4f) ? 1 : (dz < -0.4f) ? -1 : 0;
+  int offsetGY = (dx > 0.4f) ? 1 : (dx < -0.4f) ? -1 : 0;
+  if (offsetGX == 0 && offsetGY == 0)
+    return false;
+
+  int newGX = (int)mon->gridX + offsetGX;
+  int newGY = (int)mon->gridY + offsetGY;
+  if (newGX < 0 || newGY < 0 || newGX >= 256 || newGY >= 256)
+    return false;
+  if (!world.IsWalkableGrid((uint8_t)newGX, (uint8_t)newGY))
+    return false;
+
+  // Apply knockback
+  mon->gridX = (uint8_t)newGX;
+  mon->gridY = (uint8_t)newGY;
+  mon->worldX = mon->gridY * 100.0f;
+  mon->worldZ = mon->gridX * 100.0f;
+  mon->currentPath.clear();
+  mon->pathStep = 0;
+
+  // Broadcast new position via MON_MOVE (chasing=2 signals knockback)
+  PMSG_MONSTER_MOVE_SEND movePkt{};
+  movePkt.h = MakeC1Header(sizeof(movePkt), Opcode::MON_MOVE);
+  movePkt.monsterIndex = mon->index;
+  movePkt.targetX = mon->gridX;
+  movePkt.targetY = mon->gridY;
+  movePkt.chasing = 2; // knockback
+  server.Broadcast(&movePkt, sizeof(movePkt));
+  return true;
+}
+
 // Shared combat logic: calculate damage, apply to monster, handle aggro/kill/XP
 static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
                                  int bonusDamage, GameWorld &world,
@@ -85,7 +146,11 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
               session.weaponDamageMin;
     baseMax = StatCalculator::CalculateMaxMagicDamage(charCls, session.energy) +
               session.weaponDamageMax;
-    // Staff Rise percentage bonus (OpenMU Version075)
+    // Main 5.2 / OpenMU: skill damage widens range BEFORE roll
+    // skillMin = skillDmg, skillMax = skillDmg + skillDmg/2 (max gets 1.5x)
+    baseMin += bonusDamage;
+    baseMax += bonusDamage + (bonusDamage / 2);
+    // Staff Rise multiplies the COMBINED (base + skill) total
     if (session.staffRisePercent > 0) {
       baseMin = baseMin * (100 + session.staffRisePercent) / 100;
       baseMax = baseMax * (100 + session.staffRisePercent) / 100;
@@ -160,8 +225,9 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
       damage = (int)(damage * session.petAttackMultiplier);
     }
 
-    // Skill damage bonus (flat addition before defense)
-    damage += bonusDamage;
+    // Skill damage bonus: flat addition for physical, already in range for magic
+    if (!isMagic)
+      damage += bonusDamage;
 
     // Greater Damage buff (Elf aura)
     if (session.buffs[1].active)
@@ -368,6 +434,10 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
   auto *mon = world.FindMonster(atk->monsterIndex);
   if (!mon || mon->aiState == MonsterInstance::AIState::DYING ||
       mon->aiState == MonsterInstance::AIState::DEAD)
+    return;
+
+  // Traps are invulnerable (Main 5.2: KIND_TRAP cannot be attacked)
+  if (mon->type >= 100 && mon->type <= 102)
     return;
 
   // Bow/crossbow requires correct ammo type in left hand (slot 1)
@@ -673,6 +743,8 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
       if (other.aiState == MonsterInstance::AIState::DYING ||
           other.aiState == MonsterInstance::AIState::DEAD)
         continue;
+      if (other.type >= 100 && other.type <= 102)
+        continue; // Traps are invulnerable
 
       bool inRange = false;
       if (isLinePath && lenSq > 0.01f) {
@@ -711,11 +783,22 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   if (!mon || mon->aiState == MonsterInstance::AIState::DYING ||
       mon->aiState == MonsterInstance::AIState::DEAD)
     return;
+  if (mon->type >= 100 && mon->type <= 102)
+    return; // Traps are invulnerable
 
   // Apply damage with skill bonus to primary target
   ApplyDamageToMonster(session, mon, skillDef->damageBonus, world, server,
                        skillDef->isMagic);
   session.attackTargetMonsterIdx = mon->index; // Track for summon assist
+
+  // Main 5.2: gObjBackSpring — knockback for Lightning and DK basic skills
+  // Single-target only; AoE skills (41-43) do NOT knockback
+  if (mon->hp > 0) {
+    uint8_t sid = skillDef->skillId;
+    if (sid == 3 || (sid >= 19 && sid <= 23)) {
+      TryKnockback(session, mon, world, server);
+    }
+  }
 
   // Meteorite (skill 2): two fireballs = two damage hits
   if (skillDef->skillId == 2 && mon->hp > 0) {
@@ -759,6 +842,8 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
       if (other.aiState == MonsterInstance::AIState::DYING ||
           other.aiState == MonsterInstance::AIState::DEAD)
         continue;
+      if (other.type >= 100 && other.type <= 102)
+        continue; // Traps are invulnerable
       float dx = other.worldX - cx;
       float dz = other.worldZ - cz;
       if (dx * dx + dz * dz <= r2) {

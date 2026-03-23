@@ -459,8 +459,9 @@ void Server::Run() {
                 s->activeSummonType = -1;
               }
               // Player died: drop aggro and return to spawn (evade mode)
+              // Traps stay IDLE — they don't chase or return
               auto *mon = m_world.FindMonster(atk.monsterIndex);
-              if (mon) {
+              if (mon && !(mon->type >= 100 && mon->type <= 102)) {
                 mon->aggroTargetFd = -1;
                 mon->aiState = MonsterInstance::AIState::RETURNING;
                 mon->evading = true;

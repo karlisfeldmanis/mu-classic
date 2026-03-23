@@ -372,6 +372,8 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
       } else if (diff < 0) {
         snprintf(cmpBuf, sizeof(cmpBuf), "  (%d vs equipped)", diff);
         AddPendingTooltipLine(TT_RED, cmpBuf);
+      } else {
+        AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
       }
     }
   }
@@ -410,6 +412,8 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
       } else if (diff < 0) {
         snprintf(cmpBuf, sizeof(cmpBuf), "  (%d vs equipped)", diff);
         AddPendingTooltipLine(TT_RED, cmpBuf);
+      } else {
+        AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
       }
     }
   }

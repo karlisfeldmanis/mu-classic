@@ -104,6 +104,9 @@ struct GroundItem {
   float gravity;
   float scale;
   bool isResting;
+
+  // Sparkle effect timer (Main 5.2: every ~1.92s)
+  float sparkleTimer = 0.0f;
 };
 
 static constexpr int MAX_GROUND_ITEMS = 64;

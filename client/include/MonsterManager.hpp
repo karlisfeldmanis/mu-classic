@@ -111,6 +111,9 @@ public:
   void SetMonsterServerPosition(int index, float worldX, float worldZ,
                                 bool chasing);
 
+  // 0x35 chasing=2: Lightning/melee knockback — fast snap to new position
+  void ApplyKnockback(int index, float worldX, float worldZ);
+
   // Arrow projectile VFX (Main 5.2: CreateArrow)
   void SpawnArrow(const glm::vec3 &from, const glm::vec3 &to,
                   float speed = 1500.0f);
@@ -143,6 +146,12 @@ public:
 
   // Face one monster toward another (used for summon attack animations)
   void FaceTarget(int attackerIdx, int targetIdx);
+
+  // Main 5.2 GMAida.cpp: Trap terrain lights (Lance=red, IronStick=blue)
+  void GetTrapPointLights(std::vector<glm::vec3> &positions,
+                          std::vector<glm::vec3> &colors,
+                          std::vector<float> &ranges,
+                          std::vector<int> &objectTypes) const;
 
   // ── External data linkage ──
 

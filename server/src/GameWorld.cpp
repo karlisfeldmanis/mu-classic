@@ -61,6 +61,11 @@ static const MonsterTypeDef s_monsterDefs[] = {
     {31, 340, 16, 16, 51, 57, 74, 16, 1.4f, 0.4f, 2, 4, 1, true, 10.0f},  // Agon
     {32, 465, 20, 20, 62, 68, 86, 18, 2.2f, 0.4f, 2, 3, 2, true, 10.0f},  // Stone Golem
     {33, 120, 8, 8, 19, 23, 33, 8, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},    // Elite Goblin
+    // --- Dungeon traps (OpenMU Version075, immobile, invulnerable) ---
+    // moveDelay=999 (never moves), moveRange=0, aggressive=false (trigger-based)
+    {100, 1000, 0, 500, 100, 110, 400, 80, 1.0f, 999.0f, 0, 4, 1, false, 3.0f}, // Lance Trap
+    {101, 1000, 0, 500, 110, 130, 400, 80, 1.0f, 999.0f, 0, 1, 0, false, 3.0f}, // Iron Stick Trap
+    {102, 1000, 0, 500, 130, 150, 400, 80, 1.0f, 999.0f, 0, 1, 2, false, 3.0f}, // Fire Trap
     // --- Summon-only monsters (Elf summoning skills) ---
     {150, 5000, 100, 75, 165, 170, 260, 52, 1.6f, 0.20f, 3, 7, 1, false, 10.0f}, // Bali (melee, Version075)
 };
@@ -1341,6 +1346,12 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
       continue;
     }
 
+    // Traps: immobile, damage players who step on/near
+    if (mon.type >= 100 && mon.type <= 102) {
+      processTrapAI(mon, dt, players, attacks);
+      continue;
+    }
+
     // Tick respawn immunity timer toward 0 (negative = immune)
     if (mon.aggroTimer < 0.0f) {
       mon.aggroTimer += dt;
@@ -1447,6 +1458,73 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
     }
   }
   return attacks;
+}
+
+// ─── Trap AI (immobile, damages players who step on/near) ────────────────────
+
+void GameWorld::processTrapAI(MonsterInstance &mon, float dt,
+                              std::vector<PlayerTarget> &players,
+                              std::vector<MonsterAttackResult> &attacks) {
+  // Tick cooldown
+  if (mon.attackCooldown > 0.0f)
+    mon.attackCooldown -= dt;
+
+  if (mon.attackCooldown > 0.0f || players.empty())
+    return;
+
+  for (auto &p : players) {
+    if (p.dead)
+      continue;
+
+    // Convert player world position to grid
+    int pGridZ = (int)(p.worldX / 100.0f);
+    int pGridX = (int)(p.worldZ / 100.0f);
+
+    // Don't damage players in safe zones
+    if (IsSafeZone(p.worldX, p.worldZ))
+      continue;
+
+    bool inRange = false;
+
+    if (mon.type == 100 || mon.type == 101) {
+      // Pressure plate: player must be on exact same grid cell
+      inRange = (pGridX == mon.gridX && pGridZ == mon.gridY);
+    } else if (mon.type == 102) {
+      // Fire Trap: directional area attack within attackRange cells
+      int dx = pGridX - mon.gridX;
+      int dz = pGridZ - mon.gridY;
+      int dist = std::max(std::abs(dx), std::abs(dz));
+      if (dist <= mon.attackRange && dist > 0) {
+        // Check if player is roughly in the trap's facing direction
+        // Direction encoding: 0=W, 1=SW, 2=S, 3=SE, 4=E, 5=NE, 6=N, 7=NW
+        // For simplicity, accept any player in range (fire traps hit area)
+        inRange = true;
+      } else if (dist == 0) {
+        // Also trigger if standing on the trap
+        inRange = true;
+      }
+    }
+
+    if (inRange) {
+      // Calculate damage — traps bypass most defense (OpenMU: ShieldBypassChance=1.0)
+      // Only apply 10% of defense to keep trap damage meaningful
+      int dmgRange = mon.attackMax - mon.attackMin;
+      int dmg = mon.attackMin + (dmgRange > 0 ? (rand() % (dmgRange + 1)) : 0);
+      int defReduction = p.defense / 10;
+      dmg = std::max(1, dmg - defReduction);
+
+      MonsterAttackResult result;
+      result.targetFd = p.fd;
+      result.monsterIndex = mon.index;
+      result.damage = (uint16_t)dmg;
+      result.damageType = 1; // Normal hit
+      result.remainingHp = 0; // Server will fill this after applying damage
+      attacks.push_back(result);
+
+      mon.attackCooldown = mon.atkCooldownTime;
+      break; // One target per tick (pressure plate = single target)
+    }
+  }
 }
 
 // ─── Summon AI (follows owner, attacks nearby wild monsters) ─────────────────

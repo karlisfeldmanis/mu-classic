@@ -99,14 +99,16 @@ public:
     for (auto &b : m_bats) { b.live = false; b.respawnDelay = 2.0f; }
     for (auto &b : m_butterflies) { b.live = false; b.respawnDelay = 2.0f; }
     for (auto &f : m_fishs) f.live = false;
+    for (auto &r : m_rats) r.live = false;
     for (auto &l : m_leaves) l.live = false;
   }
 
 private:
   static constexpr int MAX_BOIDS = 5;       // Lorencia bird count (Main 5.2: GOBoid.cpp)
-  static constexpr int MAX_BATS = 5;        // Dungeon bat count (Main 5.2: GOBoid.cpp)
+  static constexpr int MAX_BATS = 3;        // Dungeon bat count (reduced from 5)
   static constexpr int MAX_BUTTERFLIES = 3; // Noria butterfly count (reduced from 5)
   static constexpr int MAX_FISHS = 3;       // Lorencia fish count (GOBoid.cpp:1661)
+  static constexpr int MAX_RATS = 2;        // Dungeon rat count (Main 5.2: GOBoid.cpp MoveFishs)
   static constexpr int MAX_LEAVES = 80;     // Lorencia leaf count (ZzzEffectFireLeave.cpp)
   static constexpr int MAX_POINT_LIGHTS = 64;
 
@@ -114,6 +116,7 @@ private:
   Boid m_bats[MAX_BATS];               // Dungeon bats (reuse Boid struct)
   Boid m_butterflies[MAX_BUTTERFLIES];  // Noria butterflies (reuse Boid struct)
   Fish m_fishs[MAX_FISHS];
+  Fish m_rats[MAX_RATS];               // Dungeon rats (ground critters, reuse Fish struct)
   LeafParticle m_leaves[MAX_LEAVES];
 
   // Bird model
@@ -136,6 +139,11 @@ private:
   std::vector<MeshBuffers> m_fishMeshes;
   std::vector<BoneWorldMatrix> m_fishBones;
 
+  // Rat model (Main 5.2: MODEL_RAT01 = Object2/Rat01.bmd)
+  std::unique_ptr<BMDData> m_ratBmd;
+  std::vector<MeshBuffers> m_ratMeshes;
+  std::vector<BoneWorldMatrix> m_ratBones;
+
   // Shadow mesh buffers (one per boid for bird, one per fish)
   struct ShadowMesh {
     bgfx::DynamicVertexBufferHandle vbo = BGFX_INVALID_HANDLE;
@@ -145,6 +153,7 @@ private:
   ShadowMesh m_batShadow;
   ShadowMesh m_butterflyShadow;
   ShadowMesh m_fishShadow;
+  ShadowMesh m_ratShadow;
 
   std::unique_ptr<Shader> m_shader;
   std::unique_ptr<Shader> m_shadowShader;
@@ -166,6 +175,7 @@ private:
 
   void updateBoids(float dt, const glm::vec3 &heroPos, int heroAction);
   void updateBats(float dt, const glm::vec3 &heroPos);
+  void updateRats(float dt, const glm::vec3 &heroPos);
   void updateButterflies(float dt, const glm::vec3 &heroPos);
   void updateFishs(float dt, const glm::vec3 &heroPos);
   void moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction);
@@ -179,6 +189,7 @@ private:
   void renderBat(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
   void renderButterfly(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
   void renderFish(const Fish &f, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
+  void renderRat(const Fish &r, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
 
   // Falling leaves (Main 5.2: ZzzEffectFireLeave.cpp)
   std::unique_ptr<Shader> m_leafShader;

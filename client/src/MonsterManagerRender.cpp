@@ -50,7 +50,8 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   // Helper: set all per-submit uniforms and draw a mesh buffer
   auto monDrawMesh = [&](const glm::mat4 &modelMat, MeshBuffers &mb,
                          float objAlpha, float bml, const glm::vec3 &tLight,
-                         uint64_t state, const glm::vec3 &baseTint = glm::vec3(1.0f)) {
+                         uint64_t state, const glm::vec3 &baseTint = glm::vec3(1.0f),
+                         const glm::vec4 &texCoordOff = glm::vec4(0.0f)) {
     bgfx::setTransform(glm::value_ptr(modelMat));
     if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
     else bgfx::setVertexBuffer(0, mb.vbo);
@@ -66,7 +67,7 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
     m_shader->setVec4("u_fogParams", fogParams);
     m_shader->setVec4("u_fogColor", fogColor);
-    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_texCoordOffset", texCoordOff);
     m_shader->uploadPointLights(plCount, m_pointLights.data());
     // Shadow map
     float shadowEnabled = bgfx::isValid(m_shadowMapTex) ? 1.0f : 0.0f;
@@ -481,6 +482,31 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
           mon.ambientVfxTimer = 0.0f;
         }
       }
+      // ── Dungeon trap VFX (Main 5.2 GMAida.cpp: RenderAidaMonsterVisual) ──
+      // Bone→world helper: transform bone-local position to world position
+      auto boneToWorld = [&](int boneIdx, glm::vec3 localOff = glm::vec3(0)) {
+        if (boneIdx < 0 || boneIdx >= (int)bones.size())
+          return mon.position;
+        const auto &bm = bones[boneIdx];
+        glm::vec3 worldOff(bm[0][0] * localOff.x + bm[0][1] * localOff.y +
+                               bm[0][2] * localOff.z,
+                           bm[1][0] * localOff.x + bm[1][1] * localOff.y +
+                               bm[1][2] * localOff.z,
+                           bm[2][0] * localOff.x + bm[2][1] * localOff.y +
+                               bm[2][2] * localOff.z);
+        glm::vec3 bonePos(bm[0][3], bm[1][3], bm[2][3]);
+        glm::mat4 mrot(1.0f);
+        mrot = glm::rotate(mrot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+        mrot = glm::rotate(mrot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+        mrot = glm::rotate(mrot, mon.facing, glm::vec3(0, 0, 1));
+        glm::vec3 wp =
+            glm::vec3(mrot * glm::vec4(bonePos + worldOff, 1.0f));
+        return wp * mon.scale + mon.position;
+      };
+
+      // Dungeon traps (100-102): NO idle VFX in Main 5.2.
+      // (GMAida.cpp VFX is for Aida traps 304-309, not dungeon traps.)
+      // Attack effects: type 39→MODEL_SAW, type 40→SetAction(1), type 51→BITMAP_FIRE+1
     }
 
     // Re-skin meshes
@@ -553,7 +579,8 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
 
     // Draw all meshes (BGFX path)
-    for (auto &mb : mon.meshBuffers) {
+    for (int meshIdx = 0; meshIdx < (int)mon.meshBuffers.size(); ++meshIdx) {
+      auto &mb = mon.meshBuffers[meshIdx];
       if (mb.indexCount == 0 || mb.hidden)
         continue;
       if (mdl.hiddenMesh >= 0 && mb.bmdTextureId == mdl.hiddenMesh)
@@ -693,6 +720,8 @@ void MonsterManager::RenderShadows(const glm::mat4 &view,
   for (auto &mon : m_monsters) {
     if (mon.cachedBones.empty()) continue;
     if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f) continue;
+    // Main 5.2: KIND_TRAP has no shadow (ZzzCharacter.cpp:8320)
+    if (mon.monsterType >= 100 && mon.monsterType <= 102) continue;
 
     auto &mdl = m_models[mon.modelIdx];
     glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
@@ -849,6 +878,8 @@ void MonsterManager::RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depth
   for (auto &mon : m_monsters) {
     if (mon.cachedBones.empty()) continue;
     if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f) continue;
+    // Main 5.2: KIND_TRAP has no shadow
+    if (mon.monsterType >= 100 && mon.monsterType <= 102) continue;
 
     auto &mdl = m_models[mon.modelIdx];
     glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
@@ -986,8 +1017,8 @@ static void renderSingleNameplate(MonsterManager *mgr, ImDrawList *dl,
                                    int targetIdx, int playerLevel,
                                    bool isSummon, bool isOwnSummon) {
   MonsterInfo mi = mgr->GetMonsterInfo(targetIdx);
-  if (mi.state == MonsterState::DEAD)
-    return;
+  if (mi.state == MonsterState::DEAD || mi.type >= 100)
+    return; // Traps (types 100-102) don't show nameplates/HP bars
 
   // Project monster head position to screen
   glm::vec4 worldPos(mi.position.x, mi.position.y + mi.height + 20.0f,

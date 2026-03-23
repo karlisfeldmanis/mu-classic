@@ -825,6 +825,43 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[150] = idx;
   }
 
+  // ── Dungeon traps (types 100-102) ──
+  // Main 5.2 ZzzCharacter.cpp:13669: Trap types use WORLD OBJECT models (not Monster BMDs).
+  //   case 100 → CreateCharacter(Key, 39) → Models[39] → Stone10.bmd (missing)
+  //   case 101 → CreateCharacter(Key, 40) → Models[40] → StoneStatue01.bmd
+  //   case 102 → CreateCharacter(Key, 51) → Models[51] → FireLight02.bmd
+  // NOTE: GMAida scales (1.4/1.35/1.1) are for AIDA traps (types 304-309), NOT dungeon.
+  // Dungeon traps use CreateCharacterPointer default scale = 0.9f.
+  // Attack effects: type 39→MODEL_SAW (Saw01.bmd), type 40→SetAction(1),
+  //                 type 51→BITMAP_FIRE+1 (ZzzCharacter.cpp:1109-1123)
+  {
+    std::string object1Dir = dataPath + "/Object1/";
+
+    // Lance Trap: type 100 → Stone10.bmd (missing from data+refs, use Stone05)
+    int lanceTrapIdx = loadMonsterModel(
+        "../Object1/Stone05.bmd", "Lance Trap", 0.9f, 80.0f, 50.0f, 0.0f,
+        object1Dir);
+    if (lanceTrapIdx >= 0)
+      m_models[lanceTrapIdx].level = 80;
+    m_typeToModel[100] = lanceTrapIdx;
+
+    // Iron Stick Trap: type 101 → StoneStatue01.bmd
+    int ironTrapIdx = loadMonsterModel(
+        "../Object1/StoneStatue01.bmd", "Iron Stick Trap", 0.9f, 80.0f, 50.0f,
+        0.0f, object1Dir);
+    if (ironTrapIdx >= 0)
+      m_models[ironTrapIdx].level = 80;
+    m_typeToModel[101] = ironTrapIdx;
+
+    // Fire Trap: type 102 → FireLight02.bmd
+    int fireTrapIdx = loadMonsterModel(
+        "../Object1/FireLight02.bmd", "Fire Trap", 0.9f, 80.0f, 50.0f, 0.0f,
+        object1Dir);
+    if (fireTrapIdx >= 0)
+      m_models[fireTrapIdx].level = 80;
+    m_typeToModel[102] = fireTrapIdx;
+  }
+
   // Load Debris models (not mapped to server types)
   std::string skillPath = dataPath + "/Skill/";
   m_boneModelIdx =
@@ -1365,26 +1402,30 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
   }
 
   case MonsterState::ATTACKING: {
-    // Face the attack target during attack animation
-    glm::vec3 facePos = m_playerPos; // Default: face player
-    bool hasFaceTarget = !m_playerDead;
+    // Traps: fixed facing from spawn direction (Main 5.2: KIND_TRAP immobile)
+    bool isTrap = (mon.monsterType >= 100 && mon.monsterType <= 102);
+    if (!isTrap) {
+      // Face the attack target during attack animation
+      glm::vec3 facePos = m_playerPos; // Default: face player
+      bool hasFaceTarget = !m_playerDead;
 
-    // Monster with an attack target (summon or monster): face that target
-    if (mon.attackTargetLocalIdx >= 0 &&
-        mon.attackTargetLocalIdx < (int)m_monsters.size()) {
-      auto &tgt = m_monsters[mon.attackTargetLocalIdx];
-      if (tgt.state != MonsterState::DEAD) {
-        facePos = tgt.position;
-        hasFaceTarget = true;
+      // Monster with an attack target (summon or monster): face that target
+      if (mon.attackTargetLocalIdx >= 0 &&
+          mon.attackTargetLocalIdx < (int)m_monsters.size()) {
+        auto &tgt = m_monsters[mon.attackTargetLocalIdx];
+        if (tgt.state != MonsterState::DEAD) {
+          facePos = tgt.position;
+          hasFaceTarget = true;
+        }
       }
-    }
 
-    if (hasFaceTarget) {
-      glm::vec3 toTarget = facePos - mon.position;
-      toTarget.y = 0.0f;
-      if (glm::length(toTarget) > 1.0f) {
-        glm::vec3 dir = glm::normalize(toTarget);
-        mon.facing = smoothFacing(mon.facing, facingFromDir(dir), dt);
+      if (hasFaceTarget) {
+        glm::vec3 toTarget = facePos - mon.position;
+        toTarget.y = 0.0f;
+        if (glm::length(toTarget) > 1.0f) {
+          glm::vec3 dir = glm::normalize(toTarget);
+          mon.facing = smoothFacing(mon.facing, facingFromDir(dir), dt);
+        }
       }
     }
     mon.position.y =
@@ -1491,8 +1532,8 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
     // Death smoke effects (Main 5.2: MonsterDieSandSmoke / smoke particles)
     if (!mon.deathSmokeDone && m_vfxManager && mon.animFrame >= 8.0f) {
       int type = mon.monsterType;
-      if (type == 5 || type == 7) {
-        // Hell Hound (5) + Giant (7): MonsterDieSandSmoke — 20 particle burst
+      if (type == 5 || type == 7 || type == 32) {
+        // Hell Hound (5), Giant (7), Stone Golem (32): MonsterDieSandSmoke
         m_vfxManager->SpawnBurst(ParticleType::SMOKE, mon.position, 20);
         mon.deathSmokeDone = true;
       } else if (type == 8 || type == 9 || type == 10 || type == 11 ||
@@ -1720,6 +1761,8 @@ void MonsterManager::SetMonsterDying(int index) {
   if (index < 0 || index >= (int)m_monsters.size())
     return;
   auto &mon = m_monsters[index];
+  if (mon.monsterType >= 100 && mon.monsterType <= 102)
+    return; // Traps don't die
   if (mon.state != MonsterState::DYING && mon.state != MonsterState::DEAD) {
     mon.hp = 0;
     mon.state = MonsterState::DYING;
@@ -1832,7 +1875,8 @@ void MonsterManager::SetMonsterDying(int index) {
     if (mon.monsterType == 14 || mon.monsterType == 15 ||
         mon.monsterType == 16) { // All skeleton types
       spawnDebris(m_boneModelIdx, mon.position + glm::vec3(0, 50, 0), 6);
-    } else if (mon.monsterType == 7) { // Giant
+    } else if (mon.monsterType == 7 || mon.monsterType == 32) {
+      // Giant (7) + Stone Golem (32): stone debris on death
       spawnDebris(m_stoneModelIdx, mon.position + glm::vec3(0, 80, 0), 8);
     }
   }
@@ -1864,11 +1908,16 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     return; // Don't attack while spinning from Twister stun
 
   // Server-authoritative: attack packet means monster is ready to attack.
-  mon.serverChasing = true;
+  // Traps are immobile — don't set serverChasing (they return to IDLE after attack)
+  bool isTrap = (mon.monsterType >= 100 && mon.monsterType <= 102);
+  if (!isTrap)
+    mon.serverChasing = true;
 
   // If still mid-spline (walking to target), defer the attack until the walk
   // finishes so the monster smoothly approaches before attacking — no teleport.
-  if ((mon.state == MonsterState::CHASING || mon.state == MonsterState::WALKING) &&
+  // Traps never walk, so skip this check for them.
+  if (!isTrap &&
+      (mon.state == MonsterState::CHASING || mon.state == MonsterState::WALKING) &&
       mon.splinePoints.size() >= 2 &&
       mon.splineT < (float)(mon.splinePoints.size() - 1) - 0.1f) {
     mon.pendingAttack = true;
@@ -2251,6 +2300,37 @@ void MonsterManager::SetMonsterServerPosition(int index, float worldX,
   mon.state = chasing ? MonsterState::CHASING : MonsterState::WALKING;
 }
 
+void MonsterManager::ApplyKnockback(int index, float worldX, float worldZ) {
+  if (index < 0 || index >= (int)m_monsters.size())
+    return;
+  auto &mon = m_monsters[index];
+  if (mon.state == MonsterState::DYING || mon.state == MonsterState::DEAD)
+    return;
+
+  // Main 5.2 gObjBackSpring: snap monster to knockback position with fast
+  // 2-point spline so movement is visually abrupt (not smooth pathfinding)
+  glm::vec3 newPos(worldX + 50.0f, 0.0f, worldZ + 50.0f);
+  newPos.y = snapToTerrain(newPos.x, newPos.z);
+  mon.serverTargetPos = newPos;
+
+  // Clear any existing path and create a very fast direct spline
+  mon.splinePoints.clear();
+  mon.splineT = 0.0f;
+  mon.splinePoints.push_back(mon.position);
+  mon.splinePoints.push_back(newPos);
+
+  // Very fast interpolation rate — covers 100 world units (1 grid) almost instantly
+  // Normal chase is ~300 units/sec, knockback is ~800 for snappy pushback feel
+  glm::vec3 d = newPos - mon.position;
+  d.y = 0.0f;
+  float dist = glm::length(d);
+  mon.splineRate = (dist > 1.0f) ? 800.0f / dist : 5.0f;
+
+  // Stay in current state (HIT or CHASING) — don't switch to WALKING
+  if (mon.state != MonsterState::HIT && mon.state != MonsterState::ATTACKING)
+    mon.state = MonsterState::CHASING;
+}
+
 int MonsterManager::CalcXPReward(int monsterIndex, int playerLevel) const {
   // CharacterCalcExperienceAlone (ObjectManager.cpp:813)
   if (monsterIndex < 0 || monsterIndex >= (int)m_monsters.size())
@@ -2264,6 +2344,25 @@ int MonsterManager::CalcXPReward(int monsterIndex, int playerLevel) const {
     lvlFactor = (lvlFactor * (monLvl + 10)) / std::max(1, playerLevel);
   int xp = lvlFactor + lvlFactor / 4; // * 1.25
   return std::max(1, xp);
+}
+
+// Dungeon traps: only Fire Trap (type 102 = FireLight02) emits a point light,
+// since ObjectRenderer skips type 51 objects in dungeon (they become trap entities).
+// Stone traps (100/101) don't glow. Aida red/blue lights are for types 304-309.
+void MonsterManager::GetTrapPointLights(
+    std::vector<glm::vec3> &positions, std::vector<glm::vec3> &colors,
+    std::vector<float> &ranges, std::vector<int> &objectTypes) const {
+  for (const auto &mon : m_monsters) {
+    if (mon.state == MonsterState::DEAD || mon.state == MonsterState::DYING)
+      continue;
+    if (mon.monsterType == 102) {
+      // Fire Trap (FireLight02): warm fire glow (matches other FireLight objects)
+      positions.push_back(mon.position);
+      colors.push_back(glm::vec3(0.8f, 0.4f, 0.1f));
+      ranges.push_back(300.0f);
+      objectTypes.push_back(102);
+    }
+  }
 }
 
 void MonsterManager::Cleanup() {

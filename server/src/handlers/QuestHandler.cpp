@@ -371,10 +371,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{26, 10}, {0, 0}, {0, 0}},
      {"Goblin", "", ""},
      "Goblin Menace", "Noria", 3, 2000, 30000,
-     {{{-1, 0}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{363, 0}, {392, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{160, 0}, {352, 0}},   // DW: Skull Staff + Pad Boots
+      {{1, 0}, {192, 0}},     // DK: Short Sword + Buckler
+      {{363, 0}, {392, 0}},   // ELF: Short Bow + Orb of Goblin
+      {{2, 0}, {193, 0}}},    // MG: Rapier + Small Shield
      "Greetings, young archer. The Goblins\n"
      "near the village entrance grow bolder\n"
      "each day. Thin their numbers -- slay 10\n"
@@ -383,10 +383,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{27, 8}, {0, 0}, {0, 0}},
      {"Chain Scorpion", "", ""},
      "Scorpion Sting", "Noria", 5, 3000, 50000,
-     {{{-1, 0}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{331, 0}, {393, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{224, 0}, {320, 0}},   // DW: Pad Helm + Pad Gloves
+      {{33, 0}, {404, 0}},    // DK: Hand Axe + Orb of Falling Slash
+      {{331, 0}, {393, 0}},   // ELF: Wind Gloves + Orb of Stone Golem
+      {{96, 0}, {192, 0}}},   // MG: Light Spear + Buckler
      "Well struck. Now the Chain Scorpions\n"
      "threaten our eastern paths. Their poison\n"
      "is deadly to the young elves. Eliminate\n"
@@ -395,10 +395,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{33, 8}, {0, 0}, {0, 0}},
      {"Elite Goblin", "", ""},
      "Elite Threat", "Noria", 8, 5000, 70000,
-     {{{-1, 0}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{299, 1}, {-1, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{288, 0}, {480, 0}},   // DW: Pad Pants + Scroll of Poison
+      {{3, 0}, {194, 0}},     // DK: Katana + Kite Shield
+      {{299, 1}, {-1, 0}},    // ELF: Vine Pants+1
+      {{5, 0}, {194, 0}}},    // MG: Blade + Kite Shield
      "The Elite Goblins are smarter and\n"
      "stronger than their lesser kin. They\n"
      "coordinate raids on our supply lines.\n"
@@ -407,10 +407,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{28, 10}, {0, 0}, {0, 0}},
      {"Beetle Monster", "", ""},
      "Root Rot", "Noria", 10, 8000, 100000,
-     {{{-1, 0}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{267, 2}, {394, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{256, 0}, {482, 0}},   // DW: Pad Armor + Scroll of Fire Ball
+      {{4, 0}, {405, 0}},     // DK: Sword of Assassin + Orb of Lunge
+      {{267, 2}, {394, 0}},   // ELF: Wind Armor+2 + Orb of Greater Damage
+      {{6, 0}, {198, 0}}},    // MG: Gladius + Skull Shield
      "Beetle Monsters burrow through the\n"
      "forest floor, destroying the ancient\n"
      "roots of our sacred trees. Slay 10\n"
@@ -419,10 +419,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{29, 8}, {0, 0}, {0, 0}},
      {"Hunter", "", ""},
      "The Poachers", "Noria", 13, 12000, 130000,
-     {{{-1, 0}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{235, 2}, {395, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{161, 0}, {483, 0}},   // DW: Angelic Staff + Scroll of Power Wave
+      {{194, 1}, {406, 0}},   // DK: Kite Shield+1 + Orb of Uppercut
+      {{235, 2}, {395, 0}},   // ELF: Wind Boots+2 + Orb of Curse
+      {{7, 0}, {200, 0}}},    // MG: Falchion + Tower Shield
      "Poachers -- Hunters who stalk our\n"
      "forest creatures without mercy. They\n"
      "encroach deeper each season. Put an\n"
@@ -431,10 +431,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{30, 8}, {0, 0}, {0, 0}},
      {"Forest Monster", "", ""},
      "Corrupted Guardians", "Noria", 15, 15000, 160000,
-     {{{128, 2}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{362, 3}, {-1, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{321, 1}, {486, 0}},   // DW: Bone Gloves+1 + Scroll of Ice
+      {{5, 1}, {407, 0}},     // DK: Blade+1 + Orb of Cyclone
+      {{362, 3}, {-1, 0}},    // ELF: (as-is)
+      {{97, 1}, {203, 0}}},   // MG: Spear+1 + Serpent Shield
      "The Forest Monsters were once peaceful\n"
      "guardians, now corrupted by dark magic.\n"
      "Free their tortured spirits -- slay 8\n"
@@ -443,10 +443,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{31, 6}, {0, 0}, {0, 0}},
      {"Agon", "", ""},
      "Beast Territory", "Noria", 16, 20000, 200000,
-     {{{-1, 0}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{298, 3}, {-1, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{289, 1}, {484, 0}},   // DW: Bone Pants+1 + Scroll of Flame
+      {{34, 1}, {-1, 0}},     // DK: Double Axe+1
+      {{298, 3}, {-1, 0}},    // ELF: Vine Pants+3
+      {{8, 1}, {-1, 0}}},     // MG: Serpent Sword+1
      "The Agons are fierce beasts that even\n"
      "seasoned warriors fear. Their territory\n"
      "blocks the southern passage. Defeat 6\n"
@@ -455,10 +455,10 @@ static const QuestDef g_quests[QUEST_COUNT] = {
     {256, 1, {{32, 5}, {0, 0}, {0, 0}},
      {"Stone Golem", "", ""},
      "Ancient Constructs", "Noria", 18, 30000, 300000,
-     {{{130, 3}, {-1, 0}},
-      {{-1, 0}, {-1, 0}},
-      {{266, 4}, {-1, 0}},
-      {{-1, 0}, {-1, 0}}},
+     {{{162, 2}, {257, 1}},   // DW: Serpent Staff+2 + Bone Armor+1
+      {{6, 2}, {408, 0}},     // DK: Gladius+2 + Orb of Slash
+      {{266, 4}, {-1, 0}},    // ELF: Wind Armor+4
+      {{10, 2}, {200, 1}}},   // MG: Light Saber+2 + Tower Shield+1
      "The Stone Golems are ancient constructs\n"
      "awakened by forbidden magic. They are\n"
      "the greatest threat Noria faces. Destroy\n"
@@ -468,6 +468,23 @@ static const QuestDef g_quests[QUEST_COUNT] = {
 // ═══════════════════════════════════════════════════════
 // Helper: insert item reward into player inventory
 // ═══════════════════════════════════════════════════════
+
+// Check if a reward item can fit in inventory (without placing it)
+static bool CanFitItemReward(Session &session, Database &db,
+                             const QuestItemReward &reward) {
+  if (reward.defIndex < 0)
+    return true; // No item = always fits
+
+  uint8_t cat = reward.defIndex / 32;
+  uint8_t idx = reward.defIndex % 32;
+  auto def = db.GetItemDefinition(cat, idx);
+  if (def.name.empty())
+    return true; // Unknown item, skip silently
+
+  uint8_t outSlot = 0;
+  return InventoryHandler::FindEmptySpace(session, def.width, def.height,
+                                          outSlot);
+}
 
 static void GiveItemReward(Session &session, Database &db,
                            const QuestItemReward &reward) {
@@ -708,12 +725,24 @@ void HandleQuestComplete(Session &session, const std::vector<uint8_t> &packet,
     }
   }
 
+  // Pre-check inventory space for ALL item rewards before awarding anything
+  int classIdx = session.classCode / 16; // DW=0, DK=1, ELF=2, MG=3
+  if (classIdx >= 0 && classIdx < 4) {
+    if (!CanFitItemReward(session, db, q.classReward[classIdx][0]) ||
+        !CanFitItemReward(session, db, q.classReward[classIdx][1])) {
+      printf("[Quest] fd=%d quest %d REJECTED: inventory full for rewards\n",
+             session.GetFd(), questId);
+      server.GetDB().SaveChatMessage(session.characterId, 1, 0xFFFF6464,
+          "Inventory full! Make space before turning in quest.");
+      return;
+    }
+  }
+
   // Award zen + XP
   session.zen += q.zenReward;
   session.experience += q.xpReward;
 
-  // Give class-specific rewards only
-  int classIdx = session.classCode / 16; // DW=0, DK=1, ELF=2, MG=3
+  // Give class-specific rewards (space already verified)
   if (classIdx >= 0 && classIdx < 4) {
     GiveItemReward(session, db, q.classReward[classIdx][0]);
     GiveItemReward(session, db, q.classReward[classIdx][1]);

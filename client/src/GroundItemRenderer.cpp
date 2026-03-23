@@ -141,32 +141,34 @@ void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale) {
     index = defIndex % 32;
   }
 
-  // All weapons lay flat (90 X tilt) -- vary Y for visual interest
-  if (category == 0) { // Swords -- diagonal
-    angle = glm::vec3(90.0f, 45.0f, 0.0f);
-    scale = 1.0f;
-    if (index == 19)
-      scale = 0.7f;           // Divine Sword
+  // Main 5.2 ItemAngle() — resting orientation per category (ZzzObject.cpp:5437-5550)
+  if (category == 0) { // Swords
+    angle = glm::vec3(60.0f, 0.0f, -45.0f);
+    if (index == 19) scale = 0.7f; // Divine Sword
   } else if (category == 1) { // Axes
-    angle = glm::vec3(90.0f, 30.0f, 0.0f);
+    angle = glm::vec3(60.0f, 0.0f, -45.0f);
   } else if (category == 2) { // Maces
-    angle = glm::vec3(90.0f, 0.0f, 0.0f);
-  } else if (category == 3) { // Spears -- longer, lay along Y
-    angle = glm::vec3(90.0f, 0.0f, 0.0f);
+    angle = glm::vec3(0.0f, 270.0f, -45.0f);
+  } else if (category == 3) { // Spears
+    angle = glm::vec3(60.0f, 0.0f, -45.0f);
     scale = 0.9f;
   } else if (category == 4) { // Bows/Crossbows
-    angle = glm::vec3(90.0f, 90.0f, 0.0f);
+    angle = glm::vec3(90.0f, 0.0f, -45.0f);
     scale = 0.9f;
   } else if (category == 5) { // Staffs
-    angle = glm::vec3(90.0f, 0.0f, 0.0f);
-  } else if (category == 6) { // Shields -- lay face-up
-    angle = glm::vec3(90.0f, 0.0f, 0.0f);
+    angle = glm::vec3(0.0f, 270.0f, -45.0f);
+  } else if (category == 6) { // Shields
+    angle = glm::vec3(0.0f, 270.0f, 225.0f);
     scale = 0.9f;
-  } else if (category == 7 || category == 8) { // Helms / Armor
-    angle = glm::vec3(90.0f, 0.0f, 0.0f);
-  } else if (category == 14) { // Potions -- stand upright
-    angle = glm::vec3(0.0f, 0.0f, 0.0f);
+  } else if (category == 7) { // Helms
+    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+  } else if (category >= 8 && category <= 11) { // Armor/Pants/Gloves/Boots
+    angle = glm::vec3(270.0f, 0.0f, -45.0f);
+  } else if (category == 14) { // Potions
+    angle = glm::vec3(90.0f, 0.0f, -45.0f);
     scale = 0.6f;
+  } else { // Default
+    angle = glm::vec3(0.0f, 0.0f, -45.0f);
   }
 }
 
@@ -180,6 +182,13 @@ void UpdatePhysics(GroundItem &gi, float terrainHeight) {
   gi.position.y += gi.gravity * 0.5f; // Integrate velocity (using Y as UP)
   gi.gravity -= 1.0f;                 // Gravity accel
 
+  // Main 5.2: tumble rotation while falling
+  // Shields (cat 6): yaw spin. Weapons (cat 0-5): pitch spin.
+  float tumbleRate = std::abs(gi.gravity) * 2.0f;
+  gi.angle.x += tumbleRate; // Pitch tumble for weapons
+  if (gi.angle.x > 360.0f)
+    gi.angle.x -= 360.0f;
+
   // Floor check (bounce)
   if (gi.position.y <= terrainHeight + 0.5f) {
     gi.position.y = terrainHeight + 0.5f;
@@ -190,6 +199,9 @@ void UpdatePhysics(GroundItem &gi, float terrainHeight) {
     } else {
       gi.gravity = 0;
       gi.isResting = true;
+      // Snap to resting angle on landing
+      float restScale;
+      GetItemRestingAngle(gi.defIndex, gi.angle, restScale);
     }
   }
 }
@@ -246,6 +258,22 @@ void RenderModels(GroundItem *items, int maxItems, float deltaTime,
   }
 }
 
+void UpdateSparkleTimers(GroundItem *items, int maxItems, float deltaTime,
+                         std::vector<glm::vec3> &outPositions) {
+  for (int i = 0; i < maxItems; ++i) {
+    auto &gi = items[i];
+    if (!gi.active || !gi.isResting)
+      continue;
+
+    gi.sparkleTimer += deltaTime;
+    if (gi.sparkleTimer >= 1.92f) {
+      gi.sparkleTimer -= 1.92f;
+      // Main 5.2: BITMAP_FLARE sparkle at item position +20 Y
+      outPositions.push_back(gi.position + glm::vec3(0, 20.0f, 0));
+    }
+  }
+}
+
 void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
                   const glm::mat4 &view, const glm::mat4 &proj, int winW,
                   int winH, const glm::vec3 &camPos, int hoveredGroundItem,
@@ -256,7 +284,7 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
     if (!gi.active)
       continue;
 
-    glm::vec3 labelPos = gi.position + glm::vec3(0, 15.0f, 0);
+    glm::vec3 labelPos = gi.position + glm::vec3(0, 30.0f, 0);
     glm::vec4 clip = vp * glm::vec4(labelPos, 1.0f);
     if (clip.w <= 0.0f)
       continue;

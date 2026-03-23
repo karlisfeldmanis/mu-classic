@@ -5,6 +5,7 @@
 #include <al.h>
 #include <alc.h>
 #include <cstdint>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -30,6 +31,10 @@ static std::map<int, SoundSlot> s_sounds;
 static std::map<int, std::string> s_soundNames; // ID → filename for logging
 static float s_masterVolume = 1.0f;
 static bool s_initialized = false;
+
+// Per-sound throttle: prevent same sound from stacking when multiple hits land simultaneously
+static constexpr float SOUND_THROTTLE_MS = 100.0f; // 100ms cooldown per sound ID
+static std::map<int, std::chrono::steady_clock::time_point> s_lastPlayTime;
 
 // ── Music state ──
 static ALuint s_musicBuffer = 0;
@@ -245,6 +250,7 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_WIND01, sndPath + "aWind.wav", 1);
   LoadSound(SOUND_DUNGEON01, sndPath + "aDungeon.wav", 1);
   LoadSound(SOUND_BAT01, sndPath + "aBat.wav", 1, true); // 3D positional
+  LoadSound(SOUND_MOUSE01, sndPath + "aMouse.wav", 1, true); // 3D positional
   LoadSound(SOUND_FOREST01, sndPath + "aForest.wav", 1); // Noria forest ambient
   LoadSound(SOUND_DOOR01, sndPath + "aDoor.wav", 1);
   LoadSound(SOUND_DOOR02, sndPath + "aCastleDoor.wav", 1);
@@ -508,6 +514,14 @@ void Play(int soundId, float gain) {
   auto it = s_sounds.find(soundId);
   if (it == s_sounds.end())
     return;
+
+  // Throttle: skip if same sound played within cooldown window
+  auto now = std::chrono::steady_clock::now();
+  auto &lastTime = s_lastPlayTime[soundId];
+  float elapsedMs = std::chrono::duration<float, std::milli>(now - lastTime).count();
+  if (elapsedMs < SOUND_THROTTLE_MS && lastTime.time_since_epoch().count() > 0)
+    return;
+  lastTime = now;
 
   auto &slot = it->second;
   ALuint src = slot.sources[slot.nextCh];

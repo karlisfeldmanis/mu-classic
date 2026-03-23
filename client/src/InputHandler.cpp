@@ -233,6 +233,10 @@ static void scroll_callback(GLFWwindow *window, double xoffset,
   if (SystemMessageLog::HandleScroll((float)mx, (float)my, (float)yoffset))
     return;
 
+  // Suppress zoom when cursor is over any UI panel (quest dialog, inventory, etc.)
+  if (s_ctx->mouseOverUIPanel && *s_ctx->mouseOverUIPanel)
+    return;
+
   if (s_gameReady) {
     s_ctx->camera->ProcessMouseScroll(yoffset);
     // Persist zoom to server
@@ -362,7 +366,9 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
 
   // Click-to-move on left click (NPC click takes priority)
   if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-    if (!ImGui::GetIO().WantCaptureMouse) {
+    bool overUI = ImGui::GetIO().WantCaptureMouse ||
+                  (s_ctx->mouseOverUIPanel && *s_ctx->mouseOverUIPanel);
+    if (!overUI) {
       double mx, my;
       glfwGetCursorPos(window, &mx, &my);
 
@@ -508,6 +514,9 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
 
       // Try UI panel right-click first (sell, orb use)
       if (!InventoryUI::HandlePanelRightClick(vx, vy)) {
+        // Block world skill casting when cursor is over a UI panel
+        if (s_ctx->mouseOverUIPanel && *s_ctx->mouseOverUIPanel)
+          return;
         // Not on UI panel — try skill attack on monster
         if (s_ctx->rmcSkillId && *s_ctx->rmcSkillId >= 0) {
           uint8_t skillId = (uint8_t)*s_ctx->rmcSkillId;

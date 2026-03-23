@@ -330,7 +330,7 @@ static const MapConfig MAP_CONFIGS[] = {
         0.f, // fogColor (black)
         800.f,
         2500.f,
-        1.2f, // fogNear, fogFar, luminosity
+        0.9f, // fogNear, fogFar, luminosity (dungeon is dark)
         0.35f,
         0.55f,
         0.4f, // bloom, threshold, vignette
@@ -534,6 +534,7 @@ static bool g_questDialogOpen = false;
 static bool g_questDialogWasOpen =
     false; // Track previous frame to detect fresh open
 static bool g_questDialogJustOpened = false; // Skip clicks on first frame
+static float g_questListScrollY = 0.0f;     // Quest list scroll offset
 static int g_questDialogNpcIndex = -1;
 static int g_questDialogSelected =
     -1; // -1 = quest list view, 0-4 = viewing specific quest
@@ -1579,6 +1580,7 @@ int main(int argc, char **argv) {
 
   g_clickEffect.LoadAssets(data_path);
   g_clickEffect.SetTerrainData(g_terrainDataPtr);
+  g_clickEffect.SetVFXManager(&g_vfxManager);
   checkGLError("hero init");
 
   // Initialize input handler with shared game state
@@ -1965,6 +1967,13 @@ int main(int argc, char **argv) {
       ImGui_ImplGlfw_NewFrame();
       ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
       ImGui::NewFrame();
+      // Hide ImGui's default fallback window (Debug##Default)
+      ImGui::SetNextWindowSize(ImVec2(0, 0));
+      ImGui::SetNextWindowPos(ImVec2(-100, -100));
+      ImGui::Begin("Debug##Default", nullptr,
+                   ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                   ImGuiWindowFlags_NoBackground);
+      ImGui::End();
 
       CharacterSelect::Render(winW, winH);
 
@@ -2417,7 +2426,7 @@ int main(int argc, char **argv) {
              g_rmcSkillId == 42 || g_rmcSkillId == 43);
         if (g_hero.GetAttackState() == AttackState::NONE &&
             g_hero.GetAttackTarget() < 0 && g_rightMouseHeld && isAoESkill &&
-            g_hero.GetGlobalCooldown() <= 0.0f) {
+            g_hero.GetGlobalCooldown() <= 0.0f && !g_mouseOverUIPanel) {
           uint8_t skillId = (uint8_t)g_rmcSkillId;
           int cost = InventoryUI::GetSkillResourceCost(skillId);
           bool isDK = (g_hero.GetClass() == 16);
@@ -2720,7 +2729,9 @@ int main(int argc, char **argv) {
       // Fast fade — nearly instant (95%+ in 1-2 frames)
       float blend = 1.0f - std::exp(-20.0f * deltaTime);
       for (auto &[type, alpha] : g_typeAlpha) {
-        alpha += (g_typeAlphaTarget[type] - alpha) * blend;
+        auto it = g_typeAlphaTarget.find(type);
+        float target = (it != g_typeAlphaTarget.end()) ? it->second : 1.0f;
+        alpha += (target - alpha) * blend;
       }
       g_objectRenderer.SetTypeAlpha(g_typeAlpha);
 
@@ -2878,6 +2889,11 @@ int main(int argc, char **argv) {
       // Dynamic spell lights from active projectiles
       g_vfxManager.GetActiveSpellLights(lightPos, lightCol, lightRange,
                                         lightObjTypes);
+      // Trap terrain lights (Main 5.2 GMAida.cpp: Lance=red, IronStick=blue)
+      g_monsterManager.GetTrapPointLights(lightPos, lightCol, lightRange,
+                                          lightObjTypes);
+      // Pet companion glow light
+      g_hero.GetPetLight(lightPos, lightCol, lightRange, lightObjTypes);
       // Update terrain (CPU lightmap) and object renderer (shader uniforms)
       g_terrain.SetPointLights(lightPos, lightCol, lightRange, lightObjTypes);
       g_objectRenderer.SetPointLights(lightPos, lightCol, lightRange);
@@ -3004,19 +3020,31 @@ int main(int argc, char **argv) {
 
         // Determine best marker for this guard
         // Priority: completable '?' gold > available '!' gold > in-progress '?' grey
+        // Low-level available quests (recommendedLevel < heroLevel-10) → grey '!'
+        // No available/active quests → no marker
         char bestMarker = '\0';
         bool bestGold = false;
+        int heroLevel = g_hero.GetLevel();
+        bool hasLevelAppropriate = false; // Any quest near player's level?
         for (int qi2 = 0; qi2 < (int)g_questCatalog.size(); qi2++) {
           if (g_questCatalog[qi2].guardType != gt) continue;
           int st = GetQuestStatus(qi2);
-          if (st == 2) { // completable — highest priority
-            bestMarker = '?'; bestGold = true; break;
+          if (st == 2) { // completable — highest priority (always gold)
+            bestMarker = '?'; bestGold = true;
+            hasLevelAppropriate = true;
+            break;
           } else if (st == 0 && bestMarker != '?') { // available
-            bestMarker = '!'; bestGold = true;
+            bestMarker = '!';
+            if ((int)g_questCatalog[qi2].recommendedLevel + 10 >= heroLevel)
+              hasLevelAppropriate = true;
           } else if (st == 1 && bestMarker == '\0') { // in-progress
             bestMarker = '?'; bestGold = false;
+            hasLevelAppropriate = true; // active quest is always relevant
           }
         }
+        // Gold only if level-appropriate; grey for low-level available quests
+        if (bestMarker == '!')
+          bestGold = hasLevelAppropriate;
         if (bestMarker != '\0')
           markers.push_back({gt, bestMarker, bestGold});
       }
@@ -3042,6 +3070,7 @@ int main(int argc, char **argv) {
                                       projection);
 
     // Render hero stencil shadow + model (skip stencil when shadow map active)
+    g_clickEffect.Update(deltaTime);
     g_clickEffect.Render(view, projection, deltaTime, g_hero.GetShader());
     if (!hasShadowMap) g_hero.RenderShadow(view, projection);
     g_hero.Render(view, projection, camPos, deltaTime);
@@ -3231,6 +3260,15 @@ int main(int argc, char **argv) {
           g_groundItems, MAX_GROUND_ITEMS, deltaTime, view, projection,
           [](float x, float z) -> float { return g_terrain.GetHeight(x, z); });
 
+      // Main 5.2: ground item sparkle particles every ~1.92s
+      {
+        std::vector<glm::vec3> sparklePos;
+        GroundItemRenderer::UpdateSparkleTimers(g_groundItems, MAX_GROUND_ITEMS,
+                                                deltaTime, sparklePos);
+        for (const auto &p : sparklePos)
+          g_vfxManager.SpawnBurst(ParticleType::FLARE, p, 1);
+      }
+
       // ── Ground item labels + tooltips ──
       GroundItemRenderer::RenderLabels(
           g_groundItems, MAX_GROUND_ITEMS, dl, g_fontDefault, view, projection,
@@ -3270,6 +3308,7 @@ int main(int argc, char **argv) {
     if (g_questDialogOpen && !g_questDialogWasOpen) {
       g_questDialogSelected = -1;
       g_questDialogJustOpened = true;
+      g_questListScrollY = 0.0f;
       SoundManager::Play(SOUND_INTERFACE01);
     }
     g_questDialogWasOpen = g_questDialogOpen;
@@ -3539,8 +3578,12 @@ int main(int argc, char **argv) {
             }
           } else {
             float rowH = 44.0f * qs;
-            float listH = npcQuestCount * rowH + 8 * qs;
-            float panelH = 44 * qs + listH + btnH + 20 * qs;
+            float totalListH = npcQuestCount * rowH + 8 * qs;
+            constexpr int MAX_VISIBLE_QUESTS = 5;
+            float maxListH = MAX_VISIBLE_QUESTS * rowH + 8 * qs;
+            float visListH = std::min(totalListH, maxListH);
+            bool needsScroll = totalListH > maxListH;
+            float panelH = 44 * qs + visListH + btnH + 20 * qs;
             float px = (dispSize.x - panelW) * 0.5f;
             float py = (dispSize.y - panelH) * 0.5f;
             g_qdPanelRect[0] = px; g_qdPanelRect[1] = py;
@@ -3565,17 +3608,38 @@ int main(int argc, char **argv) {
                         ImVec2(px + panelW - 16, contentY), cSep);
             contentY += 8;
 
+            // Scroll: handle mouse wheel over list area
+            float listTop = contentY;
+            if (needsScroll) {
+              float maxScroll = totalListH - maxListH;
+              bool mouseInList = mousePos.x >= px && mousePos.x <= px + panelW &&
+                                 mousePos.y >= listTop && mousePos.y <= listTop + visListH;
+              if (mouseInList) {
+                g_questListScrollY -= ImGui::GetIO().MouseWheel * rowH;
+              }
+              g_questListScrollY = glm::clamp(g_questListScrollY, 0.0f, maxScroll);
+            }
+
+            // Clip quest rows to visible list area
+            dl->PushClipRect(ImVec2(px, listTop), ImVec2(px + panelW, listTop + visListH), true);
+
             for (int a = 0; a < npcQuestCount; a++) {
               int qi = npcQuests[a];
               const auto &q = g_questCatalog[qi];
               int st = GetQuestStatus(qi);
 
-              float rowY = contentY;
+              float rowY = contentY - g_questListScrollY;
               float rowX = px + 10;
-              float rowW = panelW - 20;
+              float rowW = panelW - 20 - (needsScroll ? 8 * qs : 0);
+              // Skip rows entirely outside visible area
+              if (rowY + rowH < listTop || rowY > listTop + visListH) {
+                contentY += rowH;
+                continue;
+              }
               ImVec2 rMin(rowX, rowY), rMax(rowX + rowW, rowY + rowH);
               bool hov = mousePos.x >= rMin.x && mousePos.x <= rMax.x &&
-                         mousePos.y >= rMin.y && mousePos.y <= rMax.y;
+                         mousePos.y >= std::max(rMin.y, listTop) &&
+                         mousePos.y <= std::min(rMax.y, listTop + visListH);
               if (hov)
                 dl->AddRectFilled(rMin, rMax, IM_COL32(40, 35, 25, 200), 2.0f);
 
@@ -3642,6 +3706,27 @@ int main(int argc, char **argv) {
 
               contentY += rowH;
             }
+
+            dl->PopClipRect();
+
+            // Scrollbar track + thumb
+            if (needsScroll) {
+              float maxScroll = totalListH - maxListH;
+              float trackX = px + panelW - 10 * qs;
+              float trackW = 4 * qs;
+              float trackTop = listTop;
+              float trackH = visListH;
+              dl->AddRectFilled(ImVec2(trackX, trackTop),
+                                ImVec2(trackX + trackW, trackTop + trackH),
+                                IM_COL32(30, 25, 18, 120), 2.0f);
+              float thumbRatio = visListH / totalListH;
+              float thumbH = std::max(thumbRatio * trackH, 16.0f * qs);
+              float thumbY = trackTop + (g_questListScrollY / maxScroll) * (trackH - thumbH);
+              dl->AddRectFilled(ImVec2(trackX, thumbY),
+                                ImVec2(trackX + trackW, thumbY + thumbH),
+                                IM_COL32(180, 160, 110, 180), 2.0f);
+            }
+
             // Close button
             float btnY = py + panelH - btnH - 12.0f;
             if (drawButton(px + (panelW - btnW) * 0.5f, btnY, btnW, btnH,
@@ -4072,12 +4157,45 @@ int main(int argc, char **argv) {
         }
       }
 
-      // NPC markers (small yellow dots)
-      int npcCount = g_npcManager.GetNpcCount();
-      for (int i = 0; i < npcCount; i++) {
-        NpcInfo ni = g_npcManager.GetNpcInfo(i);
-        ImVec2 sp = worldToMinimap(ni.position);
-        mmDl->AddCircleFilled(sp, 3.0f, IM_COL32(255, 220, 50, 230));
+      // NPC markers — quest NPCs get ! or ? icons (WoW-style), others get yellow dots
+      {
+        auto &questMarkers = g_npcManager.GetQuestMarkers();
+        int npcCount = g_npcManager.GetNpcCount();
+        ImFont *font = ImGui::GetFont();
+        float markerFs = 20.0f; // Quest marker font size on minimap
+
+        for (int i = 0; i < npcCount; i++) {
+          NpcInfo ni = g_npcManager.GetNpcInfo(i);
+          ImVec2 sp = worldToMinimap(ni.position);
+
+          // Check if this NPC has a quest marker
+          char marker = '\0';
+          bool isGold = false;
+          for (auto &gm : questMarkers) {
+            if (gm.guardType == ni.type) {
+              marker = gm.marker;
+              isGold = gm.isGold;
+              break;
+            }
+          }
+
+          if (marker != '\0') {
+            // Quest marker: ! (available) or ? (completable/in-progress)
+            char buf[2] = {marker, '\0'};
+            ImVec2 ts = font->CalcTextSizeA(markerFs, FLT_MAX, 0, buf);
+            float tx = sp.x - ts.x * 0.5f;
+            float ty = sp.y - ts.y * 0.5f;
+            ImU32 col = isGold ? IM_COL32(255, 210, 50, 255)
+                               : IM_COL32(160, 160, 160, 220);
+            // Shadow
+            mmDl->AddText(font, markerFs, ImVec2(tx + 1.5f, ty + 1.5f),
+                          IM_COL32(0, 0, 0, 200), buf);
+            mmDl->AddText(font, markerFs, ImVec2(tx, ty), col, buf);
+          } else {
+            // Non-quest NPC: small yellow dot
+            mmDl->AddCircleFilled(sp, 3.0f, IM_COL32(255, 220, 50, 230));
+          }
+        }
       }
 
       // Player arrow — rotates with character facing
@@ -4449,52 +4567,55 @@ int main(int argc, char **argv) {
     // Update mouseOverUIPanel flag for cursor/hover gating in InputHandler
     {
       ImVec2 mp = ImGui::GetIO().MousePos;
-      float mx = mp.x, my = mp.y;
+      float sx = mp.x, sy = mp.y; // screen pixels
+      // Virtual coords for InventoryUI panels and skill window (1280x720 space)
+      float vx = g_hudCoords.ToVirtualX(sx);
+      float vy = g_hudCoords.ToVirtualY(sy);
       bool over = false;
       if (g_showGameMenu || g_showCommandTerminal) {
         over = true; // full-screen overlay or terminal open
       } else {
-        // InventoryUI panels (char info, inventory, shop)
+        // InventoryUI panels — virtual coords
         if (g_showCharInfo && InventoryUI::IsPointInPanel(
-                                  mx, my, InventoryUI::GetCharInfoPanelX()))
+                                  vx, vy, InventoryUI::GetCharInfoPanelX()))
           over = true;
         if (g_showInventory && InventoryUI::IsPointInPanel(
-                                   mx, my, InventoryUI::GetInventoryPanelX()))
+                                   vx, vy, InventoryUI::GetInventoryPanelX()))
           over = true;
         if (g_shopOpen &&
-            InventoryUI::IsPointInPanel(mx, my, InventoryUI::GetShopPanelX()))
+            InventoryUI::IsPointInPanel(vx, vy, InventoryUI::GetShopPanelX()))
           over = true;
-        // Skill window (centered, roughly 500x400)
+        // Skill window — virtual coords
         if (g_showSkillWindow) {
-          float sw = 492.0f, sh = 400.0f; // approximate
-          float sx = (1270.0f - sw) * 0.5f, sy = (720.0f - sh) * 0.5f;
-          if (mx >= sx && mx < sx + sw && my >= sy && my < sy + sh)
+          float sw = 492.0f, sh = 400.0f;
+          float skx = (1270.0f - sw) * 0.5f, sky = (720.0f - sh) * 0.5f;
+          if (vx >= skx && vx < skx + sw && vy >= sky && vy < sky + sh)
             over = true;
         }
-        // Quest dialog
+        // Quest dialog — screen pixels
         if (g_questDialogOpen && g_qdPanelRect[2] > 0) {
-          if (mx >= g_qdPanelRect[0] &&
-              mx < g_qdPanelRect[0] + g_qdPanelRect[2] &&
-              my >= g_qdPanelRect[1] &&
-              my < g_qdPanelRect[1] + g_qdPanelRect[3])
+          if (sx >= g_qdPanelRect[0] &&
+              sx < g_qdPanelRect[0] + g_qdPanelRect[2] &&
+              sy >= g_qdPanelRect[1] &&
+              sy < g_qdPanelRect[1] + g_qdPanelRect[3])
             over = true;
         }
-        // Quest log
+        // Quest log — screen pixels
         if (g_showQuestLog && g_qlPanelRect[2] > 0) {
-          if (mx >= g_qlPanelRect[0] &&
-              mx < g_qlPanelRect[0] + g_qlPanelRect[2] &&
-              my >= g_qlPanelRect[1] &&
-              my < g_qlPanelRect[1] + g_qlPanelRect[3])
+          if (sx >= g_qlPanelRect[0] &&
+              sx < g_qlPanelRect[0] + g_qlPanelRect[2] &&
+              sy >= g_qlPanelRect[1] &&
+              sy < g_qlPanelRect[1] + g_qlPanelRect[3])
             over = true;
         }
-        // Minimap overlay (diamond bounding box, left side)
+        // Minimap overlay — screen pixels (diamond bounding box, left side)
         if (g_showMinimap) {
           ImVec2 ds = ImGui::GetIO().DisplaySize;
           float mmScale = 400.0f / 362.0f;
           float mmH = 256.0f * mmScale;
           float ccx = mmH + 20.0f, ccy = ds.y * 0.5f;
-          if (mx >= ccx - mmH && mx <= ccx + mmH &&
-              my >= ccy - mmH && my <= ccy + mmH)
+          if (sx >= ccx - mmH && sx <= ccx + mmH &&
+              sy >= ccy - mmH && sy <= ccy + mmH)
             over = true;
         }
       }

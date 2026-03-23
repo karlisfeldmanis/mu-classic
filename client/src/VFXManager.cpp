@@ -166,7 +166,7 @@ void VFXManager::Init(const std::string &effectDataPath) {
     auto bones = ComputeBoneMatrices(m_fireBmd.get(), 0, 0);
     AABB dummyAABB{};
     for (auto &mesh : m_fireBmd->Meshes) {
-      UploadMeshWithBones(mesh, skillPath, bones, m_fireMeshes, dummyAABB, false);
+      UploadMeshWithBones(mesh, skillPath, bones, m_fireMeshes, dummyAABB, true);
     }
     std::cout << "[VFX] Fire01.bmd loaded: " << m_fireMeshes.size() << " meshes"
               << std::endl;
@@ -845,9 +845,7 @@ void VFXManager::SpawnSkillCast(uint8_t skillId, const glm::vec3 &heroPos,
     SpawnBurst(ParticleType::SPELL_LIGHTNING, castPos, 20);
     SpawnBurst(ParticleType::FLARE, castPos, 3);
     break;
-  case 2: // Meteorite
-    SpawnBurst(ParticleType::SPELL_METEOR, castPos + glm::vec3(0, 100, 0), 15);
-    SpawnBurst(ParticleType::FLARE, castPos, 2);
+  case 2: // Meteorite — Main 5.2: no caster-side VFX, fireball spawns at target
     break;
   case 7: // Ice — Main 5.2: no billboard particles on cast, just flare
     SpawnBurst(ParticleType::FLARE, castPos, 1);
@@ -1511,8 +1509,8 @@ void VFXManager::Update(float deltaTime) {
         p.scale *= (1.0f - 1.5f * deltaTime);
       break;
     case ParticleType::SPELL_METEOR:
-      // Strong gravity (falling effect), moderate drag
-      p.velocity.y -= 400.0f * deltaTime;
+      // Main 5.2: rising fire sparks (accelerating upward), shrink + rotate
+      p.velocity.y += 150.0f * deltaTime;
       p.scale *= (1.0f - 0.8f * deltaTime);
       break;
     case ParticleType::SPELL_DARK:
@@ -1850,7 +1848,7 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
   drawBatchBgfx(ParticleType::SPELL_LIGHTNING,
                 TexValid(m_lightningTexture) ? m_lightningTexture : m_energyTexture, true);
   drawBatchBgfx(ParticleType::SPELL_METEOR,
-                TexValid(m_flareTexture) ? m_flareTexture : m_hitTexture, true);
+                TexValid(m_fireTexture) ? m_fireTexture : m_flareTexture, true);
   drawBatchBgfx(ParticleType::SPELL_DARK,
                 TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
   drawBatchBgfx(ParticleType::SPELL_WATER,
@@ -2590,6 +2588,17 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
     positions.push_back(eq.position);
     colors.push_back(glm::vec3(L * 1.2f, L * 0.15f, L * 0.0f)); // Warm red-orange
     ranges.push_back(200.0f);
+    objectTypes.push_back(-1);
+  }
+
+  // Meteorite bolts — orange terrain glow during flight
+  // Main 5.2: AddTerrainLight(pos, (L*1.0, L*0.1, 0.0), 3)
+  for (const auto &m : m_meteorBolts) {
+    if (m.impacted) continue;
+    float L = (float)(rand() % 4 + 7) * 0.1f; // 0.7-1.0 flicker
+    positions.push_back(m.position);
+    colors.push_back(glm::vec3(L * 1.0f, L * 0.3f, 0.0f));
+    ranges.push_back(300.0f);
     objectTypes.push_back(-1);
   }
 

@@ -576,8 +576,13 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
       if (idx >= 0) {
         float worldX = (float)p->targetY * 100.0f;
         float worldZ = (float)p->targetX * 100.0f;
-        g_state->monsterManager->SetMonsterServerPosition(idx, worldX, worldZ,
-                                                          p->chasing != 0);
+        if (p->chasing == 2) {
+          // Knockback: snap monster to new position immediately
+          g_state->monsterManager->ApplyKnockback(idx, worldX, worldZ);
+        } else {
+          g_state->monsterManager->SetMonsterServerPosition(idx, worldX, worldZ,
+                                                            p->chasing != 0);
+        }
       }
     }
 
@@ -610,10 +615,17 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         } else {
           // Normal/skill hits: trigger hit animation + VFX
           g_state->monsterManager->TriggerHitAnimation(idx);
-          // Summon attacks: monster attack sounds play via TriggerAttackAnimation,
-          // skip generic weapon hit sounds
+          // Determine if this is a spell attack (DW spells have their own impact sounds)
+          uint8_t heroSkill = g_state->hero->GetActiveSkillId();
+          bool isSpellAttack = heroSkill > 0 &&
+              p->attackerCharId == (uint16_t)*g_state->heroCharacterId;
+
+          // Generic hit sounds — only for melee/bow, NOT for spell impacts
+          // Main 5.2: spell impacts play only their own spell-specific sound
           if (p->attackerMonsterIndex != 0 && p->attackerCharId == 0) {
-            // No extra hit sound — monster vocalization is enough
+            // Summon attacks: monster vocalization is enough
+          } else if (isSpellAttack) {
+            // Spell attacks: skip generic hit sound, handled below
           } else if (p->attackerCharId == (uint16_t)*g_state->heroCharacterId &&
               g_state->hero->HasWeapon() && g_state->hero->GetWeaponCategory() == 4)
             SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
@@ -622,37 +634,20 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
 
           // Skill attacks: spawn skill-specific impact VFX + reduced blood
           // Normal attacks: standard blood burst (Main 5.2: 10x BITMAP_BLOOD+1)
-          uint8_t heroSkill = g_state->hero->GetActiveSkillId();
-          if (heroSkill > 0 &&
-              p->attackerCharId == (uint16_t)*g_state->heroCharacterId) {
+          if (isSpellAttack) {
             g_state->vfxManager->SpawnSkillImpact(heroSkill, monPos);
             // DW spell impact sounds (Main 5.2: ZzzCharacter.cpp PlayBuffer)
+            // Each spell plays ONLY its own sound — no extra MISSILE_HIT
             switch (heroSkill) {
-            case 1:  // Poison
-              SoundManager::Play(SOUND_HEART);
-              SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
-              break;
-            case 2:  // Meteorite
-              SoundManager::Play(SOUND_METEORITE01);
-              SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
-              break;
+            case 1:  SoundManager::Play(SOUND_HEART); break;        // Poison
+            case 2:  SoundManager::Play(SOUND_METEORITE01); break;  // Meteorite
             case 3:  // Lightning — cast sound already plays; big thunder only on crit
               if (p->damageType == 2 || p->damageType == 3)
                 SoundManager::Play(SOUND_THUNDER01);
-              SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
               break;
-            case 4:  // Fire Ball
-              SoundManager::Play(SOUND_METEORITE01);
-              SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
-              break;
-            case 5:  // Flame
-              SoundManager::Play(SOUND_FLAME);
-              SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
-              break;
-            case 7:  // Ice
-              SoundManager::Play(SOUND_ICE);
-              SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
-              break;
+            case 4:  SoundManager::Play(SOUND_METEORITE01); break;  // Fire Ball
+            case 5:  SoundManager::Play(SOUND_FLAME); break;        // Flame
+            case 7:  SoundManager::Play(SOUND_ICE); break;          // Ice
             case 8:  SoundManager::Play(SOUND_STORM); break;        // Twister
             case 9:  SoundManager::Play(SOUND_EVIL); break;         // Evil Spirit
             case 10: SoundManager::Play(SOUND_HELLFIRE); break;     // Hellfire
@@ -664,12 +659,12 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
             }
             // Note: Twister StormTime spin is applied by proximity check
             // in main loop when tornado VFX reaches the monster, not here
-            // Main 5.2: Giant (7) and Ghost (11) excluded from blood
-            if (mi.type != 7 && mi.type != 11)
+            // Main 5.2: Giant (7), Ghost (11), traps (100-102) excluded from blood
+            if (mi.type != 7 && mi.type != 11 && mi.type < 100)
               g_state->vfxManager->SpawnBurst(ParticleType::BLOOD, hitPos, 5);
           } else {
-            // Main 5.2: Giant (7) and Ghost (11) excluded from blood
-            if (mi.type != 7 && mi.type != 11)
+            // Main 5.2: Giant (7), Ghost (11), traps (100-102) excluded from blood
+            if (mi.type != 7 && mi.type != 11 && mi.type < 100)
               g_state->vfxManager->SpawnBurst(ParticleType::BLOOD, hitPos, 10);
           }
         }
@@ -907,11 +902,11 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           gi.itemLevel = p->itemLevel;
 
           float h = g_state->terrain->GetHeight(p->worldX, p->worldZ);
-          gi.position = glm::vec3(p->worldX, h + 100.0f, p->worldZ);
+          gi.position = glm::vec3(p->worldX, h + 0.5f, p->worldZ);
           gi.timer = 0.0f;
-          gi.gravity = 15.0f;
+          gi.gravity = 0.0f;
           gi.scale = 1.0f;
-          gi.isResting = false;
+          gi.isResting = true; // Place directly at rest (no drop animation)
 
           if (g_state->getItemRestingAngle)
             g_state->getItemRestingAngle(gi.defIndex, gi.angle, gi.scale);

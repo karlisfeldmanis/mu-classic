@@ -146,6 +146,17 @@ void VFXManager::updateMeteorBolts(float dt) {
     }
     m.lifetime -= dt;
     m.position += m.velocity * dt;
+    m.rotation += 360.0f * dt; // Spin during flight
+
+    // Animate Fire01.bmd
+    if (m_fireBmd && !m_fireBmd->Actions.empty()) {
+      int numKeys = m_fireBmd->Actions[0].NumAnimationKeys;
+      if (numKeys > 1) {
+        m.animFrame += 10.0f * dt;
+        if (m.animFrame >= (float)numKeys)
+          m.animFrame = std::fmod(m.animFrame, (float)numKeys);
+      }
+    }
 
     // Main 5.2: spawn BITMAP_FIRE SubType 5 every tick — fire trail particles
     m.trailTimer += dt;
@@ -163,7 +174,7 @@ void VFXManager::updateMeteorBolts(float dt) {
       m.velocity = glm::vec3(0.0f);
       m.impacted = true;
       m.impactTimer = 0.0f;
-      // Main 5.2 impact: explosion + stone debris particles
+      // Main 5.2 impact: fire/flare particle bursts
       glm::vec3 impactAbove = m.position + glm::vec3(0, 80, 0);
       SpawnBurst(ParticleType::SPELL_METEOR, impactAbove, 25);
       SpawnBurst(ParticleType::SPELL_FIRE, impactAbove, 15);
@@ -197,6 +208,14 @@ void VFXManager::renderMeteorBolts(const glm::mat4 &view,
                  | BGFX_STATE_BLEND_ADD;
   for (const auto &m : m_meteorBolts) {
     if (m.impacted) continue;
+
+    // Re-skin fire model with current animation frame
+    if (m_fireBmd && !m_fireBmd->Actions.empty()) {
+      auto bones = ComputeBoneMatricesInterpolated(m_fireBmd.get(), 0, m.animFrame);
+      for (int mi = 0; mi < (int)m_fireMeshes.size() && mi < (int)m_fireBmd->Meshes.size(); ++mi)
+        RetransformMeshWithBones(m_fireBmd->Meshes[mi], bones, m_fireMeshes[mi]);
+    }
+
     float alpha = std::min(1.0f, m.lifetime / m.maxLifetime * 4.0f);
     float blendLight = (float)(rand() % 4 + 4) * 0.1f;
     m_modelShader->setVec4("u_params", glm::vec4(alpha, blendLight, 0, 0));
@@ -204,12 +223,14 @@ void VFXManager::renderMeteorBolts(const glm::mat4 &view,
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::rotate(model, glm::radians(20.0f), glm::vec3(0, 1, 0));
+    model = glm::rotate(model, glm::radians(m.rotation), glm::vec3(0, 0, 1));
     model = glm::scale(model, glm::vec3(m.scale));
-    for (const auto &mb : m_fireMeshes) {
+    for (auto &mb : m_fireMeshes) {
       if (mb.indexCount == 0 || mb.hidden) continue;
       bgfx::setTransform(glm::value_ptr(model));
       m_modelShader->setTexture(0, "s_texColor", mb.texture);
-      bgfx::setVertexBuffer(0, mb.vbo);
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
       bgfx::setIndexBuffer(mb.ebo);
       bgfx::setState(state);
       bgfx::submit(0, m_modelShader->program);

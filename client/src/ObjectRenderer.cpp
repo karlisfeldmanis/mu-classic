@@ -174,7 +174,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
     glm::vec2 tex;
   };
   std::vector<Vertex> vertices;
-  std::vector<uint32_t> indices;
+  std::vector<uint16_t> indices;
 
   for (int i = 0; i < mesh.NumTriangles; ++i) {
     auto &tri = mesh.Triangles[i];
@@ -196,7 +196,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
       vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                            mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
       vertices.push_back(vert);
-      indices.push_back(startIdx + v);
+      indices.push_back((uint16_t)(startIdx + v));
     }
     if (steps == 4) {
       int quadIndices[3] = {0, 2, 3};
@@ -216,7 +216,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
         vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
         vertices.push_back(vert);
-        indices.push_back((uint32_t)vertices.size() - 1);
+        indices.push_back((uint16_t)(vertices.size() - 1));
       }
     }
   }
@@ -224,6 +224,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
   mb.indexCount = (int)indices.size();
   mb.vertexCount = (int)vertices.size();
   mb.isDynamic = dynamic;
+
   if (mb.indexCount == 0) {
     out.push_back(mb);
     return;
@@ -241,7 +242,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
   }
 
   uint32_t vbSize = (uint32_t)(vertices.size() * sizeof(Vertex));
-  uint32_t ibSize = (uint32_t)(indices.size() * sizeof(uint32_t));
+  uint32_t ibSize = (uint32_t)(indices.size() * sizeof(uint16_t));
 
   if (dynamic) {
     mb.dynVbo = bgfx::createDynamicVertexBuffer(
@@ -250,8 +251,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
     mb.vbo = bgfx::createVertexBuffer(
         bgfx::copy(vertices.data(), vbSize), s_objLayout);
   }
-  mb.ebo = bgfx::createIndexBuffer(
-      bgfx::copy(indices.data(), ibSize), BGFX_BUFFER_INDEX32);
+  mb.ebo = bgfx::createIndexBuffer(bgfx::copy(indices.data(), ibSize));
 
   auto texResult = TextureLoader::ResolveWithInfo(baseDir, mesh.TextureName);
   if (!TexValid(texResult.textureID) && !fallbackTexDir.empty())
@@ -282,7 +282,7 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
     float _pad[3];
   };
   std::vector<BgfxSkinnedVertex> vertices;
-  std::vector<uint32_t> indices;
+  std::vector<uint16_t> indices;
 
   for (int i = 0; i < mesh.NumTriangles; ++i) {
     auto &tri = mesh.Triangles[i];
@@ -298,7 +298,7 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
       vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                            mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
       vertices.push_back(vert);
-      indices.push_back(startIdx + v);
+      indices.push_back((uint16_t)(startIdx + v));
     }
     if (steps == 4) {
       int quadIndices[3] = {0, 2, 3};
@@ -312,7 +312,7 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
         vert.tex = glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV);
         vertices.push_back(vert);
-        indices.push_back((uint32_t)vertices.size() - 1);
+        indices.push_back((uint16_t)(vertices.size() - 1));
       }
     }
   }
@@ -338,12 +338,11 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
   }
 
   uint32_t vbSize = (uint32_t)(vertices.size() * sizeof(BgfxSkinnedVertex));
-  uint32_t ibSize = (uint32_t)(indices.size() * sizeof(uint32_t));
+  uint32_t ibSize = (uint32_t)(indices.size() * sizeof(uint16_t));
 
   mb.vbo = bgfx::createVertexBuffer(
       bgfx::copy(vertices.data(), vbSize), s_objSkinnedLayout);
-  mb.ebo = bgfx::createIndexBuffer(
-      bgfx::copy(indices.data(), ibSize), BGFX_BUFFER_INDEX32);
+  mb.ebo = bgfx::createIndexBuffer(bgfx::copy(indices.data(), ibSize));
 
   auto texResult = TextureLoader::ResolveWithInfo(baseDir, mesh.TextureName);
   mb.texture = texResult.textureID;
@@ -1101,11 +1100,11 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     bool isNoriaFlowing = (m_mapId == 3 &&
         (inst.type == 18 || inst.type == 41 || inst.type == 42 || inst.type == 43));
     if (m_mapId == 3 && inst.type == 41) hasUVScroll = true;
-    bool isDungeonWater = (m_mapId == 1 && inst.type >= 22 && inst.type <= 24);
+    bool isDungeonWater = (m_mapId == 1 && inst.type == 22);
     bool disableCullForObj = (m_mapId == 1 &&
         ((inst.type >= 44 && inst.type <= 46) ||
          (inst.type >= 22 && inst.type <= 24) ||
-         inst.type == 11 || inst.type == 53));
+         inst.type == 35 || inst.type == 11 || inst.type == 53));
 
     // Two-pass rendering: opaque meshes first (write depth), then
     // alpha/additive meshes (read depth only).
@@ -1138,6 +1137,7 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       float blendLight = 1.0f;
       float useFog = m_fogEnabled ? 1.0f : 0.0f;
       glm::vec2 texOffset(0.0f);
+      bool isTentacle = (m_mapId == 1 && (inst.type == 23 || inst.type == 24 || inst.type == 35));
 
       // Determine blend state
       uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
@@ -1206,8 +1206,9 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
         state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
         isAdditive = true;
       } else if (mb.noneBlend) {
-        // No blending, opaque
-        state |= BGFX_STATE_CULL_CW;
+        // No blending, opaque — still respect double-sided objects (tentacles etc.)
+        if (!disableCullForObj)
+          state |= BGFX_STATE_CULL_CW;
       } else {
         // Normal mesh: cull backfaces unless alpha or special double-sided
         if (!mb.hasAlpha && !disableCullForObj) {
@@ -1223,7 +1224,8 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       activeShader->setVec4("u_params", glm::vec4(instAlpha, blendLight, 0.0f, 0.0f));
       float cliffFadeFlag = 0.0f;
       float cliffTopH = 0.0f;
-      if (inst.type == 11 && terrainHeightmap.size() >= 256 * 256) {
+      bool needsCliffFade = (inst.type == 11) || isTentacle;
+      if (needsCliffFade && terrainHeightmap.size() >= 256 * 256) {
         cliffFadeFlag = 1.0f;
         float wx = inst.modelMatrix[3][0];
         float wz = inst.modelMatrix[3][2];
@@ -1241,7 +1243,13 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       activeShader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
       activeShader->setVec4("u_viewPos", glm::vec4(cameraPos, 0.0f));
       // w=1.0 enables per-pixel lightmap sampling in shader (smooth across meshes)
-      if (TexValid(m_lightmapTex)) {
+      // Tentacle/steam objects (23,24,35) in dungeon span into void areas where
+      // lightmap RGB is near-zero. Per-pixel sampling makes those fragments
+      // nearly black against the black background. Use per-object uniform instead.
+      if (isTentacle) {
+        glm::vec3 tl = glm::max(inst.terrainLight, glm::vec3(0.50f));
+        activeShader->setVec4("u_terrainLight", glm::vec4(tl, 0.0f));
+      } else if (TexValid(m_lightmapTex)) {
         activeShader->setVec4("u_terrainLight", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
         activeShader->setTexture(2, "s_lightMap", m_lightmapTex);
       } else {

@@ -286,6 +286,21 @@ public:
   void SetPointLights(const std::vector<PointLight> &lights) {
     m_pointLights = lights;
   }
+  // Pet companion dynamic light (soft glow emitter)
+  void GetPetLight(std::vector<glm::vec3> &positions,
+                   std::vector<glm::vec3> &colors,
+                   std::vector<float> &ranges,
+                   std::vector<int> &objectTypes) const {
+    if (!m_pet.active || m_pet.alpha < 0.1f) return;
+    positions.push_back(m_pet.pos);
+    // Guardian Angel = soft white-blue, Imp = warm orange
+    if (m_pet.itemIndex == 0)
+      colors.push_back(glm::vec3(0.45f, 0.50f, 0.65f));
+    else
+      colors.push_back(glm::vec3(0.65f, 0.40f, 0.18f));
+    ranges.push_back(350.0f);
+    objectTypes.push_back(0);
+  }
   void SetLuminosity(float l) { m_luminosity = l; }
   void SetMapId(int mapId) { m_mapId = mapId; }
   void SetPoisoned(bool p) { m_poisoned = p; }
@@ -596,18 +611,20 @@ private:
     float animFrame = 0.0f;        // BMD animation frame
     float sparkTimer = 0.0f;       // Spark particle spawn timer
     int blendMesh = -1;            // Additive mesh Texture index (wings)
-    // Main 5.2 GOBoid.cpp: Direction-vector movement
-    float dirAngle = 0.0f;         // Current movement direction (radians)
-    float speed = 0.0f;            // Current forward speed (units/tick)
-    float heightVel = 0.0f;        // Vertical velocity for bobbing
+    // Polar orbit system: pet circles character at smooth angular velocity
+    glm::vec3 orbitCenter{0.0f};   // Smoothed follow point (trails behind character)
+    float orbitAngle = 0.0f;       // Current angle around orbit center (radians)
+    float orbitSpeed = 0.3f;       // Angular velocity (radians/sec, + = CCW)
+    float orbitSpeedTarget = 0.3f; // Target angular velocity (smooth lerp)
+    float orbitRadius = 120.0f;    // Current distance from orbit center
+    float orbitHeight = 0.0f;      // Current height offset (smoothed)
+    float orbitHeightTarget = 0.0f;// Target height offset
+    float bobPhase = 0.0f;        // Sine wave phase for gentle vertical bob
     float facing = 0.0f;           // Visual facing angle (yaw, radians)
     float pitch = 0.0f;            // Vertical tilt toward character head (radians)
-    float tickAccum = 0.0f;        // Accumulates dt for tick-based logic
-    glm::vec3 lastOwnerPos{0.0f};  // Previous frame owner position (for follow delta)
-    float followDelay = 0.0f;      // Reaction delay before chasing (seconds)
-    bool wasOwnerMoving = false;    // Previous frame owner movement state
-    float idleTime = 0.0f;          // Time spent idle (seconds) — gates wander
-    float modelRadius = 50.0f;      // Bounding sphere radius (scaled) — drives follow distances
+    float sparkAccum = 0.0f;       // Spark particle timer
+    float decisionTimer = 0.0f;    // Timer for orbit behavior changes
+    float modelRadius = 50.0f;     // Bounding sphere radius (scaled)
   };
   PetCompanion m_pet;
 

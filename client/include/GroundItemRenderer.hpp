@@ -4,6 +4,7 @@
 #include "ClientTypes.hpp"
 #include <glm/glm.hpp>
 #include <map>
+#include <vector>
 
 struct ImDrawList;
 struct ImFont;
@@ -47,6 +48,9 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
                   int winW, int winH, const glm::vec3 &camPos,
                   int hoveredGroundItem,
                   const std::map<int16_t, ClientItemDefinition> &itemDefs);
+// Update sparkle timers; returns positions needing FLARE particle spawn
+void UpdateSparkleTimers(GroundItem *items, int maxItems, float deltaTime,
+                         std::vector<glm::vec3> &outPositions);
 // Render blob shadows for all active ground items (call before RenderModels)
 void RenderShadows(GroundItem *items, int maxItems, const glm::mat4 &view,
                    const glm::mat4 &proj);

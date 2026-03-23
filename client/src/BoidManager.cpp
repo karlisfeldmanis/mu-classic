@@ -189,6 +189,39 @@ void BoidManager::Init(const std::string &dataPath) {
     std::cerr << "[Boid] Failed to load Fish01.bmd" << std::endl;
   }
 
+  // Load rat model: Data/Object2/Rat01.bmd (dungeon ground critter)
+  std::string ratPath = dataPath + "/Object2/Rat01.bmd";
+  auto ratBmd = BMDParser::Parse(ratPath);
+  if (ratBmd) {
+    m_ratBmd = std::move(ratBmd);
+    std::string texDir = dataPath + "/Object2/";
+    m_ratBones = ComputeBoneMatrices(m_ratBmd.get());
+    AABB aabb{};
+    for (auto &mesh : m_ratBmd->Meshes) {
+      UploadMeshWithBones(mesh, texDir, m_ratBones, m_ratMeshes, aabb, true);
+    }
+
+    int totalVerts = 0;
+    for (auto &mesh : m_ratBmd->Meshes) {
+      for (int i = 0; i < mesh.NumTriangles; ++i) {
+        totalVerts += (mesh.Triangles[i].Polygon == 4) ? 6 : 3;
+      }
+    }
+    if (totalVerts > 0) {
+      bgfx::VertexLayout shadowLayout;
+      shadowLayout.begin().add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float).end();
+      m_ratShadow.vbo = bgfx::createDynamicVertexBuffer(
+          totalVerts, shadowLayout, BGFX_BUFFER_ALLOW_RESIZE);
+    }
+    m_ratShadow.vertexCount = totalVerts;
+
+    std::cout << "[Boid] Loaded Rat01.bmd (" << m_ratBmd->Bones.size()
+              << " bones, " << m_ratBmd->Meshes.size() << " meshes)"
+              << std::endl;
+  } else {
+    std::cerr << "[Boid] Failed to load Rat01.bmd" << std::endl;
+  }
+
   // Load butterfly model: Data/Object1/Butterfly01.bmd (Noria ambient)
   std::string bflyPath = dataPath + "/Object1/Butterfly01.bmd";
   auto bflyBmd = BMDParser::Parse(bflyPath);
@@ -238,6 +271,8 @@ void BoidManager::Init(const std::string &dataPath) {
   }
   for (auto &f : m_fishs)
     f.live = false;
+  for (auto &r : m_rats)
+    r.live = false;
 
   // ── Falling leaves (Main 5.2: ZzzEffectFireLeave.cpp) ──────────────
   m_leafShader = Shader::Load("vs_leaf.bin", "fs_leaf.bin");
@@ -656,6 +691,104 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
   }
 }
 
+// ── Rat AI (Main 5.2: GOBoid.cpp MoveFishs — dungeon ground critters) ──
+
+void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
+  if (!m_ratBmd)
+    return;
+
+  for (int i = 0; i < MAX_RATS; ++i) {
+    Fish &r = m_rats[i];
+
+    // Spawn new rat — delay spawning so they don't all appear at once
+    if (!r.live) {
+      // ~2% chance per frame = average ~0.8s at 60fps before spawn attempt
+      if (rand() % 50 != 0)
+        continue;
+      float spawnX = heroPos.x + (float)(rand() % 1024 - 512);
+      float spawnZ = heroPos.z + (float)(rand() % 1024 - 512);
+
+      // Only spawn on walkable terrain (not void)
+      uint8_t attr = getTerrainAttribute(spawnX, spawnZ);
+      if (attr & 0x08) // TW_NOGROUND
+        continue;
+
+      r = Fish{};
+      r.live = true;
+      r.alpha = 0.0f;
+      r.alphaTarget = 1.0f;
+      r.scale = (float)(rand() % 4 + 4) * 0.1f; // 0.4-0.7
+      r.velocity = 0.6f / r.scale;
+      r.subType = 0;
+      r.lifetime = rand() % 128;
+      r.action = 0;
+      r.position.x = spawnX;
+      r.position.z = spawnZ;
+      r.position.y = getTerrainHeight(spawnX, spawnZ);
+      r.angle = glm::vec3(0.0f, 0.0f, (float)(rand() % 360));
+      continue;
+    }
+
+    // Animate
+    if (r.action >= 0 && r.action < (int)m_ratBmd->Actions.size()) {
+      int numKeys = m_ratBmd->Actions[r.action].NumAnimationKeys;
+      if (numKeys > 1) {
+        r.animFrame += r.velocity * 0.5f * dt * 25.0f;
+        if (r.animFrame >= (float)numKeys)
+          r.animFrame = std::fmod(r.animFrame, (float)numKeys);
+      }
+    }
+
+    // Move: scurry forward, snap to terrain height
+    // Main 5.2: GOBoid.cpp MoveFishs — Position[0]+=sin(Angle)*vel, Position[1]+=cos(Angle)*vel
+    float rad = glm::radians(r.angle.z);
+    float speed = r.velocity * 7.0f; // Constant speed (no per-frame rand jitter)
+    r.position.x += speed * std::sin(rad) * dt * 25.0f;
+    r.position.z += speed * std::cos(rad) * dt * 25.0f;
+    r.position.y = getTerrainHeight(r.position.x, r.position.z);
+
+    // Check if walked into void — reverse direction
+    uint8_t attr = getTerrainAttribute(r.position.x, r.position.z);
+    if (attr & 0x08) {
+      r.angle.z += 180.0f;
+      if (r.angle.z >= 360.0f)
+        r.angle.z -= 360.0f;
+      r.subType++;
+    } else {
+      // Main 5.2: decrement subType when moving freely (recovers from wall hits)
+      if (r.subType > 0)
+        r.subType--;
+      // Random direction change (less frequent for smoother movement)
+      if (rand() % 64 == 0)
+        r.angle.z += (float)(rand() % 40 - 20);
+    }
+
+    // Main 5.2: despawn if stuck (subType >= 2, not 3)
+    if (r.subType >= 2)
+      r.live = false;
+
+    // Distance despawn
+    float dx = r.position.x - heroPos.x;
+    float dz = r.position.z - heroPos.z;
+    float range = std::sqrt(dx * dx + dz * dz);
+    if (range >= 1500.0f)
+      r.live = false;
+
+    // Random sound (Main 5.2: rand()%256 == 0, <600 units)
+    if (range < 600.0f && rand() % 256 == 0) {
+      SoundManager::Play3D(SOUND_MOUSE01, r.position.x, r.position.y, r.position.z);
+    }
+
+    // Lifetime and random despawn
+    r.lifetime--;
+    if (r.lifetime <= -200 || rand() % 512 == 0)
+      r.live = false;
+
+    // Alpha fade
+    alphaFade(r.alpha, r.alphaTarget, dt);
+  }
+}
+
 // ── Butterfly movement (Main 5.2: GOBoid.cpp MoveButterFly lines 926-944) ──
 // Main 5.2: MoveButterFly (GOBoid.cpp:926-946) + MoveBoidGroup integration
 // All logic is per-tick (25fps). We accumulate dt and run discrete ticks.
@@ -1026,8 +1159,9 @@ void BoidManager::Update(float deltaTime, const glm::vec3 &heroPos,
     updateFishs(deltaTime, heroPos);
     updateLeaves(deltaTime, heroPos);
   } else if (m_mapId == 1) {
-    // Dungeon: bats only (no birds, fish, or leaves underground)
+    // Dungeon: bats (flying) and rats (ground critters)
     updateBats(deltaTime, heroPos);
+    updateRats(deltaTime, heroPos);
   } else if (m_mapId == 2) {
     // Devias: falling snow (Main 5.2: CreateDeviasSnow)
     updateSnow(deltaTime, heroPos);
@@ -1217,6 +1351,50 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
   }
 }
 
+void BoidManager::renderRat(const Fish &r, const glm::mat4 &view,
+                              const glm::mat4 &proj, const glm::vec3 &eye) {
+  if (!r.live || r.alpha <= 0.001f || !m_ratBmd)
+    return;
+
+  auto bones = ComputeBoneMatricesInterpolated(m_ratBmd.get(), r.action,
+                                                r.animFrame);
+  for (int mi = 0; mi < (int)m_ratMeshes.size() && mi < (int)m_ratBmd->Meshes.size(); ++mi) {
+    RetransformMeshWithBones(m_ratBmd->Meshes[mi], bones, m_ratMeshes[mi]);
+  }
+
+  glm::mat4 model = glm::translate(glm::mat4(1.0f), r.position);
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+  model = glm::rotate(model, glm::radians(90.0f + r.angle.z), glm::vec3(0, 0, 1));
+  model = glm::scale(model, glm::vec3(r.scale));
+
+  glm::vec3 tLight = sampleTerrainLight(r.position);
+  for (auto &mb : m_ratMeshes) {
+    if (mb.indexCount == 0 || mb.hidden) continue;
+    bgfx::setTransform(glm::value_ptr(model));
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
+    bgfx::setIndexBuffer(mb.ebo);
+    m_shader->setTexture(0, "s_texColor", mb.texture);
+    m_shader->setVec4("u_params", glm::vec4(r.alpha, 1.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_fogParams", glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_fogColor", glm::vec4(0.117f, 0.078f, 0.039f, 0.0f));
+    uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                   | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
+                   | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+    bgfx::setState(state);
+    bgfx::submit(0, m_shader->program);
+  }
+}
+
 void BoidManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
                           const glm::vec3 &camPos) {
   if (!m_shader)
@@ -1230,6 +1408,8 @@ void BoidManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   } else if (m_mapId == 1) {
     for (int i = 0; i < MAX_BATS; ++i)
       renderBat(m_bats[i], view, proj, camPos);
+    for (int i = 0; i < MAX_RATS; ++i)
+      renderRat(m_rats[i], view, proj, camPos);
   } else if (m_mapId == 3) {
     for (int i = 0; i < MAX_BUTTERFLIES; ++i)
       renderButterfly(m_butterflies[i], view, proj, camPos);

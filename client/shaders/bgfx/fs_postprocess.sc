@@ -17,11 +17,22 @@ void main()
     color = min(color, vec3_splat(1.5));
     color *= u_ppTint.xyz;
 
-    // Brightness lift, contrast boost, saturation
-    color = pow(color, vec3_splat(0.88));  // Gamma lift — brightens midtones
+    // Gamma lift — brighten midtones
+    color = pow(color, vec3_splat(0.86));
+
+    // Saturation boost (+45%)
     float lum = dot(color, vec3(0.2126, 0.7152, 0.0722));
-    color = mix(vec3_splat(lum), color, 1.2);  // +20% saturation
-    color = (color - 0.5) * 1.08 + 0.5;  // Mild contrast boost
+    color = mix(vec3_splat(lum), color, 1.45);
+
+    // S-curve contrast (cinematic, preserves shadows/highlights better than linear)
+    color = clamp(color, vec3_splat(0.0), vec3_splat(1.0));
+    color = color * color * (3.0 - 2.0 * color); // Hermite smoothstep S-curve
+
+    // Subtle shadow/highlight color split: warm highlights, cool shadows
+    vec3 warmShift = vec3(1.04, 1.01, 0.96);  // warm orange tint
+    vec3 coolShift = vec3(0.96, 0.98, 1.06);  // cool blue tint
+    vec3 tinted = color * mix(coolShift, warmShift, vec3_splat(lum));
+    color = mix(color, tinted, 0.35);
 
     // Vignette
     if (u_ppComposite.y > 0.001) {

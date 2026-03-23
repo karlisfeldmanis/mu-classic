@@ -146,11 +146,10 @@ void HandleCharCreate(Session &session, const std::vector<uint8_t> &packet,
     printf("[CharSelect] DW '%s' auto-learned & equipped Energy Ball (skill 17)\n", name);
   }
 
-  // DK (class 16) starts with Small Axe (cat=1,idx=0) + Small Shield (cat=6,idx=0)
+  // DK (class 16) starts with Small Axe (cat=1,idx=0) only — no shield
   if (classCode == 16) {
     db.UpdateEquipment(charId, 0, 1, 0, 0); // Right hand: Small Axe
-    db.UpdateEquipment(charId, 1, 6, 0, 0); // Left hand: Small Shield
-    printf("[CharSelect] DK '%s' equipped Small Axe + Small Shield\n", name);
+    printf("[CharSelect] DK '%s' equipped Small Axe\n", name);
   }
 
   // ELF (class 32) starts with Short Bow (cat=4,idx=0) + Arrows (cat=4,idx=15)

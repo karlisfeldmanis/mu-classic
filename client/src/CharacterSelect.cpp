@@ -1364,6 +1364,9 @@ void SetCharacterList(const CharSlot *slots, int count) {
     CleanupMeshBuffers(s_slotRender[i].wingMeshes);
     s_slotRender[i].wingBmd.reset();
     s_slotRender[i].wingLocalBones.clear();
+    // Reset emote animation state to prevent carryover from gameplay
+    s_slotRender[i].emotePlaying = false;
+    s_slotRender[i].emoteBlend = 0.0f;
   }
   s_slotCount = std::min(count, MAX_SLOTS);
 
@@ -1997,8 +2000,13 @@ void Render(int windowWidth, int windowHeight) {
 
   // ── Bottom button bar (hidden during character creation) ──
   if (!s_createOpen) {
-  float btnW = 100, btnH = 36, btnGap = 8;
-  float btnY = windowHeight - 55.0f;
+  float W = (float)windowWidth, H = (float)windowHeight;
+  // Scale buttons proportional to window height (FontGlobalScale handles text)
+  float btnScale = std::max(1.0f, H / 768.0f);
+  float btnW = 80 * btnScale, btnH = 30 * btnScale, btnGap = 8 * btnScale;
+  float btnPad = 10.0f * btnScale;
+  float btnMargin = 30.0f * btnScale; // Distance from bottom edge
+  float btnY = windowHeight - btnMargin - btnH;
   const ImGuiWindowFlags kBtnFlags =
       ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground |
       ImGuiWindowFlags_NoScrollbar;
@@ -2014,8 +2022,8 @@ void Render(int windowWidth, int windowHeight) {
   ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.86f, 0.84f, 0.78f, 0.94f));
 
   // Left buttons: [Create] [Exit]
-  ImGui::SetNextWindowPos(ImVec2(10, btnY - 5));
-  ImGui::SetNextWindowSize(ImVec2(btnW * 2 + btnGap + 20, btnH + 10));
+  ImGui::SetNextWindowPos(ImVec2(btnPad, btnY));
+  ImGui::SetNextWindowSize(ImVec2(btnW * 2 + btnGap + btnPad * 2, btnH + btnPad));
   ImGui::Begin("##CSBtnLeft", nullptr, kBtnFlags);
   if (ImGui::Button("Create", ImVec2(btnW, btnH))) {
     SoundManager::Play(SOUND_CLICK01);
@@ -2045,9 +2053,9 @@ void Render(int windowWidth, int windowHeight) {
   // Right buttons: [Connect] [Delete] — only shown when a character is selected
   bool hasSelection = (s_selectedSlot >= 0 && s_slots[s_selectedSlot].occupied);
   if (hasSelection) {
-    float rightX = windowWidth - 10.0f - btnW * 2 - btnGap - 20;
-    ImGui::SetNextWindowPos(ImVec2(rightX, btnY - 5));
-    ImGui::SetNextWindowSize(ImVec2(btnW * 2 + btnGap + 20, btnH + 10));
+    float rightX = windowWidth - btnPad - btnW * 2 - btnGap - btnPad * 2;
+    ImGui::SetNextWindowPos(ImVec2(rightX, btnY));
+    ImGui::SetNextWindowSize(ImVec2(btnW * 2 + btnGap + btnPad * 2, btnH + btnPad));
     ImGui::Begin("##CSBtnRight", nullptr, kBtnFlags);
     if (ImGui::Button("Connect", ImVec2(btnW, btnH))) {
       SoundManager::Play(SOUND_MENU01);
@@ -2069,10 +2077,10 @@ void Render(int windowWidth, int windowHeight) {
   {
     bool isFull = glfwGetWindowMonitor(s_ctx.window) != nullptr;
     const char *fsLabel = isFull ? "Windowed" : "Full Screen";
-    float fsBtnW = 110;
-    float fsX = (windowWidth - fsBtnW) * 0.5f - 10;
-    ImGui::SetNextWindowPos(ImVec2(fsX, btnY - 5));
-    ImGui::SetNextWindowSize(ImVec2(fsBtnW + 20, btnH + 10));
+    float fsBtnW = 90 * btnScale;
+    float fsX = (windowWidth - fsBtnW) * 0.5f - btnPad;
+    ImGui::SetNextWindowPos(ImVec2(fsX, btnY));
+    ImGui::SetNextWindowSize(ImVec2(fsBtnW + btnPad * 2, btnH + btnPad));
     ImGui::Begin("##CSBtnFS", nullptr, kBtnFlags);
     if (ImGui::Button(fsLabel, ImVec2(fsBtnW, btnH))) {
       SoundManager::Play(SOUND_CLICK01);

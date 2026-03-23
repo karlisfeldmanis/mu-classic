@@ -641,6 +641,15 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
             }
           }
         }
+        if (!lhPlaced) {
+          // CRITICAL: left-hand item would be lost! Reject entire 2H equip.
+          // At this point bag hasn't been modified yet, so just return.
+          printf("[Character] REJECTED 2H equip: no bag space for left-hand "
+                 "item def=%d\n", lhDef);
+          SendEquipment(session, db, charId);
+          InventoryHandler::SendInventorySync(session);
+          return;
+        }
         db.UpdateEquipment(charId, 1, 0xFF, 0, 0);
         session.equipment[1].category = 0xFF;
         printf("[Character] Auto-unequipped left hand (def=%d) for 2H weapon\n",
@@ -779,8 +788,38 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
     }
 
     if (!placed) {
-      printf("[Character] WARNING: No bag space for unequipped item def=%d\n",
-             oDef);
+      // CRITICAL: item would be lost! Reject entire operation — restore old equipment
+      printf("[Character] REJECTED equip: no bag space for unequipped item "
+             "def=%d, restoring equipment\n", oDef);
+      // Restore old equipment in DB
+      db.UpdateEquipment(charId, eq->slot, oldCat, oldIdx, oldLvl, oldQty);
+      // Restore bag: put the new item back (if it was taken from bag)
+      if (eq->category != 0xFF && freedSlot >= 0) {
+        int16_t nDef = (int16_t)((int)eq->category * 32 + (int)eq->itemIndex);
+        auto nDefI = db.GetItemDefinition(nDef);
+        int nw = nDefI.width > 0 ? nDefI.width : 1;
+        int nh = nDefI.height > 0 ? nDefI.height : 1;
+        int fr = freedSlot / 8, fc = freedSlot % 8;
+        for (int hh = 0; hh < nh; hh++) {
+          for (int ww = 0; ww < nw; ww++) {
+            int s = (fr + hh) * 8 + (fc + ww);
+            if (s < 64) {
+              session.bag[s].occupied = true;
+              session.bag[s].primary = (hh == 0 && ww == 0);
+              session.bag[s].defIndex = nDef;
+              if (hh == 0 && ww == 0) {
+                session.bag[s].quantity = newItemQty;
+                session.bag[s].itemLevel = eq->itemLevel;
+              }
+            }
+          }
+        }
+        db.SaveCharacterInventory(charId, nDef, newItemQty, eq->itemLevel,
+                                  (uint8_t)freedSlot);
+      }
+      SendEquipment(session, db, charId);
+      InventoryHandler::SendInventorySync(session);
+      return;
     }
   }
 

@@ -208,6 +208,9 @@ int PickMonster(GLFWwindow *window, double mouseX, double mouseY) {
     // Skip own summon — allow clicking through to monsters behind it
     if (s_monsters->IsOwnSummon(i))
       continue;
+    // Traps (KIND_TRAP) cannot be targeted by clicking
+    if (info.type >= 100 && info.type <= 102)
+      continue;
     float r = info.radius * 1.2f;
     float yMin = info.position.y;
     float yMax = info.position.y + info.height;
