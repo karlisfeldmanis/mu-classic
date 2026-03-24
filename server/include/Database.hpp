@@ -109,11 +109,12 @@ struct ItemDefinition {
 };
 
 struct EquipmentSlot {
-  uint8_t slot = 0;      // EquipSlot
-  uint8_t category = 0;  // ItemCategory
-  uint8_t itemIndex = 0; // Index within category
-  uint8_t itemLevel = 0; // +0 to +15 enhancement
-  uint8_t quantity = 0;  // Stack count (arrows/bolts)
+  uint8_t slot = 0;         // EquipSlot
+  uint8_t category = 0;     // ItemCategory
+  uint8_t itemIndex = 0;    // Index within category
+  uint8_t itemLevel = 0;    // +0 to +15 enhancement
+  uint8_t quantity = 0;     // Stack count (arrows/bolts)
+  uint8_t optionFlags = 0;  // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
 };
 
 struct ItemDropInfo {
@@ -173,13 +174,14 @@ public:
   void SeedItemDefinitions();
   ItemDefinition GetItemDefinition(uint8_t category, uint8_t itemIndex);
   ItemDefinition GetItemDefinition(int id);
+  std::vector<ItemDefinition> GetAllItemDefinitions();
   std::vector<ItemDropInfo> GetItemsByLevelRange(int minLevel, int maxLevel);
   std::vector<EquipmentSlot> GetCharacterEquipment(int characterId);
   void SeedDefaultEquipment(int characterId);
 
   void UpdateEquipment(int characterId, uint8_t slot, uint8_t category,
                        uint8_t itemIndex, uint8_t itemLevel,
-                       uint8_t quantity = 0);
+                       uint8_t quantity = 0, uint8_t optionFlags = 0);
 
   // Inventory bag (8x8 grid of picked-up items)
   struct InventorySlotData {
@@ -187,11 +189,12 @@ public:
     int16_t defIndex;
     uint8_t quantity;
     uint8_t itemLevel;
+    uint8_t optionFlags = 0;
   };
   std::vector<InventorySlotData> GetCharacterInventory(int characterId);
   void SaveCharacterInventory(int characterId, int16_t defIndex,
                               uint8_t quantity, uint8_t itemLevel,
-                              uint8_t slot);
+                              uint8_t slot, uint8_t optionFlags = 0);
   void ClearCharacterInventory(int characterId);
   void DeleteCharacterInventoryItem(int characterId, uint8_t slot);
   void DeleteCharacterInventoryAll(int characterId);
@@ -217,6 +220,28 @@ public:
   std::vector<QuestProgress> LoadAllQuestProgress(int characterId);
   void SaveQuestProgress(int characterId, int questId, int kc0, int kc1, int kc2, bool completed);
   void DeleteQuestProgress(int characterId, int questId);
+
+  // Quest definitions (DB-driven)
+  struct QuestTargetData {
+    uint8_t monsterType = 0;
+    uint8_t killsRequired = 0;
+  };
+  struct QuestRewardData {
+    int16_t defIndex = -1;
+    uint8_t itemLevel = 0;
+  };
+  struct QuestDefData {
+    int questId = 0;
+    uint16_t guardNpcType = 0;
+    std::string questName;
+    std::string location;
+    std::string loreText;
+    int targetCount = 0;
+    QuestTargetData targets[3];
+    QuestRewardData classReward[4][2]; // [classIdx][rewardSlot]
+  };
+  void SeedQuests();
+  std::vector<QuestDefData> LoadAllQuests();
 
   // Chat log persistence
   struct ChatLogEntry {

@@ -111,6 +111,8 @@ void Database::CreateTables() {
     printf("[DB] CreateTables error: %s\n", err);
     sqlite3_free(err);
   }
+  // Migration: add option_flags column if it doesn't exist
+  sqlite3_exec(m_db, "ALTER TABLE character_equipment ADD COLUMN option_flags INTEGER DEFAULT 0", nullptr, nullptr, nullptr);
 
   // Inventory bag table
   const char *invSql = R"(
@@ -130,6 +132,8 @@ void Database::CreateTables() {
     printf("[DB] character_inventory create error: %s\n", invErr);
     sqlite3_free(invErr);
   }
+  // Migration: add option_flags column if it doesn't exist
+  sqlite3_exec(m_db, "ALTER TABLE character_inventory ADD COLUMN option_flags INTEGER DEFAULT 0", nullptr, nullptr, nullptr);
 
   // Migration: add level_up_points column to existing databases
   sqlite3_exec(
@@ -279,6 +283,40 @@ void Database::CreateTables() {
   sqlite3_exec(m_db,
       "ALTER TABLE characters ADD COLUMN buff_dmg_value INTEGER DEFAULT 0",
       nullptr, nullptr, nullptr);
+
+  // Quest definition tables (DB-driven quest system)
+  const char *questDefSql = R"(
+        CREATE TABLE IF NOT EXISTS quest_definitions (
+            quest_id INTEGER PRIMARY KEY,
+            guard_npc_type INTEGER NOT NULL,
+            quest_name TEXT NOT NULL,
+            location TEXT NOT NULL DEFAULT '',
+            lore_text TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS quest_targets (
+            quest_id INTEGER NOT NULL,
+            target_index INTEGER NOT NULL,
+            monster_type INTEGER NOT NULL,
+            kills_required INTEGER NOT NULL,
+            PRIMARY KEY (quest_id, target_index),
+            FOREIGN KEY (quest_id) REFERENCES quest_definitions(quest_id)
+        );
+        CREATE TABLE IF NOT EXISTS quest_rewards (
+            quest_id INTEGER NOT NULL,
+            class_index INTEGER NOT NULL,
+            reward_slot INTEGER NOT NULL,
+            def_index INTEGER NOT NULL DEFAULT -1,
+            item_level INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (quest_id, class_index, reward_slot),
+            FOREIGN KEY (quest_id) REFERENCES quest_definitions(quest_id)
+        );
+    )";
+  char *questDefErr = nullptr;
+  if (sqlite3_exec(m_db, questDefSql, nullptr, nullptr, &questDefErr) !=
+      SQLITE_OK) {
+    printf("[DB] quest_definitions create error: %s\n", questDefErr);
+    sqlite3_free(questDefErr);
+  }
 }
 
 void Database::CreateDefaultAccount() {
@@ -1015,18 +1053,18 @@ void Database::SeedItemDefinitions() {
             (4, 13, 'Bluewing Crossbow', 'CrossBow06.bmd', 68, 68, 82, 0, 40, 0, 2, 3, 40, 110, 0, 0, 4),
             (4, 14, 'Aquagold Crossbow', 'CrossBow07.bmd', 72, 78, 92, 0, 30, 0, 2, 3, 50, 130, 0, 0, 4),
             (4, 15, 'Arrows', 'Arrows02.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 4),
-            (4, 16, 'Saint Crossbow', 'CrossBow08.bmd', 83, 90, 108, 0, 35, 0, 2, 3, 50, 130, 0, 0, 4),
+            (4, 16, 'Saint Crossbow', 'CrossBow17.bmd', 83, 90, 108, 0, 35, 0, 2, 3, 50, 130, 0, 0, 4),
 
             -- Category 5: Staves (OpenMU 0.95d Weapons.cs)
             (5, 0, 'Skull Staff', 'Staff01.bmd', 6, 3, 4, 0, 20, 0, 1, 3, 40, 0, 0, 0, 1),
-            (5, 1, 'Angelic Staff', 'Staff02.bmd', 18, 10, 12, 0, 25, 0, 2, 3, 50, 0, 0, 0, 1),
-            (5, 2, 'Serpent Staff', 'Staff03.bmd', 30, 17, 18, 0, 25, 0, 2, 3, 50, 0, 0, 0, 1),
-            (5, 3, 'Thunder Staff', 'Staff04.bmd', 42, 23, 25, 0, 25, 0, 2, 4, 40, 10, 0, 0, 1),
-            (5, 4, 'Gorgon Staff', 'Staff05.bmd', 52, 29, 32, 0, 25, 0, 2, 4, 60, 0, 0, 0, 1),
+            (5, 1, 'Angelic Staff', 'Staff02.bmd', 18, 10, 12, 0, 25, 1, 2, 3, 50, 0, 0, 0, 1),
+            (5, 2, 'Serpent Staff', 'Staff03.bmd', 30, 17, 18, 0, 25, 1, 2, 3, 50, 0, 0, 0, 1),
+            (5, 3, 'Thunder Staff', 'Staff04.bmd', 42, 23, 25, 0, 25, 1, 2, 4, 40, 10, 0, 0, 1),
+            (5, 4, 'Gorgon Staff', 'Staff05.bmd', 52, 29, 32, 0, 25, 1, 2, 4, 60, 0, 0, 0, 1),
             (5, 5, 'Legendary Staff', 'Staff06.bmd', 59, 29, 31, 0, 25, 0, 1, 4, 50, 0, 0, 0, 1),
             (5, 6, 'Staff of Resurrection', 'Staff07.bmd', 70, 35, 39, 0, 25, 0, 1, 4, 60, 10, 0, 0, 1),
-            (5, 7, 'Chaos Lightning Staff', 'Staff08.bmd', 75, 47, 48, 0, 30, 0, 2, 4, 60, 10, 0, 0, 1),
-            (5, 8, 'Staff of Destruction', 'Staff09.bmd', 90, 55, 60, 0, 35, 0, 2, 4, 60, 10, 0, 0, 9),
+            (5, 7, 'Chaos Lightning Staff', 'Staff08.bmd', 75, 47, 48, 0, 30, 1, 2, 4, 60, 10, 0, 0, 1),
+            (5, 8, 'Staff of Destruction', 'Staff09.bmd', 90, 55, 60, 0, 35, 1, 2, 4, 60, 10, 0, 0, 9),
 
             -- Category 6: Shields (OpenMU v0.75)
             (6, 0, 'Small Shield', 'Shield01.bmd', 3, 0, 0, 3, 0, 0, 2, 2, 70, 0, 0, 0, 15),
@@ -1180,20 +1218,21 @@ void Database::SeedItemDefinitions() {
             (13, 13, 'Pendant of Fire', 'Necklace02.bmd', 13, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
 
             -- Category 14: Consumables (Potions & Jewels — OpenMU 0.97d)
-            (14, 0, 'Apple', 'Apple.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 1, 'Small Healing Potion', 'Potion01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 2, 'Medium Healing Potion', 'Potion02.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 3, 'Large Healing Potion', 'Potion03.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 4, 'Small Mana Potion', 'Potion04.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 5, 'Medium Mana Potion', 'Potion05.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 6, 'Large Mana Potion', 'Potion06.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            -- Main 5.2: MODEL_POTION+i → Potion(i+1).bmd
+            (14, 0, 'Apple', 'Potion01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 1, 'Small Healing Potion', 'Potion02.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 2, 'Medium Healing Potion', 'Potion03.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 3, 'Large Healing Potion', 'Potion04.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 4, 'Small Mana Potion', 'Potion05.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 5, 'Medium Mana Potion', 'Potion06.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 6, 'Large Mana Potion', 'Potion07.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
             (14, 8, 'Antidote', 'Antidote01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 9, 'Ale', 'Potion09.bmd', 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 15),
+            (14, 9, 'Ale', 'Beer01.bmd', 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 15),
             (14, 10, 'Town Portal Scroll', 'Scroll01.bmd', 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 15),
-            (14, 13, 'Jewel of Bless', 'Jewel02.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 14, 'Jewel of Soul', 'Jewel03.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 16, 'Jewel of Life', 'Jewel04.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
-            (14, 22, 'Jewel of Creation', 'Jewel05.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 13, 'Jewel of Bless', 'Jewel01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 14, 'Jewel of Soul', 'Jewel02.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 16, 'Jewel of Life', 'Jewel03.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (14, 22, 'Jewel of Creation', 'Jewel03.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
 
              -- Category 15: Scrolls (Dark Wizard — Research confirmed: BookXX.bmd)
              (15, 10, 'Scroll of Power Wave', 'Book11.bmd', 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0, 56, 1),
@@ -1236,57 +1275,57 @@ void Database::SeedItemDefinitions() {
 
             -- Missing Staffs (5)
             (5, 9, 'Dragon Soul Staff', 'Staff10.bmd', 100, 46, 48, 0, 30, 0, 1, 4, 52, 16, 0, 0, 1),
-            (5, 10, 'Staff of Imperial', 'Staff11.bmd', 104, 50, 53, 0, 30, 0, 2, 4, 36, 4, 0, 0, 1),
-            (5, 11, 'Divine Staff of Archangel', 'Staff12.bmd', 104, 53, 55, 0, 20, 0, 2, 4, 36, 4, 0, 0, 1),
+            (5, 10, 'Staff of Imperial', 'Staff11.bmd', 104, 50, 53, 0, 30, 1, 2, 4, 36, 4, 0, 0, 1),
+            (5, 11, 'Divine Staff of Archangel', 'Staff12.bmd', 104, 53, 55, 0, 20, 1, 2, 4, 36, 4, 0, 0, 1),
 
             -- Missing Shields (6)
             (6, 15, 'Grand Soul Shield', 'Shield16.bmd', 74, 0, 0, 55, 0, 0, 2, 3, 70, 23, 0, 0, 1),
             (6, 16, 'Elemental Shield', 'Shield17.bmd', 78, 0, 0, 58, 0, 0, 2, 3, 50, 110, 0, 0, 4),
 
-            -- Missing Helms (7)
-            (7, 15, 'Storm Crow Helm', 'HelmMale11.bmd', 72, 0, 0, 50, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (7, 16, 'Black Dragon Helm', 'HelmMale12.bmd', 82, 0, 0, 55, 0, 0, 2, 2, 170, 60, 0, 0, 2),
-            (7, 17, 'Dark Phoenix Helm', 'HelmMale13.bmd', 92, 0, 0, 60, 0, 0, 2, 2, 205, 62, 0, 0, 10),
-            (7, 18, 'Grand Soul Helm', 'HelmClass10.bmd', 81, 0, 0, 48, 0, 0, 2, 2, 59, 20, 0, 0, 1),
-            (7, 19, 'Divine Helm', 'HelmClass11.bmd', 85, 0, 0, 52, 0, 0, 2, 2, 50, 110, 0, 0, 4),
-            (7, 20, 'Thunder Hawk Helm', 'HelmMale14.bmd', 88, 0, 0, 54, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (7, 21, 'Great Dragon Helm', 'HelmMale15.bmd', 104, 0, 0, 66, 0, 0, 2, 2, 200, 58, 0, 0, 10),
+            -- Higher-tier Helms (7) — Main 5.2: index N → XMale(N+1).bmd
+            (7, 15, 'Storm Crow Helm', 'HelmMale17.bmd', 72, 0, 0, 50, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (7, 16, 'Black Dragon Helm', 'HelmMale17.bmd', 82, 0, 0, 55, 0, 0, 2, 2, 170, 60, 0, 0, 2),
+            (7, 17, 'Dark Phoenix Helm', 'HelmMale18.bmd', 92, 0, 0, 60, 0, 0, 2, 2, 205, 62, 0, 0, 10),
+            (7, 18, 'Grand Soul Helm', 'HelmMale19.bmd', 81, 0, 0, 48, 0, 0, 2, 2, 59, 20, 0, 0, 1),
+            (7, 19, 'Divine Helm', 'HelmMale20.bmd', 85, 0, 0, 52, 0, 0, 2, 2, 50, 110, 0, 0, 4),
+            (7, 20, 'Thunder Hawk Helm', 'HelmMale22.bmd', 88, 0, 0, 54, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (7, 21, 'Great Dragon Helm', 'HelmMale23.bmd', 104, 0, 0, 66, 0, 0, 2, 2, 200, 58, 0, 0, 10),
 
-            -- Missing Armors (8)
-            (8, 15, 'Storm Crow Armor', 'ArmorMale11.bmd', 80, 0, 0, 58, 0, 0, 2, 3, 150, 70, 0, 0, 8),
-            (8, 16, 'Black Dragon Armor', 'ArmorMale12.bmd', 90, 0, 0, 63, 0, 0, 2, 3, 170, 60, 0, 0, 2),
-            (8, 17, 'Dark Phoenix Armor', 'ArmorMale13.bmd', 100, 0, 0, 70, 0, 0, 2, 3, 214, 65, 0, 0, 10),
-            (8, 18, 'Grand Soul Armor', 'ArmorClass10.bmd', 91, 0, 0, 52, 0, 0, 2, 3, 59, 20, 0, 0, 1),
-            (8, 19, 'Divine Armor', 'ArmorClass11.bmd', 92, 0, 0, 56, 0, 0, 2, 2, 50, 110, 0, 0, 4),
-            (8, 20, 'Thunder Hawk Armor', 'ArmorMale14.bmd', 107, 0, 0, 68, 0, 0, 2, 3, 170, 70, 0, 0, 8),
-            (8, 21, 'Great Dragon Armor', 'ArmorMale15.bmd', 126, 0, 0, 80, 0, 0, 2, 3, 200, 58, 0, 0, 10),
+            -- Higher-tier Armors (8)
+            (8, 15, 'Storm Crow Armor', 'ArmorMale16.bmd', 80, 0, 0, 58, 0, 0, 2, 3, 150, 70, 0, 0, 8),
+            (8, 16, 'Black Dragon Armor', 'ArmorMale17.bmd', 90, 0, 0, 63, 0, 0, 2, 3, 170, 60, 0, 0, 2),
+            (8, 17, 'Dark Phoenix Armor', 'ArmorMale18.bmd', 100, 0, 0, 70, 0, 0, 2, 3, 214, 65, 0, 0, 10),
+            (8, 18, 'Grand Soul Armor', 'ArmorMale19.bmd', 91, 0, 0, 52, 0, 0, 2, 3, 59, 20, 0, 0, 1),
+            (8, 19, 'Divine Armor', 'ArmorMale20.bmd', 92, 0, 0, 56, 0, 0, 2, 2, 50, 110, 0, 0, 4),
+            (8, 20, 'Thunder Hawk Armor', 'ArmorMale21.bmd', 107, 0, 0, 68, 0, 0, 2, 3, 170, 70, 0, 0, 8),
+            (8, 21, 'Great Dragon Armor', 'ArmorMale22.bmd', 126, 0, 0, 80, 0, 0, 2, 3, 200, 58, 0, 0, 10),
 
-            -- Missing Pants (9)
-            (9, 15, 'Storm Crow Pants', 'PantMale11.bmd', 74, 0, 0, 50, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (9, 16, 'Black Dragon Pants', 'PantMale12.bmd', 84, 0, 0, 55, 0, 0, 2, 2, 170, 60, 0, 0, 2),
-            (9, 17, 'Dark Phoenix Pants', 'PantMale13.bmd', 96, 0, 0, 62, 0, 0, 2, 2, 207, 63, 0, 0, 10),
-            (9, 18, 'Grand Soul Pants', 'PantClass10.bmd', 86, 0, 0, 48, 0, 0, 2, 2, 59, 20, 0, 0, 1),
-            (9, 19, 'Divine Pants', 'PantClass11.bmd', 88, 0, 0, 52, 0, 0, 2, 2, 50, 110, 0, 0, 4),
-            (9, 20, 'Thunder Hawk Pants', 'PantMale14.bmd', 99, 0, 0, 60, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (9, 21, 'Great Dragon Pants', 'PantMale15.bmd', 113, 0, 0, 72, 0, 0, 2, 2, 200, 58, 0, 0, 10),
+            -- Higher-tier Pants (9)
+            (9, 15, 'Storm Crow Pants', 'PantMale16.bmd', 74, 0, 0, 50, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (9, 16, 'Black Dragon Pants', 'PantMale17.bmd', 84, 0, 0, 55, 0, 0, 2, 2, 170, 60, 0, 0, 2),
+            (9, 17, 'Dark Phoenix Pants', 'PantMale18.bmd', 96, 0, 0, 62, 0, 0, 2, 2, 207, 63, 0, 0, 10),
+            (9, 18, 'Grand Soul Pants', 'PantMale19.bmd', 86, 0, 0, 48, 0, 0, 2, 2, 59, 20, 0, 0, 1),
+            (9, 19, 'Divine Pants', 'PantMale20.bmd', 88, 0, 0, 52, 0, 0, 2, 2, 50, 110, 0, 0, 4),
+            (9, 20, 'Thunder Hawk Pants', 'PantMale21.bmd', 99, 0, 0, 60, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (9, 21, 'Great Dragon Pants', 'PantMale22.bmd', 113, 0, 0, 72, 0, 0, 2, 2, 200, 58, 0, 0, 10),
 
-            -- Missing Gloves (10)
-            (10, 15, 'Storm Crow Gloves', 'GloveMale11.bmd', 70, 0, 0, 46, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (10, 16, 'Black Dragon Gloves', 'GloveMale12.bmd', 76, 0, 0, 50, 0, 0, 2, 2, 170, 60, 0, 0, 2),
-            (10, 17, 'Dark Phoenix Gloves', 'GloveMale13.bmd', 86, 0, 0, 56, 0, 0, 2, 2, 205, 63, 0, 0, 10),
-            (10, 18, 'Grand Soul Gloves', 'GloveClass10.bmd', 70, 0, 0, 44, 0, 0, 2, 2, 49, 10, 0, 0, 1),
-            (10, 19, 'Divine Gloves', 'GloveClass11.bmd', 72, 0, 0, 48, 0, 0, 2, 2, 50, 110, 0, 0, 4),
-            (10, 20, 'Thunder Hawk Gloves', 'GloveMale14.bmd', 88, 0, 0, 54, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (10, 21, 'Great Dragon Gloves', 'GloveMale15.bmd', 94, 0, 0, 64, 0, 0, 2, 2, 200, 58, 0, 0, 10),
+            -- Higher-tier Gloves (10)
+            (10, 15, 'Storm Crow Gloves', 'GloveMale16.bmd', 70, 0, 0, 46, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (10, 16, 'Black Dragon Gloves', 'GloveMale17.bmd', 76, 0, 0, 50, 0, 0, 2, 2, 170, 60, 0, 0, 2),
+            (10, 17, 'Dark Phoenix Gloves', 'GloveMale18.bmd', 86, 0, 0, 56, 0, 0, 2, 2, 205, 63, 0, 0, 10),
+            (10, 18, 'Grand Soul Gloves', 'GloveMale19.bmd', 70, 0, 0, 44, 0, 0, 2, 2, 49, 10, 0, 0, 1),
+            (10, 19, 'Divine Gloves', 'GloveMale20.bmd', 72, 0, 0, 48, 0, 0, 2, 2, 50, 110, 0, 0, 4),
+            (10, 20, 'Thunder Hawk Gloves', 'GloveMale21.bmd', 88, 0, 0, 54, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (10, 21, 'Great Dragon Gloves', 'GloveMale22.bmd', 94, 0, 0, 64, 0, 0, 2, 2, 200, 58, 0, 0, 10),
 
-            -- Missing Boots (11)
-            (11, 15, 'Storm Crow Boots', 'BootMale11.bmd', 72, 0, 0, 48, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (11, 16, 'Black Dragon Boots', 'BootMale12.bmd', 78, 0, 0, 52, 0, 0, 2, 2, 170, 60, 0, 0, 2),
-            (11, 17, 'Dark Phoenix Boots', 'BootMale13.bmd', 93, 0, 0, 58, 0, 0, 2, 2, 198, 60, 0, 0, 10),
-            (11, 18, 'Grand Soul Boots', 'BootClass10.bmd', 76, 0, 0, 44, 0, 0, 2, 2, 59, 10, 0, 0, 1),
-            (11, 19, 'Divine Boots', 'BootClass11.bmd', 81, 0, 0, 50, 0, 0, 2, 2, 50, 110, 0, 0, 4),
-            (11, 20, 'Thunder Hawk Boots', 'BootMale14.bmd', 92, 0, 0, 56, 0, 0, 2, 2, 150, 70, 0, 0, 8),
-            (11, 21, 'Great Dragon Boots', 'BootMale15.bmd', 98, 0, 0, 68, 0, 0, 2, 2, 200, 58, 0, 0, 10),
+            -- Higher-tier Boots (11)
+            (11, 15, 'Storm Crow Boots', 'BootMale16.bmd', 72, 0, 0, 48, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (11, 16, 'Black Dragon Boots', 'BootMale17.bmd', 78, 0, 0, 52, 0, 0, 2, 2, 170, 60, 0, 0, 2),
+            (11, 17, 'Dark Phoenix Boots', 'BootMale18.bmd', 93, 0, 0, 58, 0, 0, 2, 2, 198, 60, 0, 0, 10),
+            (11, 18, 'Grand Soul Boots', 'BootMale19.bmd', 76, 0, 0, 44, 0, 0, 2, 2, 59, 10, 0, 0, 1),
+            (11, 19, 'Divine Boots', 'BootMale20.bmd', 81, 0, 0, 50, 0, 0, 2, 2, 50, 110, 0, 0, 4),
+            (11, 20, 'Thunder Hawk Boots', 'BootMale21.bmd', 92, 0, 0, 56, 0, 0, 2, 2, 150, 70, 0, 0, 8),
+            (11, 21, 'Great Dragon Boots', 'BootMale22.bmd', 98, 0, 0, 68, 0, 0, 2, 2, 200, 58, 0, 0, 10),
 
             -- Missing Helpers/Jewelry (13)
             (13, 4, 'Dark Horse Horn', 'DarkHorseHorn.bmd', 110, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
@@ -1462,6 +1501,47 @@ ItemDefinition Database::GetItemDefinition(uint8_t category,
   return item;
 }
 
+std::vector<ItemDefinition> Database::GetAllItemDefinitions() {
+  std::vector<ItemDefinition> result;
+  sqlite3_stmt *stmt = nullptr;
+  const char *sql =
+      "SELECT id, category, item_index, name, model_file, level_req, "
+      "damage_min, damage_max, defense, attack_speed, two_handed, "
+      "width, height, req_str, req_dex, req_vit, req_ene, class_flags, "
+      "buy_price, magic_power "
+      "FROM item_definitions ORDER BY category, item_index";
+  if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    return result;
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    ItemDefinition item;
+    item.id = sqlite3_column_int(stmt, 0);
+    item.category = static_cast<uint8_t>(sqlite3_column_int(stmt, 1));
+    item.itemIndex = static_cast<uint8_t>(sqlite3_column_int(stmt, 2));
+    item.name = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+    item.modelFile =
+        reinterpret_cast<const char *>(sqlite3_column_text(stmt, 4));
+    item.level = static_cast<uint16_t>(sqlite3_column_int(stmt, 5));
+    item.damageMin = static_cast<uint16_t>(sqlite3_column_int(stmt, 6));
+    item.damageMax = static_cast<uint16_t>(sqlite3_column_int(stmt, 7));
+    item.defense = static_cast<uint16_t>(sqlite3_column_int(stmt, 8));
+    item.attackSpeed = static_cast<uint8_t>(sqlite3_column_int(stmt, 9));
+    item.twoHanded = static_cast<uint8_t>(sqlite3_column_int(stmt, 10));
+    item.width = static_cast<uint8_t>(sqlite3_column_int(stmt, 11));
+    item.height = static_cast<uint8_t>(sqlite3_column_int(stmt, 12));
+    item.reqStrength = static_cast<uint16_t>(sqlite3_column_int(stmt, 13));
+    item.reqDexterity = static_cast<uint16_t>(sqlite3_column_int(stmt, 14));
+    item.reqVitality = static_cast<uint16_t>(sqlite3_column_int(stmt, 15));
+    item.reqEnergy = static_cast<uint16_t>(sqlite3_column_int(stmt, 16));
+    item.classFlags = static_cast<uint32_t>(sqlite3_column_int64(stmt, 17));
+    item.buyPrice = static_cast<uint32_t>(sqlite3_column_int(stmt, 18));
+    item.magicPower = static_cast<uint16_t>(sqlite3_column_int(stmt, 19));
+    result.push_back(std::move(item));
+  }
+  sqlite3_finalize(stmt);
+  printf("[DB] Loaded %zu item definitions for catalog\n", result.size());
+  return result;
+}
+
 std::vector<ItemDropInfo> Database::GetItemsByLevelRange(int minLevel,
                                                          int maxLevel) {
   std::vector<ItemDropInfo> items;
@@ -1494,7 +1574,7 @@ std::vector<EquipmentSlot> Database::GetCharacterEquipment(int characterId) {
   std::vector<EquipmentSlot> equip;
   sqlite3_stmt *stmt = nullptr;
   const char *sql =
-      "SELECT slot, item_category, item_index, item_level, quantity "
+      "SELECT slot, item_category, item_index, item_level, quantity, option_flags "
       "FROM character_equipment WHERE character_id=? ORDER BY slot";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return equip;
@@ -1507,6 +1587,7 @@ std::vector<EquipmentSlot> Database::GetCharacterEquipment(int characterId) {
     e.itemIndex = static_cast<uint8_t>(sqlite3_column_int(stmt, 2));
     e.itemLevel = static_cast<uint8_t>(sqlite3_column_int(stmt, 3));
     e.quantity = static_cast<uint8_t>(sqlite3_column_int(stmt, 4));
+    e.optionFlags = static_cast<uint8_t>(sqlite3_column_int(stmt, 5));
     equip.push_back(e);
   }
   sqlite3_finalize(stmt);
@@ -2012,16 +2093,17 @@ void Database::SeedDefaultEquipment(int characterId) {
 
 void Database::UpdateEquipment(int characterId, uint8_t slot, uint8_t category,
                                uint8_t itemIndex, uint8_t itemLevel,
-                               uint8_t quantity) {
+                               uint8_t quantity, uint8_t optionFlags) {
   sqlite3_stmt *stmt = nullptr;
   // UPSERT: insert or replace on (character_id, slot) unique constraint
   const char *sql =
       "INSERT INTO character_equipment (character_id, slot, item_category, "
-      "item_index, item_level, quantity) "
-      "VALUES (?, ?, ?, ?, ?, ?) "
+      "item_index, item_level, quantity, option_flags) "
+      "VALUES (?, ?, ?, ?, ?, ?, ?) "
       "ON CONFLICT(character_id, slot) DO UPDATE SET "
       "item_category=excluded.item_category, item_index=excluded.item_index, "
-      "item_level=excluded.item_level, quantity=excluded.quantity";
+      "item_level=excluded.item_level, quantity=excluded.quantity, "
+      "option_flags=excluded.option_flags";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return;
   sqlite3_bind_int(stmt, 1, characterId);
@@ -2030,10 +2112,11 @@ void Database::UpdateEquipment(int characterId, uint8_t slot, uint8_t category,
   sqlite3_bind_int(stmt, 4, itemIndex);
   sqlite3_bind_int(stmt, 5, itemLevel);
   sqlite3_bind_int(stmt, 6, quantity);
+  sqlite3_bind_int(stmt, 7, optionFlags);
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
-  printf("[DB] Equipment updated: char=%d slot=%d cat=%d idx=%d +%d qty=%d\n",
-         characterId, slot, category, itemIndex, itemLevel, quantity);
+  printf("[DB] Equipment updated: char=%d slot=%d cat=%d idx=%d +%d qty=%d opt=0x%02X\n",
+         characterId, slot, category, itemIndex, itemLevel, quantity, optionFlags);
 }
 
 std::vector<Database::InventorySlotData>
@@ -2041,7 +2124,7 @@ Database::GetCharacterInventory(int characterId) {
   std::vector<InventorySlotData> items;
   sqlite3_stmt *stmt = nullptr;
   const char *sql =
-      "SELECT slot, def_index, quantity, item_level "
+      "SELECT slot, def_index, quantity, item_level, option_flags "
       "FROM character_inventory WHERE character_id=? ORDER BY slot";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return items;
@@ -2052,6 +2135,7 @@ Database::GetCharacterInventory(int characterId) {
     d.defIndex = static_cast<int16_t>(sqlite3_column_int(stmt, 1));
     d.quantity = static_cast<uint8_t>(sqlite3_column_int(stmt, 2));
     d.itemLevel = static_cast<uint8_t>(sqlite3_column_int(stmt, 3));
+    d.optionFlags = static_cast<uint8_t>(sqlite3_column_int(stmt, 4));
     items.push_back(d);
   }
   sqlite3_finalize(stmt);
@@ -2060,14 +2144,15 @@ Database::GetCharacterInventory(int characterId) {
 
 void Database::SaveCharacterInventory(int characterId, int16_t defIndex,
                                       uint8_t quantity, uint8_t itemLevel,
-                                      uint8_t slot) {
+                                      uint8_t slot, uint8_t optionFlags) {
   sqlite3_stmt *stmt = nullptr;
   const char *sql = "INSERT INTO character_inventory (character_id, slot, "
-                    "def_index, quantity, item_level) "
-                    "VALUES (?, ?, ?, ?, ?) "
+                    "def_index, quantity, item_level, option_flags) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(character_id, slot) DO UPDATE SET "
                     "def_index=excluded.def_index, quantity=excluded.quantity, "
-                    "item_level=excluded.item_level";
+                    "item_level=excluded.item_level, "
+                    "option_flags=excluded.option_flags";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return;
   sqlite3_bind_int(stmt, 1, characterId);
@@ -2075,6 +2160,7 @@ void Database::SaveCharacterInventory(int characterId, int16_t defIndex,
   sqlite3_bind_int(stmt, 3, defIndex);
   sqlite3_bind_int(stmt, 4, quantity);
   sqlite3_bind_int(stmt, 5, itemLevel);
+  sqlite3_bind_int(stmt, 6, optionFlags);
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
 }
@@ -2284,4 +2370,500 @@ void Database::DeleteQuestProgress(int characterId, int questId) {
   sqlite3_bind_int(stmt, 2, questId);
   sqlite3_step(stmt);
   sqlite3_finalize(stmt);
+}
+
+// ═══════════════════════════════════════════════════════
+// Quest definitions — seed all quests into DB tables
+// ═══════════════════════════════════════════════════════
+
+void Database::SeedQuests() {
+  // Check if already seeded
+  sqlite3_stmt *stmt = nullptr;
+  sqlite3_prepare_v2(m_db, "SELECT COUNT(*) FROM quest_definitions", -1, &stmt,
+                     nullptr);
+  int count = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW)
+    count = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  if (count > 0) {
+    printf("[DB] Quest definitions already seeded (%d quests)\n", count);
+    return;
+  }
+
+  printf("[DB] Seeding quest definitions...\n");
+
+  // Struct for local seed data
+  struct SeedTarget {
+    uint8_t monsterType;
+    uint8_t killsRequired;
+  };
+  struct SeedReward {
+    int16_t defIndex;
+    uint8_t itemLevel;
+  };
+  struct SeedQuest {
+    uint16_t guardNpcType;
+    int targetCount;
+    SeedTarget targets[3];
+    const char *questName;
+    const char *location;
+    SeedReward classReward[4][2]; // [class][slot]
+    const char *loreText;
+  };
+
+  static const SeedQuest quests[] = {
+      // ═══ Lorencia quests (Q0-Q7) ═══
+      // Q0: Brynn — Bull Fighter x10
+      {246, 1, {{0, 10}, {0, 0}, {0, 0}},
+       "The Road's First Threat", "Lorencia",
+       {{{160, 1}, {461, 0}}, {{0, 1}, {461, 0}},
+        {{128, 1}, {461, 0}}, {{1, 1}, {461, 0}}},
+       "The roads around Lorencia grow\n"
+       "dangerous. Bull Fighters charge at\n"
+       "travelers without warning. Slay 10\n"
+       "near the eastern fields to secure\n"
+       "the path."},
+      // Q1: Brynn — Hound x10
+      {246, 1, {{1, 10}, {0, 0}, {0, 0}},
+       "Hounds of Lorencia", "Lorencia",
+       {{{226, 1}, {461, 0}}, {{224, 1}, {461, 0}},
+        {{234, 1}, {461, 0}}, {{2, 1}, {461, 0}}},
+       "Feral Hounds roam the plains at night,\n"
+       "picking off livestock and stragglers.\n"
+       "The farmers plead for help. Hunt down\n"
+       "10 Hounds before they grow bolder."},
+      // Q2: Kael — Budge Dragon x10
+      {248, 1, {{2, 10}, {0, 0}, {0, 0}},
+       "Dragon Whelps", "Lorencia",
+       {{{228, 0}, {461, 0}}, {{64, 0}, {461, 0}},
+        {{136, 0}, {461, 0}}, {{33, 0}, {461, 0}}},
+       "Budge Dragons nest in the rocky\n"
+       "outcrops south of town. They are small\n"
+       "but their fire breath is deadly to the\n"
+       "unprepared. Destroy 10 of them."},
+      // Q3: Kael — Spider x10
+      {248, 1, {{3, 10}, {0, 0}, {0, 0}},
+       "Vermin in the Shadows", "Lorencia",
+       {{{258, 0}, {461, 0}}, {{65, 0}, {461, 0}},
+        {{266, 0}, {461, 0}}, {{101, 0}, {461, 0}}},
+       "Giant Spiders infest the sewers\n"
+       "beneath the city. Their webs block the\n"
+       "tunnels and their venom sickens all who\n"
+       "venture below. Clear out 10 Spiders."},
+      // Q4: Aldric — Elite Bull Fighter x10
+      {245, 1, {{4, 10}, {0, 0}, {0, 0}},
+       "The Elite Vanguard", "Lorencia",
+       {{{292, 2}, {461, 0}}, {{4, 2}, {461, 0}},
+        {{130, 2}, {461, 0}}, {{6, 2}, {461, 0}}},
+       "Elite Bull Fighters are far more\n"
+       "dangerous than their common kin. They\n"
+       "coordinate attacks on supply wagons.\n"
+       "Dispatch 10 of these armored brutes."},
+      // Q5: Dorian — Lich x8
+      {247, 1, {{6, 8}, {0, 0}, {0, 0}},
+       "Whispers from the Ruins", "Lorencia",
+       {{{161, 2}, {461, 0}}, {{3, 2}, {461, 0}},
+        {{137, 2}, {461, 0}}, {{98, 2}, {461, 0}}},
+       "Liches linger in the ruined chapel\n"
+       "west of town. Their dark magic corrupts\n"
+       "the land itself. Destroy 8 Liches\n"
+       "before their influence spreads."},
+      // Q6: Aldric — Giant x7
+      {245, 1, {{7, 7}, {0, 0}, {0, 0}},
+       "The Gatekeepers", "Lorencia",
+       {{{260, 3}, {461, 0}}, {{7, 3}, {461, 0}},
+        {{138, 3}, {461, 0}}, {{102, 3}, {461, 0}}},
+       "Giants have come down from the\n"
+       "mountains. Their massive clubs crush\n"
+       "men in full plate. Strike down 7 of\n"
+       "these behemoths before they breach\n"
+       "the walls."},
+      // Q7: Dorian — Skeleton Warrior x7
+      {247, 1, {{14, 7}, {0, 0}, {0, 0}},
+       "The Undead March", "Lorencia",
+       {{{231, 3}, {461, 0}}, {{8, 3}, {461, 0}},
+        {{131, 3}, {461, 0}}, {{97, 3}, {461, 0}}},
+       "Skeleton Warriors march from the\n"
+       "ancient cemetery at nightfall. Once\n"
+       "noble soldiers, now bound in undeath.\n"
+       "Put 7 of them to final rest."},
+      // ═══ Dungeon quests (Q8-Q19) — Captain Marcus ═══
+      // Q8: Skeleton Warrior x15
+      {249, 1, {{14, 15}, {0, 0}, {0, 0}},
+       "Descent Into Darkness", "Dungeon",
+       {{{359, 3}, {461, 0}}, {{66, 3}, {461, 0}},
+        {{364, 3}, {461, 0}}, {{99, 3}, {461, 0}}},
+       "The dungeon entrance is overrun with\n"
+       "Skeleton Warriors. They guard the\n"
+       "passages to deeper chambers. Cut\n"
+       "through 15 to secure our foothold."},
+      // Q9: Larva x12
+      {249, 1, {{12, 12}, {0, 0}, {0, 0}},
+       "The Larvae Nests", "Dungeon",
+       {{{162, 4}, {461, 0}}, {{262, 4}, {461, 0}},
+        {{268, 4}, {461, 0}}, {{5, 4}, {461, 0}}},
+       "Larvae crawl through the dungeon's\n"
+       "narrow tunnels, leaving trails of\n"
+       "caustic slime. Their acid dissolves\n"
+       "stone and flesh. Exterminate 12."},
+      // Q10: Hell Hound x10
+      {249, 1, {{5, 10}, {0, 0}, {0, 0}},
+       "Infernal Hounds", "Dungeon",
+       {{{263, 6}, {461, 0}}, {{9, 6}, {461, 0}},
+        {{139, 6}, {461, 0}}, {{103, 6}, {461, 0}}},
+       "Hell Hounds prowl the second level,\n"
+       "their hellfire breath lighting corridors\n"
+       "with infernal glow. They must be\n"
+       "destroyed -- slay 10 Hell Hounds."},
+      // Q11: Poison Bull x12
+      {249, 1, {{8, 12}, {0, 0}, {0, 0}},
+       "The Venomous Herd", "Dungeon",
+       {{{327, 7}, {461, 0}}, {{67, 7}, {461, 0}},
+        {{333, 7}, {461, 0}}, {{96, 7}, {461, 0}}},
+       "Poison Bulls fill the corridors with\n"
+       "toxic fumes. Their very breath is\n"
+       "lethal. Destroy 12 of these creatures\n"
+       "to clear the air."},
+      // Q12: Skeleton Archer x12
+      {249, 1, {{15, 12}, {0, 0}, {0, 0}},
+       "Arrows from the Dark", "Dungeon",
+       {{{227, 5}, {461, 0}}, {{34, 5}, {461, 0}},
+        {{301, 5}, {461, 0}}, {{100, 5}, {461, 0}}},
+       "Skeleton Archers line the corridors,\n"
+       "raining arrows on anyone who dares\n"
+       "enter. Their aim is deadly even in\n"
+       "death. Destroy 12 of them."},
+      // Q13: Thunder Lich x12
+      {249, 1, {{9, 12}, {0, 0}, {0, 0}},
+       "Storm Beneath the Earth", "Dungeon",
+       {{{295, 6}, {461, 0}}, {{35, 6}, {461, 0}},
+        {{132, 6}, {461, 0}}, {{13, 6}, {461, 0}}},
+       "Thunder Liches unleash lightning\n"
+       "through the dungeon halls. Their storms\n"
+       "shatter stone and scatter expeditions.\n"
+       "Destroy 12 of these sorcerers."},
+      // Q14: Hell Spider x7
+      {249, 1, {{13, 7}, {0, 0}, {0, 0}},
+       "Web of Nightmares", "Dungeon",
+       {{{163, 6}, {461, 0}}, {{39, 6}, {461, 0}},
+        {{269, 6}, {461, 0}}, {{10, 6}, {461, 0}}},
+       "Hell Spiders weave webs of shadow and\n"
+       "fire in the deep tunnels. Their venom\n"
+       "burns like acid. Only 7 remain -- but\n"
+       "each is a deadly challenge."},
+      // Q15: Ghost x20
+      {249, 1, {{11, 20}, {0, 0}, {0, 0}},
+       "The Restless Dead", "Dungeon",
+       {{{323, 5}, {461, 0}}, {{297, 5}, {461, 0}},
+        {{195, 5}, {461, 0}}, {{38, 5}, {461, 0}}},
+       "Ghosts drift through the dungeon in\n"
+       "countless numbers. They drain the life\n"
+       "from the living with a single touch.\n"
+       "Banish 20 of these apparitions."},
+      // Q16: Elite Skeleton x15
+      {249, 1, {{16, 15}, {0, 0}, {0, 0}},
+       "The Bone Commanders", "Dungeon",
+       {{{164, 6}, {461, 0}}, {{11, 6}, {461, 0}},
+        {{238, 6}, {461, 0}}, {{104, 6}, {461, 0}}},
+       "Elite Skeletons command the undead\n"
+       "legions. They are ancient warriors of\n"
+       "terrible skill, far deadlier than their\n"
+       "lesser kin. Slay 15 of them."},
+      // Q17: Cyclops x15
+      {249, 1, {{17, 15}, {0, 0}, {0, 0}},
+       "The One-Eyed Terror", "Dungeon",
+       {{{291, 4}, {461, 0}}, {{329, 4}, {461, 0}},
+        {{133, 4}, {461, 0}}, {{105, 4}, {461, 0}}},
+       "Cyclops roam the dungeon's great\n"
+       "caverns, crushing everything in their\n"
+       "path. Their single eye sees in perfect\n"
+       "darkness. Fell 15 of these titans."},
+      // Q18: Dark Knight x5
+      {249, 1, {{10, 5}, {0, 0}, {0, 0}},
+       "Fallen Champions", "Dungeon",
+       {{{165, 7}, {461, 0}}, {{15, 7}, {461, 0}},
+        {{302, 7}, {461, 0}}, {{14, 7}, {461, 0}}},
+       "Dark Knights were once heroes who fell\n"
+       "to corruption. Their swordplay is\n"
+       "flawless, their armor impenetrable.\n"
+       "Only 5 remain -- destroy them all."},
+      // Q19: Gorgon x3
+      {249, 1, {{18, 3}, {0, 0}, {0, 0}},
+       "Heart of Darkness", "Dungeon",
+       {{{166, 7}, {461, 0}}, {{12, 7}, {461, 0}},
+        {{270, 7}, {461, 0}}, {{19, 7}, {461, 0}}},
+       "At the dungeon's heart lurks the\n"
+       "Gorgon -- a creature of terrible power.\n"
+       "Only 3 exist, each guarding ancient\n"
+       "treasures. Slay them and claim\n"
+       "your reward."},
+      // ═══ Devias quests (Q20-Q25) ═══
+      // Q20: Elise — Worm x20
+      {310, 1, {{24, 20}, {0, 0}, {0, 0}},
+       "Beneath the Snow", "Devias",
+       {{{356, 3}, {461, 0}}, {{326, 3}, {461, 0}},
+        {{332, 3}, {461, 0}}, {{98, 3}, {461, 0}}},
+       "Worms burrow beneath the frozen\n"
+       "ground of Devias, emerging without\n"
+       "warning to drag victims below. Slay\n"
+       "20 to make the roads safe again."},
+      // Q21: Elise — Assassin x15
+      {310, 1, {{21, 15}, {0, 0}, {0, 0}},
+       "Shadow Stalkers", "Devias",
+       {{{231, 4}, {461, 0}}, {{8, 4}, {461, 0}},
+        {{131, 4}, {461, 0}}, {{97, 4}, {461, 0}}},
+       "Assassins lurk in the frozen forests,\n"
+       "striking from the shadows. Their blades\n"
+       "are swift and silent. Eliminate 15 of\n"
+       "these deadly killers."},
+      // Q22: Nolan — Ice Monster x20
+      {311, 1, {{22, 20}, {0, 0}, {0, 0}},
+       "Frozen Sentinels", "Devias",
+       {{{162, 4}, {461, 0}}, {{66, 4}, {461, 0}},
+        {{139, 4}, {461, 0}}, {{5, 4}, {461, 0}}},
+       "Ice Monsters guard the mountain\n"
+       "passes of Devias. Born of ancient\n"
+       "winter magic, they freeze all who\n"
+       "approach. Destroy 20 of them."},
+      // Q23: Nolan — Hommerd x20
+      {311, 1, {{23, 20}, {0, 0}, {0, 0}},
+       "The Iron Brutes", "Devias",
+       {{{263, 4}, {461, 0}}, {{264, 4}, {461, 0}},
+        {{132, 4}, {461, 0}}, {{103, 4}, {461, 0}}},
+       "Hommerds are armored beasts of\n"
+       "immense strength. They patrol the\n"
+       "central plains, crushing anything\n"
+       "in their path. Slay 20 of them."},
+      // Q24: Hale — Elite Yeti x25
+      {312, 1, {{20, 25}, {0, 0}, {0, 0}},
+       "The Yeti Hordes", "Devias",
+       {{{163, 5}, {461, 0}}, {{39, 5}, {461, 0}},
+        {{269, 5}, {461, 0}}, {{10, 5}, {461, 0}}},
+       "Elite Yetis have overrun the southern\n"
+       "reaches of Devias. Their numbers seem\n"
+       "endless. Push them back -- slay 25 of\n"
+       "these savage beasts."},
+      // Q25: Hale — Ice Queen x20
+      {312, 1, {{25, 20}, {0, 0}, {0, 0}},
+       "The Frozen Throne", "Devias",
+       {{{164, 7}, {461, 0}}, {{15, 7}, {461, 0}},
+        {{238, 7}, {461, 0}}, {{104, 7}, {461, 0}}},
+       "The Ice Queen commands all creatures\n"
+       "of Devias from her frozen throne. She\n"
+       "is the source of the endless winter.\n"
+       "Destroy 20 and break her hold."},
+      // ═══ Noria quests (Q26-Q33) — Sentinel Arwen ═══
+      // Q26: Goblin x10
+      {256, 1, {{26, 10}, {0, 0}, {0, 0}},
+       "Goblin Menace", "Noria",
+       {{{160, 0}, {461, 0}}, {{1, 0}, {461, 0}},
+        {{363, 0}, {461, 0}}, {{2, 0}, {461, 0}}},
+       "Greetings, young archer. The Goblins\n"
+       "near the village entrance grow bolder\n"
+       "each day. Thin their numbers -- slay 10\n"
+       "Goblins and I shall reward you."},
+      // Q27: Chain Scorpion x8
+      {256, 1, {{27, 8}, {0, 0}, {0, 0}},
+       "Scorpion Sting", "Noria",
+       {{{224, 0}, {461, 0}}, {{33, 0}, {461, 0}},
+        {{331, 0}, {461, 0}}, {{96, 0}, {461, 0}}},
+       "Well struck. Now the Chain Scorpions\n"
+       "threaten our eastern paths. Their poison\n"
+       "is deadly to the young elves. Eliminate\n"
+       "8 of them."},
+      // Q28: Elite Goblin x8
+      {256, 1, {{33, 8}, {0, 0}, {0, 0}},
+       "Elite Threat", "Noria",
+       {{{288, 1}, {461, 0}}, {{3, 1}, {461, 0}},
+        {{299, 1}, {461, 0}}, {{5, 1}, {461, 0}}},
+       "The Elite Goblins are smarter and\n"
+       "stronger than their lesser kin. They\n"
+       "coordinate raids on our supply lines.\n"
+       "Destroy 8 of them."},
+      // Q29: Beetle Monster x10
+      {256, 1, {{28, 10}, {0, 0}, {0, 0}},
+       "Root Rot", "Noria",
+       {{{256, 1}, {461, 0}}, {{4, 1}, {461, 0}},
+        {{267, 1}, {461, 0}}, {{6, 1}, {461, 0}}},
+       "Beetle Monsters burrow through the\n"
+       "forest floor, destroying the ancient\n"
+       "roots of our sacred trees. Slay 10\n"
+       "to protect Noria's heart."},
+      // Q30: Hunter x8
+      {256, 1, {{29, 8}, {0, 0}, {0, 0}},
+       "The Poachers", "Noria",
+       {{{161, 2}, {461, 0}}, {{194, 2}, {461, 0}},
+        {{235, 2}, {461, 0}}, {{7, 2}, {461, 0}}},
+       "Poachers -- Hunters who stalk our\n"
+       "forest creatures without mercy. They\n"
+       "encroach deeper each season. Put an\n"
+       "end to 8 of them."},
+      // Q31: Forest Monster x8
+      {256, 1, {{30, 8}, {0, 0}, {0, 0}},
+       "Corrupted Guardians", "Noria",
+       {{{321, 2}, {461, 0}}, {{5, 2}, {461, 0}},
+        {{362, 2}, {461, 0}}, {{97, 2}, {461, 0}}},
+       "The Forest Monsters were once peaceful\n"
+       "guardians, now corrupted by dark magic.\n"
+       "Free their tortured spirits -- slay 8\n"
+       "in the deep woods."},
+      // Q32: Agon x6
+      {256, 1, {{31, 6}, {0, 0}, {0, 0}},
+       "Beast Territory", "Noria",
+       {{{289, 3}, {461, 0}}, {{34, 3}, {461, 0}},
+        {{298, 3}, {461, 0}}, {{8, 3}, {461, 0}}},
+       "The Agons are fierce beasts that even\n"
+       "seasoned warriors fear. Their territory\n"
+       "blocks the southern passage. Defeat 6\n"
+       "to clear the way."},
+      // Q33: Stone Golem x5
+      {256, 1, {{32, 5}, {0, 0}, {0, 0}},
+       "Ancient Constructs", "Noria",
+       {{{162, 3}, {461, 0}}, {{6, 3}, {461, 0}},
+        {{266, 3}, {461, 0}}, {{10, 3}, {461, 0}}},
+       "The Stone Golems are ancient constructs\n"
+       "awakened by forbidden magic. They are\n"
+       "the greatest threat Noria faces. Destroy\n"
+       "5 -- and the forest will know peace again."},
+  };
+
+  int questCount = sizeof(quests) / sizeof(quests[0]);
+
+  sqlite3_exec(m_db, "BEGIN TRANSACTION", nullptr, nullptr, nullptr);
+
+  // Insert quest definitions
+  sqlite3_stmt *defStmt = nullptr;
+  sqlite3_prepare_v2(m_db,
+      "INSERT INTO quest_definitions (quest_id, guard_npc_type, quest_name, location, lore_text) "
+      "VALUES (?, ?, ?, ?, ?)",
+      -1, &defStmt, nullptr);
+
+  // Insert quest targets
+  sqlite3_stmt *tgtStmt = nullptr;
+  sqlite3_prepare_v2(m_db,
+      "INSERT INTO quest_targets (quest_id, target_index, monster_type, kills_required) "
+      "VALUES (?, ?, ?, ?)",
+      -1, &tgtStmt, nullptr);
+
+  // Insert quest rewards
+  sqlite3_stmt *rwdStmt = nullptr;
+  sqlite3_prepare_v2(m_db,
+      "INSERT INTO quest_rewards (quest_id, class_index, reward_slot, def_index, item_level) "
+      "VALUES (?, ?, ?, ?, ?)",
+      -1, &rwdStmt, nullptr);
+
+  for (int i = 0; i < questCount; i++) {
+    const auto &q = quests[i];
+
+    // quest_definitions
+    sqlite3_reset(defStmt);
+    sqlite3_bind_int(defStmt, 1, i);
+    sqlite3_bind_int(defStmt, 2, q.guardNpcType);
+    sqlite3_bind_text(defStmt, 3, q.questName, -1, SQLITE_STATIC);
+    sqlite3_bind_text(defStmt, 4, q.location, -1, SQLITE_STATIC);
+    sqlite3_bind_text(defStmt, 5, q.loreText, -1, SQLITE_STATIC);
+    sqlite3_step(defStmt);
+
+    // quest_targets (1 per quest currently, but support up to 3)
+    for (int t = 0; t < q.targetCount; t++) {
+      sqlite3_reset(tgtStmt);
+      sqlite3_bind_int(tgtStmt, 1, i);
+      sqlite3_bind_int(tgtStmt, 2, t);
+      sqlite3_bind_int(tgtStmt, 3, q.targets[t].monsterType);
+      sqlite3_bind_int(tgtStmt, 4, q.targets[t].killsRequired);
+      sqlite3_step(tgtStmt);
+    }
+
+    // quest_rewards (4 classes × 2 slots)
+    for (int c = 0; c < 4; c++) {
+      for (int s = 0; s < 2; s++) {
+        sqlite3_reset(rwdStmt);
+        sqlite3_bind_int(rwdStmt, 1, i);
+        sqlite3_bind_int(rwdStmt, 2, c);
+        sqlite3_bind_int(rwdStmt, 3, s);
+        sqlite3_bind_int(rwdStmt, 4, q.classReward[c][s].defIndex);
+        sqlite3_bind_int(rwdStmt, 5, q.classReward[c][s].itemLevel);
+        sqlite3_step(rwdStmt);
+      }
+    }
+  }
+
+  sqlite3_finalize(defStmt);
+  sqlite3_finalize(tgtStmt);
+  sqlite3_finalize(rwdStmt);
+  sqlite3_exec(m_db, "COMMIT", nullptr, nullptr, nullptr);
+
+  printf("[DB] Seeded %d quest definitions\n", questCount);
+}
+
+// ═══════════════════════════════════════════════════════
+// Load all quest definitions from DB
+// ═══════════════════════════════════════════════════════
+
+std::vector<Database::QuestDefData> Database::LoadAllQuests() {
+  std::vector<QuestDefData> result;
+
+  // Load definitions
+  sqlite3_stmt *stmt = nullptr;
+  sqlite3_prepare_v2(m_db,
+      "SELECT quest_id, guard_npc_type, quest_name, location, lore_text "
+      "FROM quest_definitions ORDER BY quest_id",
+      -1, &stmt, nullptr);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    QuestDefData q;
+    q.questId = sqlite3_column_int(stmt, 0);
+    q.guardNpcType = (uint16_t)sqlite3_column_int(stmt, 1);
+    q.questName = (const char *)sqlite3_column_text(stmt, 2);
+    q.location = (const char *)sqlite3_column_text(stmt, 3);
+    q.loreText = (const char *)sqlite3_column_text(stmt, 4);
+    q.targetCount = 0;
+    result.push_back(q);
+  }
+  sqlite3_finalize(stmt);
+
+  // Load targets
+  sqlite3_prepare_v2(m_db,
+      "SELECT quest_id, target_index, monster_type, kills_required "
+      "FROM quest_targets ORDER BY quest_id, target_index",
+      -1, &stmt, nullptr);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    int qid = sqlite3_column_int(stmt, 0);
+    int tidx = sqlite3_column_int(stmt, 1);
+    // Find quest in result
+    for (auto &q : result) {
+      if (q.questId == qid && tidx < 3) {
+        q.targets[tidx].monsterType = (uint8_t)sqlite3_column_int(stmt, 2);
+        q.targets[tidx].killsRequired = (uint8_t)sqlite3_column_int(stmt, 3);
+        if (tidx + 1 > q.targetCount)
+          q.targetCount = tidx + 1;
+        break;
+      }
+    }
+  }
+  sqlite3_finalize(stmt);
+
+  // Load rewards
+  sqlite3_prepare_v2(m_db,
+      "SELECT quest_id, class_index, reward_slot, def_index, item_level "
+      "FROM quest_rewards ORDER BY quest_id, class_index, reward_slot",
+      -1, &stmt, nullptr);
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    int qid = sqlite3_column_int(stmt, 0);
+    int cidx = sqlite3_column_int(stmt, 1);
+    int rslot = sqlite3_column_int(stmt, 2);
+    for (auto &q : result) {
+      if (q.questId == qid && cidx < 4 && rslot < 2) {
+        q.classReward[cidx][rslot].defIndex = (int16_t)sqlite3_column_int(stmt, 3);
+        q.classReward[cidx][rslot].itemLevel = (uint8_t)sqlite3_column_int(stmt, 4);
+        break;
+      }
+    }
+  }
+  sqlite3_finalize(stmt);
+
+  printf("[DB] Loaded %d quest definitions from DB\n", (int)result.size());
+  return result;
 }

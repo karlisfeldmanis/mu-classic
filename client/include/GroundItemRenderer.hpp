@@ -34,7 +34,8 @@ void UpdateAndRender(FloatingDamage *pool, int poolSize, float deltaTime,
 } // namespace FloatingDamageRenderer
 
 namespace GroundItemRenderer {
-void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale);
+void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale,
+                         float &heightBoost);
 void UpdatePhysics(GroundItem &gi, float terrainHeight);
 void RenderZenPile(int quantity, glm::vec3 pos, glm::vec3 angle, float scale,
                    const glm::mat4 &view, const glm::mat4 &proj);

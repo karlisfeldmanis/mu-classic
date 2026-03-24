@@ -84,7 +84,8 @@ public:
     uint8_t category = 0xFF; // 0xFF = empty
     uint8_t itemIndex = 0;
     uint8_t itemLevel = 0;
-    uint8_t quantity = 0;    // Stack count (arrows/bolts)
+    uint8_t quantity = 0;     // Stack count (arrows/bolts)
+    uint8_t optionFlags = 0;  // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
   };
   std::array<EquippedItem, NUM_EQUIP_SLOTS> equipment{};
 
@@ -95,6 +96,7 @@ public:
     uint8_t itemIndex = 0;
     uint8_t quantity = 0;
     uint8_t itemLevel = 0;
+    uint8_t optionFlags = 0;  // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
     bool occupied = false; // true if any part of an item is here
     bool primary = false;  // true if this is the top-left root slot
   };

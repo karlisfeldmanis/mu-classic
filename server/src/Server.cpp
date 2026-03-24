@@ -32,6 +32,8 @@ bool Server::Start(uint16_t port) {
   m_db.SeedNpcSpawns();
   m_db.SeedMonsterSpawns();
   m_db.SeedItemDefinitions();
+  m_db.SeedQuests();
+  QuestHandler::Init(m_db);
 
   // No longer seeding default equipment by name; use DB status
 
@@ -911,7 +913,8 @@ void Server::SaveSession(Session &session) {
     if (item.primary && item.defIndex >= 0) {
       m_db.SaveCharacterInventory(session.characterId, item.defIndex,
                                   item.quantity, item.itemLevel,
-                                  static_cast<uint8_t>(i));
+                                  static_cast<uint8_t>(i),
+                                  item.optionFlags);
     }
   }
 
@@ -921,7 +924,7 @@ void Server::SaveSession(Session &session) {
     if (eq.category != 0xFF) {
       m_db.UpdateEquipment(session.characterId, static_cast<uint8_t>(i),
                            eq.category, eq.itemIndex, eq.itemLevel,
-                           eq.quantity);
+                           eq.quantity, eq.optionFlags);
     }
   }
 
@@ -981,6 +984,9 @@ void Server::OnClientConnected(Session &session) {
 
   // Auto-assign account (no login flow yet)
   session.accountId = 1;
+
+  // Send item catalog once per connection (static data)
+  CharacterHandler::SendItemCatalog(session, m_db);
 
   // Send character list — client enters character select screen
   CharacterSelectHandler::SendCharList(session, m_db);

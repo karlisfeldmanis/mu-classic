@@ -337,6 +337,8 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_ICE, sndPath + "sIce.wav", 2);
   LoadSound(SOUND_FLAME, sndPath + "sFlame.wav", 2);
   LoadSound(SOUND_FLASH, sndPath + "sAquaFlash.wav", 2);
+  // Dungeon trap sounds (Main 5.2: SOUND_TRAP01 = aGrate.wav)
+  LoadSound(SOUND_TRAP01, sndPath + "aGrate.wav", 2, true);
 
   // 3D positional sounds (monsters, ambient creatures)
   LoadSound(SOUND_BIRD01, sndPath + "aBird1.wav", 1, true);

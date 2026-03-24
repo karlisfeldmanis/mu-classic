@@ -108,7 +108,9 @@ struct ClientGameState {
   std::function<void(const glm::vec3 &, int, uint8_t)> spawnDamageNumber;
   std::function<int(uint8_t)> getBodyPartIndex;
   std::function<std::string(uint8_t, uint8_t)> getBodyPartModelFile;
-  std::function<void(int16_t, glm::vec3 &, float &)> getItemRestingAngle;
+  std::function<void(int16_t, glm::vec3 &, float &, float &)> getItemRestingAngle;
+  std::function<void(const std::string &, const std::string &, int, int)>
+      onQuestProgress; // questName, targetName, current, required
 };
 
 // Pending map change (set by packet handler, consumed by main loop)

@@ -10,11 +10,11 @@
 #include "imgui.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <vector>
 
 // ─── Shared state (external linkage — declared in InventoryUI_Internal.hpp) ──
 
@@ -47,6 +47,7 @@ static TexHandle g_slotBackgrounds[12] = {
     kInvalidTex, kInvalidTex, kInvalidTex, kInvalidTex};
 static UITexture g_texInventoryBg;
 TexHandle g_texSkillIcons = kInvalidTex; // Skill.OZJ sprite sheet (shared)
+TexHandle g_texAuraIcons[4] = {kInvalidTex, kInvalidTex, kInvalidTex, kInvalidTex};
 
 // Render queue for deferred 3D item rendering
 static std::vector<ItemRenderJob> g_renderQueue;
@@ -79,48 +80,48 @@ static int g_dragFromShopSlot =
 
 // DK skills (AG cost)
 const SkillDef g_dkSkills[] = {
-    {19, "Falling Slash", 9, 1, 15, "Downward slash attack", 0},
-    {20, "Lunge", 9, 1, 15, "Forward thrust attack", 0},
-    {21, "Uppercut", 8, 1, 15, "Upward strike attack", 0},
-    {22, "Cyclone", 9, 1, 18, "Spinning attack", 0},
-    {23, "Slash", 10, 1, 20, "Horizontal slash", 0},
-    {41, "Twisting Slash", 10, 30, 25, "AoE spinning slash", 0},
-    {42, "Rageful Blow", 20, 170, 60, "Powerful ground strike", 0},
-    {43, "Death Stab", 12, 160, 70, "Piercing stab attack", 0},
+    {19, "Falling Slash", 9, 15, "Downward slash attack"},
+    {20, "Lunge", 9, 15, "Forward thrust attack"},
+    {21, "Uppercut", 8, 15, "Upward strike attack"},
+    {22, "Cyclone", 9, 18, "Spinning attack"},
+    {23, "Slash", 10, 20, "Horizontal slash"},
+    {41, "Twisting Slash", 10, 25, "AoE spinning slash"},
+    {42, "Rageful Blow", 20, 60, "Powerful ground strike"},
+    {43, "Death Stab", 12, 70, "Piercing stab attack"},
 };
 // NUM_DK_SKILLS defined in InventoryUI_Internal.hpp
 
 // DW spells (Mana cost) — OpenMU Version075
 const SkillDef g_dwSpells[] = {
-    {17, "Energy Ball", 1, 1, 8, "Basic energy projectile", 0},
-    {4, "Fire Ball", 3, 5, 22, "Fireball projectile", 40},
-    {1, "Poison", 42, 10, 20, "Poison magic", 140},
-    {3, "Lightning", 15, 13, 30, "Lightning bolt", 72},
-    {2, "Meteorite", 12, 21, 40, "Falling meteorite", 104},
-    {7, "Ice", 38, 25, 35, "Ice magic", 120},
-    {5, "Flame", 50, 35, 50, "Fire AoE", 160},
-    {8, "Twister", 60, 40, 55, "Twisting wind AoE", 180},
-    {6, "Teleport", 30, 17, 0, "Teleport to location", 88},
-    {9, "Evil Spirit", 90, 50, 80, "Dark spirit AoE", 220},
-    {12, "Aqua Beam", 140, 74, 90, "Water beam attack", 345},
-    {10, "Hellfire", 160, 60, 100, "Massive fire AoE", 260},
-    {13, "Cometfall", 90, 72, 120, "Sky-strike AoE", 436},
-    {14, "Inferno", 200, 88, 150, "Ring of explosions", 578},
+    {17, "Energy Ball", 1, 8, "Basic energy projectile"},
+    {4, "Fire Ball", 3, 22, "Fireball projectile"},
+    {1, "Poison", 42, 20, "Poison magic"},
+    {3, "Lightning", 15, 30, "Lightning bolt"},
+    {2, "Meteorite", 12, 40, "Falling meteorite"},
+    {7, "Ice", 38, 35, "Ice magic"},
+    {5, "Flame", 50, 50, "Fire AoE"},
+    {8, "Twister", 60, 55, "Twisting wind AoE"},
+    {6, "Teleport", 30, 0, "Teleport to location"},
+    {9, "Evil Spirit", 90, 80, "Dark spirit AoE"},
+    {12, "Aqua Beam", 140, 90, "Water beam attack"},
+    {10, "Hellfire", 160, 100, "Massive fire AoE"},
+    {13, "Cometfall", 90, 120, "Sky-strike AoE"},
+    {14, "Inferno", 200, 150, "Ring of explosions"},
 };
 // NUM_DW_SPELLS defined in InventoryUI_Internal.hpp
 
 // Elf skills (Mana cost) — OpenMU Version075 (0.97d scope)
 const SkillDef g_elfSkills[] = {
-    {26, "Heal", 20, 8, 0, "Heal target player", 100},
-    {27, "Greater Defense", 30, 13, 0, "Buff target defense", 100},
-    {28, "Greater Damage", 40, 18, 0, "Buff target damage", 100},
-    {30, "Summon Goblin", 40, 3, 0, "Summon a Goblin ally", 0},
-    {31, "Summon Stone Golem", 70, 18, 0, "Summon a Stone Golem", 60},
-    {32, "Summon Assassin", 110, 26, 0, "Summon an Assassin", 90},
-    {33, "Summon Elite Yeti", 160, 36, 0, "Summon an Elite Yeti", 130},
-    {34, "Summon Dark Knight", 200, 48, 0, "Summon a Dark Knight", 170},
-    {35, "Summon Bali", 250, 52, 0, "Summon the mighty Bali", 210},
-    {29, "Triple Shot", 0, 1, 0, "Fires three arrows at once", 0},
+    {26, "Heal", 20, 0, "Heal target player"},
+    {27, "Greater Defense", 30, 0, "Buff target defense"},
+    {28, "Greater Damage", 40, 0, "Buff target damage"},
+    {30, "Summon Goblin", 40, 0, "Summon a Goblin ally"},
+    {31, "Summon Stone Golem", 70, 0, "Summon a Stone Golem"},
+    {32, "Summon Assassin", 110, 0, "Summon an Assassin"},
+    {33, "Summon Elite Yeti", 160, 0, "Summon an Elite Yeti"},
+    {34, "Summon Dark Knight", 200, 0, "Summon a Dark Knight"},
+    {35, "Summon Bali", 250, 0, "Summon the mighty Bali"},
+    {29, "Triple Shot", 0, 0, "Fires three arrows at once"},
 };
 // NUM_ELF_SKILLS defined in InventoryUI_Internal.hpp
 
@@ -557,6 +558,7 @@ static bool CheckBagFit(int16_t defIdx, int targetSlot, int ignoreSlot = -1) {
 
 } // anonymous namespace
 
+
 // ─── InventoryUI namespace implementation ───────────────────────────────────
 
 namespace InventoryUI {
@@ -641,6 +643,20 @@ void ConsumeQuickSlotItem(int slotIndex) {
     if (it == g_itemDefs.end())
       return;
     const auto &def = it->second;
+
+    // Mount toggle from quickslot (not consumed, no cooldown)
+    if (def.category == 13 && (def.itemIndex == 2 || def.itemIndex == 3)) {
+      if (s_ctx->mountToggling && !*s_ctx->mountToggling) {
+        s_ctx->hero->StopMoving();
+        if (!s_ctx->hero->IsMounted()) {
+          // Prepare mount index so timer completion will call EquipMount
+          s_ctx->hero->SetMountIndex(def.itemIndex);
+        }
+        *s_ctx->mountToggling = true;
+        *s_ctx->mountToggleTimer = s_ctx->mountToggleTime;
+      }
+      return;
+    }
 
     if (def.category == 14) {
       // HP potions (itemIndex 0-3)
@@ -1344,7 +1360,8 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
         AddPendingItemTooltip(ItemDatabase::GetDefIndexFromCategory(
                                   s_ctx->equipSlots[ep.slot].category,
                                   s_ctx->equipSlots[ep.slot].itemIndex),
-                              s_ctx->equipSlots[ep.slot].itemLevel);
+                              s_ctx->equipSlots[ep.slot].itemLevel, 0,
+                              s_ctx->equipSlots[ep.slot].optionFlags);
       }
 
       // Arrow/bolt quantity overlay on equipment slot (only for ammo, not weapons/armor)
@@ -1436,7 +1453,8 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
           }
           if (hoverItem && !g_isDragging)
             AddPendingItemTooltip(s_ctx->inventory[slot].defIndex,
-                                  s_ctx->inventory[slot].itemLevel);
+                                  s_ctx->inventory[slot].itemLevel, 0,
+                                  s_ctx->inventory[slot].optionFlags);
 
           // Quantity overlay (deferred — drawn after 3D item models)
           if (s_ctx->inventory[slot].quantity > 1) {
@@ -1563,7 +1581,8 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
       if (mp.x >= iMin.x && mp.x < iMax.x && mp.y >= iMin.y && mp.y < iMax.y &&
           !g_isDragging) {
         AddPendingItemTooltip(s_ctx->inventory[slot].defIndex,
-                              s_ctx->inventory[slot].itemLevel);
+                              s_ctx->inventory[slot].itemLevel, 0,
+                              s_ctx->inventory[slot].optionFlags);
       }
     }
   }
@@ -1976,7 +1995,7 @@ bool HandlePanelClick(float vx, float vy) {
     }
   }
 
-  // Menu buttons: C, I, S, T, M (screen-pixel, bottom-right corner)
+  // Menu buttons: C, I, S, T, M, L (screen-pixel, bottom-right corner)
   // Convert virtual coords to screen pixels for hit testing
   {
     float scrW = (float)winW, scrH = (float)winH;
@@ -2013,15 +2032,9 @@ bool HandlePanelClick(float vx, float vy) {
             *s_ctx->teleportTimer = s_ctx->teleportCastTime;
             SoundManager::Play(SOUND_SUMMON);
           }
-        } else if (i == 4 && s_ctx->mountToggling && !*s_ctx->mountToggling) {
-          if (s_ctx->hero && s_ctx->hero->HasMountEquipped()) {
-            s_ctx->hero->StopMoving();
-            *s_ctx->mountToggling = true;
-            *s_ctx->mountToggleTimer = s_ctx->mountToggleTime;
-          } else {
-            ShowNotification("No mount equipped!");
-            SoundManager::Play(SOUND_ERROR01);
-          }
+        } else if (i == 4) {
+          *s_ctx->showQuestLog = !*s_ctx->showQuestLog;
+          SoundManager::Play(SOUND_INTERFACE01);
         }
         return true;
       }
@@ -2375,8 +2388,11 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
             validSlot = (cat == 12 && idx <= 6);
             break; // Wings
           case 8:
-            validSlot = (cat == 13 && (idx == 0 || idx == 1 || idx == 2 ||
-                                       idx == 3)); // Guardian/Pet
+            validSlot = (cat == 13 && (idx == 0 || idx == 1)); // Pets only
+            if (cat == 13 && (idx == 2 || idx == 3)) {
+              ShowNotification("Use mount in Q/W/E/R quickslots!");
+              SoundManager::Play(SOUND_ERROR01);
+            }
             break;
           case 9:
             validSlot = (cat == 13 && idx >= 8 && idx <= 13);
@@ -2551,7 +2567,10 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
         if (vx >= x0 && vx <= x0 + SLOT) {
           if (g_dragDefIndex >= 0) {
             auto it = g_itemDefs.find(g_dragDefIndex);
-            if (it != g_itemDefs.end() && it->second.category == 14) {
+            if (it != g_itemDefs.end() &&
+                (it->second.category == 14 ||
+                 (it->second.category == 13 &&
+                  (it->second.itemIndex == 2 || it->second.itemIndex == 3)))) {
               s_ctx->potionBar[i] = g_dragDefIndex;
               SoundManager::Play(SOUND_GET_ITEM01);
               return;
@@ -2805,6 +2824,17 @@ void LoadSlotBackgrounds(const std::string &dataPath) {
   if (TexValid(g_texSkillIcons)) {
     printf("[UI] Loaded Skill.OZJ icon sheet (tex=%zu)\n", (size_t)TexImID(g_texSkillIcons));
   }
+
+  // Load aura icons for pets/mounts
+  const char *auraIconFiles[] = {
+    "aura_guardian_angel.png", "aura_imp.png",
+    "aura_uniria.png", "aura_dinorant.png",
+  };
+  for (int i = 0; i < 4; i++) {
+    auto tex = UITexture::Load(dataPath + "/Interface/" + auraIconFiles[i]);
+    g_texAuraIcons[i] = tex.id;
+  }
+  printf("[UI] Loaded 4 aura icons\n");
 }
 
 void UpdatePanelScale(int /*windowHeight*/) {

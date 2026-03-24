@@ -20,6 +20,9 @@ namespace ItemDatabase {
 // Initialize the g_itemDefs map (must be called once at startup)
 void Init();
 
+// Load item definitions from server catalog packet (replaces hardcoded data)
+void LoadFromCatalog(const uint8_t *packetData, size_t packetLen);
+
 // Access the global item definitions map
 std::map<int16_t, ClientItemDefinition> &GetItemDefs();
 

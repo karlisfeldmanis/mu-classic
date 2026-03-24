@@ -117,6 +117,9 @@ constexpr uint8_t CHAT_LOG_SAVE = 0x61;    // C->S: save chat message
 
 // Client settings
 constexpr uint8_t CLIENT_SETTINGS = 0x63; // C->S: client settings (camera zoom)
+
+// Item catalog
+constexpr uint8_t ITEM_CATALOG = 0x64; // S->C: full item definitions (C2)
 } // namespace Opcode
 
 // =====================================================
@@ -459,6 +462,7 @@ struct PMSG_INVENTORY_ITEM {
   uint8_t itemIndex; // Index (0-31)
   uint8_t quantity;
   uint8_t itemLevel;
+  uint8_t optionFlags; // bit7=Skill, bit6=Luck, bits0-2=Additional
 };
 
 // C->S: Inventory Move Request (0x39)
@@ -487,6 +491,7 @@ struct PMSG_DROP_SPAWN_SEND {
   int16_t defIndex;   // -1=Zen, 0-511+=item def index
   uint8_t quantity;
   uint8_t itemLevel; // Enhancement +0..+2
+  uint8_t optionFlags; // bit7=Skill, bit6=Luck, bits0-2=Additional
   float worldX;
   float worldZ;
 };
@@ -504,6 +509,7 @@ struct PMSG_PICKUP_RESULT_SEND {
   int16_t defIndex; // -1=Zen, 0-511+=item def index
   uint8_t quantity;
   uint8_t itemLevel;
+  uint8_t optionFlags; // bit7=Skill, bit6=Luck, bits0-2=Additional
   uint8_t success; // 1=ok, 0=already taken or bag full
 };
 
@@ -817,6 +823,30 @@ inline void BuxDecode(char *data, int len) {
     data[i] ^= buxCode[i % 3];
   }
 }
+
+// S->C: Item catalog entry (one per item definition)
+struct PMSG_ITEM_DEF_ENTRY {
+  uint8_t category;
+  uint8_t itemIndex;
+  char name[32];
+  char modelFile[32];
+  uint16_t levelReq;
+  uint16_t dmgMin;
+  uint16_t dmgMax;
+  uint16_t defense;
+  uint8_t attackSpeed;
+  uint8_t twoHanded;
+  uint8_t width;
+  uint8_t height;
+  uint16_t reqStr;
+  uint16_t reqDex;
+  uint16_t reqVit;
+  uint16_t reqEne;
+  uint32_t classFlags;
+  uint32_t buyPrice;
+  uint16_t magicPower;
+};
+static_assert(sizeof(PMSG_ITEM_DEF_ENTRY) == 96, "PMSG_ITEM_DEF_ENTRY size");
 
 #pragma pack(pop)
 #endif // MU_PACKET_DEFS_HPP

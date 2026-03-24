@@ -73,6 +73,7 @@ struct ClientInventoryItem {
   int16_t defIndex = -2;
   uint8_t quantity = 0;
   uint8_t itemLevel = 0;
+  uint8_t optionFlags = 0;
   bool occupied = false;
   bool primary = false;
 };
@@ -84,6 +85,7 @@ struct ClientEquipSlot {
   uint8_t itemIndex = 0;
   uint8_t itemLevel = 0;
   uint8_t quantity = 0;    // Stack count (arrows/bolts)
+  uint8_t optionFlags = 0;
   std::string modelFile;
   bool equipped = false;
 };
@@ -95,6 +97,7 @@ struct GroundItem {
   int16_t defIndex; // -1=Zen
   int quantity;
   uint8_t itemLevel;
+  uint8_t optionFlags = 0;
   glm::vec3 position;
   float timer;
   bool active;

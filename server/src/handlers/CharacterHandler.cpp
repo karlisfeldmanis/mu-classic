@@ -26,6 +26,9 @@ void SendCharStats(Session &session, Database &db, int characterId) {
     if (itemDef.id > 0) {
       session.totalDefense +=
           itemDef.defense + GetDefenseLevelBonus(slot.category, slot.itemLevel);
+      if (slot.category >= 6 && slot.category <= 11) {
+        session.totalDefense += (slot.optionFlags & 0x07) * 4;
+      }
     }
   }
 
@@ -174,9 +177,10 @@ void SendEquipment(Session &session, Database &db, int characterId) {
     packet[off + 2] = equip[i].itemIndex;
     packet[off + 3] = equip[i].itemLevel;
     packet[off + 4] = equip[i].quantity;
+    packet[off + 5] = equip[i].optionFlags;
 
     auto itemDef = db.GetItemDefinition(equip[i].category, equip[i].itemIndex);
-    strncpy(reinterpret_cast<char *>(&packet[off + 5]),
+    strncpy(reinterpret_cast<char *>(&packet[off + 6]),
             itemDef.modelFile.c_str(), 31);
   }
 
@@ -184,6 +188,7 @@ void SendEquipment(Session &session, Database &db, int characterId) {
   for (auto &e : equip) {
     if (e.slot < Session::NUM_EQUIP_SLOTS) {
       session.equipment[e.slot].quantity = e.quantity;
+      session.equipment[e.slot].optionFlags = e.optionFlags;
     }
   }
 
@@ -254,6 +259,10 @@ void RefreshCombatStats(Session &session, Database &db, int characterId) {
       }
       session.totalDefense +=
           itemDef.defense + GetDefenseLevelBonus(slot.category, slot.itemLevel);
+      // Additional Option defense bonus (+4 per level for armor/shield)
+      if (slot.category >= 6 && slot.category <= 11) {
+        session.totalDefense += (slot.optionFlags & 0x07) * 4;
+      }
 
       if (slot.slot == 7) { // Wings
         rightDmgMin += 15;
@@ -407,6 +416,16 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
         return;
       }
 
+      // Slot 8: reject mounts (idx 2-3), only allow pets (idx 0-1)
+      if (eq->slot == 8 && eq->category == 13 &&
+          (eq->itemIndex == 2 || eq->itemIndex == 3)) {
+        printf("[Character] Rejecting equip char=%d: mounts must use quickslots\n",
+               charId);
+        SendEquipment(session, db, charId);
+        InventoryHandler::SendInventorySync(session);
+        return;
+      }
+
       // Slot 1 (left hand) constraint logic
       if (eq->slot == 1) {
         // Ammo (arrows/bolts) is allowed in slot 1 alongside matching bow/crossbow
@@ -521,13 +540,14 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
 
   // Save old equipment in this slot for swap/unequip
   auto oldEquip = db.GetCharacterEquipment(charId);
-  uint8_t oldCat = 0xFF, oldIdx = 0, oldLvl = 0, oldQty = 0;
+  uint8_t oldCat = 0xFF, oldIdx = 0, oldLvl = 0, oldQty = 0, oldOpt = 0;
   for (auto &oe : oldEquip) {
     if (oe.slot == eq->slot && oe.category != 0xFF) {
       oldCat = oe.category;
       oldIdx = oe.itemIndex;
       oldLvl = oe.itemLevel;
       oldQty = oe.quantity;
+      oldOpt = oe.optionFlags;
       break;
     }
   }
@@ -632,11 +652,12 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
                   if (hh == 0 && ww == 0) {
                     session.bag[s].quantity = 1;
                     session.bag[s].itemLevel = slot.itemLevel;
+                    session.bag[s].optionFlags = slot.optionFlags;
                   }
                 }
               }
               db.SaveCharacterInventory(charId, lhDef, 1, slot.itemLevel,
-                                        (uint8_t)(r * 8 + c2));
+                                        (uint8_t)(r * 8 + c2), slot.optionFlags);
               lhPlaced = true;
             }
           }
@@ -682,8 +703,9 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
             session.bag[ammoSlot].itemIndex = e1.itemIndex;
             session.bag[ammoSlot].quantity = e1.quantity;
             session.bag[ammoSlot].itemLevel = e1.itemLevel;
+            session.bag[ammoSlot].optionFlags = e1.optionFlags;
             db.SaveCharacterInventory(charId, ammoDef, e1.quantity,
-                                      e1.itemLevel, ammoSlot);
+                                      e1.itemLevel, ammoSlot, e1.optionFlags);
           }
           db.UpdateEquipment(charId, 1, 0xFF, 0, 0);
           session.equipment[1].category = 0xFF;
@@ -704,12 +726,14 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
   // Track which slot was freed so we can prefer it for the old weapon
   int freedSlot = -1;
   uint8_t newItemQty = 0; // Carry quantity from bag (for arrows/bolts)
+  uint8_t newItemOpt = 0; // Carry optionFlags from bag
   if (eq->category != 0xFF) {
     int16_t dIdx = (int16_t)((int)eq->category * 32 + (int)eq->itemIndex);
     for (int i = 0; i < 64; i++) {
       if (session.bag[i].occupied && session.bag[i].primary &&
           session.bag[i].defIndex == dIdx) {
         newItemQty = session.bag[i].quantity;
+        newItemOpt = session.bag[i].optionFlags;
         // Clear bag slot (including multi-cell)
         auto dI = db.GetItemDefinition(dIdx);
         int w = dI.width > 0 ? dI.width : 1;
@@ -763,10 +787,11 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
           if (hh == 0 && ww == 0) {
             session.bag[s].quantity = restoreQty;
             session.bag[s].itemLevel = oldLvl;
+            session.bag[s].optionFlags = oldOpt;
           }
         }
       }
-      db.SaveCharacterInventory(charId, oDef, restoreQty, oldLvl, (uint8_t)startSlot);
+      db.SaveCharacterInventory(charId, oDef, restoreQty, oldLvl, (uint8_t)startSlot, oldOpt);
       printf("[Character] Unequipped item saved to bag slot %d (def=%d qty=%d)\n",
              startSlot, oDef, restoreQty);
       return true;
@@ -792,7 +817,7 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
       printf("[Character] REJECTED equip: no bag space for unequipped item "
              "def=%d, restoring equipment\n", oDef);
       // Restore old equipment in DB
-      db.UpdateEquipment(charId, eq->slot, oldCat, oldIdx, oldLvl, oldQty);
+      db.UpdateEquipment(charId, eq->slot, oldCat, oldIdx, oldLvl, oldQty, oldOpt);
       // Restore bag: put the new item back (if it was taken from bag)
       if (eq->category != 0xFF && freedSlot >= 0) {
         int16_t nDef = (int16_t)((int)eq->category * 32 + (int)eq->itemIndex);
@@ -810,12 +835,13 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
               if (hh == 0 && ww == 0) {
                 session.bag[s].quantity = newItemQty;
                 session.bag[s].itemLevel = eq->itemLevel;
+                session.bag[s].optionFlags = newItemOpt;
               }
             }
           }
         }
         db.SaveCharacterInventory(charId, nDef, newItemQty, eq->itemLevel,
-                                  (uint8_t)freedSlot);
+                                  (uint8_t)freedSlot, newItemOpt);
       }
       SendEquipment(session, db, charId);
       InventoryHandler::SendInventorySync(session);
@@ -824,7 +850,7 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
   }
 
   db.UpdateEquipment(charId, eq->slot, eq->category, eq->itemIndex,
-                     eq->itemLevel, newItemQty);
+                     eq->itemLevel, newItemQty, newItemOpt);
 
   // Update session equipment cache
   if (eq->slot < Session::NUM_EQUIP_SLOTS) {
@@ -832,6 +858,7 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
     session.equipment[eq->slot].itemIndex = eq->itemIndex;
     session.equipment[eq->slot].itemLevel = eq->itemLevel;
     session.equipment[eq->slot].quantity = newItemQty;
+    session.equipment[eq->slot].optionFlags = newItemOpt;
   }
 
   RefreshCombatStats(session, db, charId);
@@ -934,6 +961,52 @@ void SendSkillList(Session &session) {
 
   session.Send(packet.data(), packet.size());
   printf("[Character] Sent %d skills to fd=%d\n", count, session.GetFd());
+}
+
+void SendItemCatalog(Session &session, Database &db) {
+  auto items = db.GetAllItemDefinitions();
+  uint16_t count = static_cast<uint16_t>(items.size());
+  size_t entrySize = sizeof(PMSG_ITEM_DEF_ENTRY);
+  size_t totalSize = 4 + 2 + count * entrySize; // C2 header(4) + count(2) + entries
+
+  std::vector<uint8_t> packet(totalSize, 0);
+  auto *head = reinterpret_cast<PWMSG_HEAD *>(packet.data());
+  *head = MakeC2Header(static_cast<uint16_t>(totalSize), Opcode::ITEM_CATALOG);
+
+  // Little-endian uint16_t count at offset [4-5]
+  packet[4] = static_cast<uint8_t>(count & 0xFF);
+  packet[5] = static_cast<uint8_t>((count >> 8) & 0xFF);
+
+  for (uint16_t i = 0; i < count; i++) {
+    auto *entry = reinterpret_cast<PMSG_ITEM_DEF_ENTRY *>(
+        packet.data() + 6 + i * entrySize);
+    const auto &item = items[i];
+    entry->category = item.category;
+    entry->itemIndex = item.itemIndex;
+    std::memset(entry->name, 0, 32);
+    std::strncpy(entry->name, item.name.c_str(), 31);
+    std::memset(entry->modelFile, 0, 32);
+    std::strncpy(entry->modelFile, item.modelFile.c_str(), 31);
+    entry->levelReq = item.level;
+    entry->dmgMin = item.damageMin;
+    entry->dmgMax = item.damageMax;
+    entry->defense = item.defense;
+    entry->attackSpeed = item.attackSpeed;
+    entry->twoHanded = item.twoHanded;
+    entry->width = item.width;
+    entry->height = item.height;
+    entry->reqStr = item.reqStrength;
+    entry->reqDex = item.reqDexterity;
+    entry->reqVit = item.reqVitality;
+    entry->reqEne = item.reqEnergy;
+    entry->classFlags = item.classFlags;
+    entry->buyPrice = item.buyPrice;
+    entry->magicPower = item.magicPower;
+  }
+
+  session.Send(packet.data(), packet.size());
+  printf("[Character] Sent item catalog (%d items, %zu bytes) to fd=%d\n",
+         count, totalSize, session.GetFd());
 }
 
 } // namespace CharacterHandler

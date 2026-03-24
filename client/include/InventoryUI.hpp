@@ -102,7 +102,8 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c);
 void RenderSkillDragCursor(ImDrawList *dl);
 
 // Tooltip
-void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPrice = 0);
+void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
+                           uint32_t shopBuyPrice = 0, uint8_t optionFlags = 0);
 void FlushPendingTooltip();
 bool HasPendingTooltip();
 void ResetPendingTooltip();

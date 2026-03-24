@@ -33,6 +33,7 @@ void SendInventorySync(Session &session) {
       items[idx].itemIndex = session.bag[i].itemIndex;
       items[idx].quantity = session.bag[i].quantity;
       items[idx].itemLevel = session.bag[i].itemLevel;
+      items[idx].optionFlags = session.bag[i].optionFlags;
       idx++;
     }
   }
@@ -65,6 +66,7 @@ void LoadInventory(Session &session, Database &db, int characterId) {
             session.bag[slot].defIndex = item.defIndex;
             session.bag[slot].quantity = item.quantity;
             session.bag[slot].itemLevel = item.itemLevel;
+            session.bag[slot].optionFlags = item.optionFlags;
             session.bag[slot].occupied = true;
             session.bag[slot].primary = (hh == 0 && ww == 0);
             session.bag[slot].category =
@@ -112,6 +114,7 @@ void HandleInventoryMove(Session &session, const std::vector<uint8_t> &packet,
     int16_t defIdx = session.bag[from].defIndex;
     uint8_t qty = session.bag[from].quantity;
     uint8_t lvl = session.bag[from].itemLevel;
+    uint8_t opt = session.bag[from].optionFlags;
 
     auto itemDef = db.GetItemDefinition(defIdx);
     int w = itemDef.width > 0 ? itemDef.width : 1;
@@ -149,11 +152,12 @@ void HandleInventoryMove(Session &session, const std::vector<uint8_t> &packet,
           if (session.bag[s].primary) {
             session.bag[s].quantity = qty;
             session.bag[s].itemLevel = lvl;
+            session.bag[s].optionFlags = opt;
           }
         }
       }
       db.DeleteCharacterInventoryItem(session.characterId, from);
-      db.SaveCharacterInventory(session.characterId, defIdx, qty, lvl, to);
+      db.SaveCharacterInventory(session.characterId, defIdx, qty, lvl, to, opt);
       printf("[Inventory] Server-side move def=%d from %d to %d\n", defIdx,
              from, to);
     } else {
@@ -192,6 +196,7 @@ void HandlePickup(Session &session, const std::vector<uint8_t> &packet,
     result.defIndex = drop->defIndex;
     result.quantity = drop->quantity;
     result.itemLevel = drop->itemLevel;
+    result.optionFlags = drop->optionFlags;
 
     if (drop->defIndex == -1) {
       // Zen pickup
@@ -278,11 +283,13 @@ void HandlePickup(Session &session, const std::vector<uint8_t> &packet,
                 session.bag[s].defIndex = drop->defIndex;
                 session.bag[s].quantity = drop->quantity;
                 session.bag[s].itemLevel = drop->itemLevel;
+                session.bag[s].optionFlags = drop->optionFlags;
               }
             }
             db.SaveCharacterInventory(session.characterId, drop->defIndex,
                                       drop->quantity, drop->itemLevel,
-                                      static_cast<uint8_t>(startSlot));
+                                      static_cast<uint8_t>(startSlot),
+                                      drop->optionFlags);
             printf(
                 "[Inventory] Pickup: def=%d (cat=%d idx=%d) -> bag slot %d\n",
                 drop->defIndex, cat, idx, startSlot);

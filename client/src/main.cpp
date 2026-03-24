@@ -463,9 +463,9 @@ static void ReconstructBridgeAttributes(TerrainData &td, const MapConfig &cfg,
     int gx = (int)(obj.position.z / 100.0f);
     float angZ = std::abs(std::fmod(glm::degrees(obj.rotation.z) + 360.0f, 180.0f));
     bool spanAlongGZ = (std::abs(angZ - 90.0f) < 45.0f);
-    // Bridge01.bmd is ~800 units long, ~300 wide → generous radius + height
-    int rGZ = spanAlongGZ ? 8 : 5;
-    int rGX = spanAlongGZ ? 5 : 8;
+    // Bridge halves are ~5 cells apart perpendicular; ±2 ensures overlap in middle
+    int rGZ = spanAlongGZ ? 3 : 2;
+    int rGX = spanAlongGZ ? 2 : 3;
 
     for (int dz = -rGZ; dz <= rGZ; ++dz) {
       for (int dx = -rGX; dx <= rGX; ++dx) {
@@ -473,13 +473,13 @@ static void ReconstructBridgeAttributes(TerrainData &td, const MapConfig &cfg,
         if (cz < 0 || cz >= S || cx < 0 || cx >= S) continue;
         int idx = cz * S + cx;
         float h = td.heightmap[idx];
-        if (std::abs(h - obj.position.y) < 200.0f) {
-          td.mapping.attributes[idx] |= 0x08;   // TW_NOGROUND
-          td.mapping.attributes[idx] &= ~0x10;   // clear TW_WATER
-          bridgeZone[idx] = true;                 // mark for mesh protection
-        } else {
-          td.mapping.attributes[idx] |= 0x10;    // TW_WATER
+        // Road/entrance at bridge height: make walkable, hide terrain under 3D model
+        if (std::abs(h - obj.position.y) < 80.0f) {
+          td.mapping.attributes[idx] &= ~(0x04 | 0x08); // clear TW_NOMOVE + TW_NOGROUND
+          td.mapping.attributes[idx] &= ~0x10;           // clear TW_WATER
+          bridgeZone[idx] = true;
         }
+        // Below-bridge cells: leave completely untouched (keep original water/void)
         count++;
       }
     }
@@ -487,7 +487,7 @@ static void ReconstructBridgeAttributes(TerrainData &td, const MapConfig &cfg,
   int zoneCount = 0;
   for (int i = 0; i < S * S; i++) if (bridgeZone[i]) zoneCount++;
   if (count > 0)
-    std::cout << "[Bridge] Patched " << count << " attribute cells, bridgeZone=" << zoneCount << std::endl;
+    std::cout << "[Bridge] Patched " << count << " cells, bridgeZone=" << zoneCount << std::endl;
 }
 
 // Apply atmosphere/rendering settings from MapConfig to all subsystems
@@ -539,6 +539,8 @@ static int g_questDialogNpcIndex = -1;
 static int g_questDialogSelected =
     -1; // -1 = quest list view, 0-4 = viewing specific quest
 static bool g_showQuestLog = false; // L key quest log window
+static int g_questLogSelected = -1; // Quest log detail view (-1 = none)
+static float g_qldPanelRect[4] = {}; // Quest log detail panel bounds
 static bool g_showMinimap = false;  // TAB key minimap overlay
 static bool g_mouseOverUIPanel =
     false; // Set each frame: true if cursor is over any UI panel
@@ -561,6 +563,74 @@ using QuestCatalogReward = ClientGameState::QuestCatalogReward;
 static std::vector<QuestCatalogEntry> g_questCatalog;
 static ClientGameState *g_clientState = nullptr; // For buff tick/buff display access
 
+// WoW-style quest progress popup (center screen, like WoW objective tracker)
+struct QuestProgressPopup {
+  char text[128] = {};   // "Target Name: 3/12"
+  char quest[64] = {};   // Quest name (shown above)
+  float timer = 0.0f;    // Remaining display time
+  bool complete = false;  // True if current == required (show green)
+};
+static QuestProgressPopup g_questPopups[4]; // Pool of 4 popups
+static int g_questPopupNext = 0;
+
+static void SpawnQuestPopup(const std::string &questName,
+                            const std::string &targetName, int current,
+                            int required) {
+  auto &p = g_questPopups[g_questPopupNext % 4];
+  snprintf(p.quest, sizeof(p.quest), "%s", questName.c_str());
+  snprintf(p.text, sizeof(p.text), "%s: %d/%d", targetName.c_str(), current,
+           required);
+  p.timer = 3.0f;
+  p.complete = (current >= required);
+  g_questPopupNext++;
+}
+
+// WoW-style quest difficulty color based on level gap
+static ImU32 GetQuestDifficultyColor(int recommendedLevel) {
+  int diff = recommendedLevel - (int)g_hero.GetLevel();
+  if (diff >= 5)  return IM_COL32(255, 32, 32, 255);   // red — much higher
+  if (diff >= 3)  return IM_COL32(255, 128, 0, 255);    // orange — higher
+  if (diff >= -2) return IM_COL32(255, 210, 50, 255);   // yellow — on-level
+  if (diff >= -8) return IM_COL32(80, 220, 80, 255);    // green — lower
+  return IM_COL32(140, 140, 140, 255);                   // grey — trivial
+}
+
+// Ornamental double-line separator
+static void DrawOrnamentSep(ImDrawList *dl, float x0, float x1, float y) {
+  dl->AddLine(ImVec2(x0, y),     ImVec2(x1, y),     IM_COL32(60, 52, 38, 140));
+  dl->AddLine(ImVec2(x0, y + 1), ImVec2(x1, y + 1), IM_COL32(100, 85, 55, 60));
+}
+
+// Shadow text helper (black offset behind main color)
+static void DrawShadowText(ImDrawList *dl, ImVec2 pos, ImU32 color, const char *text) {
+  dl->AddText(ImVec2(pos.x + 1, pos.y + 1), IM_COL32(0, 0, 0, 200), text);
+  dl->AddText(pos, color, text);
+}
+
+// Thin objective progress bar
+static void DrawProgressBar(ImDrawList *dl, float x, float y, float w, float h,
+                            float frac) {
+  dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h),
+                    IM_COL32(15, 12, 8, 180), 2.0f);
+  if (frac > 0.0f) {
+    float fillW = w * std::min(frac, 1.0f);
+    dl->AddRectFilledMultiColor(
+        ImVec2(x, y), ImVec2(x + fillW, y + h),
+        IM_COL32(40, 140, 40, 200), IM_COL32(40, 140, 40, 200),
+        IM_COL32(60, 180, 60, 200), IM_COL32(60, 180, 60, 200));
+  }
+  dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h),
+              IM_COL32(50, 45, 35, 120), 2.0f);
+}
+
+// Item quality color by item level
+static ImU32 GetRewardQualityColor(int itemLevel) {
+  if (itemLevel >= 9) return IM_COL32(255, 128, 0, 255);   // orange — legendary
+  if (itemLevel >= 7) return IM_COL32(180, 100, 255, 255);  // purple — epic
+  if (itemLevel >= 4) return IM_COL32(100, 180, 255, 255);  // blue — rare
+  if (itemLevel >= 1) return IM_COL32(30, 255, 30, 255);    // green — uncommon
+  return IM_COL32(200, 200, 200, 255);                       // white — common
+}
 
 // Guard name lookup by NPC type
 static const char *GetGuardName(uint16_t type) {
@@ -621,7 +691,8 @@ static int GetQuestStatus(int questId) {
 // Draw a weapon reward item box with 3D model + name label
 // Returns the height consumed (0 if no valid reward)
 static float DrawQuestRewardItem(ImDrawList *dl, float px, float cy,
-                                 float panelW, const QuestCatalogReward &reward) {
+                                 float panelW, const QuestCatalogReward &reward,
+                                 float qs = 1.0f) {
   if (reward.defIndex < 0)
     return 0;
   auto &itemDefs = ItemDatabase::GetItemDefs();
@@ -630,8 +701,8 @@ static float DrawQuestRewardItem(ImDrawList *dl, float px, float cy,
     return 0;
 
   const auto &def = it->second;
-  float boxSize = 44.0f;
-  float boxX = px + 22;
+  float boxSize = 44.0f * qs;
+  float boxX = px + 22 * qs;
   float boxY = cy;
 
   // Hover detection
@@ -639,13 +710,14 @@ static float DrawQuestRewardItem(ImDrawList *dl, float px, float cy,
   bool hovered = mPos.x >= boxX && mPos.x <= boxX + boxSize && mPos.y >= boxY &&
                  mPos.y <= boxY + boxSize;
 
-  // Dark slot background with hover highlight
+  // Quality-colored slot border based on item level
+  ImU32 qualCol = GetRewardQualityColor(reward.itemLevel);
+  ImU32 qualDim = (qualCol & 0x00FFFFFF) | (hovered ? 0xDD000000 : 0xAA000000);
   dl->AddRectFilled(
       ImVec2(boxX, boxY), ImVec2(boxX + boxSize, boxY + boxSize),
       hovered ? IM_COL32(35, 32, 25, 220) : IM_COL32(20, 18, 14, 200), 3.0f);
   dl->AddRect(ImVec2(boxX, boxY), ImVec2(boxX + boxSize, boxY + boxSize),
-              hovered ? IM_COL32(100, 90, 60, 220) : IM_COL32(60, 55, 40, 180),
-              3.0f, 0, 1.0f);
+              qualDim, 3.0f, 0, 1.5f);
 
   // Queue 3D model render job (hovered = spin)
   const char *modelName = def.modelFile.empty()
@@ -663,20 +735,18 @@ static float DrawQuestRewardItem(ImDrawList *dl, float px, float cy,
     InventoryUI::AddPendingItemTooltip(reward.defIndex, reward.itemLevel);
 
   // Item name + level text to the right of the box
-  float textX = boxX + boxSize + 10;
-  float textY = boxY + 10;
+  float textX = boxX + boxSize + 10 * qs;
+  float textY = boxY + (boxSize - ImGui::GetFontSize()) * 0.5f;
   char nameBuf[64];
   if (reward.itemLevel > 0)
     snprintf(nameBuf, sizeof(nameBuf), "%s +%d", def.name.c_str(),
              reward.itemLevel);
   else
     snprintf(nameBuf, sizeof(nameBuf), "%s", def.name.c_str());
-  dl->AddText(ImVec2(textX, textY),
-              hovered ? IM_COL32(140, 230, 255, 255)
-                      : IM_COL32(100, 200, 255, 255),
-              nameBuf);
+  ImU32 nameCol = hovered ? ((qualCol & 0x00FFFFFF) | 0xFF000000) : qualCol;
+  DrawShadowText(dl, ImVec2(textX, textY), nameCol, nameBuf);
 
-  return boxSize + 4; // height consumed
+  return boxSize + 4 * qs; // height consumed
 }
 
 // Skill learning state
@@ -1623,6 +1693,7 @@ int main(int argc, char **argv) {
     inputCtx.questDialogNpcIndex = &g_questDialogNpcIndex;
     inputCtx.questDialogSelected = &g_questDialogSelected;
     inputCtx.showQuestLog = &g_showQuestLog;
+    inputCtx.questLogSelected = &g_questLogSelected;
     inputCtx.mouseOverUIPanel = &g_mouseOverUIPanel;
     inputCtx.showCommandTerminal = &g_showCommandTerminal;
     inputCtx.showMinimap = &g_showMinimap;
@@ -1684,8 +1755,12 @@ int main(int argc, char **argv) {
     gameState.getBodyPartIndex = ItemDatabase::GetBodyPartIndex;
     gameState.getBodyPartModelFile = ItemDatabase::GetBodyPartModelFile;
     gameState.getItemRestingAngle = [](int16_t defIdx, glm::vec3 &angle,
-                                       float &scale) {
-      GroundItemRenderer::GetItemRestingAngle(defIdx, angle, scale);
+                                       float &scale, float &heightBoost) {
+      GroundItemRenderer::GetItemRestingAngle(defIdx, angle, scale, heightBoost);
+    };
+    gameState.onQuestProgress = [](const std::string &qn,
+                                    const std::string &tn, int cur, int req) {
+      SpawnQuestPopup(qn, tn, cur, req);
     };
     ClientPacketHandler::Init(&gameState);
     g_clientState = &gameState;
@@ -1977,12 +2052,13 @@ int main(int argc, char **argv) {
       ImGui_ImplGlfw_NewFrame();
       ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
       ImGui::NewFrame();
-      // Hide ImGui's default fallback window (Debug##Default)
-      ImGui::SetNextWindowSize(ImVec2(0, 0));
-      ImGui::SetNextWindowPos(ImVec2(-100, -100));
+      // Suppress ImGui's default fallback window
+      ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+      ImGui::SetNextWindowPos(ImVec2(-200, -200), ImGuiCond_Always);
       ImGui::Begin("Debug##Default", nullptr,
                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
-                   ImGuiWindowFlags_NoBackground);
+                   ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
+                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
       ImGui::End();
 
       CharacterSelect::Render(winW, winH);
@@ -2607,6 +2683,18 @@ int main(int argc, char **argv) {
     // Hero respawn: after death timer expires, respawn in same-map safe zone
     // Dungeon (map 1) has no safe zone → warp to Lorencia
     if (g_hero.ReadyToRespawn()) {
+      // Clear debuffs on respawn
+      if (g_clientState) {
+        g_clientState->poisoned = false;
+        g_clientState->poisonRemaining = 0.0f;
+        g_clientState->poisonMaxDuration = 0.0f;
+        g_hero.SetPoisoned(false);
+        // Clear buffs too (they shouldn't persist through death)
+        for (int b = 0; b < 2; b++) {
+          g_clientState->activeBuffs[b].active = false;
+          g_clientState->activeBuffs[b].remaining = 0.0f;
+        }
+      }
       // Per-map respawn points (grid coordinates)
       int respawnMapId = g_currentMapId;
       int respawnGX = 137, respawnGZ = 126; // Lorencia default
@@ -2957,27 +3045,9 @@ int main(int argc, char **argv) {
     g_fireEffect.Update(deltaTime);
     g_vfxManager.UpdateLevelUpCenter(g_hero.GetPosition());
 
-    // Dungeon trap VFX (Main 5.2: types 39=lance, 40=blade, 51=fire)
-    // HiddenMesh=-2, VFX-only — spawned continuously in CharacterAnimation
-    if (g_mapCfg->hasDungeonTraps) {
-      static float trapVfxTimer = 0.0f;
-      trapVfxTimer += deltaTime;
-      if (trapVfxTimer >= 0.15f) { // ~7 bursts/sec
-        trapVfxTimer -= 0.15f;
-        for (auto &inst : g_objectRenderer.GetInstances()) {
-          glm::vec3 pos = glm::vec3(inst.modelMatrix[3]);
-          if (inst.type == 39) {
-            // Lance Trap: lightning sprites (Main 5.2: MODEL_SAW +
-            // SOUND_TRAP01)
-            pos.y += 30.0f + (float)(rand() % 40);
-            g_vfxManager.SpawnBurst(ParticleType::SPELL_LIGHTNING, pos, 2);
-          }
-          // Note: type 51 (Fire Trap) fire particles now handled by ambient
-          // fire emitter system in VFXManager
-        }
-      }
-    }
-
+    // Dungeon trap VFX now handled by MonsterManager::TriggerAttackAnimation
+    // (on-attack only, matching Main 5.2 CharacterAnimation trigger pattern).
+    // Fire emitters for type 51/39 world objects remain in fire emitter system.
 
     g_vfxManager.Update(deltaTime);
 
@@ -3161,21 +3231,19 @@ int main(int argc, char **argv) {
     ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
     ImGui::NewFrame();
 
+    // Suppress ImGui's default fallback window
+    ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(-200, -200), ImGuiCond_Always);
+    ImGui::Begin("Debug##Default", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                 ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
+                 ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+    ImGui::End();
+
     // Simplified ImGui HUD
     {
       // Unified bottom HUD bar (HP, QWER, 1234, RMC, AG, XP)
       ImDrawList *dl = ImGui::GetForegroundDrawList();
-
-      // FPS counter (top-left) — smoothed with exponential moving average
-      {
-        static float smoothedFPS = 60.0f;
-        float instantFPS = 1.0f / std::max(deltaTime, 0.001f);
-        smoothedFPS +=
-            (instantFPS - smoothedFPS) * 0.05f; // ~20-frame smoothing
-        char fpsText[16];
-        snprintf(fpsText, sizeof(fpsText), "%.0f", smoothedFPS);
-        dl->AddText(ImVec2(5, 4), IM_COL32(200, 200, 200, 160), fpsText);
-      }
 
       InventoryUI::RenderQuickbar(dl, g_hudCoords);
       InventoryUI::RenderCastBar(dl);
@@ -3364,14 +3432,20 @@ int main(int argc, char **argv) {
           ImVec2 bMin2(bx, by), bMax2(bx + bw, by + bh);
           bool hov = mousePos.x >= bMin2.x && mousePos.x <= bMax2.x &&
                      mousePos.y >= bMin2.y && mousePos.y <= bMax2.y;
-          dl->AddRectFilled(bMin2, bMax2,
-                            hov ? IM_COL32(45, 40, 28, 230)
-                                : IM_COL32(25, 22, 16, 230),
-                            3.0f);
-          dl->AddRect(bMin2, bMax2, cBorder, 3.0f, 0, 1.0f);
+          // Gradient fill: darker bottom → lighter top
+          ImU32 topCol = hov ? IM_COL32(55, 50, 35, 235) : IM_COL32(35, 30, 22, 230);
+          ImU32 botCol = hov ? IM_COL32(35, 30, 22, 235) : IM_COL32(18, 16, 12, 230);
+          dl->AddRectFilledMultiColor(bMin2, bMax2, topCol, topCol, botCol, botCol);
+          // Gold border (brighter on hover)
+          dl->AddRect(bMin2, bMax2,
+                      hov ? IM_COL32(140, 120, 70, 220) : cBorder,
+                      3.0f, 0, 1.0f);
+          // Top highlight line
+          dl->AddLine(ImVec2(bx + 2, by + 1), ImVec2(bx + bw - 2, by + 1),
+                      IM_COL32(255, 255, 255, hov ? (uint8_t)30 : (uint8_t)15));
           ImVec2 ls = ImGui::CalcTextSize(label);
-          dl->AddText(ImVec2(bx + (bw - ls.x) * 0.5f, by + (bh - ls.y) * 0.5f),
-                      textColor, label);
+          DrawShadowText(dl, ImVec2(bx + (bw - ls.x) * 0.5f,
+                         by + (bh - ls.y) * 0.5f), textColor, label);
           return hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
                  !g_questDialogJustOpened;
         };
@@ -3381,7 +3455,7 @@ int main(int argc, char **argv) {
         float panelW = 340.0f * qs;
         const char *npcName = npcInfo.name.c_str();
 
-        // Collect all quests belonging to this guard
+        // Collect all quests belonging to this guard, sorted by level (low→high)
         if (g_questCatalog.empty()) { closeQuestDialog(); }
         else {
         int npcQuests[(int)g_questCatalog.size()];
@@ -3389,6 +3463,9 @@ int main(int argc, char **argv) {
         for (int qi = 0; qi < (int)g_questCatalog.size(); qi++)
           if (g_questCatalog[qi].guardType == guardType)
             npcQuests[npcQuestCount++] = qi;
+        std::sort(npcQuests, npcQuests + npcQuestCount, [](int a, int b) {
+          return g_questCatalog[a].recommendedLevel < g_questCatalog[b].recommendedLevel;
+        });
 
         if (g_questDialogSelected >= 0 && g_questDialogSelected < (int)g_questCatalog.size()) {
           // ── QUEST DETAIL PANEL ──
@@ -3398,12 +3475,12 @@ int main(int argc, char **argv) {
           auto *aq = FindActiveQuest(qi);
 
           const char *dialogText = q.loreText.c_str();
-          if (st == 1) dialogText = "The task is not yet complete.\nKeep fighting.";
-          else if (st == 2) dialogText = "Well done! You've completed\nthe task. Here is your reward.";
+          if (st == 2) dialogText = "Well done! You've completed\nthe task. Here is your reward.";
           else if (st == 3) dialogText = "This task is already complete.";
 
           bool showObjectives = (st == 0 || st == 1 || st == 2);
-          bool showRewards = (st == 0 || st == 2);
+          bool showRewards = (st == 0 || st == 1 || st == 2);
+          bool completable = aq && IsQuestCompletable(*aq);
           bool showAcceptBtn = (st == 0);
           bool showCompleteBtn = (st == 2);
 
@@ -3414,15 +3491,18 @@ int main(int argc, char **argv) {
             if (q.classReward[classIdx][1].defIndex >= 0) itemCount++;
           }
 
-          ImVec2 dialogSize = ImGui::CalcTextSize(dialogText);
+          float textWrap = panelW - 40 * qs; // lore text wrap width
+          ImVec2 dialogSize = ImGui::CalcTextSize(dialogText, nullptr, false, textWrap);
           float subtitleH = ImGui::CalcTextSize(npcName).y + 4 * qs;
-          float objH = showObjectives ? (18 * qs + q.targetCount * 18.0f * qs) : 0;
+          float objH = showObjectives ? (18 * qs + q.targetCount * 26.0f * qs) : 0;
           float weaponH = itemCount > 0 ? (itemCount * 48.0f * qs + 4.0f * qs) : 0;
           float rewardsH = showRewards ? ((10 + 18 + 18 + 18) * qs + weaponH) : 0;
           float buttonsH = btnH + 16 * qs;
           float infoH = ImGui::GetFontSize() + 8 * qs;
-          float panelH = (14 + 20 + 6) * qs + subtitleH + infoH + 1 + 10 * qs +
-                         dialogSize.y + 10 * qs + objH + rewardsH + buttonsH + 14 * qs;
+          float hintH = (st == 1 && completable) ? 24.0f * qs : 0.0f;
+          float panelH = 14 * qs + ImGui::CalcTextSize(q.questName.c_str()).y + 6 * qs +
+                         subtitleH + infoH + 12 * qs +
+                         dialogSize.y + 10 * qs + objH + rewardsH + hintH + buttonsH + 14 * qs;
           float px = (dispSize.x - panelW) * 0.5f;
           float py = (dispSize.y - panelH) * 0.5f;
           g_qdPanelRect[0] = px; g_qdPanelRect[1] = py;
@@ -3436,44 +3516,47 @@ int main(int argc, char **argv) {
           dl->AddRect(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
                       cBorder, 5.0f, 0, 1.5f);
 
-          float contentY = py + 14;
-          // Title
+          float contentY = py + 14 * qs;
+          float margin = 20 * qs;
+          float sepInset = 16 * qs;
+          // Title with shadow
           {
             ImVec2 ts = ImGui::CalcTextSize(q.questName.c_str());
-            dl->AddText(ImVec2(px + (panelW - ts.x) * 0.5f, contentY),
-                        cTitle, q.questName.c_str());
-            contentY += ts.y + 6;
+            DrawShadowText(dl, ImVec2(px + (panelW - ts.x) * 0.5f, contentY),
+                           cTitle, q.questName.c_str());
+            contentY += ts.y + 6 * qs;
           }
           // Guard name subtitle
           {
             ImVec2 gs = ImGui::CalcTextSize(npcName);
             dl->AddText(ImVec2(px + (panelW - gs.x) * 0.5f, contentY),
                         cTextDim, npcName);
-            contentY += gs.y + 4;
+            contentY += gs.y + 4 * qs;
           }
-          // Location + level
+          // Location + level (difficulty colored)
           {
             char infoBuf[64];
             snprintf(infoBuf, sizeof(infoBuf), "%s  |  Lv. %d",
                      q.location.c_str(), (int)q.recommendedLevel);
             ImVec2 infoSz = ImGui::CalcTextSize(infoBuf);
-            ImU32 lvColor = (g_hero.GetLevel() >= q.recommendedLevel)
-                                ? IM_COL32(120, 180, 120, 200)
-                                : IM_COL32(200, 120, 80, 200);
+            ImU32 lvColor = GetQuestDifficultyColor(q.recommendedLevel);
             dl->AddText(ImVec2(px + (panelW - infoSz.x) * 0.5f, contentY),
                         lvColor, infoBuf);
-            contentY += infoSz.y + 4;
+            contentY += infoSz.y + 4 * qs;
           }
-          dl->AddLine(ImVec2(px + 16, contentY),
-                      ImVec2(px + panelW - 16, contentY), cSep);
-          contentY += 10;
-          // Dialog text
-          dl->AddText(ImVec2(px + 20, contentY), cText, dialogText);
-          contentY += dialogSize.y + 10;
+          DrawOrnamentSep(dl, px + sepInset, px + panelW - sepInset, contentY);
+          contentY += 12 * qs;
+          // Dialog text (wrapped)
+          dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+                      ImVec2(px + margin, contentY), cText,
+                      dialogText, nullptr, textWrap);
+          contentY += dialogSize.y + 10 * qs;
           // Objectives
           if (showObjectives) {
-            dl->AddText(ImVec2(px + 20, contentY), cTextDim, "Objectives");
-            contentY += 18;
+            DrawShadowText(dl, ImVec2(px + margin, contentY),
+                           IM_COL32(210, 180, 80, 255), "Objectives");
+            contentY += 18 * qs;
+            float barW = panelW - 60 * qs;
             for (int i = 0; i < q.targetCount; i++) {
               char objBuf[80];
               if (aq) {
@@ -3481,24 +3564,30 @@ int main(int argc, char **argv) {
                          q.targets[i].name.c_str(), aq->killCount[i],
                          (int)q.targets[i].killsReq);
                 bool done = aq->killCount[i] >= q.targets[i].killsReq;
-                dl->AddText(ImVec2(px + 22, contentY),
-                            done ? cGreen : cText, objBuf);
+                DrawShadowText(dl, ImVec2(px + 22 * qs, contentY),
+                               done ? cGreen : cText, objBuf);
+                contentY += 18 * qs;
+                float frac = (float)aq->killCount[i] / (float)q.targets[i].killsReq;
+                DrawProgressBar(dl, px + 24 * qs, contentY, barW, 4.0f * qs, frac);
+                contentY += 8 * qs;
               } else {
                 snprintf(objBuf, sizeof(objBuf), "  Slay %d %s",
                          q.targets[i].killsReq, q.targets[i].name.c_str());
-                dl->AddText(ImVec2(px + 22, contentY), cText, objBuf);
+                dl->AddText(ImVec2(px + 22 * qs, contentY), cText, objBuf);
+                contentY += 18 * qs;
+                DrawProgressBar(dl, px + 24 * qs, contentY, barW, 4.0f * qs, 0.0f);
+                contentY += 8 * qs;
               }
-              contentY += 18;
             }
           }
           // Rewards (only your class items)
           if (showRewards) {
-            contentY += 4;
-            dl->AddLine(ImVec2(px + 16, contentY),
-                        ImVec2(px + panelW - 16, contentY), cSep);
-            contentY += 6;
-            dl->AddText(ImVec2(px + 20, contentY), cTextDim, "Rewards");
-            contentY += 18;
+            contentY += 4 * qs;
+            DrawOrnamentSep(dl, px + sepInset, px + panelW - sepInset, contentY);
+            contentY += 8 * qs;
+            DrawShadowText(dl, ImVec2(px + margin, contentY),
+                           IM_COL32(210, 180, 80, 255), "Rewards");
+            contentY += 18 * qs;
             // Zen
             {
               std::string zenStr = std::to_string(q.zenReward);
@@ -3506,8 +3595,8 @@ int main(int argc, char **argv) {
               while (n > 0) { zenStr.insert(n, ","); n -= 3; }
               char rwBuf[64];
               snprintf(rwBuf, sizeof(rwBuf), "  %s Zen", zenStr.c_str());
-              dl->AddText(ImVec2(px + 22, contentY), cGold, rwBuf);
-              contentY += 18;
+              DrawShadowText(dl, ImVec2(px + 22 * qs, contentY), cGold, rwBuf);
+              contentY += 18 * qs;
             }
             // XP
             {
@@ -3516,25 +3605,31 @@ int main(int argc, char **argv) {
               while (n > 0) { xpStr.insert(n, ","); n -= 3; }
               char rwBuf[64];
               snprintf(rwBuf, sizeof(rwBuf), "  %s Experience", xpStr.c_str());
-              dl->AddText(ImVec2(px + 22, contentY),
-                          IM_COL32(180, 140, 255, 255), rwBuf);
-              contentY += 18;
+              DrawShadowText(dl, ImVec2(px + 22 * qs, contentY),
+                             IM_COL32(180, 140, 255, 255), rwBuf);
+              contentY += 18 * qs;
             }
             // Class-specific item rewards
-            contentY += 4;
+            contentY += 4 * qs;
             float h1 = DrawQuestRewardItem(dl, px, contentY, panelW,
-                                           q.classReward[classIdx][0]);
+                                           q.classReward[classIdx][0], qs);
             contentY += h1;
             float h2 = DrawQuestRewardItem(dl, px, contentY, panelW,
-                                           q.classReward[classIdx][1]);
+                                           q.classReward[classIdx][1], qs);
             contentY += h2;
           }
+          // Completable hint for in-progress quests
+          if (st == 1 && completable) {
+            contentY += 6 * qs;
+            dl->AddText(ImVec2(px + margin, contentY), cGold,
+                        "Return to complete this quest.");
+            contentY += 18 * qs;
+          }
           // Separator before buttons
-          contentY += 2;
-          dl->AddLine(ImVec2(px + 16, contentY),
-                      ImVec2(px + panelW - 16, contentY), cSep);
+          contentY += 2 * qs;
+          DrawOrnamentSep(dl, px + sepInset, px + panelW - sepInset, contentY);
           // Buttons
-          float btnY = py + panelH - btnH - 12.0f;
+          float btnY = py + panelH - btnH - 12.0f * qs;
           if (showAcceptBtn) {
             float gap = 16.0f;
             float bx1 = px + (panelW - btnW * 2 - gap) * 0.5f;
@@ -3563,6 +3658,21 @@ int main(int argc, char **argv) {
               SoundManager::Play(SOUND_CLICK01);
               g_questDialogSelected = -1;
             }
+          } else if (st == 1) {
+            // In-progress: Back + Abandon
+            float gap = 16.0f;
+            float bx1 = px + (panelW - btnW * 2 - gap) * 0.5f;
+            float bx2 = bx1 + btnW + gap;
+            if (drawButton(bx1, btnY, btnW, btnH, "Back", cTextDim)) {
+              SoundManager::Play(SOUND_CLICK01);
+              g_questDialogSelected = -1;
+            }
+            if (drawButton(bx2, btnY, btnW, btnH, "Abandon",
+                           IM_COL32(220, 80, 80, 255))) {
+              SoundManager::Play(SOUND_CLICK01);
+              g_server.SendQuestAbandon((uint8_t)qi);
+              g_questDialogSelected = -1;
+            }
           } else {
             if (drawButton(px + (panelW - btnW) * 0.5f, btnY, btnW, btnH,
                            "Back", cTextDim)) {
@@ -3574,7 +3684,7 @@ int main(int argc, char **argv) {
           // ── QUEST LIST PANEL (all quests for this NPC) ──
           if (npcQuestCount == 0) {
             // No quests — simple dialog
-            float panelH = 100.0f;
+            float panelH = 100.0f * qs;
             float px = (dispSize.x - panelW) * 0.5f;
             float py = (dispSize.y - panelH) * 0.5f;
             g_qdPanelRect[0] = px; g_qdPanelRect[1] = py;
@@ -3584,13 +3694,13 @@ int main(int argc, char **argv) {
             dl->AddRect(ImVec2(px, py),
                         ImVec2(px + panelW, py + panelH), cBorder, 5.0f, 0, 1.5f);
             ImVec2 ts = ImGui::CalcTextSize(npcName);
-            dl->AddText(ImVec2(px + (panelW - ts.x) * 0.5f, py + 14),
+            dl->AddText(ImVec2(px + (panelW - ts.x) * 0.5f, py + 14 * qs),
                         cTitle, npcName);
             const char *msg = "I have no tasks for you.";
             ImVec2 ms = ImGui::CalcTextSize(msg);
-            dl->AddText(ImVec2(px + (panelW - ms.x) * 0.5f, py + 42),
+            dl->AddText(ImVec2(px + (panelW - ms.x) * 0.5f, py + 42 * qs),
                         cText, msg);
-            float btnY = py + panelH - btnH - 12.0f;
+            float btnY = py + panelH - btnH - 12.0f * qs;
             if (drawButton(px + (panelW - btnW) * 0.5f, btnY, btnW, btnH,
                            "Close", cTextDim)) {
               SoundManager::Play(SOUND_CLICK01);
@@ -3617,16 +3727,15 @@ int main(int argc, char **argv) {
             dl->AddRect(ImVec2(px, py),
                         ImVec2(px + panelW, py + panelH), cBorder, 5.0f, 0, 1.5f);
 
-            float contentY = py + 14;
+            float contentY = py + 14 * qs;
             {
               ImVec2 ts = ImGui::CalcTextSize(npcName);
-              dl->AddText(ImVec2(px + (panelW - ts.x) * 0.5f, contentY),
-                          cTitle, npcName);
-              contentY += ts.y + 6;
+              DrawShadowText(dl, ImVec2(px + (panelW - ts.x) * 0.5f, contentY),
+                             cTitle, npcName);
+              contentY += ts.y + 6 * qs;
             }
-            dl->AddLine(ImVec2(px + 16, contentY),
-                        ImVec2(px + panelW - 16, contentY), cSep);
-            contentY += 8;
+            DrawOrnamentSep(dl, px + 16 * qs, px + panelW - 16 * qs, contentY);
+            contentY += 8 * qs;
 
             // Scroll: handle mouse wheel over list area
             float listTop = contentY;
@@ -3649,8 +3758,8 @@ int main(int argc, char **argv) {
               int st = GetQuestStatus(qi);
 
               float rowY = contentY - g_questListScrollY;
-              float rowX = px + 10;
-              float rowW = panelW - 20 - (needsScroll ? 8 * qs : 0);
+              float rowX = px + 10 * qs;
+              float rowW = panelW - 20 * qs - (needsScroll ? 8 * qs : 0);
               // Skip rows entirely outside visible area
               if (rowY + rowH < listTop || rowY > listTop + visListH) {
                 contentY += rowH;
@@ -3660,37 +3769,53 @@ int main(int argc, char **argv) {
               bool hov = mousePos.x >= rMin.x && mousePos.x <= rMax.x &&
                          mousePos.y >= std::max(rMin.y, listTop) &&
                          mousePos.y <= std::min(rMax.y, listTop + visListH);
+
+              // Alternating row tint + hover highlight
+              if (a % 2 == 1)
+                dl->AddRectFilled(rMin, rMax, IM_COL32(25, 22, 18, 80), 2.0f);
               if (hov)
-                dl->AddRectFilled(rMin, rMax, IM_COL32(40, 35, 25, 200), 2.0f);
+                dl->AddRectFilled(rMin, rMax, IM_COL32(50, 44, 30, 180), 2.0f);
+
+              // Left accent stripe by status
+              ImU32 accentCol;
+              if (st == 0) accentCol = cGold;
+              else if (st == 2) accentCol = cGreen;
+              else if (st == 1) accentCol = IM_COL32(140, 135, 120, 160);
+              else accentCol = IM_COL32(80, 80, 80, 120);
+              dl->AddRectFilled(ImVec2(rowX, rowY + 2 * qs),
+                                ImVec2(rowX + 3 * qs, rowY + rowH - 2 * qs), accentCol);
 
               // Status icon and colors
               const char *icon;
-              ImU32 iconCol, nameCol;
-              if (st == 0) { icon = "!"; iconCol = cGold; nameCol = cText; }
-              else if (st == 1) { icon = "?"; iconCol = cTextDim; nameCol = cText; }
-              else if (st == 2) { icon = "?"; iconCol = cGold; nameCol = IM_COL32(230, 210, 140, 255); }
-              else { icon = " "; iconCol = cTextDim; nameCol = IM_COL32(100, 100, 100, 180); }
+              ImU32 iconCol;
+              if (st == 0) { icon = "!"; iconCol = cGold; }
+              else if (st == 1) { icon = "?"; iconCol = cTextDim; }
+              else if (st == 2) { icon = "?"; iconCol = cGold; }
+              else { icon = " "; iconCol = cTextDim; }
+
+              // Difficulty-colored quest name
+              ImU32 nameCol = (st == 3) ? IM_COL32(100, 100, 100, 180)
+                                        : GetQuestDifficultyColor(q.recommendedLevel);
 
               float fontSize = ImGui::GetFontSize();
-              float textY = rowY + (rowH - fontSize * 2 - 2) * 0.5f;
-              dl->AddText(ImVec2(rowX + 6, textY), iconCol, icon);
-              dl->AddText(ImVec2(rowX + 26, textY), nameCol, q.questName.c_str());
+              float textY = rowY + (rowH - fontSize * 2 - 2 * qs) * 0.5f;
+              DrawShadowText(dl, ImVec2(rowX + 8 * qs, textY), iconCol, icon);
+              DrawShadowText(dl, ImVec2(rowX + 26 * qs, textY), nameCol,
+                             q.questName.c_str());
               // Location + level
               {
                 char locBuf[48];
                 snprintf(locBuf, sizeof(locBuf), "%s  Lv. %d",
                          q.location.c_str(), (int)q.recommendedLevel);
-                ImU32 locCol = (g_hero.GetLevel() >= q.recommendedLevel)
-                                   ? IM_COL32(100, 150, 100, 180)
-                                   : IM_COL32(180, 100, 70, 180);
-                dl->AddText(ImVec2(rowX + 26, textY + fontSize + 2),
-                            locCol, locBuf);
+                dl->AddText(ImVec2(rowX + 26 * qs, textY + fontSize + 2 * qs),
+                            cTextDim, locBuf);
               }
               // Status text on right
               if (st == 2) {
                 const char *done = "Complete";
                 ImVec2 dSz = ImGui::CalcTextSize(done);
-                dl->AddText(ImVec2(rowX + rowW - dSz.x - 6, textY), cGold, done);
+                DrawShadowText(dl, ImVec2(rowX + rowW - dSz.x - 6 * qs, textY),
+                               cGold, done);
               } else if (st == 1) {
                 auto *aqp = FindActiveQuest(qi);
                 if (aqp) {
@@ -3700,7 +3825,7 @@ int main(int argc, char **argv) {
                       snprintf(prog, sizeof(prog), "%d/%d",
                                aqp->killCount[i], (int)q.targets[i].killsReq);
                       ImVec2 pSz = ImGui::CalcTextSize(prog);
-                      dl->AddText(ImVec2(rowX + rowW - pSz.x - 6, textY),
+                      dl->AddText(ImVec2(rowX + rowW - pSz.x - 6 * qs, textY),
                                   cTextDim, prog);
                       break;
                     }
@@ -3708,8 +3833,8 @@ int main(int argc, char **argv) {
                 }
               } else if (st == 3) {
                 const char *cmpl = "Done";
-                ImVec2 cSz = ImGui::CalcTextSize(cmpl);
-                dl->AddText(ImVec2(rowX + rowW - cSz.x - 6, textY),
+                ImVec2 cSz2 = ImGui::CalcTextSize(cmpl);
+                dl->AddText(ImVec2(rowX + rowW - cSz2.x - 6 * qs, textY),
                             IM_COL32(100, 100, 100, 180), cmpl);
               }
 
@@ -3748,7 +3873,7 @@ int main(int argc, char **argv) {
             }
 
             // Close button
-            float btnY = py + panelH - btnH - 12.0f;
+            float btnY = py + panelH - btnH - 12.0f * qs;
             if (drawButton(px + (panelW - btnW) * 0.5f, btnY, btnW, btnH,
                            "Close", cTextDim)) {
               SoundManager::Play(SOUND_CLICK01);
@@ -3760,326 +3885,490 @@ int main(int argc, char **argv) {
       }
     }
 
-    // ── Quest Tracker HUD (top-right) — show ALL active quests ──
-    if (!g_activeQuests.empty()) {
-      ImDrawList *dl = ImGui::GetForegroundDrawList();
-      ImVec2 dispSize = ImGui::GetIO().DisplaySize;
-      float qs = ImGui::GetIO().DisplaySize.y / 768.0f;
-      float lineH = 15.0f * qs;
-      float trackerW = 210.0f * qs;
-      float pad = 6.0f * qs;
-      float tx = dispSize.x - trackerW - 12.0f * qs;
-      float ty = 60.0f * qs;
-
-      for (auto &aq : g_activeQuests) {
-        if (aq.questId < 0 || aq.questId >= (int)g_questCatalog.size()) continue;
-        const auto &qd = g_questCatalog[aq.questId];
-        bool allDone = IsQuestCompletable(aq);
-        float trackerH = 20.0f * qs + qd.targetCount * lineH +
-                         (allDone ? lineH : 0);
-        dl->AddRectFilled(ImVec2(tx, ty),
-                          ImVec2(tx + trackerW, ty + trackerH),
-                          IM_COL32(0, 0, 0, 120), 3.0f * qs);
-        float cy = ty + 4 * qs;
-        dl->AddText(ImVec2(tx + pad, cy), IM_COL32(220, 185, 50, 220),
-                    qd.questName.c_str());
-        cy += lineH + 2 * qs;
-        for (int i = 0; i < qd.targetCount; i++) {
-          char buf[48];
-          bool done = aq.killCount[i] >= qd.targets[i].killsReq;
-          snprintf(buf, sizeof(buf), " %s  %d/%d", qd.targets[i].name.c_str(),
-                   aq.killCount[i], (int)qd.targets[i].killsReq);
-          dl->AddText(ImVec2(tx + pad, cy),
-                      done ? IM_COL32(80, 210, 80, 200)
-                           : IM_COL32(180, 180, 180, 200),
-                      buf);
-          cy += lineH;
-        }
-        if (allDone) {
-          char turnIn[64];
-          snprintf(turnIn, sizeof(turnIn), "Return to %s",
-                   GetGuardName(qd.guardType));
-          dl->AddText(ImVec2(tx + pad, cy), IM_COL32(220, 185, 50, 220),
-                      turnIn);
-        }
-        ty += trackerH + pad; // Stack next quest below
-      }
-    }
-
-    // ── Quest Log Window (L key) — right side, active quests ──
+    // ── Quest Log (L key) — WoW-style compact tracker, right side ──
     if (g_showQuestLog) {
       ImDrawList *ql = ImGui::GetForegroundDrawList();
       ImVec2 dispSz = ImGui::GetIO().DisplaySize;
       ImVec2 mPos = ImGui::GetIO().MousePos;
+      float qs = dispSz.y / 768.0f;
 
-      ImU32 qlBg = IM_COL32(12, 10, 8, 240);
-      ImU32 qlBorder = IM_COL32(80, 70, 50, 180);
+      ImU32 qlBg = IM_COL32(10, 8, 5, 160);
+      ImU32 qlBorder = IM_COL32(80, 70, 50, 100);
       ImU32 qlTitle = IM_COL32(255, 210, 80, 255);
-      ImU32 qlText = IM_COL32(200, 195, 180, 255);
-      ImU32 qlDim = IM_COL32(140, 135, 120, 255);
+      ImU32 qlText = IM_COL32(200, 195, 180, 230);
+      ImU32 qlDim = IM_COL32(140, 135, 120, 200);
       ImU32 qlGold = IM_COL32(255, 210, 50, 255);
-      ImU32 qlGreen = IM_COL32(80, 220, 80, 255);
-      ImU32 qlSep = IM_COL32(50, 45, 35, 120);
-      ImU32 qlRowHov = IM_COL32(40, 35, 25, 200);
-      ImU32 qlPurple = IM_COL32(180, 140, 255, 255);
-      ImU32 qlRed = IM_COL32(220, 80, 80, 255);
+      ImU32 qlGreen = IM_COL32(80, 220, 80, 230);
 
-      static int qlSelectedQuest = -1;
-      int classIdx = g_hero.GetClass() / 16;
-      float qs = ImGui::GetIO().DisplaySize.y / 768.0f; // quest log UI scale
-      float panelW = 340.0f * qs;
+      float panelW = 230.0f * qs;
+      float pad = 8.0f * qs;
+      float lineH = 15.0f * qs;
+      float questGap = 6.0f * qs;
+      float px = dispSz.x - panelW - 12.0f * qs;
 
-      // Reset selected if no longer active
-      if (qlSelectedQuest >= 0 && !FindActiveQuest(qlSelectedQuest))
-        qlSelectedQuest = -1;
+      int activeCount = (int)g_activeQuests.size();
 
-      float px = dispSz.x - panelW - 20.0f;
+      if (activeCount == 0) {
+        // Empty state
+        float panelH = 50.0f * qs;
+        float py = 50.0f * qs;
+        g_qlPanelRect[0] = px; g_qlPanelRect[1] = py;
+        g_qlPanelRect[2] = panelW; g_qlPanelRect[3] = panelH;
+        ql->AddRectFilled(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
+                          qlBg, 3.0f);
+        ql->AddRect(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
+                    qlBorder, 3.0f, 0, 1.0f);
+        float cy = py + pad;
+        DrawShadowText(ql, ImVec2(px + pad, cy), qlTitle, "Quests");
+        cy += lineH + 2 * qs;
+        DrawOrnamentSep(ql, px + pad, px + panelW - pad, cy);
+        cy += 6 * qs;
+        ql->AddText(ImVec2(px + pad, cy), qlDim, "No active quests.");
+      } else {
+        // Sort active quests by recommended level (low→high)
+        std::vector<int> sortedAQ(activeCount);
+        for (int i = 0; i < activeCount; i++) sortedAQ[i] = i;
+        std::sort(sortedAQ.begin(), sortedAQ.end(), [](int a, int b) {
+          int qa = g_activeQuests[a].questId, qb = g_activeQuests[b].questId;
+          uint8_t la = (qa >= 0 && qa < (int)g_questCatalog.size()) ? g_questCatalog[qa].recommendedLevel : 0;
+          uint8_t lb = (qb >= 0 && qb < (int)g_questCatalog.size()) ? g_questCatalog[qb].recommendedLevel : 0;
+          return la < lb;
+        });
 
-      if (qlSelectedQuest >= 0 && qlSelectedQuest < (int)g_questCatalog.size()) {
-        // ── QUEST DETAIL VIEW ──
-        const auto &q = g_questCatalog[qlSelectedQuest];
-        auto *aq = FindActiveQuest(qlSelectedQuest);
-        bool completable = aq && IsQuestCompletable(*aq);
+        // Measure total content height
+        float contentH = lineH + 4 * qs; // "Quests" header + ornament
+        for (int si = 0; si < activeCount; si++) {
+          auto &aq = g_activeQuests[sortedAQ[si]];
+          if (aq.questId < 0 || aq.questId >= (int)g_questCatalog.size()) continue;
+          const auto &qd = g_questCatalog[aq.questId];
+          contentH += lineH + 2 * qs; // Quest name line
+          for (int i = 0; i < qd.targetCount; i++) {
+            contentH += lineH; // Objective line
+          }
+          bool allDone = IsQuestCompletable(aq);
+          if (allDone) contentH += lineH; // "Return to NPC" line
+          contentH += questGap; // Gap between quests
+        }
 
-        ImVec2 loreSize = ImGui::CalcTextSize(q.loreText.c_str());
-        float objH = q.targetCount * 18.0f * qs;
-        int qlItemCount = 0;
-        if (q.classReward[classIdx][0].defIndex >= 0) qlItemCount++;
-        if (q.classReward[classIdx][1].defIndex >= 0) qlItemCount++;
-        float qlWeaponH = qlItemCount > 0 ? (qlItemCount * 48.0f * qs + 4.0f * qs) : 0;
-        float rewardsH = (10 + 18 + 18 + 18) * qs + qlWeaponH;
-        float qlSubtitleH = ImGui::CalcTextSize(GetGuardName(q.guardType)).y + 4 * qs;
-        float qlInfoH = ImGui::GetFontSize() + 8 * qs;
-        float hintH = completable ? 24.0f * qs : 6.0f * qs;
-        float panelH = (12 + 20 + 6) * qs + qlSubtitleH + qlInfoH + 1 + 10 * qs +
-                       loreSize.y + (10 + 18) * qs + objH + rewardsH + hintH +
-                       (34.0f + 26 + 12 + 14) * qs;
-        float py = (dispSz.y - panelH) * 0.5f;
+        float maxH = dispSz.y * 0.6f; // Max 60% of screen
+        float visH = std::min(contentH, maxH);
+        bool needsScroll = contentH > maxH;
+        float panelH = visH + pad * 2;
+        float py = 50.0f * qs;
         g_qlPanelRect[0] = px; g_qlPanelRect[1] = py;
         g_qlPanelRect[2] = panelW; g_qlPanelRect[3] = panelH;
 
+        // Background
         ql->AddRectFilled(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
-                          qlBg, 4.0f);
+                          qlBg, 3.0f);
         ql->AddRect(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
-                    qlBorder, 4.0f, 0, 1.0f);
+                    qlBorder, 3.0f, 0, 1.0f);
 
-        float cy = py + 12;
-        { ImVec2 ts = ImGui::CalcTextSize(q.questName.c_str());
-          ql->AddText(ImVec2(px + (panelW - ts.x) * 0.5f, cy), qlTitle,
-                      q.questName.c_str());
-          cy += ts.y + 6; }
-        { const char *gn = GetGuardName(q.guardType);
-          ImVec2 gs = ImGui::CalcTextSize(gn);
-          ql->AddText(ImVec2(px + (panelW - gs.x) * 0.5f, cy), qlDim, gn);
-          cy += gs.y + 4; }
-        { char infoBuf[64];
+        // Scroll handling
+        static float qlScrollY = 0.0f;
+        if (needsScroll) {
+          float maxScroll = contentH - visH;
+          bool mouseInPanel = mPos.x >= px && mPos.x <= px + panelW &&
+                              mPos.y >= py && mPos.y <= py + panelH;
+          if (mouseInPanel)
+            qlScrollY -= ImGui::GetIO().MouseWheel * lineH * 3.0f;
+          qlScrollY = glm::clamp(qlScrollY, 0.0f, maxScroll);
+        } else {
+          qlScrollY = 0.0f;
+        }
+
+        // Clip content
+        ql->PushClipRect(ImVec2(px, py), ImVec2(px + panelW, py + panelH), true);
+
+        float cy = py + pad - qlScrollY;
+
+        // "Quests" header
+        DrawShadowText(ql, ImVec2(px + pad, cy), qlTitle, "Quests");
+        cy += lineH;
+        DrawOrnamentSep(ql, px + pad, px + panelW - pad, cy);
+        cy += 4 * qs;
+
+        // Quest entries
+        int questNum = 0;
+        for (int si = 0; si < activeCount; si++) {
+          auto &aq = g_activeQuests[sortedAQ[si]];
+          if (aq.questId < 0 || aq.questId >= (int)g_questCatalog.size()) continue;
+          const auto &qd = g_questCatalog[aq.questId];
+          bool allDone = IsQuestCompletable(aq);
+          questNum++;
+
+          // Calculate this entry's total height for hover region
+          float entryH = lineH + 2 * qs; // name line
+          if (!allDone) entryH += qd.targetCount * lineH; // objective lines (hidden when done)
+          if (allDone) entryH += lineH; // "Return to" hint
+
+          // Hover detection for the whole quest entry
+          float entryTop = cy;
+          float entryLeft = px + 2;
+          float entryRight = px + panelW - 2;
+          bool entryHov = mPos.x >= entryLeft && mPos.x <= entryRight &&
+                          mPos.y >= std::max(entryTop, py) &&
+                          mPos.y <= std::min(entryTop + entryH, py + panelH);
+
+          // Completed quest: golden glow behind the entry
+          if (allDone) {
+            float pulse = 0.5f + 0.5f * sinf((float)glfwGetTime() * 2.0f);
+            int glowA = (int)(30 + 25 * pulse);
+            ql->AddRectFilled(ImVec2(entryLeft, entryTop),
+                              ImVec2(entryRight, entryTop + entryH),
+                              IM_COL32(255, 200, 50, glowA), 3.0f);
+            ql->AddRect(ImVec2(entryLeft, entryTop),
+                        ImVec2(entryRight, entryTop + entryH),
+                        IM_COL32(255, 210, 50, 40 + (int)(20 * pulse)), 3.0f);
+          }
+
+          // Hover highlight background
+          if (entryHov)
+            ql->AddRectFilled(ImVec2(entryLeft, entryTop),
+                              ImVec2(entryRight, entryTop + entryH),
+                              IM_COL32(50, 44, 30, 100), 2.0f);
+
+          // Click to open detail view
+          if (entryHov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            SoundManager::Play(SOUND_CLICK01);
+            g_questLogSelected = aq.questId;
+          }
+
+          float badgeR = 7.0f * qs;
+          float badgeCx = px + pad + badgeR;
+          float badgeCy = cy + lineH * 0.5f;
+
+          if (allDone) {
+            // Completed: golden checkmark badge
+            ql->AddCircleFilled(ImVec2(badgeCx, badgeCy), badgeR,
+                                IM_COL32(60, 50, 20, 220));
+            ql->AddCircle(ImVec2(badgeCx, badgeCy), badgeR, qlGold, 0, 1.5f);
+            // Draw checkmark
+            float cs = badgeR * 0.55f;
+            ImVec2 p1(badgeCx - cs * 0.6f, badgeCy + cs * 0.1f);
+            ImVec2 p2(badgeCx - cs * 0.05f, badgeCy + cs * 0.55f);
+            ImVec2 p3(badgeCx + cs * 0.7f, badgeCy - cs * 0.5f);
+            ql->AddLine(p1, p2, qlGold, 1.5f * qs);
+            ql->AddLine(p2, p3, qlGold, 1.5f * qs);
+          } else {
+            // In-progress: numbered badge
+            ImU32 nameCol = GetQuestDifficultyColor(qd.recommendedLevel);
+            char numBuf[4];
+            snprintf(numBuf, sizeof(numBuf), "%d", questNum);
+            ql->AddCircleFilled(ImVec2(badgeCx, badgeCy), badgeR,
+                                IM_COL32(40, 35, 25, 200));
+            ql->AddCircle(ImVec2(badgeCx, badgeCy), badgeR, nameCol, 0, 1.0f);
+            ImVec2 numSz = ImGui::CalcTextSize(numBuf);
+            ql->AddText(ImVec2(badgeCx - numSz.x * 0.5f,
+                               badgeCy - numSz.y * 0.5f), nameCol, numBuf);
+          }
+
+          // Quest name (gold if completable, difficulty colored otherwise)
+          ImU32 nameCol = allDone ? qlGold
+                                  : GetQuestDifficultyColor(qd.recommendedLevel);
+          float nameX = px + pad + badgeR * 2 + 6 * qs;
+          DrawShadowText(ql, ImVec2(nameX, cy), nameCol, qd.questName.c_str());
+          if (entryHov) {
+            ImVec2 nameSize = ImGui::CalcTextSize(qd.questName.c_str());
+            ql->AddLine(ImVec2(nameX, cy + nameSize.y),
+                        ImVec2(nameX + nameSize.x, cy + nameSize.y),
+                        (nameCol & 0x00FFFFFF) | 0x80000000);
+          }
+          cy += lineH + 2 * qs;
+
+          if (allDone) {
+            // Completable — just show "Return to NPC" (no objectives)
+            char turnIn[64];
+            snprintf(turnIn, sizeof(turnIn), "Return to %s",
+                     GetGuardName(qd.guardType));
+            DrawShadowText(ql, ImVec2(px + pad + 14 * qs, cy),
+                           qlGold, turnIn);
+            cy += lineH;
+          } else {
+            // In-progress — show objective lines
+            for (int i = 0; i < qd.targetCount; i++) {
+              char objBuf[80];
+              bool done = aq.killCount[i] >= qd.targets[i].killsReq;
+              snprintf(objBuf, sizeof(objBuf), "- %d/%d %s",
+                       aq.killCount[i], (int)qd.targets[i].killsReq,
+                       qd.targets[i].name.c_str());
+              ImU32 objCol = done ? qlGreen : qlDim;
+              DrawShadowText(ql, ImVec2(px + pad + 14 * qs, cy), objCol, objBuf);
+              cy += lineH;
+            }
+          }
+
+          cy += questGap;
+        }
+
+        ql->PopClipRect();
+
+        // Scrollbar
+        if (needsScroll) {
+          float maxScroll = contentH - visH;
+          float trackX = px + panelW - 5 * qs;
+          float trackW = 3 * qs;
+          float trackTop = py + 4;
+          float trackH = panelH - 8;
+          ql->AddRectFilled(ImVec2(trackX, trackTop),
+                            ImVec2(trackX + trackW, trackTop + trackH),
+                            IM_COL32(30, 25, 18, 80), 1.5f);
+          float thumbRatio = visH / contentH;
+          float thumbH = std::max(thumbRatio * trackH, 14.0f * qs);
+          float thumbY = trackTop + (qlScrollY / maxScroll) * (trackH - thumbH);
+          ql->AddRectFilled(ImVec2(trackX, thumbY),
+                            ImVec2(trackX + trackW, thumbY + thumbH),
+                            IM_COL32(160, 140, 100, 150), 1.5f);
+        }
+      }
+    }
+
+    // ── Quest Log Detail Panel (opened by clicking quest in log) ──
+    if (!g_showQuestLog) g_questLogSelected = -1; // Close detail when log closes
+    if (g_questLogSelected >= 0 && g_questLogSelected < (int)g_questCatalog.size()) {
+
+      // Validate quest is still active
+      auto *aq = FindActiveQuest(g_questLogSelected);
+      if (!aq) {
+        g_questLogSelected = -1;
+      } else {
+        ImDrawList *dl = ImGui::GetForegroundDrawList();
+        ImVec2 dispSz = ImGui::GetIO().DisplaySize;
+        ImVec2 mPos = ImGui::GetIO().MousePos;
+        float qs = dispSz.y / 768.0f;
+
+        int classIdx = g_hero.GetClass() / 16;
+        int qi = g_questLogSelected;
+        const auto &q = g_questCatalog[qi];
+        bool completable = IsQuestCompletable(*aq);
+
+        // Colors (same as NPC quest dialog)
+        ImU32 cBg = IM_COL32(12, 10, 8, 235);
+        ImU32 cBorder = IM_COL32(80, 70, 50, 180);
+        ImU32 cTitle = IM_COL32(255, 210, 80, 255);
+        ImU32 cText = IM_COL32(200, 195, 180, 255);
+        ImU32 cTextDim = IM_COL32(140, 135, 120, 255);
+        ImU32 cGold = IM_COL32(255, 210, 50, 255);
+        ImU32 cGreen = IM_COL32(80, 220, 80, 255);
+
+        float panelW = 340.0f * qs;
+        float btnW = 80.0f * qs, btnH = 26.0f * qs;
+
+        // Guard name
+        const char *guardName = GetGuardName(q.guardType);
+
+        // Count class-specific item rewards
+        int itemCount = 0;
+        if (q.classReward[classIdx][0].defIndex >= 0) itemCount++;
+        if (q.classReward[classIdx][1].defIndex >= 0) itemCount++;
+
+        // Measure panel height
+        float textWrap = panelW - 40 * qs;
+        ImVec2 loreSize = ImGui::CalcTextSize(q.loreText.c_str(), nullptr, false, textWrap);
+        float subtitleH = ImGui::CalcTextSize(guardName).y + 4 * qs;
+        float objH = 18 * qs + q.targetCount * 26.0f * qs;
+        float weaponH = itemCount > 0 ? (itemCount * 48.0f * qs + 4.0f * qs) : 0;
+        float rewardsH = (10 + 18 + 18 + 18) * qs + weaponH;
+        float buttonsH = btnH + 16 * qs;
+        float infoH = ImGui::GetFontSize() + 8 * qs;
+        float hintH = completable ? 24.0f * qs : 0.0f;
+        float panelH = 14 * qs + ImGui::CalcTextSize(q.questName.c_str()).y + 6 * qs +
+                       subtitleH + infoH + 12 * qs +
+                       loreSize.y + 10 * qs + objH + rewardsH + hintH + buttonsH + 14 * qs;
+        float px = (dispSz.x - panelW) * 0.5f;
+        float py = (dispSz.y - panelH) * 0.5f;
+        g_qldPanelRect[0] = px; g_qldPanelRect[1] = py;
+        g_qldPanelRect[2] = panelW; g_qldPanelRect[3] = panelH;
+
+        // Panel background
+        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
+                          cBg, 5.0f);
+        dl->AddRect(ImVec2(px + 1, py + 1),
+                    ImVec2(px + panelW - 1, py + panelH - 1),
+                    IM_COL32(40, 35, 25, 100), 4.0f, 0, 1.0f);
+        dl->AddRect(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
+                    cBorder, 5.0f, 0, 1.5f);
+
+        float contentY = py + 14 * qs;
+        float margin = 20 * qs;
+        float sepInset = 16 * qs;
+        // Title
+        {
+          ImVec2 ts = ImGui::CalcTextSize(q.questName.c_str());
+          DrawShadowText(dl, ImVec2(px + (panelW - ts.x) * 0.5f, contentY),
+                         cTitle, q.questName.c_str());
+          contentY += ts.y + 6 * qs;
+        }
+        // Guard name subtitle
+        {
+          ImVec2 gs = ImGui::CalcTextSize(guardName);
+          dl->AddText(ImVec2(px + (panelW - gs.x) * 0.5f, contentY),
+                      cTextDim, guardName);
+          contentY += gs.y + 4 * qs;
+        }
+        // Location + level
+        {
+          char infoBuf[64];
           snprintf(infoBuf, sizeof(infoBuf), "%s  |  Lv. %d",
                    q.location.c_str(), (int)q.recommendedLevel);
           ImVec2 infoSz = ImGui::CalcTextSize(infoBuf);
-          ImU32 lvColor = (g_hero.GetLevel() >= q.recommendedLevel)
-                              ? IM_COL32(120, 180, 120, 200)
-                              : IM_COL32(200, 120, 80, 200);
-          ql->AddText(ImVec2(px + (panelW - infoSz.x) * 0.5f, cy),
+          ImU32 lvColor = GetQuestDifficultyColor(q.recommendedLevel);
+          dl->AddText(ImVec2(px + (panelW - infoSz.x) * 0.5f, contentY),
                       lvColor, infoBuf);
-          cy += infoSz.y + 4; }
-
-        ql->AddLine(ImVec2(px + 16, cy), ImVec2(px + panelW - 16, cy), qlSep);
-        cy += 10;
-        ql->AddText(ImVec2(px + 18, cy), qlText, q.loreText.c_str());
-        cy += loreSize.y + 10;
-
-        // Objectives with per-quest kill counts
-        ql->AddText(ImVec2(px + 18, cy), qlDim, "Objectives");
-        cy += 18;
+          contentY += infoSz.y + 4 * qs;
+        }
+        DrawOrnamentSep(dl, px + sepInset, px + panelW - sepInset, contentY);
+        contentY += 12 * qs;
+        // Lore text (wrapped)
+        dl->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
+                    ImVec2(px + margin, contentY), cText,
+                    q.loreText.c_str(), nullptr, textWrap);
+        contentY += loreSize.y + 10 * qs;
+        // Objectives with progress
+        DrawShadowText(dl, ImVec2(px + margin, contentY),
+                       IM_COL32(210, 180, 80, 255), "Objectives");
+        contentY += 18 * qs;
+        float barW = panelW - 60 * qs;
         for (int i = 0; i < q.targetCount; i++) {
           char objBuf[80];
-          int kc = aq ? aq->killCount[i] : 0;
+          bool done = aq->killCount[i] >= q.targets[i].killsReq;
           snprintf(objBuf, sizeof(objBuf), "  %s  %d / %d",
-                   q.targets[i].name.c_str(), kc, (int)q.targets[i].killsReq);
-          bool done = kc >= q.targets[i].killsReq;
-          ql->AddText(ImVec2(px + 20, cy), done ? qlGreen : qlText, objBuf);
-          cy += 18;
+                   q.targets[i].name.c_str(), aq->killCount[i],
+                   (int)q.targets[i].killsReq);
+          DrawShadowText(dl, ImVec2(px + 22 * qs, contentY),
+                         done ? cGreen : cText, objBuf);
+          contentY += 18 * qs;
+          float frac = (float)aq->killCount[i] / (float)q.targets[i].killsReq;
+          DrawProgressBar(dl, px + 24 * qs, contentY, barW, 4.0f * qs, frac);
+          contentY += 8 * qs;
         }
-
-        // Rewards (class-specific)
-        cy += 4;
-        ql->AddLine(ImVec2(px + 16, cy), ImVec2(px + panelW - 16, cy), qlSep);
-        cy += 6;
-        ql->AddText(ImVec2(px + 18, cy), qlDim, "Rewards");
-        cy += 18;
-        { std::string zenStr = std::to_string(q.zenReward);
+        // Rewards
+        contentY += 4 * qs;
+        DrawOrnamentSep(dl, px + sepInset, px + panelW - sepInset, contentY);
+        contentY += 8 * qs;
+        DrawShadowText(dl, ImVec2(px + margin, contentY),
+                       IM_COL32(210, 180, 80, 255), "Rewards");
+        contentY += 18 * qs;
+        // Zen
+        {
+          std::string zenStr = std::to_string(q.zenReward);
           int n = (int)zenStr.length() - 3;
           while (n > 0) { zenStr.insert(n, ","); n -= 3; }
           char rwBuf[64];
           snprintf(rwBuf, sizeof(rwBuf), "  %s Zen", zenStr.c_str());
-          ql->AddText(ImVec2(px + 20, cy), qlGold, rwBuf);
-          cy += 18; }
-        { std::string xpStr = std::to_string(q.xpReward);
+          DrawShadowText(dl, ImVec2(px + 22 * qs, contentY), cGold, rwBuf);
+          contentY += 18 * qs;
+        }
+        // XP
+        {
+          std::string xpStr = std::to_string(q.xpReward);
           int n = (int)xpStr.length() - 3;
           while (n > 0) { xpStr.insert(n, ","); n -= 3; }
           char rwBuf[64];
           snprintf(rwBuf, sizeof(rwBuf), "  %s Experience", xpStr.c_str());
-          ql->AddText(ImVec2(px + 20, cy), qlPurple, rwBuf);
-          cy += 18; }
-        cy += 4;
-        float h1 = DrawQuestRewardItem(ql, px, cy, panelW,
-                                       q.classReward[classIdx][0]);
-        cy += h1;
-        float h2 = DrawQuestRewardItem(ql, px, cy, panelW,
-                                       q.classReward[classIdx][1]);
-        cy += h2;
-
-        // Status hint
-        cy += 6;
-        if (completable)
-          ql->AddText(ImVec2(px + 18, cy), qlGold,
-                      "Return to complete this quest.");
-
-        // Buttons: Back + Abandon
-        float btnY2 = py + panelH - 26 - 12;
-        float bh = 26, bw = 80, gap = 16.0f;
-        float totalW = bw * 2 + gap;
-        float bx1 = px + (panelW - totalW) * 0.5f;
-        float bx2 = bx1 + bw + gap;
-        // Back button
-        { ImVec2 bMin(bx1, btnY2), bMax(bx1 + bw, btnY2 + bh);
-          bool hov = mPos.x >= bMin.x && mPos.x <= bMax.x &&
-                     mPos.y >= bMin.y && mPos.y <= bMax.y;
-          ql->AddRectFilled(bMin, bMax,
-                            hov ? IM_COL32(45, 40, 28, 230)
-                                : IM_COL32(25, 22, 16, 230), 3.0f);
-          ql->AddRect(bMin, bMax, qlBorder, 3.0f, 0, 1.0f);
-          ImVec2 ls = ImGui::CalcTextSize("Back");
-          ql->AddText(ImVec2(bx1 + (bw - ls.x) * 0.5f,
-                             btnY2 + (bh - ls.y) * 0.5f), qlDim, "Back");
-          if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            SoundManager::Play(SOUND_CLICK01);
-            qlSelectedQuest = -1;
-          } }
-        // Abandon button
-        { ImVec2 bMin(bx2, btnY2), bMax(bx2 + bw, btnY2 + bh);
-          bool hov = mPos.x >= bMin.x && mPos.x <= bMax.x &&
-                     mPos.y >= bMin.y && mPos.y <= bMax.y;
-          ql->AddRectFilled(bMin, bMax,
-                            hov ? IM_COL32(80, 25, 25, 230)
-                                : IM_COL32(45, 15, 15, 230), 3.0f);
-          ql->AddRect(bMin, bMax, hov ? qlRed : IM_COL32(120, 50, 50, 180),
-                      3.0f, 0, 1.0f);
-          ImVec2 ls = ImGui::CalcTextSize("Abandon");
-          ql->AddText(ImVec2(bx2 + (bw - ls.x) * 0.5f,
-                             btnY2 + (bh - ls.y) * 0.5f),
-                      hov ? qlRed : IM_COL32(180, 100, 100, 255), "Abandon");
-          if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            SoundManager::Play(SOUND_CLICK01);
-            g_server.SendQuestAbandon((uint8_t)qlSelectedQuest);
-            qlSelectedQuest = -1;
-          } }
-      } else {
-        // ── QUEST LIST VIEW — active quests ──
-        float rowH = 44.0f * qs;
-        int activeCount = (int)g_activeQuests.size();
-
-        if (activeCount == 0) {
-          float panelH = 80.0f;
-          float py = (dispSz.y - panelH) * 0.5f;
-          g_qlPanelRect[0] = px; g_qlPanelRect[1] = py;
-          g_qlPanelRect[2] = panelW; g_qlPanelRect[3] = panelH;
-          ql->AddRectFilled(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
-                            qlBg, 4.0f);
-          ql->AddRect(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
-                      qlBorder, 4.0f, 0, 1.0f);
-          float cy = py + 12;
-          { const char *title = "Quest Log";
-            ImVec2 ts = ImGui::CalcTextSize(title);
-            ql->AddText(ImVec2(px + (panelW - ts.x) * 0.5f, cy), qlTitle,
-                        title);
-            cy += ts.y + 6; }
-          ql->AddLine(ImVec2(px + 14, cy), ImVec2(px + panelW - 14, cy), qlSep);
-          cy += 12;
-          const char *msg = "No active quests.";
-          ImVec2 ms = ImGui::CalcTextSize(msg);
-          ql->AddText(ImVec2(px + (panelW - ms.x) * 0.5f, cy), qlDim, msg);
-        } else {
-          float listH = activeCount * rowH + 8;
-          float panelH = 40 + listH + 12;
-          float py = (dispSz.y - panelH) * 0.5f;
-          g_qlPanelRect[0] = px; g_qlPanelRect[1] = py;
-          g_qlPanelRect[2] = panelW; g_qlPanelRect[3] = panelH;
-
-          ql->AddRectFilled(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
-                            qlBg, 4.0f);
-          ql->AddRect(ImVec2(px, py), ImVec2(px + panelW, py + panelH),
-                      qlBorder, 4.0f, 0, 1.0f);
-
-          float cy = py + 12;
-          { const char *title = "Quest Log";
-            ImVec2 ts = ImGui::CalcTextSize(title);
-            ql->AddText(ImVec2(px + (panelW - ts.x) * 0.5f, cy), qlTitle,
-                        title);
-            cy += ts.y + 6; }
-          ql->AddLine(ImVec2(px + 14, cy), ImVec2(px + panelW - 14, cy), qlSep);
-          cy += 8;
-
-          for (auto &aq : g_activeQuests) {
-            if (aq.questId < 0 || aq.questId >= (int)g_questCatalog.size()) continue;
-            const auto &q = g_questCatalog[aq.questId];
-            bool completable = IsQuestCompletable(aq);
-
-            float rowY = cy;
-            float rowX = px + 10;
-            float rowW = panelW - 20;
-            ImVec2 rMin(rowX, rowY), rMax(rowX + rowW, rowY + rowH);
-            bool hov = mPos.x >= rMin.x && mPos.x <= rMax.x &&
-                       mPos.y >= rMin.y && mPos.y <= rMax.y;
-            if (hov)
-              ql->AddRectFilled(rMin, rMax, qlRowHov, 2.0f);
-
-            const char *icon = completable ? "?" : "...";
-            ImU32 iconCol = completable ? qlGold : qlDim;
-            ImU32 nameCol = completable ? IM_COL32(230, 210, 140, 255) : qlText;
-
-            float fontSize = ImGui::GetFontSize();
-            float textY = rowY + (rowH - fontSize * 2 - 2) * 0.5f;
-            ql->AddText(ImVec2(rowX + 6, textY), iconCol, icon);
-            ql->AddText(ImVec2(rowX + 26, textY), nameCol, q.questName.c_str());
-            { char locBuf[48];
-              snprintf(locBuf, sizeof(locBuf), "%s  Lv. %d",
-                       q.location.c_str(), (int)q.recommendedLevel);
-              ImU32 locCol = (g_hero.GetLevel() >= q.recommendedLevel)
-                                 ? IM_COL32(100, 150, 100, 180)
-                                 : IM_COL32(180, 100, 70, 180);
-              ql->AddText(ImVec2(rowX + 26, textY + fontSize + 2),
-                          locCol, locBuf); }
-
-            // Progress on right
-            if (completable) {
-              const char *done = "Complete";
-              ImVec2 dSz = ImGui::CalcTextSize(done);
-              ql->AddText(ImVec2(rowX + rowW - dSz.x - 6, textY), qlGold, done);
-            } else {
-              for (int i = 0; i < q.targetCount; i++) {
-                if (aq.killCount[i] < q.targets[i].killsReq) {
-                  char prog[16];
-                  snprintf(prog, sizeof(prog), "%d/%d",
-                           aq.killCount[i], (int)q.targets[i].killsReq);
-                  ImVec2 pSz = ImGui::CalcTextSize(prog);
-                  ql->AddText(ImVec2(rowX + rowW - pSz.x - 6, textY),
-                              qlDim, prog);
-                  break;
-                }
-              }
-            }
-
-            ql->AddLine(ImVec2(rowX, rowY + rowH - 1),
-                        ImVec2(rowX + rowW, rowY + rowH - 1), qlSep);
-
-            if (hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-              SoundManager::Play(SOUND_CLICK01);
-              qlSelectedQuest = aq.questId;
-            }
-            cy += rowH;
-          }
+          DrawShadowText(dl, ImVec2(px + 22 * qs, contentY),
+                         IM_COL32(180, 140, 255, 255), rwBuf);
+          contentY += 18 * qs;
         }
+        // Class-specific item rewards
+        contentY += 4 * qs;
+        float h1 = DrawQuestRewardItem(dl, px, contentY, panelW,
+                                       q.classReward[classIdx][0], qs);
+        contentY += h1;
+        float h2 = DrawQuestRewardItem(dl, px, contentY, panelW,
+                                       q.classReward[classIdx][1], qs);
+        contentY += h2;
+        // Completable hint
+        if (completable) {
+          contentY += 6 * qs;
+          dl->AddText(ImVec2(px + margin, contentY), cGold,
+                      "Return to complete this quest.");
+          contentY += 18 * qs;
+        }
+        // Separator before buttons
+        contentY += 2 * qs;
+        DrawOrnamentSep(dl, px + sepInset, px + panelW - sepInset, contentY);
+
+        // Buttons: Close + Abandon
+        float btnY = py + panelH - btnH - 12.0f * qs;
+        auto drawBtn = [&](float bx, float by, float bw, float bh,
+                            const char *label, ImU32 textColor) -> bool {
+          ImVec2 bMin(bx, by), bMax(bx + bw, by + bh);
+          bool hov = mPos.x >= bMin.x && mPos.x <= bMax.x &&
+                     mPos.y >= bMin.y && mPos.y <= bMax.y;
+          ImU32 topCol = hov ? IM_COL32(55, 50, 35, 235) : IM_COL32(35, 30, 22, 230);
+          ImU32 botCol = hov ? IM_COL32(35, 30, 22, 235) : IM_COL32(18, 16, 12, 230);
+          dl->AddRectFilledMultiColor(bMin, bMax, topCol, topCol, botCol, botCol);
+          dl->AddRect(bMin, bMax,
+                      hov ? IM_COL32(140, 120, 70, 220) : cBorder,
+                      3.0f, 0, 1.0f);
+          dl->AddLine(ImVec2(bx + 2, by + 1), ImVec2(bx + bw - 2, by + 1),
+                      IM_COL32(255, 255, 255, hov ? (uint8_t)30 : (uint8_t)15));
+          ImVec2 ls = ImGui::CalcTextSize(label);
+          DrawShadowText(dl, ImVec2(bx + (bw - ls.x) * 0.5f,
+                         by + (bh - ls.y) * 0.5f), textColor, label);
+          return hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        };
+
+        float gap = 16.0f;
+        float bx1 = px + (panelW - btnW * 2 - gap) * 0.5f;
+        float bx2 = bx1 + btnW + gap;
+        if (drawBtn(bx1, btnY, btnW, btnH, "Close", cTextDim)) {
+          SoundManager::Play(SOUND_CLICK01);
+          g_questLogSelected = -1;
+        }
+        if (drawBtn(bx2, btnY, btnW, btnH, "Abandon",
+                     IM_COL32(220, 80, 80, 255))) {
+          SoundManager::Play(SOUND_CLICK01);
+          g_server.SendQuestAbandon((uint8_t)qi);
+          g_questLogSelected = -1;
+        }
+      }
+    } else {
+      g_qldPanelRect[2] = 0; // No panel visible
+    }
+
+    // ── Quest Progress Popups (WoW-style center screen) ──
+    {
+      ImDrawList *dl = ImGui::GetForegroundDrawList();
+      ImVec2 dispSz = ImGui::GetIO().DisplaySize;
+      float qs = dispSz.y / 768.0f;
+      float popupY = 12.0f * qs; // top of screen
+      float stackOffset = 0.0f;
+
+      for (int i = 0; i < 4; i++) {
+        auto &p = g_questPopups[i];
+        if (p.timer <= 0.0f) continue;
+        p.timer -= deltaTime;
+        if (p.timer <= 0.0f) { p.timer = 0.0f; continue; }
+
+        // Fade: full alpha for first 2s, fade out over last 1s
+        float alpha = p.timer < 1.0f ? p.timer : 1.0f;
+        int a = (int)(alpha * 255);
+
+        float fontSize = 14.0f * qs;
+        float smallFs = 11.0f * qs;
+
+        // Quest name (small, gold, above)
+        ImVec2 qSz = ImGui::CalcTextSize(p.quest);
+        float qx = (dispSz.x - qSz.x * (smallFs / ImGui::GetFontSize())) * 0.5f;
+        float qy = popupY + stackOffset;
+        dl->AddText(nullptr, smallFs, ImVec2(qx + 1, qy + 1),
+                    IM_COL32(0, 0, 0, (int)(alpha * 160)), p.quest);
+        dl->AddText(nullptr, smallFs, ImVec2(qx, qy),
+                    IM_COL32(255, 210, 50, a), p.quest);
+
+        // Objective progress (larger, white or green)
+        ImVec2 tSz = ImGui::CalcTextSize(p.text);
+        float tx = (dispSz.x - tSz.x * (fontSize / ImGui::GetFontSize())) * 0.5f;
+        float ty = qy + smallFs + 2 * qs;
+        ImU32 col = p.complete ? IM_COL32(80, 255, 80, a)
+                               : IM_COL32(255, 255, 255, a);
+        dl->AddText(nullptr, fontSize, ImVec2(tx + 1, ty + 1),
+                    IM_COL32(0, 0, 0, (int)(alpha * 180)), p.text);
+        dl->AddText(nullptr, fontSize, ImVec2(tx, ty), col, p.text);
+
+        stackOffset += (fontSize + smallFs + 8 * qs);
       }
     }
 
@@ -4092,8 +4381,8 @@ int main(int argc, char **argv) {
       float mapSz = 400.0f;
       float scale = mapSz / 362.0f; // 256*sqrt(2) ≈ 362 to fit diamond
       float h = 256.0f * scale;     // half-diagonal
-      float cx = h + 20.0f;         // left-aligned with 20px margin
-      float cy = dispSz.y * 0.5f;
+      float cx = h + 30.0f;         // left padding
+      float cy = h + 30.0f;         // top padding
 
       // World-to-minimap screen coordinate transform
       auto worldToMinimap = [&](const glm::vec3 &worldPos) -> ImVec2 {
@@ -4486,23 +4775,6 @@ int main(int argc, char **argv) {
       ImGui::PopStyleColor(2);
     }
 
-    // Map coordinate display (top-right corner, always visible)
-    {
-      glm::vec3 hp = g_hero.GetPosition();
-      int coordX = (int)(hp.z / 100.0f);
-      int coordY = (int)(hp.x / 100.0f);
-      char coordBuf[32];
-      snprintf(coordBuf, sizeof(coordBuf), "%d, %d", coordX, coordY);
-      ImDrawList *cdl = ImGui::GetForegroundDrawList();
-      ImVec2 ds = ImGui::GetIO().DisplaySize;
-      ImVec2 ts = ImGui::CalcTextSize(coordBuf);
-      float px = ds.x - ts.x - 10.0f;
-      float py = 10.0f;
-      cdl->AddRectFilled(ImVec2(px - 6, py - 3), ImVec2(px + ts.x + 6, py + ts.y + 3),
-                         IM_COL32(0, 0, 0, 120), 4.0f);
-      cdl->AddText(ImVec2(px, py), IM_COL32(220, 220, 220, 220), coordBuf);
-    }
-
     ImGui::Render();
     ImGui_BackendRenderDrawData(ImGui::GetDrawData());
 
@@ -4626,6 +4898,14 @@ int main(int argc, char **argv) {
               sx < g_qlPanelRect[0] + g_qlPanelRect[2] &&
               sy >= g_qlPanelRect[1] &&
               sy < g_qlPanelRect[1] + g_qlPanelRect[3])
+            over = true;
+        }
+        // Quest log detail panel — screen pixels
+        if (g_questLogSelected >= 0 && g_qldPanelRect[2] > 0) {
+          if (sx >= g_qldPanelRect[0] &&
+              sx < g_qldPanelRect[0] + g_qldPanelRect[2] &&
+              sy >= g_qldPanelRect[1] &&
+              sy < g_qldPanelRect[1] + g_qldPanelRect[3])
             over = true;
         }
         // Minimap overlay — screen pixels (diamond bounding box, left side)
@@ -5017,12 +5297,17 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
   std::vector<bool> bridgeZone;
   ReconstructBridgeAttributes(*g_terrainDataOwned, cfg, bridgeZone);
 
-  // Patch tile 255 in bridge zone with nearest valid tile
+  // Patch void (tile 255) AND water (tile 5) in bridge zone with nearest
+  // valid ground tile. Water tiles left under the bridge cause visible bleed
+  // at bridge edges due to bilinear interpolation in the terrain shader.
   if (!bridgeZone.empty()) {
     auto &l1 = g_terrainDataOwned->mapping.layer1;
     auto &l2 = g_terrainDataOwned->mapping.layer2;
     for (int i = 0; i < 256 * 256; i++) {
-      if (!bridgeZone[i] || (l1[i] < 255 && l2[i] < 255)) continue;
+      if (!bridgeZone[i]) continue;
+      bool l1Bad = (l1[i] >= 255 || l1[i] == 5);
+      bool l2Bad = (l2[i] >= 255 || l2[i] == 5);
+      if (!l1Bad && !l2Bad) continue;
       int bz = i / 256, bx = i % 256;
       uint8_t best1 = l1[i], best2 = l2[i];
       float bestDist = 999.0f;
@@ -5031,14 +5316,14 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
           int nz = bz + dz, nx = bx + dx;
           if (nz < 0 || nz >= 256 || nx < 0 || nx >= 256) continue;
           int ni = nz * 256 + nx;
-          if (bridgeZone[ni] || l1[ni] >= 255) continue;
+          if (bridgeZone[ni] || l1[ni] >= 255 || l1[ni] == 5) continue;
           float d = std::sqrt((float)(dz * dz + dx * dx));
           if (d < bestDist) { bestDist = d; best1 = l1[ni]; best2 = l2[ni]; }
         }
       }
       if (bestDist < 999.0f) {
-        if (l1[i] >= 255) l1[i] = best1;
-        if (l2[i] >= 255) l2[i] = best2;
+        if (l1Bad) l1[i] = best1;
+        if (l2Bad) l2[i] = best2;
       }
     }
   }

@@ -75,6 +75,8 @@ enum SoundId {
   SOUND_RAGE_BLOW1 = 149,
   SOUND_RAGE_BLOW2 = 150,
   SOUND_RAGE_BLOW3 = 151,
+  // Dungeon trap sounds (Main 5.2: DSPlaySound.h)
+  SOUND_TRAP01 = 16,    // aGrate.wav — lance/iron stick trap activation
   // Monster sounds — Bull Fighter (type 0)
   SOUND_MONSTER_BULL1 = 200,
   SOUND_MONSTER_BULL2 = 201,

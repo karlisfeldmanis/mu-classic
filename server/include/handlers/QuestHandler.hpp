@@ -10,6 +10,9 @@ class Server;
 
 namespace QuestHandler {
 
+// Initialize quest system — load definitions from DB
+void Init(Database &db);
+
 // Send full quest catalog to client (on login)
 void SendQuestCatalog(Session &session);
 

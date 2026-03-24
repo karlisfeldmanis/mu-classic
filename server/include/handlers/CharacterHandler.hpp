@@ -24,6 +24,9 @@ void RefreshCombatStats(Session &session, Database &db, int characterId);
 // Send learned skill list to client
 void SendSkillList(Session &session);
 
+// Send full item definition catalog to client
+void SendItemCatalog(Session &session, Database &db);
+
 // Packet handlers
 void HandleCharSave(Session &session, const std::vector<uint8_t> &packet,
                     Database &db);

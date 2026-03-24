@@ -29,10 +29,11 @@ static const ImU32 TT_ORANGE     = IM_COL32(255, 128, 0, 255);
 static const ImU32 TT_LIGHT_BLUE = IM_COL32(150, 200, 255, 255);
 static const ImU32 TT_DIM_GREEN  = IM_COL32(180, 220, 180, 255);
 
-static ImU32 GetQualityColor(int itemLevel) {
+static ImU32 GetQualityColor(int itemLevel, uint8_t optionFlags = 0) {
   if (itemLevel >= 9)  return TT_ORANGE;
   if (itemLevel >= 7)  return TT_PURPLE;
   if (itemLevel >= 4)  return TT_BLUE;
+  if (optionFlags != 0) return TT_BLUE;  // Any option → blue minimum
   if (itemLevel >= 1)  return TT_GREEN;
   return TT_WHITE;
 }
@@ -68,7 +69,8 @@ static const char *GetTypeText(uint8_t category) {
 
 namespace InventoryUI {
 
-void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPrice) {
+void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
+                           uint32_t shopBuyPrice, uint8_t optionFlags) {
   auto &g_itemDefs = ItemDatabase::GetItemDefs();
   auto it = g_itemDefs.find(defIndex);
   const ClientItemDefinition *def = nullptr;
@@ -256,9 +258,18 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
       th += lineH;
   }
 
+  // Item options height
+  bool hasOptions = (optionFlags != 0 && def->category <= 11);
+  if (hasOptions) {
+    if (hasStats) th += sepH;
+    if (optionFlags & 0x80) th += lineH; // Skill
+    if (optionFlags & 0x40) th += lineH; // Luck
+    if (optionFlags & 0x07) th += lineH; // Additional
+  }
+
   bool hasEffects = false;
   if (potionHeal > 0 || potionMana > 0 || potionEffect) {
-    if (hasStats) th += sepH;
+    if (hasStats || hasOptions) th += sepH;
     th += lineH;
     hasEffects = true;
   }
@@ -275,26 +286,22 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
     th += lineH; // Teaches line
     if (skillDef->damageBonus > 0) th += lineH;
     if (skillDef->desc && skillDef->desc[0]) th += lineH;
-    if (skillDef->levelReq > 0) th += lineH; // Level req
-    if (skillDef->energyReq > 0) th += lineH; // Energy req
     th += lineH; // Learned status
     if (!scrollAlreadyLearned) th += lineH; // "Right-click to learn" hint
   }
 
-  // Skip item-level levelReq/energyReq if skill section already showed it
-  bool skipItemLevel = (skillDef && skillDef->levelReq > 0);
-  bool skipItemEnergy = (skillDef && skillDef->energyReq > 0);
-  bool hasReqs = ((!skipItemLevel && def->levelReq > 0) || def->reqStr > 0 ||
+  // Requirements come from item definition (DB-driven via catalog packet)
+  bool hasReqs = (def->levelReq > 0 || def->reqStr > 0 ||
                   def->reqDex > 0 || def->reqVit > 0 ||
-                  (!skipItemEnergy && def->reqEne > 0));
+                  def->reqEne > 0);
   bool hasClassReqs = (def->classFlags > 0 && (def->classFlags & 0x0F) != 0x0F);
   if (hasReqs || hasClassReqs) {
     th += sepH;
-    if (!skipItemLevel && def->levelReq > 0) th += lineH;
+    if (def->levelReq > 0) th += lineH;
     if (def->reqStr > 0) th += lineH;
     if (def->reqDex > 0) th += lineH;
     if (def->reqVit > 0) th += lineH;
-    if (!skipItemEnergy && def->reqEne > 0) th += lineH;
+    if (def->reqEne > 0) th += lineH;
     if (hasClassReqs) {
       if (def->classFlags & 1) th += lineH;
       if (def->classFlags & 2) th += lineH;
@@ -315,7 +322,7 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
   float tooltipW = 240.0f;
   BeginPendingTooltip(tooltipW, th);
 
-  ImU32 qualityColor = GetQualityColor(itemLevel);
+  ImU32 qualityColor = GetQualityColor(itemLevel, optionFlags);
   g_pendingTooltip.borderColor = qualityColor;
 
   // Name (centered, quality color)
@@ -418,10 +425,34 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
     }
   }
 
+  // ─── Item Options ──────────────────────────────────────────────────────
+
+  if (hasOptions) {
+    if (hasStats) AddTooltipSeparator();
+    if (optionFlags & 0x80) {
+      if (def->category == 4)
+        AddPendingTooltipLine(TT_BLUE, "+Skill (Multi-Shot)");
+      else
+        AddPendingTooltipLine(TT_BLUE, "+Skill");
+    }
+    if (optionFlags & 0x40) {
+      AddPendingTooltipLine(TT_BLUE, "+Luck (+5% Critical Rate)");
+    }
+    int addLevel = optionFlags & 0x07;
+    if (addLevel > 0) {
+      char buf[48];
+      if (def->category <= 5)
+        snprintf(buf, sizeof(buf), "+%d Additional Damage", addLevel * 4);
+      else
+        snprintf(buf, sizeof(buf), "+%d Additional Defense", addLevel * 4);
+      AddPendingTooltipLine(TT_BLUE, buf);
+    }
+  }
+
   // ─── Use/Equip effects ──────────────────────────────────────────────────
 
   if (potionHeal > 0 || potionMana > 0 || potionEffect) {
-    if (hasStats) AddTooltipSeparator();
+    if (hasStats || hasOptions) AddTooltipSeparator();
     if (potionHeal > 0) {
       char buf[48];
       snprintf(buf, sizeof(buf), "Use: Restores %d Health", potionHeal);
@@ -477,19 +508,6 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
     if (skillDef->desc && skillDef->desc[0])
       AddPendingTooltipLine(TT_GOLD, skillDef->desc);
 
-    if (skillDef->levelReq > 0) {
-      char reqBuf[48];
-      bool met = s_ctx->serverLevel && *s_ctx->serverLevel >= skillDef->levelReq;
-      snprintf(reqBuf, sizeof(reqBuf), "Requires Level %d", skillDef->levelReq);
-      AddPendingTooltipLine(met ? TT_DIM_GREEN : TT_RED, reqBuf);
-    }
-    if (skillDef->energyReq > 0) {
-      char reqBuf[48];
-      bool met = s_ctx->serverEne && *s_ctx->serverEne >= skillDef->energyReq;
-      snprintf(reqBuf, sizeof(reqBuf), "Requires %d Energy", skillDef->energyReq);
-      AddPendingTooltipLine(met ? TT_DIM_GREEN : TT_RED, reqBuf);
-    }
-
     if (scrollAlreadyLearned)
       AddPendingTooltipLine(TT_ORANGE, "Already Known");
     else {
@@ -509,11 +527,11 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel, uint32_t shopBuyPric
       AddPendingTooltipLine((current >= req) ? TT_DIM_GREEN : TT_RED, rBuf);
     };
 
-    if (!skipItemLevel && def->levelReq > 0) addReq("Level", *s_ctx->serverLevel, def->levelReq);
+    if (def->levelReq > 0) addReq("Level", *s_ctx->serverLevel, def->levelReq);
     if (def->reqStr > 0) addReq("Strength", *s_ctx->serverStr, def->reqStr);
     if (def->reqDex > 0) addReq("Agility", *s_ctx->serverDex, def->reqDex);
     if (def->reqVit > 0) addReq("Vitality", *s_ctx->serverVit, def->reqVit);
-    if (!skipItemEnergy && def->reqEne > 0) addReq("Energy", *s_ctx->serverEne, def->reqEne);
+    if (def->reqEne > 0) addReq("Energy", *s_ctx->serverEne, def->reqEne);
 
     if (hasClassReqs) {
       uint32_t myFlag = (1 << (s_ctx->hero->GetClass() / 16));

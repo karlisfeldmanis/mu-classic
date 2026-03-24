@@ -95,6 +95,7 @@ struct NpcSpawn {
 // ─── Per-type monster stat definition (replaces per-type constexprs) ───
 struct MonsterTypeDef {
   uint16_t type;
+  const char *name;    // Display name (e.g. "Bull Fighter")
   int hp, defense, defenseRate, attackMin, attackMax, attackRate, level;
   float atkCooldown;   // Seconds between attacks (AtkSpeed/1000)
   float moveDelay;     // Seconds per grid step (MoveSpeed/1000)
@@ -199,7 +200,8 @@ struct GroundDrop {
   uint16_t index;   // Unique drop ID
   int16_t defIndex; // -1=Zen, 0-511+=item def index
   uint8_t quantity;
-  uint8_t itemLevel; // Enhancement +0..+2
+  uint8_t itemLevel;      // Enhancement +0..+15
+  uint8_t optionFlags = 0; // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
   float worldX, worldZ;
   float age = 0.0f; // Seconds since spawn (despawn after 30s)
 };

@@ -117,6 +117,9 @@ constexpr uint8_t CHAT_LOG_SAVE = 0x61;    // C->S: save chat message
 
 // Client settings
 constexpr uint8_t CLIENT_SETTINGS = 0x63; // C->S: client settings (camera zoom)
+
+// Item catalog
+constexpr uint8_t ITEM_CATALOG = 0x64; // S->C: full item definitions (C2)
 } // namespace Opcode
 
 // =====================================================
@@ -290,15 +293,16 @@ static_assert(sizeof(PMSG_EQUIPMENT_HEAD) == 5,
               "PMSG_EQUIPMENT_HEAD size mismatch");
 
 struct PMSG_EQUIPMENT_SLOT {
-  uint8_t slot;       // EquipSlot (0=right_hand, 1=left_hand, etc.)
-  uint8_t category;   // ItemCategory (0=Sword, 1=Axe, etc.)
-  uint8_t itemIndex;  // Index within category (0=Sword01, 1=Sword02)
-  uint8_t itemLevel;  // Enhancement level (+0 to +15)
-  uint8_t quantity;   // Stack count (arrows/bolts), 0 for non-stackable
-  char modelFile[32]; // Model file name (null-terminated, 32 chars max)
+  uint8_t slot;         // EquipSlot (0=right_hand, 1=left_hand, etc.)
+  uint8_t category;     // ItemCategory (0=Sword, 1=Axe, etc.)
+  uint8_t itemIndex;    // Index within category (0=Sword01, 1=Sword02)
+  uint8_t itemLevel;    // Enhancement level (+0 to +15)
+  uint8_t quantity;     // Stack count (arrows/bolts), 0 for non-stackable
+  uint8_t optionFlags;  // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
+  char modelFile[32];   // Model file name (null-terminated, 32 chars max)
 };
 
-static_assert(sizeof(PMSG_EQUIPMENT_SLOT) == 37,
+static_assert(sizeof(PMSG_EQUIPMENT_SLOT) == 38,
               "PMSG_EQUIPMENT_SLOT size mismatch");
 
 // S->C: Character Stats (0x25)
@@ -447,11 +451,12 @@ struct PMSG_MONSTER_ATTACK_SEND {
 
 // S->C: Inventory Sync Item (0x36, C2 variable-length)
 struct PMSG_INVENTORY_ITEM {
-  uint8_t slot;      // 0-63
-  uint8_t category;  // Category (0-15)
-  uint8_t itemIndex; // Index (0-31)
+  uint8_t slot;         // 0-63
+  uint8_t category;     // Category (0-15)
+  uint8_t itemIndex;    // Index (0-31)
   uint8_t quantity;
   uint8_t itemLevel;
+  uint8_t optionFlags;  // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
 };
 
 // C->S: Inventory Move Request (0x39)
@@ -479,7 +484,8 @@ struct PMSG_DROP_SPAWN_SEND {
   uint16_t dropIndex; // Unique drop ID
   int16_t defIndex;   // -1=Zen, 0-511+=item def index
   uint8_t quantity;
-  uint8_t itemLevel; // Enhancement +0..+2
+  uint8_t itemLevel;    // Enhancement +0..+15
+  uint8_t optionFlags;  // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
   float worldX;
   float worldZ;
 };
@@ -497,6 +503,7 @@ struct PMSG_PICKUP_RESULT_SEND {
   int16_t defIndex; // -1=Zen, 0-511+=item def index
   uint8_t quantity;
   uint8_t itemLevel;
+  uint8_t optionFlags;  // bit7=Skill, bit6=Luck, bits0-2=Additional(0-7)
   uint8_t success; // 1=ok, 0=already taken or bag full
 };
 
@@ -824,6 +831,30 @@ inline void BuxDecode(char *data, int len) {
     data[i] ^= buxCode[i % 3];
   }
 }
+
+// S->C: Item catalog entry (one per item definition)
+struct PMSG_ITEM_DEF_ENTRY {
+  uint8_t category;
+  uint8_t itemIndex;
+  char name[32];
+  char modelFile[32];
+  uint16_t levelReq;
+  uint16_t dmgMin;
+  uint16_t dmgMax;
+  uint16_t defense;
+  uint8_t attackSpeed;
+  uint8_t twoHanded;
+  uint8_t width;
+  uint8_t height;
+  uint16_t reqStr;
+  uint16_t reqDex;
+  uint16_t reqVit;
+  uint16_t reqEne;
+  uint32_t classFlags;
+  uint32_t buyPrice;
+  uint16_t magicPower;
+};
+static_assert(sizeof(PMSG_ITEM_DEF_ENTRY) == 96, "PMSG_ITEM_DEF_ENTRY size");
 
 #pragma pack(pop)
 #endif // MU_PACKET_DEFS_HPP

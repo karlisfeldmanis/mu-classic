@@ -302,6 +302,9 @@ static void HandleNpcInteraction(int npcIdx) {
   *s_ctx->selectedNpc = npcIdx;
   s_ctx->hero->CancelAttack();
   s_ctx->hero->ClearPendingPickup();
+  // Auto-dismount on NPC interaction
+  if (s_ctx->hero->IsMounted())
+    s_ctx->hero->UnequipMount();
 
   NpcInfo info = s_ctx->npcMgr->GetNpcInfo(npcIdx);
   float dist = glm::distance(s_ctx->hero->GetPosition(), info.position);
@@ -438,6 +441,9 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
           if (!CheckRangedAmmo()) {
             // Block attack — wrong or missing ammo for bow/crossbow
           } else {
+            // Auto-dismount on monster attack
+            if (s_ctx->hero->IsMounted())
+              s_ctx->hero->UnequipMount();
             MonsterInfo info = s_ctx->monsterMgr->GetMonsterInfo(monHit);
             s_ctx->hero->AttackMonster(monHit, info.position);
             s_ctx->hero->ClearPendingPickup();
@@ -491,6 +497,7 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
                 s_ctx->hero->MoveTo(target);
                 s_ctx->clickEffect->Show(target);
               }
+            } else {
             }
           }
           }
@@ -690,18 +697,6 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
         }
       }
     }
-    if (key == GLFW_KEY_M) {
-      if (s_ctx->mountToggling && !*s_ctx->mountToggling) {
-        if (s_ctx->hero && s_ctx->hero->HasMountEquipped()) {
-          s_ctx->hero->StopMoving();
-          *s_ctx->mountToggling = true;
-          *s_ctx->mountToggleTimer = s_ctx->mountToggleTime;
-        } else {
-          InventoryUI::ShowNotification("No mount equipped!");
-          SoundManager::Play(SOUND_ERROR01);
-        }
-      }
-    }
     if (key == GLFW_KEY_L) {
       *s_ctx->showQuestLog = !*s_ctx->showQuestLog;
       SoundManager::Play(SOUND_INTERFACE01);
@@ -771,7 +766,10 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
           *s_ctx->showSkillWindow = false;
           closedSomething = true;
         }
-        if (*s_ctx->showQuestLog) {
+        if (*s_ctx->questLogSelected >= 0) {
+          *s_ctx->questLogSelected = -1;
+          closedSomething = true;
+        } else if (*s_ctx->showQuestLog) {
           *s_ctx->showQuestLog = false;
           closedSomething = true;
         }

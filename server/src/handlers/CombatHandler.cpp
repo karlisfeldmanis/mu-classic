@@ -33,7 +33,7 @@ static const SkillDef g_skillDefs[] = {
     {21, 8, 15, 0, false},     // Uppercut (single target)
     {22, 9, 18, 0, false},     // Cyclone (single target)
     {23, 10, 20, 0, false},    // Slash (single target)
-    {41, 10, 25, 200, false},  // Twisting Slash (AoE range 2 grid)
+    {41, 10, 25, 280, false},  // Twisting Slash (AoE range ~3 grid)
     {42, 20, 60, 300, false},  // Rageful Blow (AoE range 3 grid)
     {43, 12, 70, 100, false},  // Death Stab (splash range 1 grid around target)
     // DW spells (Mana cost) — OpenMU Version075 skill damage values
@@ -206,11 +206,18 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
     damage =
         baseMin + (baseMax > baseMin ? rand() % (baseMax - baseMin + 1) : 0);
 
+    // Luck bonus: equipped weapon with Luck flag adds +5% crit chance
+    int critBonus = 0;
+    if (session.equipment[0].optionFlags & 0x40)
+      critBonus += 5;
+    if (session.equipment[1].optionFlags & 0x40)
+      critBonus += 5;
+
     int critRoll = rand() % 100;
-    if (critRoll < 1) {
+    if (critRoll < (1 + critBonus)) {
       damage = (baseMax * 120) / 100; // Excellent: 1.2x max
       damageType = 3;
-    } else if (critRoll < 6) {
+    } else if (critRoll < (6 + critBonus)) {
       damage = baseMax; // Critical: max damage
       damageType = 2;
     }
@@ -228,6 +235,13 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
     // Skill damage bonus: flat addition for physical, already in range for magic
     if (!isMagic)
       damage += bonusDamage;
+
+    // Additional Option damage bonus (+4 per level from right-hand weapon)
+    {
+      int addLevel = session.equipment[0].optionFlags & 0x07;
+      if (addLevel > 0)
+        damage += addLevel * 4;
+    }
 
     // Greater Damage buff (Elf aura)
     if (session.buffs[1].active)
@@ -391,6 +405,7 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
         dropPkt.defIndex = drop.defIndex;
         dropPkt.quantity = drop.quantity;
         dropPkt.itemLevel = drop.itemLevel;
+        dropPkt.optionFlags = drop.optionFlags;
         dropPkt.worldX = drop.worldX;
         dropPkt.worldZ = drop.worldZ;
         server.Broadcast(&dropPkt, sizeof(dropPkt));
@@ -478,6 +493,30 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
         db.UpdateEquipment(session.characterId, 1, ammo.category,
                            ammo.itemIndex, ammo.itemLevel, ammo.quantity);
         CharacterHandler::SendEquipment(session, db, session.characterId);
+      }
+    }
+  }
+
+  // Multi-shot: Skill-flagged bows/crossbows hit up to 2 nearby enemies at 50% damage
+  if (session.hasBow && (session.equipment[0].optionFlags & 0x80)) {
+    int extraHits = 0;
+    for (auto &other : world.GetMonsterInstancesMut()) {
+      if (other.index == mon->index || other.hp <= 0)
+        continue;
+      if (other.aiState == MonsterInstance::AIState::DYING ||
+          other.aiState == MonsterInstance::AIState::DEAD)
+        continue;
+      if (other.evading)
+        continue;
+      if (other.type >= 100 && other.type <= 102)
+        continue; // Traps
+      float dx = other.worldX - mon->worldX;
+      float dz = other.worldZ - mon->worldZ;
+      if (dx * dx + dz * dz < 150.0f * 150.0f) {
+        // Half-damage to secondary targets
+        ApplyDamageToMonster(session, &other, 0, world, server);
+        if (++extraHits >= 2)
+          break;
       }
     }
   }
@@ -832,9 +871,14 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   }
 
   // AoE: hit all nearby monsters within skill range (OpenMU: AreaSkillAutomaticHits)
+  // DK melee AoE (Twisting Slash, Rageful Blow, Death Stab) — player-centered
+  // Magic AoE — target-centered
   int aoeHits = 0;
   if (skillDef->aoeRange > 0) {
-    float cx = mon->worldX, cz = mon->worldZ;
+    bool playerCentered = (skillDef->skillId == 41 || skillDef->skillId == 42 ||
+                           skillDef->skillId == 43);
+    float cx = playerCentered ? session.worldX : mon->worldX;
+    float cz = playerCentered ? session.worldZ : mon->worldZ;
     float r2 = skillDef->aoeRange * skillDef->aoeRange;
     for (auto &other : world.GetMonsterInstancesMut()) {
       if (other.index == mon->index)
@@ -855,6 +899,13 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
         aoeHits++;
       }
     }
+  }
+
+  // AG recovery on skill damage hit (DK only) — each hit that deals damage
+  // restores a small amount of AG (same as auto-attack: 2% of maxAG)
+  if (session.classCode == 16 && session.ag < session.maxAg) {
+    int agGain = std::max(1, session.maxAg / 50); // 2% of maxAG
+    session.ag = std::min(session.ag + agGain, session.maxAg);
   }
 
   // Send updated stats (so client sees AG decrease)

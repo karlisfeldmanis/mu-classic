@@ -82,12 +82,14 @@ static void ApplyEquipToHero(uint8_t slot, const WeaponEquipInfo &weapon) {
   }
 }
 
-static void ApplyEquipToUI(uint8_t slot, const WeaponEquipInfo &weapon) {
+static void ApplyEquipToUI(uint8_t slot, const WeaponEquipInfo &weapon,
+                           uint8_t optionFlags = 0) {
   if (slot < 12) {
     g_state->equipSlots[slot].category = weapon.category;
     g_state->equipSlots[slot].itemIndex = weapon.itemIndex;
     g_state->equipSlots[slot].itemLevel = weapon.itemLevel;
     g_state->equipSlots[slot].quantity = weapon.quantity;
+    g_state->equipSlots[slot].optionFlags = optionFlags;
     // Use client-side model file lookup to ensure consistency with
     // ItemModelManager cache (server may have different naming)
     int16_t defIdx =
@@ -154,7 +156,7 @@ static void ParseEquipmentPacket(const uint8_t *pkt, int pktSize,
                                  int countOffset, int dataOffset,
                                  ServerData *serverData) {
   uint8_t count = pkt[countOffset];
-  int entrySize = 5 + 32; // slot(1)+cat(1)+idx(1)+lvl(1)+qty(1)+model(32)
+  int entrySize = 6 + 32; // slot(1)+cat(1)+idx(1)+lvl(1)+qty(1)+optFlags(1)+model(32)
   for (int i = 0; i < count; i++) {
     int off = dataOffset + i * entrySize;
     if (off + entrySize > pktSize)
@@ -166,8 +168,9 @@ static void ParseEquipmentPacket(const uint8_t *pkt, int pktSize,
     weapon.itemIndex = pkt[off + 2];
     weapon.itemLevel = pkt[off + 3];
     weapon.quantity = pkt[off + 4];
+    uint8_t optionFlags = pkt[off + 5];
     char modelBuf[33] = {};
-    std::memcpy(modelBuf, &pkt[off + 5], 32);
+    std::memcpy(modelBuf, &pkt[off + 6], 32);
     weapon.modelFile = modelBuf;
 
     // Resolve twoHanded flag from ItemDatabase
@@ -181,7 +184,7 @@ static void ParseEquipmentPacket(const uint8_t *pkt, int pktSize,
       serverData->equipment.push_back({slot, weapon});
 
     ApplyEquipToHero(slot, weapon);
-    ApplyEquipToUI(slot, weapon);
+    ApplyEquipToUI(slot, weapon, optionFlags);
   }
 }
 
@@ -200,7 +203,7 @@ static void ParseInventorySync(const uint8_t *pkt, int pktSize) {
   for (int i = 0; i < INVENTORY_SLOTS; i++)
     g_state->inventory[i] = {};
 
-  const int itemSize = 5; // slot(1)+cat(1)+idx(1)+qty(1)+lvl(1)
+  const int itemSize = 6; // slot(1)+cat(1)+idx(1)+qty(1)+lvl(1)+optFlags(1)
   for (int i = 0; i < count; i++) {
     int off = 9 + i * itemSize;
     if (off + itemSize > pktSize)
@@ -211,16 +214,19 @@ static void ParseInventorySync(const uint8_t *pkt, int pktSize) {
     uint8_t idx = pkt[off + 2];
     uint8_t qty = pkt[off + 3];
     uint8_t lvl = pkt[off + 4];
+    uint8_t optFlags = pkt[off + 5];
 
     if (slot < INVENTORY_SLOTS) {
       int16_t defIdx = ItemDatabase::GetDefIndexFromCategory(cat, idx);
       if (defIdx != -1) {
         InventoryUI::SetBagItem(slot, defIdx, qty, lvl);
+        g_state->inventory[slot].optionFlags = optFlags;
       } else {
         g_state->inventory[slot].occupied = true;
         g_state->inventory[slot].primary = true;
         g_state->inventory[slot].quantity = qty;
         g_state->inventory[slot].itemLevel = lvl;
+        g_state->inventory[slot].optionFlags = optFlags;
       }
     }
   }
@@ -309,6 +315,7 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
           g_state->inventory[slot].defIndex = defIdx;
           g_state->inventory[slot].quantity = item->quantity;
           g_state->inventory[slot].itemLevel = item->itemLevel;
+          g_state->inventory[slot].optionFlags = item->optionFlags;
           g_state->inventory[slot].occupied = true;
           g_state->inventory[slot].primary = true;
 
@@ -356,6 +363,11 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
         }
         std::cout << "[Net] Initial skill list: " << (int)count << " skills\n";
       }
+    }
+
+    // Item catalog (C2) — full item definitions from server DB
+    if (headcode == Opcode::ITEM_CATALOG && pktSize >= 6) {
+      ItemDatabase::LoadFromCatalog(pkt, pktSize);
     }
 
     // Chat log history (C2) — sent during initial sync
@@ -900,6 +912,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           gi.defIndex = p->defIndex;
           gi.quantity = p->quantity;
           gi.itemLevel = p->itemLevel;
+          gi.optionFlags = p->optionFlags;
 
           float h = g_state->terrain->GetHeight(p->worldX, p->worldZ);
           gi.position = glm::vec3(p->worldX, h + 0.5f, p->worldZ);
@@ -908,8 +921,10 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           gi.scale = 1.0f;
           gi.isResting = true; // Place directly at rest (no drop animation)
 
+          float heightBoost = 0.0f;
           if (g_state->getItemRestingAngle)
-            g_state->getItemRestingAngle(gi.defIndex, gi.angle, gi.scale);
+            g_state->getItemRestingAngle(gi.defIndex, gi.angle, gi.scale, heightBoost);
+          gi.position.y += heightBoost;
           gi.angle.y += (float)(rand() % 360);
 
           gi.active = true;
@@ -1065,6 +1080,8 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         if (g_state->completedQuestMask)
           *g_state->completedQuestMask = mask;
         if (g_state->activeQuests) {
+          // Save old kill counts for progress detection
+          auto oldQuests = *g_state->activeQuests;
           g_state->activeQuests->clear();
           for (int i = 0; i < count && (13 + i * 4 + 3) < pktSize; i++) {
             int off = 13 + i * 4;
@@ -1074,6 +1091,25 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
             aq.killCount[1] = pkt[off + 2];
             aq.killCount[2] = pkt[off + 3];
             g_state->activeQuests->push_back(aq);
+            // Detect kill count changes for progress popup
+            if (g_state->onQuestProgress && g_state->questCatalog) {
+              for (auto &old : oldQuests) {
+                if (old.questId == aq.questId) {
+                  if (aq.questId >= 0 &&
+                      aq.questId < (int)g_state->questCatalog->size()) {
+                    auto &qd = (*g_state->questCatalog)[aq.questId];
+                    for (int t = 0; t < qd.targetCount; t++) {
+                      if (aq.killCount[t] > old.killCount[t]) {
+                        g_state->onQuestProgress(
+                            qd.questName, qd.targets[t].name,
+                            aq.killCount[t], qd.targets[t].killsReq);
+                      }
+                    }
+                  }
+                  break;
+                }
+              }
+            }
           }
         }
         std::cout << "[Quest] State: completed=0x" << std::hex << mask
@@ -1111,6 +1147,11 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
   // C2 packets (ongoing)
   if (type == 0xC2 && pktSize >= 5) {
     uint8_t headcode = pkt[3];
+
+    // Item catalog (C2) — may arrive after map change
+    if (headcode == Opcode::ITEM_CATALOG && pktSize >= 6) {
+      ItemDatabase::LoadFromCatalog(pkt, pktSize);
+    }
 
     // Quest catalog (0x51) — may arrive after map change or reconnect
     if (headcode == Opcode::QUEST_CATALOG && pktSize >= 5) {
@@ -1260,6 +1301,16 @@ void HandleCharSelectPacket(const uint8_t *pkt, int pktSize) {
   if (pktSize < 4)
     return;
   uint8_t type = pkt[0];
+
+  // Handle C2 packets (item catalog sent during login)
+  if (type == 0xC2 && pktSize >= 6) {
+    uint8_t headcode = pkt[3];
+    if (headcode == Opcode::ITEM_CATALOG) {
+      ItemDatabase::LoadFromCatalog(pkt, pktSize);
+    }
+    return;
+  }
+
   if (type != 0xC1)
     return;
 

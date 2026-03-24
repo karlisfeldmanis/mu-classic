@@ -120,6 +120,7 @@ public:
   bool IsMounted() const { return m_mount.active; }
   bool HasMountEquipped() const { return m_mountEquippedIndex == 2 || m_mountEquippedIndex == 3; }
   uint8_t GetMountItemIndex() const { return m_mountEquippedIndex; }
+  void SetMountIndex(uint8_t idx) { m_mountEquippedIndex = idx; }
   bool IsPetActive() const { return m_pet.active; }
   uint8_t GetPetItemIndex() const { return m_pet.itemIndex; }
   // Mount is visually active and riding (allowed everywhere including safe zone)

@@ -2,6 +2,7 @@
 #include "HeroCharacter.hpp"
 #include "InputHandler.hpp"
 #include "InventoryUI_Internal.hpp"
+#include "ItemDatabase.hpp"
 #include "SoundManager.hpp"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -10,6 +11,39 @@
 #include <iostream>
 
 // ─── File-local helpers ─────────────────────────────────────────────────────
+
+// Look up the level requirement for a skill from its teaching orb/scroll item
+static uint16_t GetSkillLevelReq(uint8_t skillId) {
+  // DK orbs + Elf orbs (category 12)
+  static const uint8_t orbSkillToItem[][2] = {
+      {19, 20}, {20, 21}, {21, 22}, {22, 23}, {23, 24},
+      {41, 7},  {42, 12}, {43, 19},
+      {26, 8},  {27, 9},  {28, 10}, {30, 11},
+      {31, 25}, {32, 26}, {33, 27}, {34, 28}, {35, 29},
+  };
+  for (auto &m : orbSkillToItem) {
+    if (m[0] == skillId) {
+      int defIndex = 12 * 32 + m[1];
+      auto &defs = ItemDatabase::GetItemDefs();
+      auto it = defs.find(defIndex);
+      return (it != defs.end()) ? it->second.levelReq : 0;
+    }
+  }
+  // DW scrolls (category 15)
+  static const uint8_t scrollSkillToItem[][2] = {
+      {1, 0},  {2, 1},  {3, 2},  {4, 3},   {5, 4},  {6, 5}, {7, 6},
+      {8, 7},  {9, 8},  {10, 9}, {12, 11}, {13, 12}, {14, 13},
+  };
+  for (auto &m : scrollSkillToItem) {
+    if (m[0] == skillId) {
+      int defIndex = 15 * 32 + m[1];
+      auto &defs = ItemDatabase::GetItemDefs();
+      auto it = defs.find(defIndex);
+      return (it != defs.end()) ? it->second.levelReq : 0;
+    }
+  }
+  return 0;
+}
 
 static void RenderBar(ImDrawList *dl, float x, float y, float w, float h,
                       float frac, ImU32 fillColor, ImU32 bgColor,
@@ -297,12 +331,11 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     dl->AddText(ImVec2(nlx, nly), nameCol, resName);
   }
 
-  // ══════════════ CISTM buttons (screen-pixel, bottom-right corner)
+  // ══════════════ CISTML buttons (screen-pixel, bottom-right corner)
   // ══════════════
   {
-    const char *btnLabels[] = {"C", "I", "S", "T", "M"};
+    const char *btnLabels[] = {"C", "I", "S", "T", "L"};
     bool tDisabled = (s_ctx->hero && s_ctx->hero->IsInSafeZone());
-    bool mDisabled = !(s_ctx->hero && s_ctx->hero->HasMountEquipped());
 
     // Position in screen pixels: bottom-right corner
     float scrW = (float)winW, scrH = (float)winH;
@@ -316,7 +349,7 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
       float by = bStartY;
       ImVec2 bp0(bx, by), bp1(bx + bs, by + bs);
       bool hov = mp.x >= bp0.x && mp.x < bp1.x && mp.y >= bp0.y && mp.y < bp1.y;
-      bool disabled = (i == 3 && tDisabled) || (i == 4 && mDisabled);
+      bool disabled = (i == 3 && tDisabled);
       // Gothic dark stone button
       ImU32 topFill = disabled ? IM_COL32(12, 10, 8, 200)
                       : hov    ? IM_COL32(40, 32, 22, 240)
@@ -494,132 +527,193 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     }
   }
 
-  // ══════════════ Active Buff Icons (above skill slots) ══════════════
+  // ══════════════ Unified Buff/Aura Row (above main buttons) ══════════════
   {
+    // Collect all active buffs, debuffs, and auras into a flat list
+    struct BuffIcon {
+      enum Type { SKILL_ICON, TEXTURE_ICON, TEXT_ICON } type;
+      int8_t skillId;           // for SKILL_ICON
+      int texIdx;               // for TEXTURE_ICON (g_texAuraIcons index)
+      const char *textLabel;    // for TEXT_ICON
+      ImU32 tint, borderCol, bgCol;
+      // Tooltip
+      const char *name;
+      const char *desc;
+      char bonusLine[48];
+      char durLine[32];
+      bool hasDuration;
+      float durationFrac;       // 0..1 remaining fraction
+      int durationSecs;
+    };
+    BuffIcon icons[8];
+    int iconCount = 0;
+
+    // Pet/mount auras (leftmost)
+    if (s_ctx->hero) {
+      if (s_ctx->hero->IsPetActive()) {
+        uint8_t petIdx = s_ctx->hero->GetPetItemIndex();
+        auto &ic = icons[iconCount++];
+        ic.type = BuffIcon::TEXTURE_ICON;
+        ic.hasDuration = false;
+        ic.durationFrac = 0;
+        ic.durationSecs = 0;
+        if (petIdx == 0) { // Guardian Angel
+          ic.texIdx = 0;
+          ic.name = "Guardian Angel";
+          ic.desc = "Reduces incoming damage";
+          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "-20%% Damage Taken");
+          ic.borderCol = IM_COL32(80, 160, 255, 180);
+          ic.bgCol = IM_COL32(10, 12, 20, 200);
+        } else { // Imp
+          ic.texIdx = 1;
+          ic.name = "Imp";
+          ic.desc = "Increases attack damage";
+          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+30%% Attack Damage");
+          ic.borderCol = IM_COL32(255, 100, 40, 180);
+          ic.bgCol = IM_COL32(20, 10, 5, 200);
+        }
+      }
+      if (s_ctx->hero->IsMounted()) {
+        uint8_t mountIdx = s_ctx->hero->GetMountItemIndex();
+        auto &ic = icons[iconCount++];
+        ic.type = BuffIcon::TEXTURE_ICON;
+        ic.hasDuration = false;
+        ic.durationFrac = 0;
+        ic.durationSecs = 0;
+        if (mountIdx == 2) { // Uniria
+          ic.texIdx = 2;
+          ic.name = "Uniria";
+          ic.desc = "Increases movement speed";
+          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+50%% Move Speed");
+          ic.borderCol = IM_COL32(100, 200, 255, 180);
+          ic.bgCol = IM_COL32(10, 15, 20, 200);
+        } else { // Dinorant
+          ic.texIdx = 3;
+          ic.name = "Dinorant";
+          ic.desc = "Enables flight, boosts speed";
+          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+100%% Move Speed");
+          ic.borderCol = IM_COL32(40, 180, 140, 180);
+          ic.bgCol = IM_COL32(8, 18, 14, 200);
+        }
+      }
+    }
+
+    // Elf buffs (Greater Defense / Greater Damage)
     const auto *buffs = ClientPacketHandler::GetActiveBuffs();
     for (int b = 0; buffs && b < 2; b++) {
       auto &buff = buffs[b];
       if (!buff.active) continue;
-
-      int8_t iconSkillId = (buff.type == 1) ? 27 : 28;
-      // Position: above skill slots 1-2 (buff 0) and 3-4 (buff 1)
-      float vx = SkillSlotX(b * 2) + (SLOT + GAP) * 0.5f;
-      float vy = ROW_VY - SLOT - 6.0f;
-      float sx = c.ToScreenX(vx);
-      float sy = c.ToScreenY(vy);
-      float sz = c.ToScreenX(vx + SLOT * 0.8f) - sx;
-
-      ImVec2 p0(sx, sy), p1(sx + sz, sy + sz);
-      dl->AddRectFilled(p0, p1, IM_COL32(15, 12, 8, 200), 3.0f);
-
-      ImU32 tint = (buff.type == 1) ? IM_COL32(100, 200, 255, 255)
-                                    : IM_COL32(255, 180, 80, 255);
-      RenderSkillIcon(dl, iconSkillId, sx, sy, sz, tint);
-
-      // Cooldown sweep (fills from top as time passes)
-      if (buff.maxDuration > 0) {
-        float frac = buff.remaining / buff.maxDuration;
-        float fillH = sz * (1.0f - frac);
-        dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + fillH),
-                          IM_COL32(0, 0, 0, 150), 3.0f);
-      }
-
-      // Duration text (m:ss for >= 60s, Ns for < 60s)
-      char timeBuf[8];
-      int secs = (int)ceilf(buff.remaining);
-      if (secs >= 60)
-        snprintf(timeBuf, sizeof(timeBuf), "%d:%02d", secs / 60, secs % 60);
-      else
-        snprintf(timeBuf, sizeof(timeBuf), "%ds", secs);
-      ImVec2 tsz = ImGui::CalcTextSize(timeBuf);
-      DrawShadowText(dl, ImVec2(sx + (sz - tsz.x) * 0.5f, sy + sz - tsz.y - 1),
-                     IM_COL32(255, 255, 255, 230), timeBuf);
-
-      // Border glow
-      ImU32 borderCol = (buff.type == 1) ? IM_COL32(60, 140, 255, 180)
-                                         : IM_COL32(255, 140, 40, 180);
-      dl->AddRect(p0, p1, borderCol, 3.0f, 0, 1.5f);
-
-      // Hover tooltip
-      ImVec2 mpos = ImGui::GetIO().MousePos;
-      if (mpos.x >= p0.x && mpos.x <= p1.x && mpos.y >= p0.y && mpos.y <= p1.y) {
-        const char *name = (buff.type == 1) ? "Greater Defense" : "Greater Damage";
-        const char *desc = (buff.type == 1) ? "Increases Defense" : "Increases Attack Damage";
-        int mins = secs / 60, rsecs = secs % 60;
-        char durLine[32];
-        snprintf(durLine, sizeof(durLine), "Remaining: %d:%02d", mins, rsecs);
-        char bonusLine[48];
-        snprintf(bonusLine, sizeof(bonusLine), "+%d %s", buff.value,
-                 (buff.type == 1) ? "Defense" : "Damage");
-
-        float tw = 180.0f, th = 12.0f + 18.0f * 4 + 8.0f;
-        BeginPendingTooltip(tw, th);
-        g_pendingTooltip.borderColor = borderCol;
-        AddPendingTooltipLine(IM_COL32(255, 255, 255, 255), name, 1);
-        AddTooltipSeparator();
-        AddPendingTooltipLine(IM_COL32(180, 180, 180, 255), desc);
-        AddPendingTooltipLine(IM_COL32(100, 255, 100, 255), bonusLine);
-        AddPendingTooltipLine(IM_COL32(200, 200, 200, 255), durLine);
-      }
+      auto &ic = icons[iconCount++];
+      ic.type = BuffIcon::SKILL_ICON;
+      ic.skillId = (buff.type == 1) ? 27 : 28;
+      ic.tint = (buff.type == 1) ? IM_COL32(100, 200, 255, 255)
+                                 : IM_COL32(255, 180, 80, 255);
+      ic.borderCol = (buff.type == 1) ? IM_COL32(60, 140, 255, 180)
+                                      : IM_COL32(255, 140, 40, 180);
+      ic.bgCol = IM_COL32(15, 12, 8, 200);
+      ic.name = (buff.type == 1) ? "Greater Defense" : "Greater Damage";
+      ic.desc = (buff.type == 1) ? "Increases Defense" : "Increases Attack Damage";
+      snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+%d %s", buff.value,
+               (buff.type == 1) ? "Defense" : "Damage");
+      ic.hasDuration = (buff.maxDuration > 0);
+      ic.durationFrac = ic.hasDuration ? buff.remaining / buff.maxDuration : 0;
+      ic.durationSecs = (int)ceilf(buff.remaining);
+      int mins = ic.durationSecs / 60, rsecs = ic.durationSecs % 60;
+      snprintf(ic.durLine, sizeof(ic.durLine), "Remaining: %d:%02d", mins, rsecs);
     }
-  }
 
-  // ══════════════ Active Debuff Icons (poison — above skill slots, right side) ══
-  {
+    // Poison debuff (rightmost)
     auto poison = ClientPacketHandler::GetPoisonState();
     if (poison.active) {
-      // Position: above skill slot 4 (rightmost), same row as buff icons
-      float vx = SkillSlotX(3) + (SLOT + GAP) * 0.5f;
-      float vy = ROW_VY - SLOT - 6.0f;
-      float sx = c.ToScreenX(vx);
-      float sy = c.ToScreenY(vy);
-      float sz = c.ToScreenX(vx + SLOT * 0.8f) - sx;
+      auto &ic = icons[iconCount++];
+      ic.type = BuffIcon::TEXT_ICON;
+      ic.textLabel = "P";
+      ic.tint = IM_COL32(80, 255, 80, 255);
+      ic.borderCol = IM_COL32(40, 180, 40, 180);
+      ic.bgCol = IM_COL32(10, 15, 8, 200);
+      ic.name = "Poison";
+      ic.desc = "Poisoned by monster";
+      snprintf(ic.bonusLine, sizeof(ic.bonusLine), "3%% HP damage / 3 sec");
+      ic.hasDuration = (poison.maxDuration > 0);
+      ic.durationFrac = ic.hasDuration ? poison.remaining / poison.maxDuration : 0;
+      ic.durationSecs = (int)ceilf(poison.remaining);
+      int mins = ic.durationSecs / 60, rsecs = ic.durationSecs % 60;
+      snprintf(ic.durLine, sizeof(ic.durLine), "Remaining: %d:%02d", mins, rsecs);
+    }
 
-      ImVec2 p0(sx, sy), p1(sx + sz, sy + sz);
-      dl->AddRectFilled(p0, p1, IM_COL32(10, 15, 8, 200), 3.0f);
+    // Render all icons in a centered row above the main buttons
+    if (iconCount > 0) {
+      float iconSz = SLOT * 0.8f;
+      float iconGap = 6.0f;
+      float totalW = iconCount * iconSz + (iconCount - 1) * iconGap;
+      float panelCenterVX = (PANEL_LEFT + PANEL_RIGHT) * 0.5f;
+      float startVX = panelCenterVX - totalW * 0.5f;
+      float vy = ROW_VY - SLOT * 0.5f - iconSz - 4.0f;
 
-      // Poison skull icon — use skill icon 30 (Poison) or just draw text
-      // Use green-tinted skull symbol
-      ImU32 poisonTint = IM_COL32(80, 255, 80, 255);
-      const char *skull = "P"; // Poison indicator
-      ImVec2 ksz = ImGui::CalcTextSize(skull);
-      DrawShadowText(dl, ImVec2(sx + (sz - ksz.x) * 0.5f, sy + 2),
-                     poisonTint, skull);
+      for (int i = 0; i < iconCount; i++) {
+        auto &ic = icons[i];
+        float vx = startVX + i * (iconSz + iconGap);
+        float sx = c.ToScreenX(vx);
+        float sy = c.ToScreenY(vy);
+        float sz = c.ToScreenX(vx + iconSz) - sx;
 
-      // Cooldown sweep (fills from top as time passes)
-      if (poison.maxDuration > 0) {
-        float frac = poison.remaining / poison.maxDuration;
-        float fillH = sz * (1.0f - frac);
-        dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + fillH),
-                          IM_COL32(0, 0, 0, 150), 3.0f);
-      }
+        ImVec2 p0(sx, sy), p1(sx + sz, sy + sz);
+        dl->AddRectFilled(p0, p1, ic.bgCol, 3.0f);
 
-      // Duration text
-      char timeBuf[8];
-      int secs = (int)ceilf(poison.remaining);
-      snprintf(timeBuf, sizeof(timeBuf), "%ds", secs);
-      ImVec2 tsz = ImGui::CalcTextSize(timeBuf);
-      DrawShadowText(dl, ImVec2(sx + (sz - tsz.x) * 0.5f, sy + sz - tsz.y - 1),
-                     IM_COL32(80, 255, 80, 230), timeBuf);
+        // Render icon content
+        if (ic.type == BuffIcon::SKILL_ICON) {
+          RenderSkillIcon(dl, ic.skillId, sx, sy, sz, ic.tint);
+        } else if (ic.type == BuffIcon::TEXTURE_ICON) {
+          if (ic.texIdx >= 0 && ic.texIdx < 4 && TexValid(g_texAuraIcons[ic.texIdx])) {
+            float pad = 3.0f;
+            dl->AddImage((ImTextureID)TexImID(g_texAuraIcons[ic.texIdx]),
+                         ImVec2(sx + pad, sy + pad),
+                         ImVec2(sx + sz - pad, sy + sz - pad),
+                         ImVec2(0, 0), ImVec2(1, 1),
+                         IM_COL32(255, 255, 255, 230));
+          }
+        } else { // TEXT_ICON
+          ImVec2 ksz = ImGui::CalcTextSize(ic.textLabel);
+          DrawShadowText(dl, ImVec2(sx + (sz - ksz.x) * 0.5f, sy + 2),
+                         ic.tint, ic.textLabel);
+        }
 
-      // Green poison border
-      dl->AddRect(p0, p1, IM_COL32(40, 180, 40, 180), 3.0f, 0, 1.5f);
+        // Cooldown sweep
+        if (ic.hasDuration) {
+          float fillH = sz * (1.0f - ic.durationFrac);
+          dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + fillH),
+                            IM_COL32(0, 0, 0, 150), 3.0f);
+        }
 
-      // Hover tooltip
-      ImVec2 mpos = ImGui::GetIO().MousePos;
-      if (mpos.x >= p0.x && mpos.x <= p1.x && mpos.y >= p0.y && mpos.y <= p1.y) {
-        int mins = secs / 60, rsecs = secs % 60;
-        char durLine[32];
-        snprintf(durLine, sizeof(durLine), "Remaining: %d:%02d", mins, rsecs);
+        // Duration text
+        if (ic.hasDuration) {
+          char timeBuf[8];
+          if (ic.durationSecs >= 60)
+            snprintf(timeBuf, sizeof(timeBuf), "%d:%02d", ic.durationSecs / 60,
+                     ic.durationSecs % 60);
+          else
+            snprintf(timeBuf, sizeof(timeBuf), "%ds", ic.durationSecs);
+          ImVec2 tsz = ImGui::CalcTextSize(timeBuf);
+          DrawShadowText(dl, ImVec2(sx + (sz - tsz.x) * 0.5f, sy + sz - tsz.y - 1),
+                         IM_COL32(255, 255, 255, 230), timeBuf);
+        }
 
-        float tw = 200.0f, th = 12.0f + 18.0f * 4 + 8.0f;
-        BeginPendingTooltip(tw, th);
-        g_pendingTooltip.borderColor = IM_COL32(40, 180, 40, 180);
-        AddPendingTooltipLine(IM_COL32(80, 255, 80, 255), "Poison", 1);
-        AddTooltipSeparator();
-        AddPendingTooltipLine(IM_COL32(180, 180, 180, 255), "Poisoned by monster");
-        AddPendingTooltipLine(IM_COL32(255, 100, 100, 255), "3% HP damage / 3 sec");
-        AddPendingTooltipLine(IM_COL32(200, 200, 200, 255), durLine);
+        // Border
+        dl->AddRect(p0, p1, ic.borderCol, 3.0f, 0, 1.5f);
+
+        // Hover tooltip
+        ImVec2 mpos = ImGui::GetIO().MousePos;
+        if (mpos.x >= p0.x && mpos.x <= p1.x && mpos.y >= p0.y && mpos.y <= p1.y) {
+          float tw = 200.0f, th = 12.0f + 18.0f * 4 + 8.0f;
+          BeginPendingTooltip(tw, th);
+          g_pendingTooltip.borderColor = ic.borderCol;
+          AddPendingTooltipLine(IM_COL32(255, 255, 255, 255), ic.name, 1);
+          AddTooltipSeparator();
+          AddPendingTooltipLine(IM_COL32(180, 180, 180, 255), ic.desc);
+          AddPendingTooltipLine(IM_COL32(100, 255, 100, 255), ic.bonusLine);
+          if (ic.hasDuration)
+            AddPendingTooltipLine(IM_COL32(200, 200, 200, 255), ic.durLine);
+        }
       }
     }
   }
@@ -883,9 +977,10 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
     }
 
     // Level req badge (bottom-right corner of cell, only if > 1)
-    if (skill.levelReq > 1) {
-      snprintf(buf, sizeof(buf), "Lv%d", skill.levelReq);
-      bool meetsReq = *s_ctx->serverLevel >= skill.levelReq;
+    uint16_t skillLvReq = GetSkillLevelReq(skill.skillId);
+    if (skillLvReq > 1) {
+      snprintf(buf, sizeof(buf), "Lv%d", skillLvReq);
+      bool meetsReq = *s_ctx->serverLevel >= skillLvReq;
       ImU32 reqCol = meetsReq ? colGreen : colRed;
       if (!learned)
         reqCol = (reqCol & 0x00FFFFFF) | 0x64000000;
@@ -913,8 +1008,9 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
       snprintf(buf, sizeof(buf), "Damage: +%d", skill.damageBonus);
       AddPendingTooltipLine(IM_COL32(255, 200, 100, 255), buf);
 
-      snprintf(buf, sizeof(buf), "Level Req: %d", skill.levelReq);
-      bool meetsReq = *s_ctx->serverLevel >= skill.levelReq;
+      uint16_t ttLvReq = GetSkillLevelReq(skill.skillId);
+      snprintf(buf, sizeof(buf), "Level Req: %d", ttLvReq);
+      bool meetsReq = *s_ctx->serverLevel >= ttLvReq;
       AddPendingTooltipLine(meetsReq ? colGreen : colRed, buf);
 
       AddPendingTooltipLine(colLabel, skill.desc);

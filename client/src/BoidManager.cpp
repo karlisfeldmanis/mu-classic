@@ -1181,7 +1181,7 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
 
   // Fade out when too close to camera
   float camDist = glm::length(b.position - eye);
-  float camFade = std::clamp((camDist - 150.0f) / 150.0f, 0.0f, 1.0f);
+  float camFade = std::clamp((camDist - 350.0f) / 200.0f, 0.0f, 1.0f);
   if (camFade <= 0.001f) return;
 
   auto bones = ComputeBoneMatricesInterpolated(m_birdBmd.get(), b.action,
@@ -1232,7 +1232,7 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
 
   // Fade out when too close to camera
   float camDist = glm::length(b.position - eye);
-  float camFade = std::clamp((camDist - 150.0f) / 150.0f, 0.0f, 1.0f);
+  float camFade = std::clamp((camDist - 350.0f) / 200.0f, 0.0f, 1.0f);
   if (camFade <= 0.001f) return;
 
   auto bones = ComputeBoneMatricesInterpolated(m_batBmd.get(), b.action,
@@ -1282,7 +1282,7 @@ void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
 
   // Fade out when too close to camera
   float camDist = glm::length(b.position - eye);
-  float camFade = std::clamp((camDist - 100.0f) / 100.0f, 0.0f, 1.0f);
+  float camFade = std::clamp((camDist - 300.0f) / 200.0f, 0.0f, 1.0f);
   if (camFade <= 0.001f) return;
 
   auto bones = ComputeBoneMatricesInterpolated(m_butterflyBmd.get(), b.action,
@@ -1642,7 +1642,7 @@ void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj,
 
     // Fade out when too close to camera
     float camDist = glm::length(leaf.position - camPos);
-    float camFade = std::clamp((camDist - 100.0f) / 100.0f, 0.0f, 1.0f);
+    float camFade = std::clamp((camDist - 300.0f) / 200.0f, 0.0f, 1.0f);
     if (camFade <= 0.001f) continue;
 
     // Build rotation matrix on CPU

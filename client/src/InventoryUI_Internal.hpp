@@ -20,9 +20,9 @@ inline float PanelH()      { return BASE_PANEL_H * g_uiPanelScale; }
 inline float PanelXRight() { return 1270.0f - PanelW(); }
 
 inline constexpr int SKILL_ICON_COLS = 25;
-inline constexpr float SKILL_ICON_W = 20.0f;
-inline constexpr float SKILL_ICON_H = 28.0f;
-inline constexpr float SKILL_TEX_SIZE = 512.0f;
+inline constexpr float SKILL_ICON_W = 40.0f;
+inline constexpr float SKILL_ICON_H = 56.0f;
+inline constexpr float SKILL_TEX_SIZE = 1024.0f;
 
 inline constexpr int NUM_DK_SKILLS = 8;
 inline constexpr int NUM_DW_SPELLS = 14;
@@ -34,10 +34,8 @@ struct SkillDef {
   uint8_t skillId;
   const char *name;
   int resourceCost; // AG for DK, Mana for DW
-  int levelReq;
   int damageBonus;
   const char *desc;
-  int energyReq; // Energy stat required to learn
 };
 
 struct PendingTooltipLine {
@@ -64,6 +62,7 @@ struct DeferredCooldown {
 extern const InventoryUIContext *s_ctx;
 extern PendingTooltip g_pendingTooltip;
 extern TexHandle g_texSkillIcons;
+extern TexHandle g_texAuraIcons[4]; // 0=Guardian Angel, 1=Imp, 2=Uniria, 3=Dinorant
 extern bool g_isDragging;
 extern int16_t g_dragDefIndex;
 extern int g_dragFromSlot;
@@ -131,7 +130,7 @@ inline constexpr float XP_SCREEN_BOTTOM = 4.0f; // gap from screen bottom
 inline constexpr int XP_SEGMENTS = 10;          // fragmented bar segments
 inline constexpr float XP_SEG_GAP = 2.0f;       // gap between segments
 
-// CISTM button screen-pixel constants
+// CISTML button screen-pixel constants
 inline constexpr int MBTN_COUNT = 5;
 inline constexpr float MBTN_SCREEN_BTN = 28.0f; // button size in screen px
 inline constexpr float MBTN_SCREEN_GAP = 3.0f;  // gap between buttons

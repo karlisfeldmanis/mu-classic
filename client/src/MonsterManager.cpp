@@ -1926,6 +1926,45 @@ void MonsterManager::TriggerAttackAnimation(int index) {
 
   mon.pendingAttack = false;
   mon.state = MonsterState::ATTACKING;
+
+  // Dungeon traps (100-102): special attack handling (Main 5.2 CharacterAnimation)
+  if (isTrap) {
+    // Iron stick trap (101): toggle to action 1 (swing), resets to 0 on idle
+    // Lance/Fire traps: use action 1 if available, else action 0
+    auto &tmdl = m_models[mon.modelIdx];
+    BMDData *tBmd = tmdl.getAnimBmd();
+    int trapAction = (tBmd && tBmd->Actions.size() > 1) ? 1 : 0;
+    setAction(mon, trapAction);
+    mon.stateTimer = 1.0f; // 1 second attack duration
+
+    // Trap attack VFX + sounds (Main 5.2: CharacterAnimation triggers)
+    float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
+    float dx = px - m_playerPos.x, dz = pz - m_playerPos.z;
+    if (dx * dx + dz * dz < 1200.0f * 1200.0f) {
+      if (mon.monsterType == 100) {
+        // Lance Trap: lightning burst + grinding sound (MODEL_SAW + SOUND_TRAP01)
+        SoundManager::Play3D(SOUND_TRAP01, px, py, pz);
+        if (m_vfxManager) {
+          glm::vec3 vfxPos = mon.position;
+          vfxPos.y += 50.0f;
+          m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, vfxPos, 4);
+        }
+      } else if (mon.monsterType == 101) {
+        // Iron Stick Trap: grinding sound (SOUND_TRAP01)
+        SoundManager::Play3D(SOUND_TRAP01, px, py, pz);
+      } else if (mon.monsterType == 102) {
+        // Fire Trap: fire burst + flame sound (BITMAP_FIRE+1 + SOUND_FLAME)
+        SoundManager::Play3D(SOUND_FLAME, px, py, pz);
+        if (m_vfxManager) {
+          glm::vec3 vfxPos = mon.position;
+          vfxPos.y += 40.0f;
+          m_vfxManager->SpawnBurst(ParticleType::SPELL_FIRE, vfxPos, 5);
+        }
+      }
+    }
+    return; // Skip normal monster attack logic
+  }
+
   // Attack animation duration based on action keys / speed
   auto &mdl = m_models[mon.modelIdx];
   // Main 5.2 pattern: SwordCount % 3 == 0 → ATTACK1, else ATTACK2

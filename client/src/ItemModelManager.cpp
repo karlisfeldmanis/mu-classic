@@ -569,6 +569,10 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
   glm::vec3 tCenter = (model->transformedMin + model->transformedMax) * 0.5f;
   glm::mat4 mod = glm::translate(glm::mat4(1.0f), pos);
 
+  // BMD-to-world coordinate basis (matches RenderItemWorldShadow lines 649-650)
+  mod = glm::rotate(mod, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+  mod = glm::rotate(mod, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+
   // Main 5.2 AngleMatrix: ZYX rotation order (ZzzMathLib.cpp)
   if (rotation.z != 0)
     mod = glm::rotate(mod, glm::radians(rotation.z), glm::vec3(0, 0, 1));

@@ -504,9 +504,14 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         return wp * mon.scale + mon.position;
       };
 
-      // Dungeon traps (100-102): NO idle VFX in Main 5.2.
-      // (GMAida.cpp VFX is for Aida traps 304-309, not dungeon traps.)
-      // Attack effects: type 39→MODEL_SAW, type 40→SetAction(1), type 51→BITMAP_FIRE+1
+      // Lance Trap (100): continuous rotating lightning sprites at +150 above
+      // Main 5.2 ZzzObject.cpp:2784 — two BITMAP_LIGHTNING+1 sprites, counter-rotating
+      if (mon.monsterType == 100 && m_vfxManager && mon.ambientVfxTimer >= 0.12f) {
+        glm::vec3 lightningPos = mon.position + glm::vec3(0.0f, 150.0f * mon.scale, 0.0f);
+        m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, lightningPos, 2);
+        mon.ambientVfxTimer = 0.0f;
+      }
+      // Attack VFX handled in TriggerAttackAnimation: 100→lightning, 101→sound, 102→fire.
     }
 
     // Re-skin meshes

@@ -17,57 +17,53 @@ GameWorld::~GameWorld() = default;
 // ─── Static monster type definitions (OpenMU Version075) ─────────────────────
 
 static const MonsterTypeDef s_monsterDefs[] = {
-    // type hp    def  defR atkMn atkMx atkR lvl  atkCD  mvDel mR vR aR aggro respawn
+    // type name                hp    def  defR atkMn atkMx atkR lvl  atkCD  mvDel mR vR aR aggro respawn
     // All values from OpenMU Version075 (canonical reference)
     // --- Lorencia monsters ---
-    {0, 100, 6, 6, 16, 20, 28, 6, 1.6f, 0.4f, 3, 5, 1, true, 3.0f},  // Bull Fighter
-    {1, 140, 9, 9, 22, 27, 39, 9, 1.6f, 0.4f, 3, 5, 1, true, 10.0f}, // Hound
-    {2, 60, 3, 3, 10, 13, 18, 4, 2.0f, 0.4f, 3, 4, 1, true, 3.0f},   // Budge Dragon
-    {3, 30, 1, 1, 4, 7, 8, 2, 1.8f, 0.6f, 2, 5, 1, true, 10.0f},     // Spider (slower)
-    {4, 190, 12, 12, 31, 36, 50, 12, 1.4f, 0.4f, 3, 4, 1,
-     true, 10.0f}, // Elite Bull Fighter
-    {6, 255, 14, 14, 41, 46, 62, 14, 2.0f, 0.4f, 3, 7, 4, true, 10.0f}, // Lich
-    {7, 400, 18, 18, 57, 62, 80, 17, 2.2f, 0.4f, 2, 3, 2, true, 10.0f}, // Giant
-    {14, 525, 22, 22, 68, 74, 93, 19, 1.4f, 0.4f, 2, 4, 1,
-     true, 10.0f}, // Skeleton Warrior
-    {15, 1100, 45, 41, 115, 120, 170, 34, 2.0f, 0.4f, 2, 7, 4,
-     true, 10.0f}, // Skeleton Archer (ranged)
-    {16, 1800, 65, 49, 135, 140, 210, 42, 1.6f, 0.4f, 2, 4, 1,
-     true, 10.0f}, // Elite Skeleton
+    {0, "Bull Fighter", 100, 6, 6, 16, 20, 28, 6, 1.6f, 0.4f, 3, 5, 1, true, 3.0f},
+    {1, "Hound", 140, 9, 9, 22, 27, 39, 9, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},
+    {2, "Budge Dragon", 60, 3, 3, 10, 13, 18, 4, 2.0f, 0.4f, 3, 4, 1, true, 3.0f},
+    {3, "Spider", 30, 1, 1, 4, 7, 8, 2, 1.8f, 0.6f, 2, 5, 1, true, 10.0f},
+    {4, "Elite Bull Fighter", 190, 12, 12, 31, 36, 50, 12, 1.4f, 0.4f, 3, 4, 1, true, 10.0f},
+    {6, "Lich", 255, 14, 14, 41, 46, 62, 14, 2.0f, 0.4f, 3, 7, 4, true, 10.0f},
+    {7, "Giant", 400, 18, 18, 57, 62, 80, 17, 2.2f, 0.4f, 2, 3, 2, true, 10.0f},
+    {14, "Skeleton Warrior", 525, 22, 22, 68, 74, 93, 19, 1.4f, 0.4f, 2, 4, 1, true, 10.0f},
+    {15, "Skeleton Archer", 1100, 45, 41, 115, 120, 170, 34, 2.0f, 0.4f, 2, 7, 4, true, 10.0f},
+    {16, "Elite Skeleton", 1800, 65, 49, 135, 140, 210, 42, 1.6f, 0.4f, 2, 4, 1, true, 10.0f},
     // --- Dungeon monsters (OpenMU Version075 Dungeon.cs) ---
-    {5, 1400, 55, 45, 125, 130, 190, 38, 1.2f, 0.4f, 3, 4, 1, true, 10.0f},  // Hell Hound
-    {8, 2500, 75, 61, 145, 150, 230, 46, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},  // Poison Bull
-    {9, 2000, 70, 55, 140, 145, 220, 44, 2.2f, 0.4f, 3, 7, 4, true, 10.0f},  // Thunder Lich (ranged)
-    {10, 3000, 80, 70, 150, 155, 240, 48, 1.4f, 0.4f, 3, 5, 1, true, 10.0f}, // Dark Knight
-    {11, 1000, 40, 39, 110, 115, 160, 32, 1.4f, 0.4f, 3, 5, 1, true, 10.0f}, // Ghost
-    {12, 750, 31, 31, 90, 95, 125, 25, 1.8f, 0.4f, 3, 4, 1, true, 10.0f},    // Larva
-    {13, 1600, 60, 47, 130, 135, 200, 40, 1.6f, 0.4f, 3, 7, 4, true, 10.0f}, // Hell Spider (ranged)
-    {17, 850, 35, 35, 100, 105, 140, 28, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},  // Cyclops
-    {18, 6000, 100, 82, 165, 175, 275, 55, 1.6f, 0.4f, 3, 7, 1, true, 10.0f}, // Gorgon
+    {5, "Hell Hound", 1400, 55, 45, 125, 130, 190, 38, 1.2f, 0.4f, 3, 4, 1, true, 10.0f},
+    {8, "Poison Bull", 2500, 75, 61, 145, 150, 230, 46, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},
+    {9, "Thunder Lich", 2000, 70, 55, 140, 145, 220, 44, 2.2f, 0.4f, 3, 7, 4, true, 10.0f},
+    {10, "Dark Knight", 3000, 80, 70, 150, 155, 240, 48, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},
+    {11, "Ghost", 1000, 40, 39, 110, 115, 160, 32, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},
+    {12, "Larva", 750, 31, 31, 90, 95, 125, 25, 1.8f, 0.4f, 3, 4, 1, true, 10.0f},
+    {13, "Hell Spider", 1600, 60, 47, 130, 135, 200, 40, 1.6f, 0.4f, 3, 7, 4, true, 10.0f},
+    {17, "Cyclops", 850, 35, 35, 100, 105, 140, 28, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},
+    {18, "Gorgon", 6000, 100, 82, 165, 175, 275, 55, 1.6f, 0.4f, 3, 7, 1, true, 10.0f},
     // --- Devias monsters (OpenMU Version075 Devias.cs) ---
-    {19, 900, 37, 37, 105, 110, 150, 30, 2.0f, 0.4f, 2, 6, 4, true, 3.0f},     // Yeti (EnergyBall skill)
-    {20, 1200, 50, 43, 120, 125, 180, 36, 1.4f, 0.4f, 3, 6, 1, true, 3.0f},    // Elite Yeti
-    {21, 800, 33, 33, 95, 100, 130, 26, 2.0f, 0.4f, 2, 7, 1, true, 10.0f},     // Assassin
-    {22, 650, 27, 27, 80, 85, 110, 22, 2.0f, 0.4f, 2, 5, 1, true, 10.0f},      // Ice Monster (Ice skill)
-    {23, 700, 29, 29, 85, 90, 120, 24, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},      // Hommerd
-    {24, 600, 25, 25, 75, 80, 100, 20, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},      // Worm
-    {25, 4000, 90, 76, 155, 165, 260, 52, 1.4f, 0.4f, 3, 7, 4, true, 50.0f},   // Ice Queen (PowerWave skill)
+    {19, "Yeti", 900, 37, 37, 105, 110, 150, 30, 2.0f, 0.4f, 2, 6, 4, true, 3.0f},
+    {20, "Elite Yeti", 1200, 50, 43, 120, 125, 180, 36, 1.4f, 0.4f, 3, 6, 1, true, 3.0f},
+    {21, "Assassin", 800, 33, 33, 95, 100, 130, 26, 2.0f, 0.4f, 2, 7, 1, true, 10.0f},
+    {22, "Ice Monster", 650, 27, 27, 80, 85, 110, 22, 2.0f, 0.4f, 2, 5, 1, true, 10.0f},
+    {23, "Hommerd", 700, 29, 29, 85, 90, 120, 24, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},
+    {24, "Worm", 600, 25, 25, 75, 80, 100, 20, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},
+    {25, "Ice Queen", 4000, 90, 76, 155, 165, 260, 52, 1.4f, 0.4f, 3, 7, 4, true, 50.0f},
     // --- Noria monsters (OpenMU Version075) ---
-    {26, 45, 2, 2, 7, 10, 13, 3, 1.8f, 0.4f, 2, 4, 1, true, 10.0f},      // Goblin
-    {27, 80, 4, 4, 13, 17, 23, 5, 1.8f, 0.4f, 3, 4, 1, true, 10.0f},     // Chain Scorpion
-    {28, 165, 10, 10, 26, 31, 44, 10, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},  // Beetle Monster
-    {29, 220, 13, 13, 36, 41, 56, 13, 1.6f, 0.4f, 3, 4, 4, true, 10.0f},  // Hunter (ranged)
-    {30, 295, 15, 15, 46, 51, 68, 15, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},  // Forest Monster
-    {31, 340, 16, 16, 51, 57, 74, 16, 1.4f, 0.4f, 2, 4, 1, true, 10.0f},  // Agon
-    {32, 465, 20, 20, 62, 68, 86, 18, 2.2f, 0.4f, 2, 3, 2, true, 10.0f},  // Stone Golem
-    {33, 120, 8, 8, 19, 23, 33, 8, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},    // Elite Goblin
+    {26, "Goblin", 45, 2, 2, 7, 10, 13, 3, 1.8f, 0.4f, 2, 4, 1, true, 10.0f},
+    {27, "Chain Scorpion", 80, 4, 4, 13, 17, 23, 5, 1.8f, 0.4f, 3, 4, 1, true, 10.0f},
+    {28, "Beetle Monster", 165, 10, 10, 26, 31, 44, 10, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},
+    {29, "Hunter", 220, 13, 13, 36, 41, 56, 13, 1.6f, 0.4f, 3, 4, 4, true, 10.0f},
+    {30, "Forest Monster", 295, 15, 15, 46, 51, 68, 15, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},
+    {31, "Agon", 340, 16, 16, 51, 57, 74, 16, 1.4f, 0.4f, 2, 4, 1, true, 10.0f},
+    {32, "Stone Golem", 465, 20, 20, 62, 68, 86, 18, 2.2f, 0.4f, 2, 3, 2, true, 10.0f},
+    {33, "Elite Goblin", 120, 8, 8, 19, 23, 33, 8, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},
     // --- Dungeon traps (OpenMU Version075, immobile, invulnerable) ---
     // moveDelay=999 (never moves), moveRange=0, aggressive=false (trigger-based)
-    {100, 1000, 0, 500, 100, 110, 400, 80, 1.0f, 999.0f, 0, 4, 1, false, 3.0f}, // Lance Trap
-    {101, 1000, 0, 500, 110, 130, 400, 80, 1.0f, 999.0f, 0, 1, 0, false, 3.0f}, // Iron Stick Trap
-    {102, 1000, 0, 500, 130, 150, 400, 80, 1.0f, 999.0f, 0, 1, 2, false, 3.0f}, // Fire Trap
+    {100, "Lance Trap", 1000, 0, 500, 100, 110, 400, 80, 1.0f, 999.0f, 0, 4, 4, false, 3.0f},
+    {101, "Iron Stick Trap", 1000, 0, 500, 110, 130, 400, 80, 1.0f, 999.0f, 0, 1, 0, false, 3.0f},
+    {102, "Fire Trap", 1000, 0, 500, 130, 150, 400, 80, 1.0f, 999.0f, 0, 1, 2, false, 3.0f},
     // --- Summon-only monsters (Elf summoning skills) ---
-    {150, 5000, 100, 75, 165, 170, 260, 52, 1.6f, 0.20f, 3, 7, 1, false, 10.0f}, // Bali (melee, Version075)
+    {150, "Bali", 5000, 100, 75, 165, 170, 260, 52, 1.6f, 0.20f, 3, 7, 1, false, 10.0f},
 };
 static constexpr int NUM_MONSTER_DEFS =
     sizeof(s_monsterDefs) / sizeof(s_monsterDefs[0]);
@@ -474,7 +470,7 @@ void GameWorld::LoadMonstersFromDB(Database &db, uint8_t mapId) {
     }
 
     // Stagger initial idle timers so all monsters don't move at once
-    mon.stateTimer = 1.0f + (float)(rand() % 5000) / 1000.0f;
+    mon.stateTimer = 4.0f + (float)(rand() % 8000) / 1000.0f;
 
     m_monsterInstances.push_back(mon);
   }
@@ -694,7 +690,7 @@ void GameWorld::processIdle(MonsterInstance &mon, float dt,
       }
     }
     // Failed to find wander target — retry later
-    mon.stateTimer = 2.0f + (float)(rand() % 3000) / 1000.0f;
+    mon.stateTimer = 5.0f + (float)(rand() % 5000) / 1000.0f;
   }
 }
 
@@ -720,7 +716,7 @@ void GameWorld::processWandering(MonsterInstance &mon, float dt,
   } else {
     // Path exhausted — return to idle
     mon.aiState = MonsterInstance::AIState::IDLE;
-    mon.stateTimer = 2.0f + (float)(rand() % 3000) / 1000.0f;
+    mon.stateTimer = 5.0f + (float)(rand() % 5000) / 1000.0f;
     emitMoveIfChanged(mon, mon.gridX, mon.gridY, false, false, outMoves);
   }
 }
@@ -1476,42 +1472,33 @@ void GameWorld::processTrapAI(MonsterInstance &mon, float dt,
   if (mon.attackCooldown > 0.0f || players.empty())
     return;
 
-  for (auto &p : players) {
-    if (p.dead)
-      continue;
+  // Fire Trap (102): two-step — requires someone standing ON it to activate,
+  // then AoE hits everyone in facing direction within attackRange (OpenMU pattern)
+  if (mon.type == 102) {
+    bool activated = false;
+    for (auto &p : players) {
+      if (p.dead) continue;
+      if (IsSafeZone(p.worldX, p.worldZ)) continue;
+      int pGridX = (int)(p.worldZ / 100.0f);
+      int pGridZ = (int)(p.worldX / 100.0f);
+      if (pGridX == mon.gridX && pGridZ == mon.gridY) {
+        activated = true;
+        break;
+      }
+    }
+    if (!activated) return;
 
-    // Convert player world position to grid
-    int pGridZ = (int)(p.worldX / 100.0f);
-    int pGridX = (int)(p.worldZ / 100.0f);
-
-    // Don't damage players in safe zones
-    if (IsSafeZone(p.worldX, p.worldZ))
-      continue;
-
-    bool inRange = false;
-
-    if (mon.type == 100 || mon.type == 101) {
-      // Pressure plate: player must be on exact same grid cell
-      inRange = (pGridX == mon.gridX && pGridZ == mon.gridY);
-    } else if (mon.type == 102) {
-      // Fire Trap: directional area attack within attackRange cells
+    // Activated — hit all players in range
+    for (auto &p : players) {
+      if (p.dead) continue;
+      if (IsSafeZone(p.worldX, p.worldZ)) continue;
+      int pGridX = (int)(p.worldZ / 100.0f);
+      int pGridZ = (int)(p.worldX / 100.0f);
       int dx = pGridX - mon.gridX;
       int dz = pGridZ - mon.gridY;
       int dist = std::max(std::abs(dx), std::abs(dz));
-      if (dist <= mon.attackRange && dist > 0) {
-        // Check if player is roughly in the trap's facing direction
-        // Direction encoding: 0=W, 1=SW, 2=S, 3=SE, 4=E, 5=NE, 6=N, 7=NW
-        // For simplicity, accept any player in range (fire traps hit area)
-        inRange = true;
-      } else if (dist == 0) {
-        // Also trigger if standing on the trap
-        inRange = true;
-      }
-    }
+      if (dist > mon.attackRange) continue;
 
-    if (inRange) {
-      // Calculate damage — traps bypass most defense (OpenMU: ShieldBypassChance=1.0)
-      // Only apply 10% of defense to keep trap damage meaningful
       int dmgRange = mon.attackMax - mon.attackMin;
       int dmg = mon.attackMin + (dmgRange > 0 ? (rand() % (dmgRange + 1)) : 0);
       int defReduction = p.defense / 10;
@@ -1521,12 +1508,41 @@ void GameWorld::processTrapAI(MonsterInstance &mon, float dt,
       result.targetFd = p.fd;
       result.monsterIndex = mon.index;
       result.damage = (uint16_t)dmg;
-      result.damageType = 1; // Normal hit
-      result.remainingHp = 0; // Server will fill this after applying damage
+      result.damageType = 1;
+      result.remainingHp = 0;
+      attacks.push_back(result);
+    }
+    mon.attackCooldown = mon.atkCooldownTime;
+    return;
+  }
+
+  // Lance Trap (100) / Iron Stick Trap (101): pressure plate (exact grid cell)
+  for (auto &p : players) {
+    if (p.dead)
+      continue;
+
+    int pGridZ = (int)(p.worldX / 100.0f);
+    int pGridX = (int)(p.worldZ / 100.0f);
+
+    if (IsSafeZone(p.worldX, p.worldZ))
+      continue;
+
+    if (pGridX == mon.gridX && pGridZ == mon.gridY) {
+      int dmgRange = mon.attackMax - mon.attackMin;
+      int dmg = mon.attackMin + (dmgRange > 0 ? (rand() % (dmgRange + 1)) : 0);
+      int defReduction = p.defense / 10;
+      dmg = std::max(1, dmg - defReduction);
+
+      MonsterAttackResult result;
+      result.targetFd = p.fd;
+      result.monsterIndex = mon.index;
+      result.damage = (uint16_t)dmg;
+      result.damageType = 1;
+      result.remainingHp = 0;
       attacks.push_back(result);
 
       mon.attackCooldown = mon.atkCooldownTime;
-      break; // One target per tick (pressure plate = single target)
+      break; // One target per tick
     }
   }
 }
@@ -2377,12 +2393,14 @@ std::vector<GroundDrop> GameWorld::SpawnDrops(float worldX, float worldZ,
                                               Database &db) {
   std::vector<GroundDrop> spawned;
 
-  auto makeDrop = [&](int16_t defIndex, uint8_t qty, uint8_t lvl) {
+  auto makeDrop = [&](int16_t defIndex, uint8_t qty, uint8_t lvl,
+                      uint8_t optFlags = 0) {
     GroundDrop drop{};
     drop.index = m_nextDropIndex++;
     drop.defIndex = defIndex;
     drop.quantity = qty;
     drop.itemLevel = lvl;
+    drop.optionFlags = optFlags;
     drop.worldX = worldX + (float)(rand() % 60 - 30);
     drop.worldZ = worldZ + (float)(rand() % 60 - 30);
     drop.age = 0.0f;
@@ -2424,7 +2442,26 @@ std::vector<GroundDrop> GameWorld::SpawnDrops(float worldX, float worldZ,
     if (picked.maxPlus > 0) {
       dropLvl = rand() % (picked.maxPlus + 1);
     }
-    makeDrop(picked.defIndex, 1, dropLvl);
+
+    // Roll item options for equipment (categories 0-11)
+    uint8_t optFlags = 0;
+    uint8_t cat = (uint8_t)(picked.defIndex / 32);
+    if (cat <= 11) {
+      // Luck: 5% base + 1% per 5 monster levels (max ~25%)
+      if (rand() % 100 < (5 + monsterLevel / 5))
+        optFlags |= 0x40;
+      // Skill: 5% base + 1% per 5 monster levels
+      if (rand() % 100 < (5 + monsterLevel / 5))
+        optFlags |= 0x80;
+      // Additional Option: 15% chance, level scales with monster level
+      if (rand() % 100 < 15) {
+        int maxAdd = 1 + monsterLevel / 10;
+        if (maxAdd > 7)
+          maxAdd = 7;
+        optFlags |= (uint8_t)(1 + rand() % maxAdd);
+      }
+    }
+    makeDrop(picked.defIndex, 1, dropLvl, optFlags);
     return spawned;
   }
 

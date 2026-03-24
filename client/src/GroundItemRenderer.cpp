@@ -119,11 +119,14 @@ void UpdateAndRender(FloatingDamage *pool, int poolSize, float deltaTime,
 
 namespace GroundItemRenderer {
 
-void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale) {
+void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale,
+                         float &heightBoost) {
   // Main 5.2 ItemAngle() — ZzzObject.cpp:5437-5686
+  // + ItemObjectAttribute() — ZzzObject.cpp:5286
   // Default: Angle = (0, 0, -45), Scale = 0.8
   angle = glm::vec3(0.0f, 0.0f, -45.0f);
   scale = 0.8f; // Main 5.2 ItemObjectAttribute default
+  heightBoost = 0.0f;
 
   if (defIndex == -1) { // Zen
     angle = glm::vec3(0, 0, 0);
@@ -153,33 +156,65 @@ void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale) {
     angle = glm::vec3(0.0f, 270.0f, -45.0f);
   } else if (category == 3) { // Spears
     angle = glm::vec3(60.0f, 0.0f, -45.0f);
+    scale = 0.7f; // Main 5.2: MODEL_SPEAR range = 0.7
   } else if (category == 4) { // Bows/Crossbows
-    // Crossbows (index 8-16, 18-19): pitch 90 flat
-    // Regular bows (index 0-7, 17, 20+): default -45
     if ((index >= 8 && index < 17) || (index >= 18 && index < 20)) {
-      angle = glm::vec3(90.0f, 0.0f, -45.0f);
+      angle = glm::vec3(90.0f, 0.0f, -45.0f); // Crossbows: flat
     } else if (index >= 20 && index <= 22) {
-      angle = glm::vec3(0.0f, 0.0f, -45.0f); // Special bows: default angle
+      angle = glm::vec3(0.0f, 0.0f, -45.0f);
     } else {
-      angle = glm::vec3(60.0f, 0.0f, -45.0f); // Regular bows like swords
+      angle = glm::vec3(60.0f, 0.0f, -45.0f);
     }
   } else if (category == 5) { // Staffs
     angle = glm::vec3(0.0f, 270.0f, -45.0f);
+    scale = 0.7f; // Main 5.2: MODEL_STAFF range = 0.7
   } else if (category == 6) { // Shields
-    angle = glm::vec3(0.0f, 270.0f, 225.0f); // Y=270, Z=270-45
-  } else if (category == 7) { // Helms — default angles
-    // angle stays (0, 0, -45)
+    angle = glm::vec3(0.0f, 270.0f, 225.0f);
+    // Main 5.2: shields use base height +30. Raise model so it doesn't
+    // clip into terrain (AABB centering puts half the model underground).
+    heightBoost = 15.0f;
+  } else if (category == 7) { // Helms
+    // Default angle (0, 0, -45)
+    heightBoost = 8.0f;
   } else if (category >= 8 && category <= 11) { // Armor/Pants/Gloves/Boots
     angle = glm::vec3(270.0f, 0.0f, -45.0f);
-  } else if (category == 14) { // Potions — default angles
-    // angle stays (0, 0, -45)
+    heightBoost = 10.0f;
+  } else if (category == 12) { // Wings/Misc — Orbs in 0.97d
+    // Orbs are small spherical items
+    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+    scale = 0.6f;
+  } else if (category == 13) { // Accessories — Rings, Pendants
+    // Small items: rings lie flat, pendants dangle
+    if (index < 10) { // Rings
+      angle = glm::vec3(90.0f, 0.0f, -45.0f);
+      scale = 0.5f;
+    } else { // Pendants
+      angle = glm::vec3(0.0f, 0.0f, -45.0f);
+      scale = 0.5f;
+    }
+  } else if (category == 14) { // Potions, Jewels, Ale
+    if (index <= 8) {
+      // Potions/Ale: upright bottles, default angle
+      // angle stays (0, 0, -45)
+    } else if (index == 13 || index == 14 || index == 16 || index == 22) {
+      // Jewels (Bless, Soul, Life, Creation): small gems
+      angle = glm::vec3(0.0f, 0.0f, -45.0f);
+      scale = 0.6f;
+    }
+  } else if (category == 15) { // Scrolls/Skill items
+    // Main 5.2 ETC: Angle=(270, 0, -45) — show front face of scroll/book
+    angle = glm::vec3(270.0f, 0.0f, -45.0f);
+    scale = 0.8f;
   }
-  // All other categories: default (0, 0, -45)
 }
 
 void UpdatePhysics(GroundItem &gi, float terrainHeight) {
   if (gi.isResting) {
-    gi.position.y = terrainHeight + 0.5f; // Snap to ground
+    float heightBoost = 0.0f;
+    glm::vec3 tmpAngle;
+    float tmpScale;
+    GetItemRestingAngle(gi.defIndex, tmpAngle, tmpScale, heightBoost);
+    gi.position.y = terrainHeight + 0.5f + heightBoost;
     return;
   }
 
@@ -205,8 +240,9 @@ void UpdatePhysics(GroundItem &gi, float terrainHeight) {
       gi.gravity = 0;
       gi.isResting = true;
       // Snap to resting angle on landing
-      float restScale;
-      GetItemRestingAngle(gi.defIndex, gi.angle, restScale);
+      float restScale, heightBoost;
+      GetItemRestingAngle(gi.defIndex, gi.angle, restScale, heightBoost);
+      gi.position.y += heightBoost;
     }
   }
 }
@@ -284,12 +320,16 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
                   int winH, const glm::vec3 &camPos, int hoveredGroundItem,
                   const std::map<int16_t, ClientItemDefinition> &itemDefs) {
   glm::mat4 vp = proj * view;
+  float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
+
   for (int i = 0; i < maxItems; ++i) {
     auto &gi = items[i];
     if (!gi.active)
       continue;
 
-    glm::vec3 labelPos = gi.position + glm::vec3(0, 30.0f, 0);
+    // Main 5.2: Position[2] += 30.f — raise label above item
+    // Use 50 to clear grass geometry
+    glm::vec3 labelPos = gi.position + glm::vec3(0, 50.0f, 0);
     glm::vec4 clip = vp * glm::vec4(labelPos, 1.0f);
     if (clip.w <= 0.0f)
       continue;
@@ -301,39 +341,68 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
       continue;
 
     const char *name = ItemDatabase::GetDropName(gi.defIndex);
-    char label[64];
-    if (gi.defIndex == -1)
+    char label[128];
+    if (gi.defIndex == -1) {
       snprintf(label, sizeof(label), "%d Zen", gi.quantity);
-    else if (gi.itemLevel > 0)
-      snprintf(label, sizeof(label), "%s +%d", name, gi.itemLevel);
-    else
-      snprintf(label, sizeof(label), "%s", name);
+    } else {
+      // Build label with item level and option suffixes
+      char optSuffix[48] = {};
+      if (gi.optionFlags != 0) {
+        char *p = optSuffix;
+        if (gi.optionFlags & 0x80)
+          p += snprintf(p, sizeof(optSuffix) - (p - optSuffix), " +Skill");
+        if (gi.optionFlags & 0x40)
+          p += snprintf(p, sizeof(optSuffix) - (p - optSuffix), " +Luck");
+        int addLvl = gi.optionFlags & 0x07;
+        if (addLvl > 0)
+          snprintf(p, sizeof(optSuffix) - (p - optSuffix), " +%d", addLvl * 4);
+      }
+      if (gi.itemLevel > 0)
+        snprintf(label, sizeof(label), "%s +%d%s", name, gi.itemLevel, optSuffix);
+      else
+        snprintf(label, sizeof(label), "%s%s", name, optSuffix);
+    }
 
-    float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
-    float labelFs = 13.0f * uiScale;
+    float labelFs = 14.0f * uiScale;
     ImVec2 ts = font->CalcTextSizeA(labelFs, FLT_MAX, 0, label);
     float tx = sx - ts.x * 0.5f, ty = sy - ts.y * 0.5f;
 
     bool isHovered = (i == hoveredGroundItem);
 
-    ImU32 col = gi.defIndex == -1 ? IM_COL32(255, 215, 0, 220)
-                                  : IM_COL32(180, 255, 180, 220);
-
-    if (isHovered) {
-      col = IM_COL32(255, 255, 255, 255);
-      dl->AddText(font, labelFs, ImVec2(tx + 2, ty + 1), IM_COL32(0, 0, 0, 200),
-                  label);
-      dl->AddText(font, labelFs, ImVec2(tx - 1, ty - 1), IM_COL32(0, 0, 0, 200),
-                  label);
+    // Main 5.2 color scheme: gold/blue/white based on item quality
+    ImU32 col;
+    if (gi.defIndex == -1) {
+      col = IM_COL32(255, 215, 0, 255); // Zen gold
+    } else if (gi.optionFlags != 0) {
+      col = IM_COL32(100, 180, 255, 255); // Blue for optioned items
+    } else {
+      col = IM_COL32(230, 230, 230, 255); // White/light gray (Main 5.2 default)
     }
 
-    dl->AddText(font, labelFs, ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 160),
-                label);
+    if (isHovered)
+      col = IM_COL32(255, 255, 100, 255); // Bright yellow on hover
+
+    // Main 5.2: SetBgColor(0,0,0,255) — dark background rectangle behind label
+    float padX = 4.0f * uiScale;
+    float padY = 2.0f * uiScale;
+    ImU32 bgCol = isHovered ? IM_COL32(0, 0, 0, 200) : IM_COL32(0, 0, 0, 160);
+    dl->AddRectFilled(ImVec2(tx - padX, ty - padY),
+                      ImVec2(tx + ts.x + padX, ty + ts.y + padY), bgCol);
+
+    // 1px black outline for readability on any background
+    ImU32 outlineCol = IM_COL32(0, 0, 0, 220);
+    dl->AddText(font, labelFs, ImVec2(tx + 1, ty), outlineCol, label);
+    dl->AddText(font, labelFs, ImVec2(tx - 1, ty), outlineCol, label);
+    dl->AddText(font, labelFs, ImVec2(tx, ty + 1), outlineCol, label);
+    dl->AddText(font, labelFs, ImVec2(tx, ty - 1), outlineCol, label);
+
+    // Foreground text
     dl->AddText(font, labelFs, ImVec2(tx, ty), col, label);
 
     // Hover tooltip — reuse full inventory tooltip system
     if (isHovered && gi.defIndex != -1) {
-      InventoryUI::AddPendingItemTooltip(gi.defIndex, gi.itemLevel);
+      InventoryUI::AddPendingItemTooltip(gi.defIndex, gi.itemLevel, 0,
+                                         gi.optionFlags);
     }
   }
 }

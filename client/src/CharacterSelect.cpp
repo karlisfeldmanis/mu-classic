@@ -159,6 +159,10 @@ static constexpr int CS_MAX_POINT_LIGHTS = 64;
 // Luminosity — near full daylight
 static constexpr float CS_LUMINOSITY = 1.0f;
 
+// MU Online logo — title screen overlay
+static TexHandle s_logoTex = kInvalidTex;
+static int s_logoW = 0, s_logoH = 0;
+
 // Selection spotlight — tall light cone around selected character
 static TexHandle s_spotlightTex = kInvalidTex;
 static bgfx::VertexBufferHandle s_spotVBO = BGFX_INVALID_HANDLE;
@@ -1255,6 +1259,18 @@ void Init(const Context &ctx) {
            CONE_SEGMENTS, CONE_HEIGHT, CONE_RADIUS);
   }
 
+  // Load MU Online logo for title screen
+  {
+    std::string logoPath = s_ctx.dataPath + "/Interface/lo_mu_logo.OZT";
+    auto raw = TextureLoader::LoadOZTRaw(logoPath, s_logoW, s_logoH);
+    if (!raw.empty()) {
+      s_logoTex = TextureLoader::LoadOZT(logoPath);
+      printf("[CharSelect] Logo loaded: %dx%d\n", s_logoW, s_logoH);
+    } else {
+      printf("[CharSelect] WARNING: Failed to load logo from %s\n", logoPath.c_str());
+    }
+  }
+
   // Load Player.bmd skeleton + class body parts (same as main game)
   LoadPlayerModels();
 
@@ -1270,6 +1286,7 @@ void Shutdown() {
   if (bgfx::isValid(s_spotVBO)) { bgfx::destroy(s_spotVBO); s_spotVBO = BGFX_INVALID_HANDLE; }
   if (bgfx::isValid(s_spotEBO)) { bgfx::destroy(s_spotEBO); s_spotEBO = BGFX_INVALID_HANDLE; }
   if (TexValid(s_spotlightTex)) { TexDestroy(s_spotlightTex); s_spotlightTex = kInvalidTex; }
+  if (TexValid(s_logoTex)) { TexDestroy(s_logoTex); s_logoTex = kInvalidTex; }
   s_spotlightShader.reset();
 
   s_boidManager.Cleanup();
@@ -1537,45 +1554,7 @@ void Render(int windowWidth, int windowHeight) {
   float aspect = (float)windowWidth / (float)std::max(windowHeight, 1);
   s_projMatrix = glm::perspective(glm::radians(35.0f), aspect, 10.0f, 50000.0f);
 
-  // TEMP DEBUG: free-fly WASD + mouse camera for grass inspection
-  {
-    static double lastMX = 0, lastMY = 0;
-    static bool firstMouse = true;
-    double mx, my;
-    glfwGetCursorPos(s_window, &mx, &my);
-
-    // Mouse look (right-click drag)
-    if (glfwGetMouseButton(s_window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
-      if (!firstMouse) {
-        float dx = (float)(mx - lastMX) * 0.15f;
-        float dy = (float)(my - lastMY) * 0.15f;
-        s_camYaw += dx;
-        s_camPitch -= dy;
-        s_camPitch = glm::clamp(s_camPitch, -89.0f, 89.0f);
-      }
-      firstMouse = false;
-    } else {
-      firstMouse = true;
-    }
-    lastMX = mx;
-    lastMY = my;
-
-    float yR = glm::radians(s_camYaw), pR = glm::radians(s_camPitch);
-    glm::vec3 fwd(cosf(pR) * cosf(yR), sinf(pR), cosf(pR) * sinf(yR));
-    glm::vec3 right = glm::normalize(glm::cross(fwd, glm::vec3(0, 1, 0)));
-    glm::vec3 up(0, 1, 0);
-
-    float speed = 400.0f;
-    if (glfwGetKey(s_window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) speed *= 3.0f;
-    if (glfwGetKey(s_window, GLFW_KEY_W) == GLFW_PRESS) s_camPos += fwd * speed * 0.016f;
-    if (glfwGetKey(s_window, GLFW_KEY_S) == GLFW_PRESS) s_camPos -= fwd * speed * 0.016f;
-    if (glfwGetKey(s_window, GLFW_KEY_A) == GLFW_PRESS) s_camPos -= right * speed * 0.016f;
-    if (glfwGetKey(s_window, GLFW_KEY_D) == GLFW_PRESS) s_camPos += right * speed * 0.016f;
-    if (glfwGetKey(s_window, GLFW_KEY_SPACE) == GLFW_PRESS) s_camPos += up * speed * 0.016f;
-    if (glfwGetKey(s_window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) s_camPos -= up * speed * 0.016f;
-
-    s_camTarget = s_camPos + fwd * 1000.0f;
-  }
+  // Fixed camera — position set during Init()
 
   glm::vec3 camPos = s_camPos;
   s_viewMatrix = glm::lookAt(camPos, s_camTarget, glm::vec3(0.0f, 1.0f, 0.0f));
@@ -1972,12 +1951,16 @@ void Render(int windowWidth, int windowHeight) {
 
   // Camera HUD removed — position locked
 
-  // Title (hidden during character creation)
-  if (!s_createOpen) {
-    const char *title = "MU Online Remaster";
-    ImVec2 tsz = ImGui::CalcTextSize(title);
-    dl->AddText(ImVec2(cx - tsz.x * 0.5f, 30), IM_COL32(220, 200, 160, 255),
-                title);
+  // MU Online logo (hidden during character creation)
+  if (!s_createOpen && TexValid(s_logoTex) && s_logoW > 0 && s_logoH > 0) {
+    float uiScale = (float)windowHeight / 768.0f;
+    float logoDispW = (float)s_logoW * uiScale;
+    float logoDispH = (float)s_logoH * uiScale;
+    float logoX = cx - logoDispW * 0.5f;
+    float logoY = 45.0f * uiScale;
+    ImTextureID logoImTex = (ImTextureID)TexImID(s_logoTex);
+    dl->AddImage(logoImTex, ImVec2(logoX, logoY),
+                 ImVec2(logoX + logoDispW, logoY + logoDispH));
   }
 
   // Character name plates (floating labels above each character, hidden during creation)

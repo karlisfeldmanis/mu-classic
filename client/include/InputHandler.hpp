@@ -58,6 +58,7 @@ struct InputContext {
   int *questDialogNpcIndex;
   int *questDialogSelected;
   bool *showQuestLog;
+  int *questLogSelected;  // Quest log detail view selection (-1 = none)
   bool *mouseOverUIPanel; // Set each frame by main — true if cursor is over any panel
   bool *showCommandTerminal; // Enter opens, Escape closes
   bool *showMinimap;         // TAB toggles minimap overlay
