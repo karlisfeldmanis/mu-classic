@@ -82,6 +82,15 @@ void BoidManager::alphaFade(float &alpha, float target, float dt) {
   }
 }
 
+bool BoidManager::isInCameraView(const glm::vec3 &pos) const {
+  glm::vec4 clip = m_viewProj * glm::vec4(pos, 1.0f);
+  if (clip.w <= 0.0f) return false; // Behind camera
+  float nx = clip.x / clip.w;
+  float ny = clip.y / clip.w;
+  // On screen if NDC within [-1,1] with small margin
+  return nx >= -1.05f && nx <= 1.05f && ny >= -1.05f && ny <= 1.05f;
+}
+
 // ── Init ─────────────────────────────────────────────────────────────
 
 void BoidManager::Init(const std::string &dataPath) {
@@ -308,8 +317,10 @@ void BoidManager::Init(const std::string &dataPath) {
 
 // ── Bird AI ──────────────────────────────────────────────────────────
 
-void BoidManager::moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction) {
+void BoidManager::moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction,
+                           float tickFrac) {
   // Main 5.2: MoveBird (GOBoid.cpp:948-1001)
+  // tickFrac = dt * 25.0f — scales per-tick values to per-frame
   float terrainH = getTerrainHeight(b.position.x, b.position.z);
   float relH = b.position.y - terrainH;
 
@@ -319,7 +330,7 @@ void BoidManager::moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction) {
   float heroDistSq = dx * dx + dz * dz;
   if (heroDistSq < 400.0f * 400.0f && heroDistSq > 0.1f) {
     float dist = std::sqrt(heroDistSq);
-    float push = (400.0f - dist) * 0.05f;
+    float push = (400.0f - dist) * 0.05f * tickFrac;
     b.position.x += (dx / dist) * push;
     b.position.z += (dz / dist) * push;
   }
@@ -327,7 +338,7 @@ void BoidManager::moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction) {
   switch (b.ai) {
   case BoidAI::FLY:
     b.velocity = 1.0f;
-    b.position.y += (float)(rand() % 16 - 8);
+    b.position.y += (float)(rand() % 16 - 8) * tickFrac;
     if (relH < 200.0f)
       b.direction.y = 10.0f;
     else if (relH > 600.0f)
@@ -343,7 +354,7 @@ void BoidManager::moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction) {
   case BoidAI::DOWN:
     // Descend toward ground
     b.velocity = 0.6f;
-    b.direction.y = -12.0f;
+    b.direction.y = -12.0f; // consumed by moveBoidGroup (scaled there)
     if (relH <= 15.0f) {
       b.position.y = terrainH + 5.0f;
       b.ai = BoidAI::GROUND;
@@ -367,7 +378,7 @@ void BoidManager::moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction) {
   case BoidAI::UP:
     // Ascend back to flight altitude
     b.velocity = 0.8f;
-    b.direction.y = 15.0f;
+    b.direction.y = 15.0f; // consumed by moveBoidGroup (scaled there)
     if (relH >= 200.0f) {
       b.ai = BoidAI::FLY;
     }
@@ -375,8 +386,9 @@ void BoidManager::moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction) {
   }
 }
 
-void BoidManager::moveBoidGroup(Boid &b) {
+void BoidManager::moveBoidGroup(Boid &b, float tickFrac) {
   // Main 5.2: MoveBoidGroup (GOBoid.cpp:1120-1195)
+  // tickFrac = dt * 25.0f — scales per-tick values to per-frame
   if (b.ai == BoidAI::GROUND)
     return;
 
@@ -385,8 +397,8 @@ void BoidManager::moveBoidGroup(Boid &b) {
   float cosA = std::cos(rad);
   float sinA = std::sin(rad);
 
-  // Forward movement: velocity * 25 in local forward direction
-  float fwd = b.velocity * 25.0f;
+  // Forward movement: velocity * 25 in local forward direction, scaled by tickFrac
+  float fwd = b.velocity * 25.0f * tickFrac;
   // Rotate by heading to get world offset
   // MU coordinate mapping: Position[0]=worldX, Position[1]=worldZ
   float dx = fwd * cosA;
@@ -394,18 +406,18 @@ void BoidManager::moveBoidGroup(Boid &b) {
 
   b.position.x += dx;
   b.position.z += dz;
-  b.position.y += b.direction.y;
+  b.position.y += b.direction.y * tickFrac;
 
   // Update look-ahead direction (used by flocking)
   b.direction.x = b.position.x + 3.0f * dx;
   b.direction.z = b.position.z + 3.0f * dz;
 
   // Random direction.y drift (Main 5.2: GOBoid.cpp:1165)
-  b.direction.y += (float)(rand() % 16 - 8);
+  b.direction.y += (float)(rand() % 16 - 8) * tickFrac;
 }
 
 // Main 5.2: MoveBoid (ZzzAI.cpp:190-231) — flocking angle computation
-void BoidManager::moveBoidFlock(Boid &b, int selfIdx) {
+void BoidManager::moveBoidFlock(Boid &b, int selfIdx, float tickFrac) {
   int numBirds = 0;
   float targetX = 0.0f;
   float targetZ = 0.0f;
@@ -447,7 +459,8 @@ void BoidManager::moveBoidFlock(Boid &b, int selfIdx) {
     targetZ = b.position.z + targetZ / (float)numBirds;
 
     float heading = createAngle(b.position.x, b.position.z, targetX, targetZ);
-    b.angle.z = (float)turnAngle((int)b.angle.z, (int)heading, (int)b.gravity);
+    float scaledGravity = b.gravity * tickFrac;
+    b.angle.z = (float)turnAngle((int)b.angle.z, (int)heading, (int)std::max(scaledGravity, 1.0f));
   }
 }
 
@@ -478,6 +491,13 @@ void BoidManager::updateBoids(float dt, const glm::vec3 &heroPos,
         continue;
       }
 
+      // Reject spawns visible to camera — birds must fly in from off-screen
+      glm::vec3 candidatePos(spawnX, getTerrainHeight(spawnX, spawnZ) + 250.0f, spawnZ);
+      if (isInCameraView(candidatePos)) {
+        b.respawnDelay = 1.0f;
+        continue;
+      }
+
       b = Boid{}; // Reset
       b.live = true;
       b.velocity = 1.0f;
@@ -488,7 +508,7 @@ void BoidManager::updateBoids(float dt, const glm::vec3 &heroPos,
       b.ai = BoidAI::FLY;
       b.timer = (float)(rand() % 314) * 0.01f;
       b.subType = 0;
-      b.lifetime = 0;
+      b.lifetime = (int)(25.0f * (10.0f + (float)(rand() % 15))); // Sound cooldown: 10-25s in ticks
       b.action = 0;
       b.angle = glm::vec3(0.0f, 0.0f, (float)(rand() % 360));
       b.gravity = 13.0f; // Main 5.2: o->Gravity = 13 (GOBoid.cpp:1326)
@@ -515,50 +535,54 @@ void BoidManager::updateBoids(float dt, const glm::vec3 &heroPos,
       }
     }
 
-    // Move
-    moveBird(b, heroPos, heroAction);
+    // Move (tickFrac scales per-tick values to per-frame)
+    float tickFrac = dt * 25.0f;
+    moveBird(b, heroPos, heroAction, tickFrac);
     if (b.ai != BoidAI::GROUND) {
-      moveBoidFlock(b, i); // Flocking: steer toward/away from neighbors
-      moveBoidGroup(b);    // Apply velocity in facing direction
+      moveBoidFlock(b, i, tickFrac); // Flocking: steer toward/away from neighbors
+      moveBoidGroup(b, tickFrac);    // Apply velocity in facing direction
     }
 
-    // Distance check — despawn if > 1500 units from hero
+    // Distance check — fade out if far from hero (never instant kill)
     float dx = b.position.x - heroPos.x;
     float dz = b.position.z - heroPos.z;
     float range = std::sqrt(dx * dx + dz * dz);
-    if (range >= 1500.0f) {
-      b.live = false;
-      b.respawnDelay = 3.0f + (float)(rand() % 5); // 3-8 second cooldown
+    bool onScreen = isInCameraView(b.position);
+    if (range >= 1500.0f && !onScreen) {
+      b.alphaTarget = 0.0f;
     }
 
-    // Main 5.2 GOBoid.cpp: bird sounds within 600 units, rand_fps_check(512)
-    if (range < 600.0f && rand() % 512 == 0) {
+    // Bird sounds — timer-based for FPS-independence
+    if (range < 600.0f && b.ai == BoidAI::FLY && b.lifetime <= 0) {
       int birdSound = (rand() % 2 == 0) ? SOUND_BIRD01 : SOUND_BIRD02;
       SoundManager::Play3D(birdSound, b.position.x, b.position.y,
                            b.position.z);
+      b.lifetime = (int)(25.0f * (15.0f + (float)(rand() % 20))); // 15-35s in ticks
     }
 
-    // Random despawn (1/512 per tick at 25fps → ~every 20s average)
-    if (rand() % 512 == 0) {
-      b.live = false;
-      b.respawnDelay = 5.0f + (float)(rand() % 8); // 5-13 second cooldown
-    }
-
-    // Lifetime/SubType despawn
+    // Lifetime tick — when it expires, start fading out
     b.lifetime--;
-    if (b.subType >= 2) {
-      b.live = false;
-      b.respawnDelay = 4.0f;
+
+    // SubType despawn — only when off screen
+    if (b.subType >= 2 && !onScreen) {
+      b.alphaTarget = 0.0f;
     }
 
     // Alpha fade
     alphaFade(b.alpha, b.alphaTarget, dt);
+
+    // Only actually kill after fully faded out — never sudden disappear
+    if (b.alpha <= 0.01f && b.alphaTarget <= 0.0f) {
+      b.live = false;
+      b.respawnDelay = 15.0f + (float)(rand() % 20); // 15-35s before next bird
+    }
   }
 }
 
 // ── Bat AI (Main 5.2: GOBoid.cpp — dungeon bats, always flying, erratic) ──
 
-void BoidManager::moveBat(Boid &b, const glm::vec3 &heroPos) {
+void BoidManager::moveBat(Boid &b, const glm::vec3 &heroPos, float tickFrac) {
+  // tickFrac = dt * 25.0f — scales per-tick values to per-frame
   float terrainH = getTerrainHeight(b.position.x, b.position.z);
   float relH = b.position.y - terrainH;
 
@@ -568,7 +592,7 @@ void BoidManager::moveBat(Boid &b, const glm::vec3 &heroPos) {
   float heroDistSq = dx * dx + dz * dz;
   if (heroDistSq < 300.0f * 300.0f && heroDistSq > 0.1f) {
     float dist = std::sqrt(heroDistSq);
-    float push = (300.0f - dist) * 0.06f;
+    float push = (300.0f - dist) * 0.06f * tickFrac;
     b.position.x += (dx / dist) * push;
     b.position.z += (dz / dist) * push;
   }
@@ -587,9 +611,9 @@ void BoidManager::moveBat(Boid &b, const glm::vec3 &heroPos) {
 
   // Bats always fly — erratic altitude changes, lower ceiling than birds
   b.velocity = 1.2f; // Slightly faster than birds
-  b.position.y += (float)(rand() % 20 - 10); // More vertical jitter
+  b.position.y += (float)(rand() % 20 - 10) * tickFrac; // More vertical jitter
   if (relH < 100.0f)
-    b.direction.y = 12.0f;
+    b.direction.y = 12.0f; // consumed by moveBoidGroup (scaled there)
   else if (relH > 350.0f)
     b.direction.y = -12.0f;
 
@@ -613,6 +637,13 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
 
       float spawnX = heroPos.x + (float)(rand() % 800 - 400);
       float spawnZ = heroPos.z + (float)(rand() % 800 - 400);
+
+      // Reject spawns visible to camera
+      glm::vec3 candidatePos(spawnX, getTerrainHeight(spawnX, spawnZ) + 120.0f, spawnZ);
+      if (isInCameraView(candidatePos)) {
+        b.respawnDelay = 1.0f;
+        continue;
+      }
 
       b = Boid{};
       b.live = true;
@@ -640,16 +671,17 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
     if (b.action >= 0 && b.action < (int)m_batBmd->Actions.size()) {
       int numKeys = m_batBmd->Actions[b.action].NumAnimationKeys;
       if (numKeys > 1) {
-        b.animFrame += 1.2f * dt * 25.0f; // Faster wing beats
+        b.animFrame += 0.5f * dt * 25.0f; // Realistic wing beats
         if (b.animFrame >= (float)numKeys)
           b.animFrame = std::fmod(b.animFrame, (float)numKeys);
       }
     }
 
-    // Move
+    // Move (tickFrac scales per-tick values to per-frame)
+    float tickFrac = dt * 25.0f;
     b.prevPosition = b.position;
-    moveBat(b, heroPos);
-    moveBoidGroup(b); // Apply velocity in facing direction
+    moveBat(b, heroPos, tickFrac);
+    moveBoidGroup(b, tickFrac); // Apply velocity in facing direction
 
     // Stuck detection: if barely moved in 2 seconds, force despawn
     float movedDist = glm::length(b.position - b.prevPosition);
@@ -664,13 +696,16 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
       b.stuckTimer = 0.0f;
     }
 
-    // Distance check — despawn if > 1200 units from hero
+    // Distance check — fade out if > 1200 units from hero and off screen
     float dx = b.position.x - heroPos.x;
     float dz = b.position.z - heroPos.z;
     float range = std::sqrt(dx * dx + dz * dz);
-    if (range >= 1200.0f) {
-      b.live = false;
-      b.respawnDelay = 3.0f + (float)(rand() % 5);
+    if (range >= 1200.0f && !isInCameraView(b.position)) {
+      b.alphaTarget = 0.0f;
+      if (b.alpha <= 0.01f) {
+        b.live = false;
+        b.respawnDelay = 3.0f + (float)(rand() % 5);
+      }
     }
 
     // Main 5.2 GOBoid.cpp: bat sounds — timer-based to be FPS-independent
@@ -702,11 +737,12 @@ void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
 
     // Spawn new rat — delay spawning so they don't all appear at once
     if (!r.live) {
-      // ~0.5% chance per frame = average ~3.3s at 60fps before spawn attempt
-      if (rand() % 200 != 0)
+      // ~0.1% chance per frame = average ~16s at 60fps before spawn attempt
+      if (rand() % 1000 != 0)
         continue;
-      float spawnX = heroPos.x + (float)(rand() % 1024 - 512);
-      float spawnZ = heroPos.z + (float)(rand() % 1024 - 512);
+      // Wider spread — spawn further from player so less in-your-face
+      float spawnX = heroPos.x + (float)(rand() % 1600 - 800);
+      float spawnZ = heroPos.z + (float)(rand() % 1600 - 800);
 
       // Only spawn on walkable terrain (not void)
       uint8_t attr = getTerrainAttribute(spawnX, spawnZ);
@@ -720,7 +756,7 @@ void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
       r.scale = (float)(rand() % 4 + 4) * 0.1f; // 0.4-0.7
       r.velocity = 0.6f / r.scale;
       r.subType = 0;
-      r.lifetime = rand() % 128;
+      r.lifetime = 300 + rand() % 300; // 12-24 seconds at 25fps
       r.action = 0;
       r.position.x = spawnX;
       r.position.z = spawnZ;
@@ -779,10 +815,13 @@ void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
       SoundManager::Play3D(SOUND_MOUSE01, r.position.x, r.position.y, r.position.z);
     }
 
-    // Lifetime and random despawn
+    // Lifetime despawn (no random instant despawn — let them run offscreen)
     r.lifetime--;
-    if (r.lifetime <= -200 || rand() % 512 == 0)
-      r.live = false;
+    if (r.lifetime <= 0) {
+      r.alphaTarget = 0.0f; // Fade out before despawning
+      if (r.alpha <= 0.01f)
+        r.live = false;
+    }
 
     // Alpha fade
     alphaFade(r.alpha, r.alphaTarget, dt);
@@ -792,7 +831,8 @@ void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
 // ── Butterfly movement (Main 5.2: GOBoid.cpp MoveButterFly lines 926-944) ──
 // Main 5.2: MoveButterFly (GOBoid.cpp:926-946) + MoveBoidGroup integration
 // All logic is per-tick (25fps). We accumulate dt and run discrete ticks.
-void BoidManager::moveButterfly(Boid &b, const glm::vec3 &heroPos) {
+void BoidManager::moveButterfly(Boid &b, const glm::vec3 &heroPos,
+                                float /*tickFrac*/) {
   // Accumulate time in b.timer; consume 0.04s ticks (25fps)
   // dt was already added to b.timer by caller
 
@@ -849,6 +889,13 @@ void BoidManager::updateButterflies(float dt, const glm::vec3 &heroPos) {
       float spawnX = heroPos.x + (float)(rand() % 1024 - 512);
       float spawnZ = heroPos.z + (float)(rand() % 1024 - 512);
 
+      // Reject spawns visible to camera
+      glm::vec3 candidatePos(spawnX, getTerrainHeight(spawnX, spawnZ) + 100.0f, spawnZ);
+      if (isInCameraView(candidatePos)) {
+        b.respawnDelay = 1.0f;
+        continue;
+      }
+
       b = Boid{};
       b.live = true;
       b.velocity = 0.3f; // Main 5.2: butterfly velocity 0.3 (much slower than birds)
@@ -879,15 +926,16 @@ void BoidManager::updateButterflies(float dt, const glm::vec3 &heroPos) {
     }
 
     // Move (tick-based: accumulate dt, moveButterfly consumes 0.04s ticks)
+    float tickFrac = dt * 25.0f;
     b.timer += dt;
-    moveButterfly(b, heroPos);
+    moveButterfly(b, heroPos, tickFrac);
 
-    // Distance check — fade out if > 1200 units from hero, kill at alpha 0
+    // Distance check — fade out only when far AND off screen
     float dx = b.position.x - heroPos.x;
     float dz = b.position.z - heroPos.z;
     float range = std::sqrt(dx * dx + dz * dz);
-    if (range >= 1200.0f) {
-      b.alphaTarget = 0.0f; // Fade out smoothly
+    if (range >= 1200.0f && !isInCameraView(b.position)) {
+      b.alphaTarget = 0.0f;
     } else {
       b.alphaTarget = 1.0f;
     }
@@ -1035,11 +1083,18 @@ void BoidManager::updateLeaves(float dt, const glm::vec3 &heroPos) {
   if (!TexValid(m_leafTexture))
     return;
 
+  // Limit new spawns per frame to avoid burst when all leaves start dead
+  int spawnsThisFrame = 0;
+  const int MAX_SPAWNS_PER_FRAME = 3;
+
   for (int i = 0; i < MAX_LEAVES; ++i) {
     LeafParticle &leaf = m_leaves[i];
 
     if (!leaf.live) {
+      if (spawnsThisFrame >= MAX_SPAWNS_PER_FRAME)
+        continue; // Defer to next frame — stagger over many frames
       spawnLeaf(leaf, heroPos);
+      spawnsThisFrame++;
       continue;
     }
 
@@ -1068,7 +1123,7 @@ void BoidManager::updateLeaves(float dt, const glm::vec3 &heroPos) {
       float sqrtDt = sqrtf(dt);
       leaf.velocity.x += (float)(rand() % 100 - 50) * 1.0f * sqrtDt;
       leaf.velocity.z += (float)(rand() % 100 - 50) * 1.0f * sqrtDt;
-      leaf.velocity.y += (float)(rand() % 60 - 25) * 0.8f * sqrtDt; // Slight upward bias
+      leaf.velocity.y += (float)(rand() % 60 - 30) * 0.8f * sqrtDt; // Symmetric turbulence (no upward bias)
       // Damping — prevents runaway speed while keeping leaves lively
       float damping = expf(-0.5f * dt);
       leaf.velocity *= damping;
@@ -1093,11 +1148,11 @@ void BoidManager::spawnSnow(LeafParticle &s, const glm::vec3 &heroPos) {
   s.position.z = heroPos.z + (float)(rand() % 1400 - 500);
   s.position.y = heroPos.y + (float)(rand() % 200 + 200);
 
-  // Main 5.2: velocity Vector(0,0,-(8..23)) rotated by Angle(-30,0,0)
-  // After -30° X rotation: x=0, y=-speed*cos30, z=-speed*sin30
-  // Main 5.2 values are per-tick (25fps) — multiply by 25 for per-second
-  float speed = (float)(rand() % 16 + 8) * 25.0f;
-  s.velocity.x = 0.0f;
+  s.scale = 1.0f; // Small delicate snowflakes
+
+  // Slow gentle fall — much slower than Main 5.2 leaves
+  float speed = (float)(rand() % 8 + 4) * 25.0f; // 100-300 units/s (half of leaf speed)
+  s.velocity.x = (float)(rand() % 20 - 10);       // Slight horizontal drift
   s.velocity.y = -speed * 0.866f; // -cos(30°) * speed (downward)
   s.velocity.z = -speed * 0.5f;   // -sin(30°) * speed (drift)
 
@@ -1112,11 +1167,18 @@ void BoidManager::updateSnow(float dt, const glm::vec3 &heroPos) {
   if (!TexValid(m_leafTexture))
     return;
 
+  // Limit new spawns per frame to avoid burst when all particles start dead
+  int spawnsThisFrame = 0;
+  const int MAX_SPAWNS_PER_FRAME = 4;
+
   for (int i = 0; i < MAX_LEAVES; ++i) {
     LeafParticle &s = m_leaves[i];
 
     if (!s.live) {
+      if (spawnsThisFrame >= MAX_SPAWNS_PER_FRAME)
+        continue;
       spawnSnow(s, heroPos);
+      spawnsThisFrame++;
       continue;
     }
 
@@ -1130,19 +1192,22 @@ void BoidManager::updateSnow(float dt, const glm::vec3 &heroPos) {
       continue;
     }
 
-    if (s.position.y <= terrainH) {
-      // On ground: fade out (Main 5.2: Light -= 0.05/tick = 1.25/s)
-      s.position.y = terrainH;
-      s.onGround = true;
-      s.alpha -= 1.25f * dt;
-      if (s.alpha <= 0.0f)
-        s.live = false;
+    if (s.position.y <= terrainH + 20.0f) {
+      // Near ground: kill immediately (snow disappears, doesn't pile up)
+      s.live = false;
+      continue;
     } else {
-      // Airborne: gentle random drift (Main 5.2: MoveEtcLeaf ±0.8/tick)
+      // Airborne: gentle random drift + slow fade over lifetime
       s.velocity.x += (float)(rand() % 16 - 8) * 0.1f;
       s.velocity.z += (float)(rand() % 16 - 8) * 0.1f;
       s.velocity.y += (float)(rand() % 16 - 8) * 0.1f;
       s.position += s.velocity * dt;
+      // Gradual fade as it falls (disappear before touching ground)
+      s.alpha -= 0.15f * dt;
+      if (s.alpha <= 0.0f) {
+        s.live = false;
+        continue;
+      }
     }
 
     // Gentle tumble
@@ -1181,7 +1246,7 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
 
   // Fade out when too close to camera
   float camDist = glm::length(b.position - eye);
-  float camFade = std::clamp((camDist - 350.0f) / 200.0f, 0.0f, 1.0f);
+  float camFade = std::clamp((camDist - m_cameraFadeStart) / 200.0f, 0.0f, 1.0f);
   if (camFade <= 0.001f) return;
 
   auto bones = ComputeBoneMatricesInterpolated(m_birdBmd.get(), b.action,
@@ -1193,7 +1258,7 @@ void BoidManager::renderBoid(const Boid &b, const glm::mat4 &view,
   glm::mat4 model = glm::translate(glm::mat4(1.0f), b.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(b.angle.z), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
   float alpha = b.alpha * camFade;
@@ -1232,7 +1297,7 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
 
   // Fade out when too close to camera
   float camDist = glm::length(b.position - eye);
-  float camFade = std::clamp((camDist - 350.0f) / 200.0f, 0.0f, 1.0f);
+  float camFade = std::clamp((camDist - m_cameraFadeStart) / 200.0f, 0.0f, 1.0f);
   if (camFade <= 0.001f) return;
 
   auto bones = ComputeBoneMatricesInterpolated(m_batBmd.get(), b.action,
@@ -1244,7 +1309,7 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
   glm::mat4 model = glm::translate(glm::mat4(1.0f), b.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(b.angle.z), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
   float alpha = b.alpha * camFade;
@@ -1282,7 +1347,7 @@ void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
 
   // Fade out when too close to camera
   float camDist = glm::length(b.position - eye);
-  float camFade = std::clamp((camDist - 300.0f) / 200.0f, 0.0f, 1.0f);
+  float camFade = std::clamp((camDist - m_cameraFadeStart) / 200.0f, 0.0f, 1.0f);
   if (camFade <= 0.001f) return;
 
   auto bones = ComputeBoneMatricesInterpolated(m_butterflyBmd.get(), b.action,
@@ -1294,7 +1359,7 @@ void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
   glm::mat4 model = glm::translate(glm::mat4(1.0f), b.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(b.angle.z + 90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(b.angle.z), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(b.scale));
 
   float alpha = b.alpha * camFade;
@@ -1339,7 +1404,7 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
   glm::mat4 model = glm::translate(glm::mat4(1.0f), f.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(-f.angle.z + 90.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-f.angle.z), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(f.scale));
 
   glm::vec3 tLight = sampleTerrainLight(f.position);
@@ -1642,7 +1707,7 @@ void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj,
 
     // Fade out when too close to camera
     float camDist = glm::length(leaf.position - camPos);
-    float camFade = std::clamp((camDist - 300.0f) / 200.0f, 0.0f, 1.0f);
+    float camFade = std::clamp((camDist - m_cameraFadeStart) / 200.0f, 0.0f, 1.0f);
     if (camFade <= 0.001f) continue;
 
     // Build rotation matrix on CPU
@@ -1656,7 +1721,7 @@ void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj,
 
     uint16_t base = (uint16_t)verts.size();
     for (int v = 0; v < 4; ++v) {
-      glm::vec3 p = glm::vec3(rot * glm::vec4(qOff[v], 1.0f)) + leaf.position;
+      glm::vec3 p = glm::vec3(rot * glm::vec4(qOff[v] * leaf.scale, 1.0f)) + leaf.position;
       verts.push_back({p.x, p.y, p.z, qUV[v][0], qUV[v][1], col});
     }
     indices.push_back(base); indices.push_back(base+1); indices.push_back(base+2);

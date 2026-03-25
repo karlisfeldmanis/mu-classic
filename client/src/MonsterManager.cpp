@@ -826,37 +826,37 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   }
 
   // ── Dungeon traps (types 100-102) ──
-  // Main 5.2 ZzzCharacter.cpp:13669: Trap types use WORLD OBJECT models (not Monster BMDs).
-  //   case 100 → CreateCharacter(Key, 39) → Models[39] → Stone10.bmd (missing)
-  //   case 101 → CreateCharacter(Key, 40) → Models[40] → StoneStatue01.bmd
-  //   case 102 → CreateCharacter(Key, 51) → Models[51] → FireLight02.bmd
-  // NOTE: GMAida scales (1.4/1.35/1.1) are for AIDA traps (types 304-309), NOT dungeon.
-  // Dungeon traps use CreateCharacterPointer default scale = 0.9f.
+  // Main 5.2 ZzzCharacter.cpp:13669: Trap types use WORLD OBJECT models.
+  //   case 100 → CreateCharacter(Key, 39) → Object2/Object40.bmd (Lance Trap)
+  //   case 101 → CreateCharacter(Key, 40) → Object2/Object41.bmd (Iron Stick)
+  //   case 102 → CreateCharacter(Key, 51) → Object2/Object52.bmd (Fire Trap)
+  // MapManager.cpp: AccessModel(i, DirName, "Object", i+1) → type N = ObjectN+1.bmd
+  // Scales from CreateCharacterPointer default (Main 5.2).
   // Attack effects: type 39→MODEL_SAW (Saw01.bmd), type 40→SetAction(1),
   //                 type 51→BITMAP_FIRE+1 (ZzzCharacter.cpp:1109-1123)
   {
-    std::string object1Dir = dataPath + "/Object1/";
+    std::string object2Dir = dataPath + "/Object2/";
 
-    // Lance Trap: type 100 → Stone10.bmd (missing from data+refs, use Stone05)
+    // Lance Trap: type 100 → world obj 39 → Object40.bmd
     int lanceTrapIdx = loadMonsterModel(
-        "../Object1/Stone05.bmd", "Lance Trap", 0.9f, 80.0f, 50.0f, 0.0f,
-        object1Dir);
+        "../Object2/Object40.bmd", "Lance Trap", 1.4f, 80.0f, 50.0f, 0.0f,
+        object2Dir);
     if (lanceTrapIdx >= 0)
       m_models[lanceTrapIdx].level = 80;
     m_typeToModel[100] = lanceTrapIdx;
 
-    // Iron Stick Trap: type 101 → StoneStatue01.bmd
+    // Iron Stick Trap: type 101 → world obj 40 → Object41.bmd
     int ironTrapIdx = loadMonsterModel(
-        "../Object1/StoneStatue01.bmd", "Iron Stick Trap", 0.9f, 80.0f, 50.0f,
-        0.0f, object1Dir);
+        "../Object2/Object41.bmd", "Iron Stick Trap", 1.35f, 80.0f, 50.0f,
+        0.0f, object2Dir);
     if (ironTrapIdx >= 0)
       m_models[ironTrapIdx].level = 80;
     m_typeToModel[101] = ironTrapIdx;
 
-    // Fire Trap: type 102 → FireLight02.bmd
+    // Fire Trap: type 102 → world obj 51 → Object52.bmd
     int fireTrapIdx = loadMonsterModel(
-        "../Object1/FireLight02.bmd", "Fire Trap", 0.9f, 80.0f, 50.0f, 0.0f,
-        object1Dir);
+        "../Object2/Object52.bmd", "Fire Trap", 1.1f, 80.0f, 50.0f, 0.0f,
+        object2Dir);
     if (fireTrapIdx >= 0)
       m_models[fireTrapIdx].level = 80;
     m_typeToModel[102] = fireTrapIdx;
@@ -1942,12 +1942,15 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     float dx = px - m_playerPos.x, dz = pz - m_playerPos.z;
     if (dx * dx + dz * dz < 1200.0f * 1200.0f) {
       if (mon.monsterType == 100) {
-        // Lance Trap: lightning burst + grinding sound (MODEL_SAW + SOUND_TRAP01)
+        // Lance Trap: MODEL_SAW spinning blade + SOUND_TRAP01
+        // Main 5.2 ZzzEffect.cpp: Saw01.bmd at Position[2]+=130, Angle[2]-=30/tick
         SoundManager::Play3D(SOUND_TRAP01, px, py, pz);
         if (m_vfxManager) {
           glm::vec3 vfxPos = mon.position;
-          vfxPos.y += 50.0f;
-          m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, vfxPos, 4);
+          vfxPos.y += 130.0f * mon.scale;
+          // Electric burst (Main 5.2: BITMAP_LIGHTNING+1 on lance activation)
+          m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, vfxPos, 6);
+          m_vfxManager->SpawnBurst(ParticleType::HIT_SPARK, vfxPos, 4);
         }
       } else if (mon.monsterType == 101) {
         // Iron Stick Trap: grinding sound (SOUND_TRAP01)

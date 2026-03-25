@@ -148,6 +148,14 @@ void ServerConnection::SendItemUse(uint8_t slot) {
   m_client.Send(&pkt, sizeof(pkt));
 }
 
+void ServerConnection::SendItemUpgrade(uint8_t jewelSlot, uint8_t targetSlot) {
+  PMSG_ITEM_UPGRADE_RECV pkt{};
+  pkt.h = MakeC1Header(sizeof(pkt), Opcode::ITEM_UPGRADE);
+  pkt.jewelSlot = jewelSlot;
+  pkt.targetSlot = targetSlot;
+  m_client.Send(&pkt, sizeof(pkt));
+}
+
 void ServerConnection::SendDropItem(uint8_t bagSlot) {
   PMSG_ITEM_DROP_RECV pkt{};
   pkt.h = MakeC1Header(sizeof(pkt), Opcode::ITEM_DROP);

@@ -12,6 +12,7 @@
 #include "Sky.hpp"
 #include "SoundManager.hpp"
 #include "TextureLoader.hpp"
+#include "UITexture.hpp"
 #include "imgui.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
@@ -61,6 +62,7 @@ static Sky s_sky;
 
 // Ambient creatures (birds, fish, falling leaves)
 static BoidManager s_boidManager;
+
 
 // Player.bmd skeleton (shared across all characters)
 static std::unique_ptr<BMDData> s_playerSkeleton;
@@ -285,6 +287,136 @@ static int ClassToIndex(uint8_t classCode) {
 static const char *ClassSuffix(int idx) {
   static const char *suffixes[] = {"Class01", "Class02", "Class03", "Class04"};
   return suffixes[idx];
+}
+
+// ── UI drawing helpers ──
+
+static void DrawShadowText(ImDrawList *dl, ImVec2 pos, ImU32 color,
+                           const char *text) {
+  dl->AddText(ImVec2(pos.x + 1, pos.y + 1), IM_COL32(0, 0, 0, 230), text);
+  dl->AddText(pos, color, text);
+}
+
+// Diablo-style button: crimson gradient, gold/dark border, highlight/shadow.
+static bool DrawOrnateButton(ImDrawList *dl, float x, float y, float w, float h,
+                             const char *label, bool destructive = false) {
+  ImVec2 mp = ImGui::GetMousePos();
+  bool hov = mp.x >= x && mp.x <= x + w && mp.y >= y && mp.y <= y + h;
+  bool held = hov && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+  bool clicked = hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+  // Outer dark border
+  dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h),
+              IM_COL32(8, 6, 4, 255), 2.0f, 0, 1.5f);
+
+  // Gold frame (inset 2px) — brighter on hover
+  ImU32 goldCol = hov ? IM_COL32(200, 170, 75, 240)
+                      : IM_COL32(145, 120, 55, 220);
+  dl->AddRect(ImVec2(x + 2, y + 2), ImVec2(x + w - 2, y + h - 2),
+              goldCol, 1.0f, 0, 1.5f);
+
+  // Gradient fill (inset 4px) — crimson/maroon
+  float ix = x + 4, iy = y + 4, iw = w - 8, ih = h - 8;
+  ImU32 topCol, botCol;
+  if (destructive) {
+    topCol = held  ? IM_COL32(150, 35, 25, 255)
+           : hov   ? IM_COL32(125, 30, 20, 250)
+                    : IM_COL32(95, 22, 16, 240);
+    botCol = held  ? IM_COL32(85, 18, 12, 255)
+           : hov   ? IM_COL32(65, 14, 10, 250)
+                    : IM_COL32(48, 10, 8, 240);
+  } else {
+    topCol = held  ? IM_COL32(130, 45, 30, 255)
+           : hov   ? IM_COL32(110, 35, 25, 250)
+                    : IM_COL32(80, 25, 20, 240);
+    botCol = held  ? IM_COL32(75, 22, 16, 255)
+           : hov   ? IM_COL32(60, 18, 14, 250)
+                    : IM_COL32(40, 12, 10, 240);
+  }
+  dl->AddRectFilledMultiColor(ImVec2(ix, iy), ImVec2(ix + iw, iy + ih),
+                              topCol, topCol, botCol, botCol);
+
+  // Top highlight line
+  dl->AddLine(ImVec2(ix + 1, iy + 1), ImVec2(ix + iw - 1, iy + 1),
+              IM_COL32(255, 200, 150, hov ? (uint8_t)50 : (uint8_t)30));
+
+  // Bottom shadow line
+  dl->AddLine(ImVec2(ix + 1, iy + ih - 1), ImVec2(ix + iw - 1, iy + ih - 1),
+              IM_COL32(0, 0, 0, 80));
+
+  // Text — centered, shadow
+  ImVec2 ts = ImGui::CalcTextSize(label);
+  ImU32 textCol = destructive ? IM_COL32(255, 200, 140, 255)
+                              : IM_COL32(240, 220, 155, 255);
+  DrawShadowText(dl, ImVec2(x + (w - ts.x) * 0.5f, y + (h - ts.y) * 0.5f),
+                 textCol, label);
+
+  return clicked;
+}
+
+// ── Create panel color palette ──
+static constexpr ImU32 CP_PANEL_BG_TOP    = IM_COL32(12, 10, 18, 230);
+static constexpr ImU32 CP_PANEL_BG_BOT    = IM_COL32(18, 16, 28, 235);
+static constexpr ImU32 CP_SUBPANEL_BG     = IM_COL32(8, 8, 16, 210);
+static constexpr ImU32 CP_FORM_BG         = IM_COL32(10, 8, 16, 230);
+static constexpr ImU32 CP_OUTER_BORDER    = IM_COL32(5, 5, 10, 255);
+static constexpr ImU32 CP_GOLD_BORDER     = IM_COL32(145, 125, 60, 200);
+static constexpr ImU32 CP_GOLD_BRIGHT     = IM_COL32(200, 175, 80, 240);
+static constexpr ImU32 CP_GOLD_DIM        = IM_COL32(80, 70, 45, 140);
+static constexpr ImU32 CP_STAT_LABEL      = IM_COL32(210, 195, 145, 255);
+static constexpr ImU32 CP_STAT_VALUE      = IM_COL32(255, 210, 80, 255);
+static constexpr ImU32 CP_DESC_TEXT       = IM_COL32(200, 185, 140, 230);
+static constexpr ImU32 CP_TITLE_TEXT      = IM_COL32(240, 220, 155, 255);
+static constexpr ImU32 CP_CLASS_SELECTED  = IM_COL32(255, 225, 130, 255);
+static constexpr ImU32 CP_CLASS_NORMAL    = IM_COL32(160, 155, 140, 200);
+static constexpr ImU32 CP_CLSBTN_BG       = IM_COL32(14, 12, 22, 220);
+static constexpr ImU32 CP_CLSBTN_BG_SEL   = IM_COL32(30, 25, 15, 230);
+static constexpr ImU32 CP_CLSBTN_BG_HOV   = IM_COL32(25, 22, 18, 230);
+
+// Draw a styled sub-panel (dark bg + double border: dark outer, gold inner)
+static void DrawSubPanel(ImDrawList *dl, float x0, float y0, float x1, float y1,
+                         float rounding = 3.0f) {
+  dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), CP_SUBPANEL_BG, rounding);
+  dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), CP_OUTER_BORDER, rounding, 0, 1.5f);
+  dl->AddRect(ImVec2(x0 + 2, y0 + 2), ImVec2(x1 - 2, y1 - 2),
+              CP_GOLD_DIM, std::max(0.f, rounding - 1), 0, 1.0f);
+}
+
+// Shadow text with explicit font
+static void DrawShadowTextFont(ImDrawList *dl, ImFont *font, float fontSize,
+                                ImVec2 pos, ImU32 color, const char *text) {
+  dl->AddText(font, fontSize, ImVec2(pos.x + 1, pos.y + 1),
+              IM_COL32(0, 0, 0, 200), text);
+  dl->AddText(font, fontSize, pos, color, text);
+}
+
+// Class selection button — manual draw + hit test
+static bool DrawClassButton(ImDrawList *dl, float x, float y, float w, float h,
+                            const char *label, bool selected, ImFont *font,
+                            float fontSize) {
+  ImVec2 mp = ImGui::GetMousePos();
+  bool hov = !selected && mp.x >= x && mp.x <= x + w && mp.y >= y && mp.y <= y + h;
+  bool clicked = hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+  ImU32 bgCol = selected ? CP_CLSBTN_BG_SEL : hov ? CP_CLSBTN_BG_HOV : CP_CLSBTN_BG;
+  dl->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), bgCol, 3.0f);
+
+  if (selected) {
+    dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), CP_GOLD_BRIGHT, 3.0f, 0, 2.0f);
+    dl->AddLine(ImVec2(x + 4, y + 1), ImVec2(x + w - 4, y + 1),
+                IM_COL32(255, 200, 150, 25));
+  } else {
+    dl->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), CP_GOLD_DIM, 2.0f, 0, 1.0f);
+  }
+
+  ImU32 textCol = selected ? CP_CLASS_SELECTED : hov ? IM_COL32(200, 190, 150, 240) : CP_CLASS_NORMAL;
+  ImVec2 sz = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, label);
+  float tx = x + (w - sz.x) * 0.5f;
+  float ty = y + (h - sz.y) * 0.5f;
+  dl->AddText(font, fontSize, ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 200), label);
+  dl->AddText(font, fontSize, ImVec2(tx, ty), textCol, label);
+
+  return clicked;
 }
 
 // ── Character model loading (Player.bmd + body parts, same as HeroCharacter) ──
@@ -1094,6 +1226,7 @@ void Init(const Context &ctx) {
     s_boidManager.SetTerrainLightmap(s_terrainData.lightmap);
     s_boidManager.SetMapId(0); // Lorencia
     s_boidManager.SetLuminosity(CS_LUMINOSITY);
+    s_boidManager.SetCameraFadeStart(550.0f); // Wider fade for fixed charselect camera
     // Pass point lights for bird/leaf lighting
     std::vector<PointLight> boidLights;
     for (auto &pl : s_pointLights) {
@@ -1261,10 +1394,12 @@ void Init(const Context &ctx) {
 
   // Load MU Online logo for title screen
   {
-    std::string logoPath = s_ctx.dataPath + "/Interface/lo_mu_logo.OZT";
-    auto raw = TextureLoader::LoadOZTRaw(logoPath, s_logoW, s_logoH);
-    if (!raw.empty()) {
-      s_logoTex = TextureLoader::LoadOZT(logoPath);
+    std::string logoPath = s_ctx.dataPath + "/Interface/mu_classic_logo.png";
+    UITexture logo = UITexture::Load(logoPath);
+    if (logo) {
+      s_logoTex = logo.id;
+      s_logoW = logo.width;
+      s_logoH = logo.height;
       printf("[CharSelect] Logo loaded: %dx%d\n", s_logoW, s_logoH);
     } else {
       printf("[CharSelect] WARNING: Failed to load logo from %s\n", logoPath.c_str());
@@ -1522,6 +1657,7 @@ void Update(float dt) {
   // Update ambient creatures (birds, falling leaves)
   // Use scene center as "hero position" for boid spawning reference
   glm::vec3 boidCenter(SCENE_CX, 0.0f, SCENE_CZ);
+  s_boidManager.SetCameraView(s_projMatrix * s_viewMatrix);
   s_boidManager.Update(dt, boidCenter, 0, s_time);
 }
 
@@ -1723,7 +1859,7 @@ void Render(int windowWidth, int windowHeight) {
                      | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
                                              BGFX_STATE_BLEND_INV_SRC_ALPHA);
     uint64_t stAdd = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
-                   | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
+                   | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD;
 
     for (int i = 0; i < MAX_SLOTS; i++) {
       if (!s_slots[i].occupied) continue;
@@ -1941,10 +2077,16 @@ void Render(int windowWidth, int windowHeight) {
   // ── ImGui UI overlay ──
   ImGui::SetNextWindowPos(ImVec2(0, 0));
   ImGui::SetNextWindowSize(ImVec2((float)windowWidth, (float)windowHeight));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0, 0, 0, 0));
   ImGui::Begin("##CharSelectOverlay",
                nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground |
-                   ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBringToFrontOnFocus);
+                   ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBringToFrontOnFocus |
+                   ImGuiWindowFlags_NoSavedSettings);
+  ImGui::PopStyleColor();
+  ImGui::PopStyleVar(2);
 
   ImDrawList *dl = ImGui::GetWindowDrawList();
   float cx = windowWidth * 0.5f;
@@ -1954,10 +2096,12 @@ void Render(int windowWidth, int windowHeight) {
   // MU Online logo (hidden during character creation)
   if (!s_createOpen && TexValid(s_logoTex) && s_logoW > 0 && s_logoH > 0) {
     float uiScale = (float)windowHeight / 768.0f;
-    float logoDispW = (float)s_logoW * uiScale;
-    float logoDispH = (float)s_logoH * uiScale;
+    float targetW = windowWidth * 0.20f;
+    float scaleRatio = targetW / (float)s_logoW;
+    float logoDispW = (float)s_logoW * scaleRatio;
+    float logoDispH = (float)s_logoH * scaleRatio;
     float logoX = cx - logoDispW * 0.5f;
-    float logoY = 45.0f * uiScale;
+    float logoY = 15.0f * uiScale;
     ImTextureID logoImTex = (ImTextureID)TexImID(s_logoTex);
     dl->AddImage(logoImTex, ImVec2(logoX, logoY),
                  ImVec2(logoX + logoDispW, logoY + logoDispH));
@@ -2021,32 +2165,17 @@ void Render(int windowWidth, int windowHeight) {
 
   // ── Bottom button bar (hidden during character creation) ──
   if (!s_createOpen) {
-  float W = (float)windowWidth, H = (float)windowHeight;
-  // Scale buttons proportional to window height (FontGlobalScale handles text)
+  ImDrawList *bdl = ImGui::GetForegroundDrawList();
+  float H = (float)windowHeight;
   float btnScale = std::max(1.0f, H / 768.0f);
-  float btnW = 80 * btnScale, btnH = 30 * btnScale, btnGap = 8 * btnScale;
-  float btnPad = 10.0f * btnScale;
-  float btnMargin = 30.0f * btnScale; // Distance from bottom edge
+  float btnW = 100 * btnScale, btnH = 36 * btnScale, btnGap = 10 * btnScale;
+  float btnPad = 14.0f * btnScale;
+  float btnMargin = 30.0f * btnScale;
   float btnY = windowHeight - btnMargin - btnH;
-  const ImGuiWindowFlags kBtnFlags =
-      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoBackground |
-      ImGuiWindowFlags_NoScrollbar;
-
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
-  ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                        ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
-  ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-                        ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
-  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
-  ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.86f, 0.84f, 0.78f, 0.94f));
 
   // Left buttons: [Create] [Exit]
-  ImGui::SetNextWindowPos(ImVec2(btnPad, btnY));
-  ImGui::SetNextWindowSize(ImVec2(btnW * 2 + btnGap + btnPad * 2, btnH + btnPad));
-  ImGui::Begin("##CSBtnLeft", nullptr, kBtnFlags);
-  if (ImGui::Button("Create", ImVec2(btnW, btnH))) {
+  float lx = btnPad;
+  if (DrawOrnateButton(bdl, lx, btnY, btnW, btnH, "Create")) {
     SoundManager::Play(SOUND_CLICK01);
     int count = 0;
     for (int i = 0; i < MAX_SLOTS; i++)
@@ -2063,22 +2192,17 @@ void Render(int windowWidth, int windowHeight) {
       s_statusTimer = 2.0f;
     }
   }
-  ImGui::SameLine(0, btnGap);
-  if (ImGui::Button("Exit", ImVec2(btnW, btnH))) {
+  if (DrawOrnateButton(bdl, lx + btnW + btnGap, btnY, btnW, btnH, "Exit")) {
     SoundManager::Play(SOUND_CLICK01);
     if (s_ctx.onExit)
       s_ctx.onExit();
   }
-  ImGui::End();
 
   // Right buttons: [Connect] [Delete] — only shown when a character is selected
   bool hasSelection = (s_selectedSlot >= 0 && s_slots[s_selectedSlot].occupied);
   if (hasSelection) {
-    float rightX = windowWidth - btnPad - btnW * 2 - btnGap - btnPad * 2;
-    ImGui::SetNextWindowPos(ImVec2(rightX, btnY));
-    ImGui::SetNextWindowSize(ImVec2(btnW * 2 + btnGap + btnPad * 2, btnH + btnPad));
-    ImGui::Begin("##CSBtnRight", nullptr, kBtnFlags);
-    if (ImGui::Button("Connect", ImVec2(btnW, btnH))) {
+    float rx = windowWidth - btnPad - btnW * 2 - btnGap;
+    if (DrawOrnateButton(bdl, rx, btnY, btnW, btnH, "Connect")) {
       SoundManager::Play(SOUND_MENU01);
       if (s_ctx.server) {
         s_ctx.server->SendCharSelect(s_slots[s_selectedSlot].name);
@@ -2086,32 +2210,23 @@ void Render(int windowWidth, int windowHeight) {
           s_ctx.onCharSelected();
       }
     }
-    ImGui::SameLine(0, btnGap);
-    if (ImGui::Button("Delete", ImVec2(btnW, btnH))) {
+    if (DrawOrnateButton(bdl, rx + btnW + btnGap, btnY, btnW, btnH, "Delete")) {
       SoundManager::Play(SOUND_CLICK01);
       s_deleteConfirm = true;
     }
-    ImGui::End();
   }
 
   // Center button: [Fullscreen / Windowed]
   {
     bool isFull = glfwGetWindowMonitor(s_ctx.window) != nullptr;
     const char *fsLabel = isFull ? "Windowed" : "Full Screen";
-    float fsBtnW = 90 * btnScale;
-    float fsX = (windowWidth - fsBtnW) * 0.5f - btnPad;
-    ImGui::SetNextWindowPos(ImVec2(fsX, btnY));
-    ImGui::SetNextWindowSize(ImVec2(fsBtnW + btnPad * 2, btnH + btnPad));
-    ImGui::Begin("##CSBtnFS", nullptr, kBtnFlags);
-    if (ImGui::Button(fsLabel, ImVec2(fsBtnW, btnH))) {
+    float fsBtnW = 110 * btnScale;
+    float fsX = (windowWidth - fsBtnW) * 0.5f;
+    if (DrawOrnateButton(bdl, fsX, btnY, fsBtnW, btnH, fsLabel)) {
       SoundManager::Play(SOUND_CLICK01);
       if (s_ctx.onToggleFullscreen) s_ctx.onToggleFullscreen();
     }
-    ImGui::End();
   }
-
-  ImGui::PopStyleColor(5);
-  ImGui::PopStyleVar(2);
   } // end if (!s_createOpen) bottom bar
 
   // ── Character slot click areas (invisible buttons over each slot) ──
@@ -2124,39 +2239,84 @@ void Render(int windowWidth, int windowHeight) {
       RebuildFaceMeshes(wantIdx);
     }
 
-    auto &cs = GetClassStats(s_createClass);
+    // ── Resolve class data from server DB (with hardcoded fallback) ──
     const uint8_t classCodes[] = {CLASS_DW, CLASS_DK, CLASS_ELF, CLASS_MG};
-    const char *classNames[] = {"Dark Wizard", "Dark Knight", "Elf",
-                                "Magic Gladiator"};
     const int numClasses = 4;
     int classIdx = 0;
     for (int i = 0; i < numClasses; i++)
       if (classCodes[i] == s_createClass) { classIdx = i; break; }
 
+    // Class names/descriptions/stats from server packet (or fallback)
+    const char *fallbackNames[] = {"Dark Wizard", "Dark Knight", "Elf", "Magic Gladiator"};
+    const char *fallbackDescs[] = {
+        "Some men strive for physical perfection. Others would rather bend the laws of nature to benefit their cause. The Dark Wizard can command the elements to smite his foes. He can also call upon the spirits to aid him. Most people are wary of the powers of the Dark Wizard and usually leave them alone. However, others make the mistake of thinking them an easy target due to their weak stature. But do not be deceived! Many warriors have suddenly been engulfed in flames before even reaching a Dark Wizard.",
+        "The Dark Knight is a fearless warrior with high strength and agility. They use their special abilities to deal powerful physical attacks on enemies with sword type weapons. Their unique ability to wield two swords at once can unleash hell on its enemies from the weapon damage bonus these characters receive by equipping identical swords! The Dark Knight is home to Lorencia with a long history there. These dedicated warriors fight tirelessly to bring Kundun's reign to an end!",
+        "The Fairy Elf is a beautiful elf with high agility. They use their special abilities to deal powerful physical attacks on enemies with bow type weapons. Their unique ability to wield bow and quiver items gives them high damage with a nice attacking range! Elves are home to Noria and have a long history there. They fight alongside the Church of Devias to help bring Kundun's reign to an end!",
+        "The Magic Gladiator is a combination of the Dark Knight and Dark Wizard and can be unlocked as a new class when your character reaches level 220. He cannot wear a helm and has four sets of class-specific armour though he can also wear many of the Dark Knight and Dark Wizard armor. The Magic Gladiator can run without the need of +5 boots, and swim faster without the need of +5 gloves. Magic Gladiators receive 7 stat points per level, as opposed to the 5 gained by the three basic classes."};
+
+    const char *className = fallbackNames[classIdx];
+    const char *classDesc = fallbackDescs[classIdx];
+    auto &csFallback = GetClassStats(s_createClass);
+    int statValues[4] = {csFallback.str, csFallback.dex, csFallback.vit, csFallback.ene};
+
+    // Use DB data if available
+    const char *allNames[4];
+    const char *allDescs[4];
+    for (int i = 0; i < 4; i++) { allNames[i] = fallbackNames[i]; allDescs[i] = fallbackDescs[i]; }
+
+    if (s_ctx.classDefinitions) {
+      for (const auto &cd : *s_ctx.classDefinitions) {
+        for (int i = 0; i < numClasses; i++) {
+          if (cd.classCode == classCodes[i]) {
+            allNames[i] = cd.displayName;
+            allDescs[i] = cd.description;
+            if (cd.classCode == s_createClass) {
+              className = cd.displayName;
+              classDesc = cd.description;
+              statValues[0] = cd.startSTR;
+              statValues[1] = cd.startAGI;
+              statValues[2] = cd.startVIT;
+              statValues[3] = cd.startENE;
+            }
+          }
+        }
+      }
+    }
+
+    // ── Fonts (with fallback) ──
+    ImFont *fBold = s_ctx.fontBold ? s_ctx.fontBold : ImGui::GetFont();
+    ImFont *fDefault = s_ctx.fontDefault ? s_ctx.fontDefault : ImGui::GetFont();
+    ImFont *fRegion = s_ctx.fontRegion ? s_ctx.fontRegion : fBold;
+    float globalScale = ImGui::GetIO().FontGlobalScale;
+    float fsBold = fBold->LegacySize * globalScale;
+    float fsDefault = fDefault->LegacySize * globalScale;
+    // Description font: regular font, sized up for readable line height
+    float fsDesc = fDefault->LegacySize * globalScale * 1.15f;
+
+    // ── Layout ──
     float W = (float)windowWidth;
     float H = (float)windowHeight;
     float uiScale = std::min(W / 640.0f, H / 480.0f);
     uiScale = std::max(uiScale, 1.0f);
-    float panelW = 454.0f * uiScale;
+
+    float panelW = 440.0f * uiScale;
     panelW = std::min(panelW, W * 0.85f);
-
-    float formH = 90.0f * uiScale;
-    float statOverlayW = panelW * (130.0f / 454.0f);
-    float statOverlayX = 0.0f;
-
-    // Layout: model container height then form below
-    float modelAreaW = panelW - statOverlayW;
-    float modelH = H * 0.50f;
+    float rightFrac = 0.44f;
+    float formH = 130.0f * uiScale;
+    float rightW = panelW * rightFrac;
+    // Adaptive modelH: ensure right column content (stats + class buttons) fits
+    float rightMinH = (10 + 90 + 6 + 4 * 26 + 3 * 2 + 6 + 2 * 6 + 6) * uiScale;
+    float modelH = std::max(H * 0.26f, rightMinH);
     float panelH = modelH + formH;
     panelH = std::min(panelH, H * 0.92f);
     modelH = panelH - formH;
 
     float panelX = (W - panelW) * 0.5f;
     float panelY = (H - panelH) * 0.45f;
-    statOverlayX = panelX + panelW - statOverlayW;
+    float rightX = panelX + panelW - rightW;
     float formY = panelY + modelH;
 
-    // ImGui window for interactive controls (NoBackground — scene shows through)
+    // ── ImGui window for interactive controls ──
     ImGui::SetNextWindowPos(ImVec2(panelX - 5, panelY - 5));
     ImGui::SetNextWindowSize(ImVec2(panelW + 10, panelH + 10));
     ImGui::SetNextWindowFocus();
@@ -2165,172 +2325,149 @@ void Render(int windowWidth, int windowHeight) {
 
     ImDrawList *cdl = ImGui::GetWindowDrawList();
 
-    // ── Model container — dark background + FBO face texture ──
-    cdl->AddRectFilled(ImVec2(panelX, panelY),
-                       ImVec2(panelX + panelW, formY),
-                       IM_COL32(10, 10, 20, 160), 2.0f);
+    // ── 1. Main panel background (gradient + double border) ──
+    cdl->AddRectFilledMultiColor(ImVec2(panelX, panelY),
+                                 ImVec2(panelX + panelW, panelY + panelH),
+                                 CP_PANEL_BG_TOP, CP_PANEL_BG_TOP,
+                                 CP_PANEL_BG_BOT, CP_PANEL_BG_BOT);
+    cdl->AddRect(ImVec2(panelX, panelY),
+                 ImVec2(panelX + panelW, panelY + panelH),
+                 CP_OUTER_BORDER, 4.0f, 0, 2.0f);
+    cdl->AddRect(ImVec2(panelX + 2, panelY + 2),
+                 ImVec2(panelX + panelW - 2, panelY + panelH - 2),
+                 CP_GOLD_BORDER, 3.0f, 0, 1.0f);
 
-    // Draw face FBO texture on top of dark background, zoomed to crop torso
+    // ── 2. Face portrait (left portion) ──
     if (s_faceRendered && bgfx::isValid(s_faceColorTex)) {
-      // Show top 70% of FBO (face/head), crop bottom (torso)
       float uvBottom = 0.70f;
       float fboAspect = (float)FACE_TEX_W / ((float)FACE_TEX_H * uvBottom);
       float faceDispH = modelH;
       float faceDispW = faceDispH * fboAspect;
-      // Center horizontally within the left portion of the panel
-      float faceX = panelX + (panelW - statOverlayW - faceDispW) * 0.5f;
-      float faceY = panelY;
+      float leftW = panelW - rightW;
+      if (faceDispW > leftW) {
+        faceDispW = leftW;
+        faceDispH = faceDispW / fboAspect;
+      }
+      float faceX = panelX + (leftW - faceDispW) * 0.5f;
+      float faceY = formY - faceDispH; // Anchor bottom to divider
       ImTextureID faceTex = (ImTextureID)(uintptr_t)s_faceColorTex.idx;
       cdl->AddImage(faceTex, ImVec2(faceX, faceY),
                     ImVec2(faceX + faceDispW, faceY + faceDispH),
                     ImVec2(0, 0), ImVec2(1, uvBottom));
     }
 
-    cdl->AddRect(ImVec2(panelX, panelY),
-                 ImVec2(panelX + panelW, formY),
-                 IM_COL32(80, 70, 45, 100), 2.0f);
+    // Right-edge inner shadow (portrait/right column divider)
+    float shadowX = rightX - 8 * uiScale;
+    cdl->AddRectFilledMultiColor(ImVec2(shadowX, panelY + 4),
+                                 ImVec2(rightX, formY - 4),
+                                 IM_COL32(0, 0, 0, 0), IM_COL32(0, 0, 0, 60),
+                                 IM_COL32(0, 0, 0, 60), IM_COL32(0, 0, 0, 0));
 
-    // ── Stats panel (overlaid, bottom-right of model zone) ──
-    float cbH_pre = 26.0f * uiScale;
-    float cbTotalH = 4.5f * cbH_pre;
-    float bottomMargin = 6.0f * uiScale;
-    float gapBetween = 4.0f * uiScale;
+    // ── 3. Stats sub-panel (right column, upper) ──
+    float pad = 10.0f * uiScale;
+    float statPanelW = rightW - 2 * pad;
+    float statPanelH = 90.0f * uiScale;
+    float statPanelX = rightX + pad;
+    float statPanelY = panelY + 10 * uiScale;
+
+    DrawSubPanel(cdl, statPanelX, statPanelY,
+                 statPanelX + statPanelW, statPanelY + statPanelH);
+
+    // Stats header
     {
-      float statX = statOverlayX;
-      float statW = statOverlayW - 4 * uiScale;
-      float statH = 85.0f * uiScale;
-      float statY = formY - bottomMargin - cbTotalH - gapBetween - statH;
-
-      cdl->AddRectFilled(ImVec2(statX, statY),
-                         ImVec2(statX + statW, statY + statH),
-                         IM_COL32(8, 8, 16, 180), 3.0f);
-      cdl->AddRect(ImVec2(statX, statY),
-                   ImVec2(statX + statW, statY + statH),
-                   IM_COL32(65, 60, 45, 120), 3.0f);
-
-      const char *statLabels[] = {"Strength", "Agility", "Vitality", "Energy"};
-      int statValues[] = {cs.str, cs.dex, cs.vit, cs.ene};
-      float lineH = 17.0f * uiScale;
-      for (int i = 0; i < 4; i++) {
-        float ly = statY + 8 * uiScale + i * lineH;
-        cdl->AddText(ImVec2(statX + 8 * uiScale, ly),
-                     IM_COL32(255, 255, 255, 255), statLabels[i]);
-        char valStr[8];
-        snprintf(valStr, sizeof(valStr), "%d", statValues[i]);
-        ImVec2 valSz = ImGui::CalcTextSize(valStr);
-        cdl->AddText(ImVec2(statX + statW - 8 * uiScale - valSz.x, ly),
-                     IM_COL32(255, 165, 0, 255), valStr);
-      }
+      const char *hdr = "Stats";
+      ImVec2 hdrSz = fDefault->CalcTextSizeA(fsDefault, FLT_MAX, 0.0f, hdr);
+      float hx = statPanelX + (statPanelW - hdrSz.x) * 0.5f;
+      float hy = statPanelY + 6 * uiScale;
+      DrawShadowTextFont(cdl, fDefault, fsDefault, ImVec2(hx, hy), CP_TITLE_TEXT, hdr);
     }
 
-    // ── Class selection buttons (overlaid, right side) ──
-    {
-      float cbAbsX = statOverlayX;
-      float cbAbsY = formY - bottomMargin - cbTotalH;
-      float cbW = statOverlayW - 4 * uiScale;
-      float cbH = cbH_pre;
-
-      float cbX = cbAbsX - (panelX - 5);
-      float cbY = cbAbsY - (panelY - 5);
-
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.13f, 0.10f, 0.92f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
-
-      float yAccum = 0.0f;
-      for (int i = 0; i < numClasses; i++) {
-        if (i == 3) yAccum += cbH * 0.5f;
-        ImGui::SetCursorPos(ImVec2(cbX, cbY + yAccum));
-
-        bool isSelected = (classCodes[i] == s_createClass);
-        if (isSelected) {
-          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.14f, 0.08f, 0.92f));
-          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.88f, 0.55f, 1.0f));
-          ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.70f, 0.63f, 0.35f, 0.8f));
-        } else {
-          ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
-          ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.04f, 0.04f, 0.07f, 0.85f));
-          ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.25f, 0.22f, 0.14f, 0.55f));
-        }
-
-        bool enabled = true; // all classes selectable
-        if (!enabled) ImGui::BeginDisabled();
-        char btnId[32];
-        snprintf(btnId, sizeof(btnId), "%s##cls%d", classNames[i], i);
-        if (ImGui::Button(btnId, ImVec2(cbW, cbH))) {
-          SoundManager::Play(SOUND_CLICK01);
-          s_createClass = classCodes[i];
-        }
-        if (!enabled) ImGui::EndDisabled();
-        ImGui::PopStyleColor(3);
-        yAccum += cbH;
-      }
-      ImGui::PopStyleColor(4);
-      ImGui::PopStyleVar(2);
+    // Stat rows
+    const char *statLabels[] = {"Strength", "Agility", "Vitality", "Energy"};
+    float lineH = 16.0f * uiScale;
+    float statRowY0 = statPanelY + 24 * uiScale;
+    for (int i = 0; i < 4; i++) {
+      float ly = statRowY0 + i * lineH;
+      DrawShadowTextFont(cdl, fDefault, fsDefault,
+                         ImVec2(statPanelX + 10 * uiScale, ly),
+                         CP_STAT_LABEL, statLabels[i]);
+      char valStr[8];
+      snprintf(valStr, sizeof(valStr), "%d", statValues[i]);
+      ImVec2 valSz = fDefault->CalcTextSizeA(fsDefault, FLT_MAX, 0.0f, valStr);
+      DrawShadowTextFont(cdl, fDefault, fsDefault,
+                         ImVec2(statPanelX + statPanelW - 10 * uiScale - valSz.x, ly),
+                         CP_STAT_VALUE, valStr);
     }
 
-    // ── Form container background (below model) ──
-    cdl->AddRectFilled(ImVec2(panelX, formY),
-                       ImVec2(panelX + panelW, panelY + panelH),
-                       IM_COL32(10, 10, 20, 200), 0.0f);
-    cdl->AddRect(ImVec2(panelX, formY),
-                 ImVec2(panelX + panelW, panelY + panelH),
-                 IM_COL32(80, 70, 45, 120));
-    cdl->AddLine(ImVec2(panelX + 3, formY),
-                 ImVec2(panelX + panelW - 3, formY),
-                 IM_COL32(80, 70, 45, 160), 1.0f);
+    // ── 4. Class selector sub-panel (right column, below stats) ──
+    float classPanelY = statPanelY + statPanelH + 6 * uiScale;
+    float cbH = 26.0f * uiScale;
+    float cbGap = 2.0f * uiScale;
+    float mgGap = 6.0f * uiScale;
+    float classPanelH = 4 * cbH + 3 * cbGap + mgGap + 2 * (6 * uiScale);
 
-    // ── Class description ──
+    DrawSubPanel(cdl, statPanelX, classPanelY,
+                 statPanelX + statPanelW, classPanelY + classPanelH);
+
+    float cbY = classPanelY + 6 * uiScale;
+    for (int i = 0; i < numClasses; i++) {
+      if (i == 3) cbY += mgGap;
+      bool sel = (classCodes[i] == s_createClass);
+      if (DrawClassButton(cdl, statPanelX + 6 * uiScale, cbY,
+                          statPanelW - 12 * uiScale, cbH,
+                          allNames[i], sel, fDefault, fsDefault)) {
+        SoundManager::Play(SOUND_CLICK01);
+        s_createClass = classCodes[i];
+      }
+      cbY += cbH + cbGap;
+    }
+
+    // ── 5. Form section (full width, bottom) ──
+    // Gold divider line at top
+    cdl->AddLine(ImVec2(panelX + 6, formY),
+                 ImVec2(panelX + panelW - 6, formY),
+                 CP_GOLD_BORDER, 1.0f);
+
+    // Class description text (word-wrapped)
     {
-      const char *classDescs[] = {
-          "Master of the arcane arts. Wields\npowerful magic fueled by Energy\nto devastate foes from afar.",
-          "A fearless warrior clad in heavy\narmor. Uses Strength and AG to\ndeliver devastating melee strikes.",
-          "A versatile archer and healer.\nSupports allies with healing magic\nand strikes from range.",
-          "Combines swordplay and sorcery.\nDraws on both Strength and Energy\nfor a versatile fighting style."};
-      float descY = formY + 6 * uiScale;
-      float descX = panelX + 10 * uiScale;
-      cdl->AddText(ImVec2(descX + 1, descY + 1), IM_COL32(0,0,0,180), classDescs[classIdx]);
-      cdl->AddText(ImVec2(descX, descY), IM_COL32(190,185,170,220), classDescs[classIdx]);
+      float descX = panelX + 14 * uiScale;
+      float descY = formY + 10 * uiScale;
+      float wrapW = panelW - 28 * uiScale;
+      cdl->AddText(fDefault, fsDesc, ImVec2(descX + 1, descY + 1),
+                   IM_COL32(0, 0, 0, 200), classDesc, nullptr, wrapW);
+      cdl->AddText(fDefault, fsDesc, ImVec2(descX, descY),
+                   CP_DESC_TEXT, classDesc, nullptr, wrapW);
     }
 
     // ── Name input + Create/Back buttons (bottom row) ──
     {
-      float rowAbsY = panelY + panelH - 34 * uiScale;
-      float nameAbsX = panelX + 10 * uiScale;
-      float nameW = panelW * 0.42f;
+      float obH = 32.0f * uiScale;
+      float rowAbsY = panelY + panelH - obH - 12 * uiScale;
+      float nameAbsX = panelX + 14 * uiScale;
+      float nameW = panelW * 0.40f;
       float nameX = nameAbsX - (panelX - 5);
       float nameY = rowAbsY - (panelY - 5);
 
+      // Match input height to button height via frame padding
+      float inputPadY = (obH - fsDefault) * 0.5f;
       ImGui::SetCursorPos(ImVec2(nameX, nameY));
       ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.05f, 0.04f, 0.02f, 0.9f));
       ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.12f, 0.09f, 0.05f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.45f, 0.38f, 0.22f, 0.7f));
       ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, inputPadY));
       ImGui::SetNextItemWidth(nameW);
       ImGui::InputTextWithHint("##createName", "Character name (4-10)", s_createName, 11);
-      ImGui::PopStyleVar();
+      ImGui::PopStyleVar(2);
       ImGui::PopStyleColor(3);
 
-      float createW = 110.0f * uiScale;
-      float backW = 60.0f * uiScale;
-      float obH = 26.0f * uiScale;
-      float obGap = 6.0f * uiScale;
-      float createAbsX = panelX + panelW - createW - backW - obGap - 10 * uiScale;
-      float createX = createAbsX - (panelX - 5);
+      float createW = 140.0f * uiScale;
+      float backW = 85.0f * uiScale;
+      float obGap = 8.0f * uiScale;
+      float createAbsX = panelX + panelW - createW - backW - obGap - 14 * uiScale;
 
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-
-      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.14f, 0.12f, 0.06f, 0.92f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22f, 0.18f, 0.08f, 0.95f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.30f, 0.24f, 0.10f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.55f, 0.48f, 0.25f, 0.8f));
-      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.88f, 0.55f, 1.0f));
-      ImGui::SetCursorPos(ImVec2(createX, nameY));
-      if (ImGui::Button("Create Character", ImVec2(createW, obH))) {
+      ImDrawList *fdl = ImGui::GetForegroundDrawList();
+      if (DrawOrnateButton(fdl, createAbsX, rowAbsY, createW, obH, "Create Character")) {
         SoundManager::Play(SOUND_MENU01);
         int nameLen = (int)strlen(s_createName);
         if (nameLen >= 4 && nameLen <= 10) {
@@ -2341,63 +2478,74 @@ void Render(int windowWidth, int windowHeight) {
           s_statusTimer = 2.0f;
         }
       }
-      ImGui::PopStyleColor(5);
-
-      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
-      ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
-      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.86f, 0.84f, 0.78f, 0.94f));
-      ImGui::SameLine(0.0f, obGap);
-      if (ImGui::Button("Back", ImVec2(backW, obH))) {
+      if (DrawOrnateButton(fdl, createAbsX + createW + obGap, rowAbsY, backW, obH, "Back")) {
         SoundManager::Play(SOUND_CLICK01);
         s_createOpen = false;
       }
-      ImGui::PopStyleColor(5);
-      ImGui::PopStyleVar(2);
     }
 
     ImGui::End();
   }
 
-  // ── Delete confirmation modal ──
+  // ── Delete confirmation modal (ornate Diablo-style dialog) ──
   if (s_deleteConfirm && s_selectedSlot >= 0) {
-    ImGui::SetNextWindowPos(ImVec2(cx - 150, windowHeight * 0.4f),
-                            ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(300, 130), ImGuiCond_Always);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.04f, 0.04f, 0.08f, 0.95f));
-    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.31f, 0.27f, 0.18f, 0.7f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.08f, 0.07f, 0.05f, 0.95f));
-    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.12f, 0.10f, 0.07f, 0.95f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
-    ImGui::Begin("Delete Character", &s_deleteConfirm,
-                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+    float uiS = (float)windowHeight / 768.0f;
+    float dlgW = 340 * uiS, dlgH = 170 * uiS;
+    float dlgX = cx - dlgW * 0.5f;
+    float dlgY = windowHeight * 0.35f;
+    ImGui::SetNextWindowPos(ImVec2(dlgX, dlgY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(dlgW, dlgH), ImGuiCond_Always);
 
+    // Dark panel with gold border styling
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.06f, 0.05f, 0.03f, 0.97f));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.60f, 0.50f, 0.22f, 0.95f));
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.12f, 0.09f, 0.04f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.16f, 0.12f, 0.05f, 0.98f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.85f, 0.58f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 2.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(20 * uiS, 14 * uiS));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowTitleAlign, ImVec2(0.5f, 0.5f));
+    ImGui::Begin("Delete Character", &s_deleteConfirm,
+                 ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
+                     ImGuiWindowFlags_NoSavedSettings);
+
+    // Draw decorative inner border via DrawList
+    ImDrawList *ddl = ImGui::GetWindowDrawList();
+    ImVec2 wMin = ImGui::GetWindowPos();
+    ImVec2 wMax = ImVec2(wMin.x + dlgW, wMin.y + dlgH);
+    ddl->AddRect(ImVec2(wMin.x + 4, wMin.y + 4),
+                 ImVec2(wMax.x - 4, wMax.y - 4),
+                 IM_COL32(100, 85, 45, 120), 4.0f);
+
+    ImGui::Spacing();
     ImGui::Text("Delete '%s'?", s_slots[s_selectedSlot].name);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.55f, 0.40f, 1.0f));
     ImGui::Text("This cannot be undone.");
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
     ImGui::Spacing();
 
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 3.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.06f, 0.06f, 0.10f, 0.88f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.14f, 0.13f, 0.10f, 0.95f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.22f, 0.18f, 0.12f, 1.0f));
-    if (ImGui::Button("Yes, Delete", ImVec2(120, 30))) {
+    float dbtnW = 130 * uiS, dbtnH = 36 * uiS;
+    float dbtnGap = 12 * uiS;
+    // Position buttons at bottom of dialog using absolute screen coords
+    ImVec2 cursorScreen = ImGui::GetCursorScreenPos();
+    float dbx = cursorScreen.x;
+    float dby = cursorScreen.y;
+    ImDrawList *dfdl = ImGui::GetForegroundDrawList();
+    if (DrawOrnateButton(dfdl, dbx, dby, dbtnW, dbtnH, "Yes, Delete", true)) {
       SoundManager::Play(SOUND_CLICK01);
       s_ctx.server->SendCharDelete(
           s_selectedSlot, s_slots[s_selectedSlot].name);
     }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 30))) {
+    if (DrawOrnateButton(dfdl, dbx + dbtnW + dbtnGap, dby, dbtnW, dbtnH, "Cancel")) {
       SoundManager::Play(SOUND_CLICK01);
       s_deleteConfirm = false;
     }
-    ImGui::PopStyleColor(3);
-    ImGui::PopStyleVar(2);
 
     ImGui::End();
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
+    ImGui::PopStyleVar(4);
+    ImGui::PopStyleColor(5);
   }
 }
 

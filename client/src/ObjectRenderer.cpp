@@ -522,7 +522,7 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
     float phaseOff = 0.0f;
     if (obj.type >= 0 && obj.type <= 19) {
       glm::vec3 wp = glm::vec3(model[3]);
-      phaseOff = std::fmod(wp.x * 0.0137f + wp.z * 0.0251f + wp.y * 0.0193f, 1.0f);
+      phaseOff = std::fmod(std::abs(wp.x * 0.137f + wp.z * 0.251f + wp.y * 0.193f), 1.0f);
     }
     instances.push_back({obj.type, model, tLight, phaseOff});
 
@@ -729,7 +729,7 @@ void ObjectRenderer::LoadObjectsGeneric(
 
     float phaseOff2 = 0.0f;
     if (obj.type >= 0 && obj.type <= 19) {
-      phaseOff2 = std::fmod(worldPos.x * 0.0137f + worldPos.z * 0.0251f + worldPos.y * 0.0193f, 1.0f);
+      phaseOff2 = std::fmod(std::abs(worldPos.x * 0.137f + worldPos.z * 0.251f + worldPos.y * 0.193f), 1.0f);
     }
     int instIdx = (int)instances.size();
     instances.push_back({obj.type, model, tLight, phaseOff2});
@@ -991,7 +991,7 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
   // Advance skeletal animation for animated model types
   {
     const float ANIM_SPEED = 4.0f;
-    const float TREE_ANIM_SPEED = 8.0f;
+    const float TREE_ANIM_SPEED = 4.0f;
     float dt = (lastAnimTime > 0.0f) ? (currentTime - lastAnimTime) : 0.0f;
     if (dt > 0.0f && dt < 1.0f) {
       for (auto &[type, cache] : modelCache) {

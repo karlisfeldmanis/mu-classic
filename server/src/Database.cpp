@@ -1,5 +1,6 @@
 #include "Database.hpp"
 #include "Session.hpp"
+#include <algorithm>
 #include <cstdio>
 
 bool Database::Open(const std::string &dbPath) {
@@ -104,6 +105,15 @@ void Database::CreateTables() {
             UNIQUE(character_id, slot),
             FOREIGN KEY (character_id) REFERENCES characters(id),
             FOREIGN KEY (item_category, item_index) REFERENCES item_definitions(category, item_index)
+        );
+        CREATE TABLE IF NOT EXISTS class_definitions (
+            class_code INTEGER PRIMARY KEY,
+            display_name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            start_str INTEGER NOT NULL,
+            start_agi INTEGER NOT NULL,
+            start_vit INTEGER NOT NULL,
+            start_ene INTEGER NOT NULL
         );
     )";
   char *err = nullptr;
@@ -1204,7 +1214,7 @@ void Database::SeedItemDefinitions() {
              (12, 28, 'Orb of Knight Summoning', 'Gem05.bmd', 48, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 170, 4),
              (12, 29, 'Orb of Bali Summoning', 'Gem05.bmd', 52, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 210, 4),
             -- Jewel of Chaos
-            (12, 15, 'Jewel of Chaos', 'Jewel01.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
+            (12, 15, 'Jewel of Chaos', 'Jewel15.bmd', 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
 
             -- Category 13: Pets/Jewelry (OpenMU 0.95d)
             (13, 0, 'Guardian Angel', 'Helper01.bmd', 23, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 15),
@@ -1585,7 +1595,7 @@ std::vector<EquipmentSlot> Database::GetCharacterEquipment(int characterId) {
     e.slot = static_cast<uint8_t>(sqlite3_column_int(stmt, 0));
     e.category = static_cast<uint8_t>(sqlite3_column_int(stmt, 1));
     e.itemIndex = static_cast<uint8_t>(sqlite3_column_int(stmt, 2));
-    e.itemLevel = static_cast<uint8_t>(sqlite3_column_int(stmt, 3));
+    e.itemLevel = std::min((uint8_t)11, static_cast<uint8_t>(sqlite3_column_int(stmt, 3)));
     e.quantity = static_cast<uint8_t>(sqlite3_column_int(stmt, 4));
     e.optionFlags = static_cast<uint8_t>(sqlite3_column_int(stmt, 5));
     equip.push_back(e);
@@ -1796,7 +1806,7 @@ void Database::SeedMonsterSpawns() {
   // Direction: 2=SouthWest, 4=SouthEast, 6=NorthEast
   const char *trapSql = R"(
         INSERT INTO monster_spawns (type, map_id, pos_x, pos_y, direction) VALUES
-            -- Iron Stick Trap (type 101) — pressure plate, 27 spawns
+            -- Iron Stick Trap (type 101) — pressure plate, 26 spawns
             (101,1,10,26,2),(101,1,11,26,2),(101,1,27,12,2),(101,1,24,5,2),
             (101,1,24,4,2),(101,1,27,11,2),(101,1,23,24,2),(101,1,27,21,2),
             (101,1,19,19,2),(101,1,22,24,2),(101,1,23,29,2),(101,1,23,28,2),
@@ -2134,7 +2144,7 @@ Database::GetCharacterInventory(int characterId) {
     d.slot = static_cast<uint8_t>(sqlite3_column_int(stmt, 0));
     d.defIndex = static_cast<int16_t>(sqlite3_column_int(stmt, 1));
     d.quantity = static_cast<uint8_t>(sqlite3_column_int(stmt, 2));
-    d.itemLevel = static_cast<uint8_t>(sqlite3_column_int(stmt, 3));
+    d.itemLevel = std::min((uint8_t)11, static_cast<uint8_t>(sqlite3_column_int(stmt, 3)));
     d.optionFlags = static_cast<uint8_t>(sqlite3_column_int(stmt, 4));
     items.push_back(d);
   }
@@ -2590,8 +2600,8 @@ void Database::SeedQuests() {
       // Q19: Gorgon x3
       {249, 1, {{18, 3}, {0, 0}, {0, 0}},
        "Heart of Darkness", "Dungeon",
-       {{{166, 7}, {461, 0}}, {{12, 7}, {461, 0}},
-        {{270, 7}, {461, 0}}, {{19, 7}, {461, 0}}},
+       {{{166, 7}, {462, 0}}, {{12, 7}, {462, 0}},
+        {{270, 7}, {462, 0}}, {{19, 7}, {462, 0}}},
        "At the dungeon's heart lurks the\n"
        "Gorgon -- a creature of terrible power.\n"
        "Only 3 exist, each guarding ancient\n"
@@ -2646,8 +2656,8 @@ void Database::SeedQuests() {
       // Q25: Hale — Ice Queen x20
       {312, 1, {{25, 20}, {0, 0}, {0, 0}},
        "The Frozen Throne", "Devias",
-       {{{164, 7}, {461, 0}}, {{15, 7}, {461, 0}},
-        {{238, 7}, {461, 0}}, {{104, 7}, {461, 0}}},
+       {{{164, 7}, {462, 0}}, {{15, 7}, {462, 0}},
+        {{238, 7}, {462, 0}}, {{104, 7}, {462, 0}}},
        "The Ice Queen commands all creatures\n"
        "of Devias from her frozen throne. She\n"
        "is the source of the endless winter.\n"
@@ -2865,5 +2875,51 @@ std::vector<Database::QuestDefData> Database::LoadAllQuests() {
   sqlite3_finalize(stmt);
 
   printf("[DB] Loaded %d quest definitions from DB\n", (int)result.size());
+  return result;
+}
+
+// ─── Class Definitions ───────────────────────────────────────
+
+void Database::SeedClassDefinitions() {
+  // Force re-seed to pick up description changes
+  sqlite3_exec(m_db, "DELETE FROM class_definitions", nullptr, nullptr, nullptr);
+
+  const char *sql = R"(
+    INSERT INTO class_definitions (class_code, display_name, description, start_str, start_agi, start_vit, start_ene) VALUES
+      (0,  'Dark Wizard',      'Some men strive for physical perfection. Others would rather bend the laws of nature to benefit their cause. The Dark Wizard can command the elements to smite his foes. He can also call upon the spirits to aid him. Most people are wary of the powers of the Dark Wizard and usually leave them alone. However, others make the mistake of thinking them an easy target due to their weak stature. But do not be deceived! Many warriors have suddenly been engulfed in flames before even reaching a Dark Wizard.', 18, 18, 15, 30),
+      (16, 'Dark Knight',      'The Dark Knight is a fearless warrior with high strength and agility. They use their special abilities to deal powerful physical attacks on enemies with sword type weapons. Their unique ability to wield two swords at once can unleash hell on its enemies from the weapon damage bonus these characters receive by equipping identical swords! The Dark Knight is home to Lorencia with a long history there. These dedicated warriors fight tirelessly to bring Kundun''s reign to an end!', 28, 20, 25, 10),
+      (32, 'Elf',              'The Fairy Elf is a beautiful elf with high agility. They use their special abilities to deal powerful physical attacks on enemies with bow type weapons. Their unique ability to wield bow and quiver items gives them high damage with a nice attacking range! Elves are home to Noria and have a long history there. They fight alongside the Church of Devias to help bring Kundun''s reign to an end!', 22, 25, 20, 15),
+      (48, 'Magic Gladiator',  'The Magic Gladiator is a combination of the Dark Knight and Dark Wizard and can be unlocked as a new class when your character reaches level 220. He cannot wear a helm and has four sets of class-specific armour though he can also wear many of the Dark Knight and Dark Wizard armor. The Magic Gladiator can run without the need of +5 boots, and swim faster without the need of +5 gloves. Magic Gladiators receive 7 stat points per level, as opposed to the 5 gained by the three basic classes.', 26, 26, 26, 26)
+  )";
+  char *err = nullptr;
+  if (sqlite3_exec(m_db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
+    printf("[DB] SeedClassDefinitions error: %s\n", err);
+    sqlite3_free(err);
+  } else {
+    printf("[DB] Seeded 4 class definitions\n");
+  }
+}
+
+std::vector<PMSG_CLASS_DEF_ENTRY> Database::GetClassDefinitions() {
+  std::vector<PMSG_CLASS_DEF_ENTRY> result;
+  sqlite3_stmt *stmt = nullptr;
+  const char *sql = "SELECT class_code, display_name, description, start_str, start_agi, start_vit, start_ene FROM class_definitions ORDER BY class_code";
+  if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
+    return result;
+
+  while (sqlite3_step(stmt) == SQLITE_ROW) {
+    PMSG_CLASS_DEF_ENTRY e{};
+    e.classCode = (uint8_t)sqlite3_column_int(stmt, 0);
+    const char *name = (const char *)sqlite3_column_text(stmt, 1);
+    const char *desc = (const char *)sqlite3_column_text(stmt, 2);
+    if (name) strncpy(e.displayName, name, sizeof(e.displayName) - 1);
+    if (desc) strncpy(e.description, desc, sizeof(e.description) - 1);
+    e.startSTR = (uint16_t)sqlite3_column_int(stmt, 3);
+    e.startAGI = (uint16_t)sqlite3_column_int(stmt, 4);
+    e.startVIT = (uint16_t)sqlite3_column_int(stmt, 5);
+    e.startENE = (uint16_t)sqlite3_column_int(stmt, 6);
+    result.push_back(e);
+  }
+  sqlite3_finalize(stmt);
   return result;
 }

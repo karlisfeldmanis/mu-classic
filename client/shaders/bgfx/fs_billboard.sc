@@ -12,5 +12,5 @@ void main()
     // Radial falloff to eliminate visible rectangle edges on billboard quads
     float dist = length(v_texcoord0 - vec2(0.5, 0.5));
     float radialFade = 1.0 - smoothstep(0.35, 0.5, dist);
-    gl_FragColor = vec4(tex.rgb * v_color0.rgb * v_alpha, brightness * v_alpha * radialFade);
+    gl_FragColor = vec4(tex.rgb * v_color0.rgb * v_alpha * radialFade, brightness * v_alpha * radialFade);
 }

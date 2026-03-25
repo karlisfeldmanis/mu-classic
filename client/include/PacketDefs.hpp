@@ -96,6 +96,10 @@ constexpr uint8_t BUFF_EFFECT = 0x47; // S->C: buff applied/expired
 // Debuff system (monster poison)
 constexpr uint8_t DEBUFF_EFFECT = 0x48; // S->C: debuff applied/expired
 
+// Item upgrade (Jewel of Bless/Soul)
+constexpr uint8_t ITEM_UPGRADE = 0x49;        // C->S: upgrade request
+constexpr uint8_t ITEM_UPGRADE_RESULT = 0x4A; // S->C: upgrade result
+
 // Quest System
 constexpr uint8_t QUEST = 0x50;              // Quest headcode
 constexpr uint8_t SUB_QUEST_STATE = 0x00;    // S->C: current quest state
@@ -120,6 +124,9 @@ constexpr uint8_t CLIENT_SETTINGS = 0x63; // C->S: client settings (camera zoom)
 
 // Item catalog
 constexpr uint8_t ITEM_CATALOG = 0x64; // S->C: full item definitions (C2)
+
+// Class definitions
+constexpr uint8_t CLASS_DEFINITIONS = 0x65; // S->C: class info for char creation (C2)
 } // namespace Opcode
 
 // =====================================================
@@ -476,6 +483,21 @@ struct PMSG_INVENTORY_MOVE_RECV {
 struct PMSG_ITEM_USE_RECV {
   PBMSG_HEAD h; // C1:0x3A
   uint8_t slot; // 0-63
+};
+
+// C->S: Item Upgrade Request (0x49)
+struct PMSG_ITEM_UPGRADE_RECV {
+  PBMSG_HEAD h;       // C1:0x49
+  uint8_t jewelSlot;  // Jewel slot in inventory (0-63)
+  uint8_t targetSlot; // Target item slot in inventory (0-63)
+};
+
+// S->C: Item Upgrade Result (0x4A)
+struct PMSG_ITEM_UPGRADE_RESULT {
+  PBMSG_HEAD h;       // C1:0x4A
+  uint8_t result;     // 0=fail, 1=success
+  uint8_t targetSlot; // The slot that was upgraded
+  uint8_t newLevel;   // New item level after upgrade
 };
 
 // C->S: Drop Item from Inventory (0x23)
@@ -847,6 +869,17 @@ struct PMSG_ITEM_DEF_ENTRY {
   uint16_t magicPower;
 };
 static_assert(sizeof(PMSG_ITEM_DEF_ENTRY) == 96, "PMSG_ITEM_DEF_ENTRY size");
+
+// S->C: Class definition entry (one per playable class)
+struct PMSG_CLASS_DEF_ENTRY {
+  uint8_t classCode;       // 0=DW, 16=DK, 32=ELF, 48=MG
+  char displayName[32];    // "Dark Knight"
+  char description[512];   // Multi-line flavor text
+  uint16_t startSTR;
+  uint16_t startAGI;
+  uint16_t startVIT;
+  uint16_t startENE;
+};
 
 #pragma pack(pop)
 #endif // MU_PACKET_DEFS_HPP

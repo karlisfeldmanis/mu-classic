@@ -94,6 +94,9 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
   case Opcode::ITEM_DROP:
     InventoryHandler::HandleItemDrop(session, packet, world, server, db);
     break;
+  case Opcode::ITEM_UPGRADE:
+    InventoryHandler::HandleItemUpgrade(session, packet, db);
+    break;
 
   // Shop
   case Opcode::SHOP_OPEN:

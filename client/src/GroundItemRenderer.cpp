@@ -349,7 +349,7 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
       char optSuffix[48] = {};
       if (gi.optionFlags != 0) {
         char *p = optSuffix;
-        if (gi.optionFlags & 0x80)
+        if ((gi.optionFlags & 0x80) && gi.defIndex / 32 == 4)
           p += snprintf(p, sizeof(optSuffix) - (p - optSuffix), " +Skill");
         if (gi.optionFlags & 0x40)
           p += snprintf(p, sizeof(optSuffix) - (p - optSuffix), " +Luck");

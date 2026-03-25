@@ -12,22 +12,27 @@ void main()
     float iFrame    = i_data1.y;
     float iAlpha    = i_data1.z;
     vec3 iColor     = i_data2.xyz;
-
-    // Extract camera right/up from built-in view matrix for billboarding
-    vec3 right = vec3(u_view[0].x, u_view[1].x, u_view[2].x);
-    vec3 up    = vec3(u_view[0].y, u_view[1].y, u_view[2].y);
+    float iFlat     = i_data2.w;  // >0.5 = horizontal ground quad
 
     // a_position.xy = quad corner (-0.5 to 0.5), z = 0
     vec2 corner = a_position.xy;
 
-    // Rotate corner by iRotation around view direction
+    // Rotate corner by iRotation
     float c = cos(iRotation);
     float s = sin(iRotation);
     vec2 rotCorner = vec2(c * corner.x - s * corner.y,
                           s * corner.x + c * corner.y);
 
-    // Billboard: expand quad in world space facing camera
-    vec3 worldPos = iWorldPos + (right * rotCorner.x + up * rotCorner.y) * iScale;
+    vec3 worldPos;
+    if (iFlat > 0.5) {
+        // Flat horizontal quad on XZ plane (ground fog)
+        worldPos = iWorldPos + vec3(rotCorner.x, 0.0, rotCorner.y) * iScale;
+    } else {
+        // Camera-facing billboard (default)
+        vec3 right = vec3(u_view[0].x, u_view[1].x, u_view[2].x);
+        vec3 up    = vec3(u_view[0].y, u_view[1].y, u_view[2].y);
+        worldPos = iWorldPos + (right * rotCorner.x + up * rotCorner.y) * iScale;
+    }
     gl_Position = mul(u_viewProj, vec4(worldPos, 1.0));
 
     // UV: sprite sheet frame selection

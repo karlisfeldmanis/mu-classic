@@ -247,10 +247,11 @@ void Play3DLoop(int soundId, float x, float y, float z, float gain = 1.0f);
 void UpdateSource3D(int soundId, float x, float y, float z);
 void Stop(int soundId);
 void StopAll();
+bool IsPlaying(int soundId);
 void SetMasterVolume(float vol); // 0.0 - 1.0
 void UpdateListener(float x, float y, float z);
 // Music (MP3) — one track at a time, looping
-void PlayMusic(const std::string &filename);
+void PlayMusic(const std::string &filename, bool loop = false);
 void StopMusic();
 void SetMusicVolume(float vol); // 0.0 - 1.0
 bool IsMusicPlaying();

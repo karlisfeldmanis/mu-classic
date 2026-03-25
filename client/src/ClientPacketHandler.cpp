@@ -45,20 +45,19 @@ static void ApplyEquipToHero(uint8_t slot, const WeaponEquipInfo &weapon) {
     }
   } else if (slot == 8) {
     // Pet/Mount slot (category 13)
-    // Only re-equip if item actually changed (prevents reactivating dismounted mount)
+    // Pet and mount can coexist: pet is from equipment slot 8, mount is from quickslot.
+    // Don't unmount when equipping pet, don't unequip pet when mounting.
     if (weapon.category == 13) {
       if (weapon.itemIndex == 0 || weapon.itemIndex == 1) {
         // Floating companions (Guardian Angel, Imp)
         // Skip if already equipped with same pet (prevents position reset on equipment sync)
         if (!g_state->hero->IsPetActive() ||
             g_state->hero->GetPetItemIndex() != weapon.itemIndex) {
-          g_state->hero->UnequipMount();
           g_state->hero->EquipPet(weapon.itemIndex);
         }
       } else if (weapon.itemIndex == 2 || weapon.itemIndex == 3) {
         // Mounts (Uniria, Dinorant) — skip if already equipped with same mount
         if (g_state->hero->GetMountItemIndex() != weapon.itemIndex) {
-          g_state->hero->UnequipPet();
           g_state->hero->EquipMount(weapon.itemIndex);
         }
       }
@@ -368,6 +367,21 @@ void HandleInitialPacket(const uint8_t *pkt, int pktSize, ServerData &result) {
     // Item catalog (C2) — full item definitions from server DB
     if (headcode == Opcode::ITEM_CATALOG && pktSize >= 6) {
       ItemDatabase::LoadFromCatalog(pkt, pktSize);
+    }
+
+    // Class definitions (C2) — class info for character creation
+    if (headcode == Opcode::CLASS_DEFINITIONS && pktSize >= 5) {
+      uint8_t count = pkt[4];
+      g_state->classDefinitions.clear();
+      size_t entrySize = sizeof(PMSG_CLASS_DEF_ENTRY);
+      for (int i = 0; i < count; i++) {
+        size_t off = 5 + i * entrySize;
+        if (off + entrySize > (size_t)pktSize) break;
+        PMSG_CLASS_DEF_ENTRY e{};
+        std::memcpy(&e, pkt + off, entrySize);
+        g_state->classDefinitions.push_back(e);
+      }
+      std::cout << "[Net] Class definitions: " << (int)count << " classes" << std::endl;
     }
 
     // Chat log history (C2) — sent during initial sync
@@ -1070,6 +1084,21 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
       }
     }
 
+    // Item Upgrade Result (0x4A) — Jewel of Bless/Soul outcome
+    if (headcode == Opcode::ITEM_UPGRADE_RESULT &&
+        pktSize >= (int)sizeof(PMSG_ITEM_UPGRADE_RESULT)) {
+      auto *p = reinterpret_cast<const PMSG_ITEM_UPGRADE_RESULT *>(pkt);
+      if (p->result) {
+        SoundManager::Play(SOUND_JEWEL01);
+        SystemMessageLog::Log(MSG_GENERAL, IM_COL32(100, 255, 100, 255),
+                              "Upgrade success! Item is now +%d", p->newLevel);
+      } else {
+        SoundManager::Play(SOUND_ERROR01);
+        SystemMessageLog::Log(MSG_GENERAL, IM_COL32(255, 80, 80, 255),
+                              "Upgrade failed! Item dropped to +%d", p->newLevel);
+      }
+    }
+
     // Quest State (0x50:0x00) — variable-length
     if (headcode == Opcode::QUEST && pktSize >= 4) {
       uint8_t subcode = pkt[3];
@@ -1151,6 +1180,20 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
     // Item catalog (C2) — may arrive after map change
     if (headcode == Opcode::ITEM_CATALOG && pktSize >= 6) {
       ItemDatabase::LoadFromCatalog(pkt, pktSize);
+    }
+
+    // Class definitions (C2) — may arrive after reconnect
+    if (headcode == Opcode::CLASS_DEFINITIONS && pktSize >= 5) {
+      uint8_t count = pkt[4];
+      g_state->classDefinitions.clear();
+      size_t entrySize = sizeof(PMSG_CLASS_DEF_ENTRY);
+      for (int i = 0; i < count; i++) {
+        size_t off = 5 + i * entrySize;
+        if (off + entrySize > (size_t)pktSize) break;
+        PMSG_CLASS_DEF_ENTRY e{};
+        std::memcpy(&e, pkt + off, entrySize);
+        g_state->classDefinitions.push_back(e);
+      }
     }
 
     // Quest catalog (0x51) — may arrive after map change or reconnect
@@ -1302,11 +1345,24 @@ void HandleCharSelectPacket(const uint8_t *pkt, int pktSize) {
     return;
   uint8_t type = pkt[0];
 
-  // Handle C2 packets (item catalog sent during login)
-  if (type == 0xC2 && pktSize >= 6) {
+  // Handle C2 packets (item catalog / class definitions sent during login)
+  if (type == 0xC2 && pktSize >= 5) {
     uint8_t headcode = pkt[3];
-    if (headcode == Opcode::ITEM_CATALOG) {
+    if (headcode == Opcode::ITEM_CATALOG && pktSize >= 6) {
       ItemDatabase::LoadFromCatalog(pkt, pktSize);
+    }
+    if (headcode == Opcode::CLASS_DEFINITIONS) {
+      uint8_t count = pkt[4];
+      g_state->classDefinitions.clear();
+      size_t entrySize = sizeof(PMSG_CLASS_DEF_ENTRY);
+      for (int i = 0; i < count; i++) {
+        size_t off = 5 + i * entrySize;
+        if (off + entrySize > (size_t)pktSize) break;
+        PMSG_CLASS_DEF_ENTRY e{};
+        std::memcpy(&e, pkt + off, entrySize);
+        g_state->classDefinitions.push_back(e);
+      }
+      std::cout << "[Net] Class definitions (charselect): " << (int)count << " classes" << std::endl;
     }
     return;
   }

@@ -66,6 +66,25 @@ void Log(MessageCategory cat, ImU32 color, const char *fmt, ...) {
   vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
 
+  // Merge consecutive "+N Experience" messages to avoid spam on multi-kills
+  if (cat == MSG_COMBAT && color == IM_COL32(180, 120, 255, 255)) {
+    unsigned int newXP = 0;
+    if (sscanf(buf, "+%u Experience", &newXP) == 1 && newXP > 0 &&
+        !s_messages.empty()) {
+      auto &last = s_messages.back();
+      unsigned int prevXP = 0;
+      if (last.category == MSG_COMBAT && last.color == color &&
+          sscanf(last.text.c_str(), "+%u Experience", &prevXP) == 1) {
+        // Update existing message with accumulated XP
+        char merged[256];
+        snprintf(merged, sizeof(merged), "+%u Experience", prevXP + newXP);
+        last.text = merged;
+        s_activityTimer = 0.0f;
+        return;
+      }
+    }
+  }
+
   LogMessage msg;
   msg.text = buf;
   msg.color = color;

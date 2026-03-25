@@ -300,124 +300,7 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         }
       }
 
-      // Lich (type 6) / Thunder Lich (type 9): fire VFX along entire staff
-      if (mon.monsterType == 6 || mon.monsterType == 9) {
-        bool wantAttackFire =
-            mon.action == ACTION_ATTACK1 && mon.animFrame <= 4.0f;
-        bool wantAmbientFire = mon.ambientVfxTimer >= 0.08f;
-
-        if (wantAttackFire || wantAmbientFire) {
-          // Find staff weapon def (bone 41)
-          const WeaponDef *staffDef = nullptr;
-          for (const auto &wd : mdl.weaponDefs) {
-            if (wd.attachBone == 41 && wd.bmd) {
-              staffDef = &wd;
-              break;
-            }
-          }
-
-          glm::vec3 staffTopLocal(0.0f), staffBottomLocal(0.0f);
-          bool haveStaff = false;
-
-          if (staffDef && staffDef->attachBone < (int)bones.size()) {
-            // Weapon transform chain (same as weapon rendering code)
-            const auto &parentBone = bones[staffDef->attachBone];
-            BoneWorldMatrix weaponLocal =
-                MuMath::BuildWeaponOffsetMatrix(staffDef->rot,
-                                                staffDef->offset);
-            BoneWorldMatrix parentMat;
-            MuMath::ConcatTransforms((const float(*)[4])parentBone.data(),
-                                     (const float(*)[4])weaponLocal.data(),
-                                     (float(*)[4])parentMat.data());
-
-            const auto &wLocalBones = staffDef->cachedLocalBones;
-            std::vector<BoneWorldMatrix> wFinalBones(wLocalBones.size());
-            for (int bi = 0; bi < (int)wLocalBones.size(); ++bi) {
-              MuMath::ConcatTransforms((const float(*)[4])parentMat.data(),
-                                       (const float(*)[4])wLocalBones[bi].data(),
-                                       (float(*)[4])wFinalBones[bi].data());
-            }
-
-            // Skin all staff vertices to model-local space
-            glm::vec3 handBonePos(bones[staffDef->attachBone][0][3],
-                                  bones[staffDef->attachBone][1][3],
-                                  bones[staffDef->attachBone][2][3]);
-            std::vector<glm::vec3> skinnedVerts;
-            for (const auto &mesh : staffDef->bmd->Meshes) {
-              for (const auto &vert : mesh.Vertices) {
-                int ni = std::clamp((int)vert.Node, 0,
-                                    (int)wFinalBones.size() - 1);
-                const auto &bm = wFinalBones[ni];
-                glm::vec3 vp;
-                vp.x = bm[0][0] * vert.Position[0] +
-                       bm[0][1] * vert.Position[1] +
-                       bm[0][2] * vert.Position[2] + bm[0][3];
-                vp.y = bm[1][0] * vert.Position[0] +
-                       bm[1][1] * vert.Position[1] +
-                       bm[1][2] * vert.Position[2] + bm[1][3];
-                vp.z = bm[2][0] * vert.Position[0] +
-                       bm[2][1] * vert.Position[1] +
-                       bm[2][2] * vert.Position[2] + bm[2][3];
-                skinnedVerts.push_back(vp);
-              }
-            }
-
-            // Find tip (farthest vertex from hand bone)
-            float maxDist = 0.0f;
-            staffTopLocal = handBonePos;
-            for (const auto &vp : skinnedVerts) {
-              float d = glm::length(vp - handBonePos);
-              if (d > maxDist) {
-                maxDist = d;
-                staffTopLocal = vp;
-              }
-            }
-            // Find bottom (farthest vertex from tip = opposite end)
-            float maxDist2 = 0.0f;
-            staffBottomLocal = staffTopLocal;
-            for (const auto &vp : skinnedVerts) {
-              float d = glm::length(vp - staffTopLocal);
-              if (d > maxDist2) {
-                maxDist2 = d;
-                staffBottomLocal = vp;
-              }
-            }
-            haveStaff = true;
-          }
-
-          if (haveStaff) {
-            glm::mat4 modelRot = glm::mat4(1.0f);
-            modelRot = glm::rotate(modelRot, glm::radians(-90.0f),
-                                   glm::vec3(0, 0, 1));
-            modelRot = glm::rotate(modelRot, glm::radians(-90.0f),
-                                   glm::vec3(0, 1, 0));
-            modelRot =
-                glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
-
-            // Spawn fire along entire staff (bottom -> top)
-            auto spawnFireAt = [&](float t) {
-              glm::vec3 p = glm::mix(staffBottomLocal, staffTopLocal, t);
-              glm::vec3 scatter((float)(rand() % 12 - 6),
-                                (float)(rand() % 12 - 6),
-                                (float)(rand() % 12 - 6));
-              glm::vec3 worldPos =
-                  glm::vec3(modelRot * glm::vec4(p + scatter, 1.0f));
-              glm::vec3 firePos = worldPos * mon.scale + mon.position;
-              m_vfxManager->SpawnBurst(ParticleType::FIRE, firePos, 1);
-            };
-
-            if (wantAttackFire) {
-              for (int i = 0; i < 5; ++i)
-                spawnFireAt((float)(rand() % 100) / 100.0f);
-            }
-            if (wantAmbientFire) {
-              for (int i = 0; i < 3; ++i)
-                spawnFireAt((float)(rand() % 100) / 100.0f);
-              mon.ambientVfxTimer = 0.0f;
-            }
-          }
-        }
-      }
+      // Lich (type 6) / Thunder Lich (type 9): no fire VFX
 
       // Gorgon (type 18): ambient fire from random bones + red terrain glow
       // Main 5.2: 10 fire particles per tick from random bones, red light (1,0.2,0)
@@ -504,14 +387,28 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         return wp * mon.scale + mon.position;
       };
 
-      // Lance Trap (100): continuous rotating lightning sprites at +150 above
-      // Main 5.2 ZzzObject.cpp:2784 — two BITMAP_LIGHTNING+1 sprites, counter-rotating
-      if (mon.monsterType == 100 && m_vfxManager && mon.ambientVfxTimer >= 0.12f) {
-        glm::vec3 lightningPos = mon.position + glm::vec3(0.0f, 150.0f * mon.scale, 0.0f);
-        m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, lightningPos, 2);
-        mon.ambientVfxTimer = 0.0f;
+      // Trap idle VFX — Main 5.2 reference: Lance Trap has BITMAP_LIGHTNING+1
+      // on bones 57,61-65, BITMAP_SPARK from bone 58.  Fire Trap has ambient fire.
+      // We approximate with periodic spark/flame particles at the trap center.
+      if (m_vfxManager && (mon.monsterType == 100 || mon.monsterType == 102)) {
+        float vfxInterval = (mon.monsterType == 100) ? 0.4f : 0.25f;
+        if (mon.ambientVfxTimer >= vfxInterval) {
+          mon.ambientVfxTimer = 0.0f;
+          if (mon.monsterType == 100) {
+            // Lance Trap: electrical sparks crackling above mechanism
+            glm::vec3 sparkPos = mon.position +
+                glm::vec3((float)(rand() % 40 - 20), 60.0f + (float)(rand() % 40),
+                          (float)(rand() % 40 - 20));
+            m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, sparkPos, 1);
+          } else {
+            // Fire Trap: small ambient flame
+            glm::vec3 flamePos = mon.position +
+                glm::vec3((float)(rand() % 20 - 10), 20.0f + (float)(rand() % 20),
+                          (float)(rand() % 20 - 10));
+            m_vfxManager->SpawnBurst(ParticleType::FIRE, flamePos, 1);
+          }
+        }
       }
-      // Attack VFX handled in TriggerAttackAnimation: 100→lightning, 101→sound, 102→fire.
     }
 
     // Re-skin meshes
@@ -1010,7 +907,7 @@ void MonsterManager::RenderSilhouetteOutline(int monsterIndex,
 
   for (int layer = 0; layer < 3; ++layer) {
     outlineParams = glm::vec4(thicknesses[layer], 0.0f, 0.0f, 0.0f);
-    outlineColor = glm::vec4(0.8f, 0.4f, 0.15f, alphas[layer]);
+    outlineColor = glm::vec4(1.0f, 0.84f, 0.0f, alphas[layer]); // Gold
     submitMonsterMeshes();
   }
 }
@@ -1060,50 +957,110 @@ static void renderSingleNameplate(MonsterManager *mgr, ImDrawList *dl,
   }
 
   float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
-  float nameFs = 12.0f * uiScale;
-  float lvlFs = 10.0f * uiScale;
+  float nameFs = 13.0f * uiScale;
+  float lvlFs = 11.0f * uiScale;
+  float hpTextFs = 9.0f * uiScale;
 
   char nameText[64];
   snprintf(nameText, sizeof(nameText), "%s", mi.name.c_str());
   char levelText[16];
   snprintf(levelText, sizeof(levelText), "%d", mi.level);
   ImVec2 nameSize = font->CalcTextSizeA(nameFs, FLT_MAX, 0, nameText);
+  ImVec2 lvlSize = font->CalcTextSizeA(lvlFs, FLT_MAX, 0, levelText);
 
-  float barW = 60.0f * uiScale;
-  float barH = 5.0f * uiScale;
-  float nameX = sx - nameSize.x * 0.5f;
-  float nameY = sy - barH - nameSize.y - 6.0f;
+  // WoW-style nameplate layout: name centered, HP bar below, level badge left
+  float barW = 75.0f * uiScale;
+  float barH = 8.0f * uiScale;
   float barX = sx - barW * 0.5f;
-  float barY = sy - barH - 3.0f;
+  float barY = sy - 3.0f;
+  float nameX = sx - nameSize.x * 0.5f;
+  float nameY = barY - nameSize.y - 4.0f * uiScale;
 
-  // Name shadow + text
+  // Name drop shadow (2px offset for stronger readability)
+  dl->AddText(font, nameFs, ImVec2(nameX + 2, nameY + 2),
+              IM_COL32(0, 0, 0, 200), nameText);
   dl->AddText(font, nameFs, ImVec2(nameX + 1, nameY + 1),
-              IM_COL32(0, 0, 0, 160), nameText);
+              IM_COL32(0, 0, 0, 140), nameText);
   dl->AddText(font, nameFs, ImVec2(nameX, nameY), threatCol, nameText);
 
-  // Level badge
-  float lvlX = nameX + nameSize.x + 4.0f;
-  float lvlY = nameY + 2.0f;
-  dl->AddText(font, lvlFs, ImVec2(lvlX + 1, lvlY + 1),
-              IM_COL32(0, 0, 0, 140), levelText);
-  dl->AddText(font, lvlFs, ImVec2(lvlX, lvlY),
-              IM_COL32(200, 200, 200, 160), levelText);
+  // Level badge — square icon left of HP bar (beveled)
+  float badgeSize = barH + 6.0f * uiScale;
+  float badgeX = barX - badgeSize - 2.0f * uiScale;
+  float badgeY = barY + barH * 0.5f - badgeSize * 0.5f;
+  // Badge shadow
+  dl->AddRectFilled(ImVec2(badgeX + 1, badgeY + 1),
+                    ImVec2(badgeX + badgeSize + 1, badgeY + badgeSize + 1),
+                    IM_COL32(0, 0, 0, 120), 2.0f);
+  dl->AddRectFilled(ImVec2(badgeX, badgeY),
+                    ImVec2(badgeX + badgeSize, badgeY + badgeSize),
+                    IM_COL32(18, 18, 18, 210), 2.0f);
+  // Badge inner highlight (top-left light, bottom-right shadow)
+  dl->AddLine(ImVec2(badgeX + 1, badgeY + 1),
+              ImVec2(badgeX + badgeSize - 1, badgeY + 1),
+              IM_COL32(60, 50, 35, 60));
+  dl->AddLine(ImVec2(badgeX + 1, badgeY + 1),
+              ImVec2(badgeX + 1, badgeY + badgeSize - 1),
+              IM_COL32(60, 50, 35, 60));
+  // Badge gold border (2-layer)
+  dl->AddRect(ImVec2(badgeX, badgeY),
+              ImVec2(badgeX + badgeSize, badgeY + badgeSize),
+              IM_COL32(140, 120, 60, 200), 2.0f, 0, 1.5f);
+  float lvlX = badgeX + (badgeSize - lvlSize.x) * 0.5f;
+  float lvlY = badgeY + (badgeSize - lvlSize.y) * 0.5f;
+  dl->AddText(font, lvlFs, ImVec2(lvlX + 1, lvlY + 1), IM_COL32(0, 0, 0, 160), levelText);
+  dl->AddText(font, lvlFs, ImVec2(lvlX, lvlY), threatCol, levelText);
 
-  // HP bar
+  // HP bar background with layered frame
   float hpFrac = mi.maxHp > 0 ? (float)mi.hp / mi.maxHp : 0.0f;
   hpFrac = std::max(0.0f, std::min(1.0f, hpFrac));
 
+  // Drop shadow behind bar
+  dl->AddRectFilled(ImVec2(barX, barY + 1),
+                    ImVec2(barX + barW + 1, barY + barH + 2),
+                    IM_COL32(0, 0, 0, 120), 2.0f);
+  // Dark background
+  dl->AddRectFilled(ImVec2(barX - 1, barY - 1),
+                    ImVec2(barX + barW + 1, barY + barH + 1),
+                    IM_COL32(0, 0, 0, 210), 3.0f);
   dl->AddRectFilled(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH),
-                    IM_COL32(0, 0, 0, 100), 2.0f);
+                    IM_COL32(25, 25, 25, 190), 2.0f);
   if (hpFrac > 0.0f) {
-    ImU32 hpCol = hpFrac > 0.5f    ? IM_COL32(50, 200, 50, 180)
-                  : hpFrac > 0.25f ? IM_COL32(220, 190, 40, 180)
-                                   : IM_COL32(210, 50, 50, 180);
-    dl->AddRectFilled(ImVec2(barX, barY),
-                      ImVec2(barX + barW * hpFrac, barY + barH), hpCol, 2.0f);
+    // WoW-style: green when high, yellow mid, red low — with gradient
+    ImU32 hpColTop, hpColBot;
+    if (hpFrac > 0.5f) {
+      hpColTop = IM_COL32(60, 200, 60, 230);
+      hpColBot = IM_COL32(30, 140, 30, 230);
+    } else if (hpFrac > 0.25f) {
+      hpColTop = IM_COL32(240, 200, 40, 230);
+      hpColBot = IM_COL32(180, 140, 20, 230);
+    } else {
+      hpColTop = IM_COL32(220, 50, 50, 230);
+      hpColBot = IM_COL32(160, 25, 25, 230);
+    }
+    dl->AddRectFilledMultiColor(ImVec2(barX, barY),
+                      ImVec2(barX + barW * hpFrac, barY + barH),
+                      hpColTop, hpColTop, hpColBot, hpColBot);
+    // Bright highlight on top edge
+    dl->AddLine(ImVec2(barX + 1, barY + 1),
+                ImVec2(barX + barW * hpFrac - 1, barY + 1),
+                IM_COL32(255, 255, 255, 45));
   }
+  // HP percentage text centered on bar
+  char hpText[16];
+  int pct = (int)(hpFrac * 100.0f + 0.5f);
+  snprintf(hpText, sizeof(hpText), "%d%%", pct);
+  ImVec2 hpTxtSize = font->CalcTextSizeA(hpTextFs, FLT_MAX, 0, hpText);
+  float hpTxtX = barX + (barW - hpTxtSize.x) * 0.5f;
+  float hpTxtY = barY + (barH - hpTxtSize.y) * 0.5f;
+  dl->AddText(font, hpTextFs, ImVec2(hpTxtX + 1, hpTxtY + 1),
+              IM_COL32(0, 0, 0, 200), hpText);
+  dl->AddText(font, hpTextFs, ImVec2(hpTxtX, hpTxtY),
+              IM_COL32(255, 255, 255, 210), hpText);
+  // 2-layer border — outer dark, inner gold
+  dl->AddRect(ImVec2(barX - 1, barY - 1), ImVec2(barX + barW + 1, barY + barH + 1),
+              IM_COL32(0, 0, 0, 180), 2.0f);
   dl->AddRect(ImVec2(barX, barY), ImVec2(barX + barW, barY + barH),
-              IM_COL32(255, 255, 255, 40), 2.0f);
+              IM_COL32(130, 115, 55, 130), 2.0f);
 }
 
 void MonsterManager::RenderNameplates(ImDrawList *dl, ImFont *font,

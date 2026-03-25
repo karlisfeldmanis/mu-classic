@@ -28,16 +28,20 @@ void main()
     float swayTime = u_skinParams.y;
     float heightWeight = clamp((localPos.z - 50.0) / 250.0, 0.0, 1.0);
     if (heightWeight > 0.0 && swayPhase >= 0.0) {
-        float t = swayTime + swayPhase;
-        // Per-instance amplitude variation (0.3 to 1.0)
-        float ampScale = 0.3 + 0.7 * fract(swayPhase * 2.17 + 0.5);
-        // Per-instance frequency variation
-        float freqVar = 0.8 + 0.4 * fract(swayPhase * 1.53);
-        // Two overlapping sine waves with different frequencies per instance
-        float swayX = sin(t * 0.7 * freqVar + swayPhase * 3.7) * 3.0
-                    + sin(t * 1.5 * freqVar + swayPhase * 5.1) * 1.2;
-        float swayY = sin(t * 0.6 * freqVar + swayPhase * 2.3) * 2.5
-                    + cos(t * 1.1 * freqVar + swayPhase * 4.2) * 1.0;
+        // Per-instance speed (0.6x to 1.4x) — trees sway at different rates
+        float speedVar = 0.6 + 0.8 * fract(swayPhase * 3.71);
+        float t = swayTime * speedVar + swayPhase;
+        // Per-instance amplitude variation (0.4 to 1.0)
+        float ampScale = 0.4 + 0.6 * fract(swayPhase * 2.17 + 0.5);
+        // Per-instance frequency variation (0.5x to 1.5x)
+        float freqVar = 0.5 + 1.0 * fract(swayPhase * 1.53);
+        // Three overlapping sine waves with unique frequencies per instance
+        float swayX = sin(t * 0.35 * freqVar + swayPhase * 3.7) * 3.0
+                    + sin(t * 0.75 * freqVar + swayPhase * 5.1) * 1.2
+                    + sin(t * 0.15 + swayPhase * 7.3) * 2.0;
+        float swayY = sin(t * 0.3 * freqVar + swayPhase * 2.3) * 2.5
+                    + cos(t * 0.55 * freqVar + swayPhase * 4.2) * 1.0
+                    + cos(t * 0.12 + swayPhase * 6.1) * 1.5;
         localPos.x += swayX * heightWeight * ampScale;
         localPos.y += swayY * heightWeight * ampScale;
     }

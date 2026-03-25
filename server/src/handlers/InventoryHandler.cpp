@@ -524,75 +524,80 @@ void HandleItemUse(Session &session, const std::vector<uint8_t> &packet,
   }
 
   if (item.category == 14) {
+    // OpenMU percentage-based potion healing formula:
+    // healAmount = (maxHP * recoverPct / 100) + max(0, additionalBase - level)
+    // Multiplier: Apple=0, Small=1, Medium=2, Large=3
+    // recoverPct = multiplier * 10, additionalBase = (multiplier+1) * 50
+    // Mana potions use same formula against maxMana/maxAG
+
     // HP potions (itemIndex 0-3)
-    int healAmount = 0;
-    if (item.itemIndex == 0)
-      healAmount = 10;
-    else if (item.itemIndex == 1)
-      healAmount = 20;
-    else if (item.itemIndex == 2)
-      healAmount = 50;
-    else if (item.itemIndex == 3)
-      healAmount = 100;
+    int hpMultiplier = -1;
+    if (item.itemIndex == 0) hpMultiplier = 0;      // Apple
+    else if (item.itemIndex == 1) hpMultiplier = 1;  // Small HP
+    else if (item.itemIndex == 2) hpMultiplier = 2;  // Medium HP
+    else if (item.itemIndex == 3) hpMultiplier = 3;  // Large HP
 
     // Mana potions (itemIndex 4-6)
-    int manaAmount = 0;
-    if (item.itemIndex == 4)
-      manaAmount = 20;  // Small Mana Potion
-    else if (item.itemIndex == 5)
-      manaAmount = 50;  // Medium Mana Potion
-    else if (item.itemIndex == 6)
-      manaAmount = 100; // Large Mana Potion
+    int mpMultiplier = -1;
+    if (item.itemIndex == 4) mpMultiplier = 1;       // Small Mana
+    else if (item.itemIndex == 5) mpMultiplier = 2;  // Medium Mana
+    else if (item.itemIndex == 6) mpMultiplier = 3;  // Large Mana
 
-    if (healAmount > 0) {
+    if (hpMultiplier >= 0) {
       if (session.hp >= session.maxHp) {
-        printf(
-            "[Inventory] Rejecting item use fd=%d: HP already full (%d/%d)\n",
-            session.GetFd(), session.hp, session.maxHp);
+        printf("[Inventory] Rejecting item use fd=%d: HP already full (%d/%d)\n",
+               session.GetFd(), session.hp, session.maxHp);
         return;
       }
+      int recoverPct = hpMultiplier * 10;
+      int additionalBase = (hpMultiplier + 1) * 50;
+      int additional = std::max(0, additionalBase - session.level);
+      int healAmount = (int)(session.maxHp * recoverPct / 100.0) + additional;
+      healAmount = std::max(healAmount, 1);
 
       session.hp += healAmount;
-      if (session.hp > session.maxHp)
-        session.hp = session.maxHp;
-
-      printf("[Inventory] Item used fd=%d: Healed %d HP. New HP: %d/%d. "
-             "Cooldown started.\n",
-             session.GetFd(), healAmount, session.hp, session.maxHp);
-    } else if (manaAmount > 0) {
+      if (session.hp > session.maxHp) session.hp = session.maxHp;
+      printf("[Inventory] Item used fd=%d: Healed %d HP (pct=%d%% add=%d). "
+             "HP: %d/%d\n",
+             session.GetFd(), healAmount, recoverPct, additional,
+             session.hp, session.maxHp);
+    } else if (mpMultiplier >= 0) {
       // DK uses AG instead of mana — mana potions restore AG for DK
       bool isDK = (session.classCode == 16);
+      int recoverPct = mpMultiplier * 10;
+      int additionalBase = (mpMultiplier + 1) * 50;
+      int additional = std::max(0, additionalBase - session.level);
       if (isDK) {
         if (session.ag >= session.maxAg) {
           printf("[Inventory] Rejecting item use fd=%d: AG already full (%d/%d)\n",
                  session.GetFd(), session.ag, session.maxAg);
           return;
         }
-        session.ag += manaAmount;
-        if (session.ag > session.maxAg)
-          session.ag = session.maxAg;
-        printf("[Inventory] Item used fd=%d: Restored %d AG. New AG: %d/%d. "
-               "Cooldown started.\n",
-               session.GetFd(), manaAmount, session.ag, session.maxAg);
+        int restoreAmount = (int)(session.maxAg * recoverPct / 100.0) + additional;
+        restoreAmount = std::max(restoreAmount, 1);
+        session.ag += restoreAmount;
+        if (session.ag > session.maxAg) session.ag = session.maxAg;
+        printf("[Inventory] Item used fd=%d: Restored %d AG. AG: %d/%d\n",
+               session.GetFd(), restoreAmount, session.ag, session.maxAg);
       } else {
         if (session.mana >= session.maxMana) {
           printf("[Inventory] Rejecting item use fd=%d: Mana already full (%d/%d)\n",
                  session.GetFd(), session.mana, session.maxMana);
           return;
         }
-        session.mana += manaAmount;
-        if (session.mana > session.maxMana)
-          session.mana = session.maxMana;
-        printf("[Inventory] Item used fd=%d: Restored %d Mana. New Mana: %d/%d. "
-               "Cooldown started.\n",
-               session.GetFd(), manaAmount, session.mana, session.maxMana);
+        int restoreAmount = (int)(session.maxMana * recoverPct / 100.0) + additional;
+        restoreAmount = std::max(restoreAmount, 1);
+        session.mana += restoreAmount;
+        if (session.mana > session.maxMana) session.mana = session.maxMana;
+        printf("[Inventory] Item used fd=%d: Restored %d Mana. Mana: %d/%d\n",
+               session.GetFd(), restoreAmount, session.mana, session.maxMana);
       }
     } else {
       return; // Unknown potion type
     }
 
     // Common: start cooldown, consume item, sync client
-    session.potionCooldown = 30.0f;
+    session.potionCooldown = 15.0f;
 
     if (item.quantity > 1) {
       item.quantity--;
@@ -727,6 +732,174 @@ bool FindEmptySpace(Session &session, uint8_t w, uint8_t h, uint8_t &outSlot) {
     }
   }
   return false;
+}
+
+void HandleItemUpgrade(Session &session, const std::vector<uint8_t> &packet,
+                       Database &db) {
+  if (packet.size() < sizeof(PMSG_ITEM_UPGRADE_RECV))
+    return;
+  const auto *req =
+      reinterpret_cast<const PMSG_ITEM_UPGRADE_RECV *>(packet.data());
+
+  if (req->jewelSlot >= 64)
+    return;
+  if (session.dead)
+    return;
+
+  auto &jewel = session.bag[req->jewelSlot];
+  if (!jewel.occupied || !jewel.primary) {
+    printf("[Upgrade] fd=%d: Jewel slot %d empty\n",
+           session.GetFd(), req->jewelSlot);
+    return;
+  }
+
+  // Identify jewel type: Bless (cat 14, idx 13) or Soul (cat 14, idx 14)
+  bool isBless = (jewel.category == 14 && jewel.itemIndex == 13);
+  bool isSoul = (jewel.category == 14 && jewel.itemIndex == 14);
+  if (!isBless && !isSoul) {
+    printf("[Upgrade] fd=%d: Slot %d is not a jewel (cat=%d idx=%d)\n",
+           session.GetFd(), req->jewelSlot, jewel.category, jewel.itemIndex);
+    return;
+  }
+
+  // Resolve target: 0-63 = bag slot, 64+ = equipment slot (64+slot)
+  bool isEquipTarget = (req->targetSlot >= 64);
+  uint8_t tCat, tIdx, tOptFlags;
+  uint8_t *tLevelPtr;
+
+  if (isEquipTarget) {
+    int eqSlot = req->targetSlot - 64;
+    if (eqSlot >= Session::NUM_EQUIP_SLOTS || session.equipment[eqSlot].category == 0xFF) {
+      printf("[Upgrade] fd=%d: Equipment slot %d invalid/empty\n",
+             session.GetFd(), eqSlot);
+      return;
+    }
+    tCat = session.equipment[eqSlot].category;
+    tIdx = session.equipment[eqSlot].itemIndex;
+    tOptFlags = session.equipment[eqSlot].optionFlags;
+    tLevelPtr = &session.equipment[eqSlot].itemLevel;
+  } else {
+    auto &target = session.bag[req->targetSlot];
+    if (!target.occupied || !target.primary) {
+      printf("[Upgrade] fd=%d: Target bag slot %d empty\n",
+             session.GetFd(), req->targetSlot);
+      return;
+    }
+    tCat = target.category;
+    tIdx = target.itemIndex;
+    tOptFlags = target.optionFlags;
+    tLevelPtr = &target.itemLevel;
+  }
+
+  // Validate target: weapons (0-5), shields (6), armor (7-11), wings (12, idx 0-6)
+  bool validTarget = false;
+  if (tCat <= 11)
+    validTarget = true;
+  if (tCat == 12 && tIdx <= 6)
+    validTarget = true;
+  if (tCat == 4 && (tIdx == 7 || tIdx == 15))
+    validTarget = false;
+  if (!validTarget) {
+    printf("[Upgrade] fd=%d: Target not upgradeable (cat=%d idx=%d)\n",
+           session.GetFd(), tCat, tIdx);
+    return;
+  }
+
+  // Level range check
+  int curLevel = *tLevelPtr;
+  if (isBless && curLevel >= 6) {
+    printf("[Upgrade] fd=%d: Bless rejected — item already +%d (max +5 for Bless)\n",
+           session.GetFd(), curLevel);
+    return;
+  }
+  if (isSoul && curLevel >= 9) {
+    printf("[Upgrade] fd=%d: Soul rejected — item already +%d (max +8 for Soul)\n",
+           session.GetFd(), curLevel);
+    return;
+  }
+
+  // Perform upgrade
+  bool success = false;
+  if (isBless) {
+    (*tLevelPtr)++;
+    success = true;
+    printf("[Upgrade] fd=%d: Bless SUCCESS — %d:%d +%d -> +%d%s\n",
+           session.GetFd(), tCat, tIdx, curLevel, *tLevelPtr,
+           isEquipTarget ? " (equipped)" : "");
+  } else {
+    int rate = 50;
+    if (tOptFlags & 0x40) // Luck flag
+      rate += 25;
+    int roll = rand() % 100;
+    if (roll < rate) {
+      (*tLevelPtr)++;
+      success = true;
+      printf("[Upgrade] fd=%d: Soul SUCCESS (roll=%d < %d%%) — %d:%d +%d -> +%d%s\n",
+             session.GetFd(), roll, rate, tCat, tIdx, curLevel, *tLevelPtr,
+             isEquipTarget ? " (equipped)" : "");
+    } else {
+      if (curLevel >= 7)
+        *tLevelPtr = 0;
+      else if (curLevel >= 1)
+        (*tLevelPtr)--;
+      printf("[Upgrade] fd=%d: Soul FAIL (roll=%d >= %d%%) — %d:%d +%d -> +%d%s\n",
+             session.GetFd(), roll, rate, tCat, tIdx, curLevel, *tLevelPtr,
+             isEquipTarget ? " (equipped)" : "");
+    }
+  }
+
+  // Consume jewel
+  if (jewel.quantity > 1) {
+    jewel.quantity--;
+    db.SaveCharacterInventory(session.characterId, jewel.defIndex,
+                              jewel.quantity, jewel.itemLevel, req->jewelSlot);
+  } else {
+    ItemDefinition jDef = db.GetItemDefinition(jewel.defIndex);
+    int w = jDef.width > 0 ? jDef.width : 1;
+    int h = jDef.height > 0 ? jDef.height : 1;
+    int r = req->jewelSlot / 8;
+    int c = req->jewelSlot % 8;
+    for (int hh = 0; hh < h; hh++) {
+      for (int ww = 0; ww < w; ww++) {
+        int s = (r + hh) * 8 + (c + ww);
+        if (s < 64)
+          session.bag[s] = {};
+      }
+    }
+    db.DeleteCharacterInventoryItem(session.characterId, req->jewelSlot);
+  }
+
+  // Save updated target item level
+  if (isEquipTarget) {
+    int eqSlot = req->targetSlot - 64;
+    db.UpdateEquipment(session.characterId, eqSlot,
+                       session.equipment[eqSlot].category,
+                       session.equipment[eqSlot].itemIndex,
+                       *tLevelPtr,
+                       session.equipment[eqSlot].quantity,
+                       session.equipment[eqSlot].optionFlags);
+  } else {
+    auto &target = session.bag[req->targetSlot];
+    db.SaveCharacterInventory(session.characterId, target.defIndex,
+                              target.quantity, target.itemLevel, req->targetSlot);
+  }
+
+  // Refresh combat stats (item level affects damage/defense)
+  CharacterHandler::RefreshCombatStats(session, db, session.characterId);
+
+  // Send upgrade result
+  PMSG_ITEM_UPGRADE_RESULT result{};
+  result.h = MakeC1Header(sizeof(result), Opcode::ITEM_UPGRADE_RESULT);
+  result.result = success ? 1 : 0;
+  result.targetSlot = req->targetSlot;
+  result.newLevel = *tLevelPtr;
+  session.Send(&result, sizeof(result));
+
+  // Send updated stats, inventory, and equipment
+  CharacterHandler::SendCharStats(session);
+  SendInventorySync(session);
+  if (isEquipTarget)
+    CharacterHandler::SendEquipment(session, db, session.characterId);
 }
 
 } // namespace InventoryHandler

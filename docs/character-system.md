@@ -170,7 +170,7 @@ Category 13 items equipped in slot 8 (Pet/Helper slot). Floating orbit companion
 
 ## Mount System (Uniria / Dinorant)
 
-Category 13 items equipped in slot 8. Player rides the mount model; character uses riding animations.
+Category 13 items activated via QWER quickslots. Player rides the mount model; character uses riding animations. Equipment slot 8 rejects mounts (pets only) — mounts are toggled by pressing the quickslot key. Auto-dismount occurs on NPC interaction and monster attack.
 
 | Item | Index | Ride Model | Bonus |
 |------|-------|------------|-------|

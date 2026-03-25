@@ -1,6 +1,7 @@
 #ifndef MU_CHARACTER_SELECT_HPP
 #define MU_CHARACTER_SELECT_HPP
 
+#include "PacketDefs.hpp"
 #include "ServerConnection.hpp"
 #include "Shader.hpp"
 #include "Terrain.hpp"
@@ -10,9 +11,11 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 struct GLFWwindow;
 struct ImDrawList;
+struct ImFont;
 
 namespace CharacterSelect {
 
@@ -48,6 +51,12 @@ struct Context {
   std::function<void()> onExit;
   // Callback for fullscreen toggle (uses main.cpp's saved window geometry)
   std::function<void()> onToggleFullscreen;
+  // Fonts for UI rendering
+  ImFont *fontDefault = nullptr;
+  ImFont *fontBold = nullptr;
+  ImFont *fontRegion = nullptr;
+  // Class definitions received from server (for creation panel)
+  const std::vector<PMSG_CLASS_DEF_ENTRY> *classDefinitions = nullptr;
 };
 
 void Init(const Context &ctx);

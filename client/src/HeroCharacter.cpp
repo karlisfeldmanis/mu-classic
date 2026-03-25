@@ -692,6 +692,15 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
   }
 
+  // Hellfire: spawn ground fire ring on landing frame (~frame 5)
+  if (m_pendingHellfire && m_activeSkillId == 10 && m_vfxManager) {
+    if (m_animFrame >= 5.0f && !m_hellfireSpawned) {
+      m_hellfireSpawned = true;
+      m_vfxManager->SpawnHellfire(m_pos);
+      m_pendingHellfire = false;
+    }
+  }
+
   // Handle cross-fade blending animation
   if (m_isBlending) {
     m_blendAlpha += deltaTime / BLEND_DURATION;
@@ -1877,7 +1886,10 @@ void HeroCharacter::ProcessMovement(float deltaTime) {
     m_targetFacing = atan2f(dir.z, -dir.x);
     m_facing = smoothFacing(m_facing, m_targetFacing, deltaTime);
 
-    glm::vec3 step = dir * m_speed * deltaTime;
+    // Main 5.2 CharacterMoveSpeed: Uniria/Dinorant = 15/tick = same as run speed.
+    // Mounts don't give a speed bonus — they force run state and allow flying.
+    float speed = m_speed;
+    glm::vec3 step = dir * speed * deltaTime;
     glm::vec3 newPos = m_pos + step;
 
     const int S = TerrainParser::TERRAIN_SIZE;
@@ -2628,8 +2640,8 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
         case 4:  SoundManager::Play(SOUND_METEORITE01); break;  // Fire Ball
         case 5:  SoundManager::Play(SOUND_FLAME); break;        // Flame
         case 7:  SoundManager::Play(SOUND_ICE); break;          // Ice
-        case 8:  SoundManager::Play(SOUND_STORM); break;        // Twister
-        case 9:  SoundManager::Play(SOUND_EVIL); break;         // Evil Spirit
+        case 8:  if (!SoundManager::IsPlaying(SOUND_STORM)) SoundManager::Play(SOUND_STORM); break; // Twister
+        case 9:  if (!SoundManager::IsPlaying(SOUND_EVIL)) SoundManager::Play(SOUND_EVIL); break; // Evil Spirit
         case 10: SoundManager::Play(SOUND_HELLFIRE); break;     // Hellfire
         case 12: SoundManager::Play(SOUND_FLASH); break;        // Aqua Beam
         case 17: SoundManager::Play(SOUND_METEORITE01); break;  // Energy Ball
@@ -2683,8 +2695,9 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
           case 9: // Evil Spirit — 4-directional beams from caster
             m_vfxManager->SpawnEvilSpirit(m_pos, m_facing);
             break;
-          case 10: // Hellfire — ground fire ring (beams at blast phase)
-            m_vfxManager->SpawnHellfire(m_pos);
+          case 10: // Hellfire — VFX delayed to landing frame
+            m_pendingHellfire = true;
+            m_hellfireSpawned = false;
             break;
           case 12: // Aqua Beam — delayed: beam spawns at anim frame 5.5
             m_pendingAquaBeam = true;
@@ -2852,6 +2865,8 @@ void HeroCharacter::CancelAttack() {
   m_moving = false; // Stop any approach movement
   m_pendingAquaBeam = false; // Clear pending beam on cancel
   m_aquaBeamSpawned = false;
+  m_pendingHellfire = false;
+  m_hellfireSpawned = false;
   m_aquaPacketReady = false; // Don't send damage if cancelled
   // Return to appropriate idle
   if (isMountRiding() || (!m_inSafeZone && m_weaponBmd)) {
@@ -2991,8 +3006,8 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
     case 4:  SoundManager::Play(SOUND_METEORITE01); break;  // Fire Ball
     case 5:  SoundManager::Play(SOUND_FLAME); break;        // Flame
     case 7:  SoundManager::Play(SOUND_ICE); break;          // Ice
-    case 8:  SoundManager::Play(SOUND_STORM); break;        // Twister
-    case 9:  SoundManager::Play(SOUND_EVIL); break;         // Evil Spirit
+    case 8:  if (!SoundManager::IsPlaying(SOUND_STORM)) SoundManager::Play(SOUND_STORM); break; // Twister
+    case 9:  if (!SoundManager::IsPlaying(SOUND_EVIL)) SoundManager::Play(SOUND_EVIL); break;   // Evil Spirit
     case 10: SoundManager::Play(SOUND_HELLFIRE); break;     // Hellfire
     case 12: SoundManager::Play(SOUND_FLASH); break;        // Aqua Beam
     case 17: SoundManager::Play(SOUND_METEORITE01); break;  // Energy Ball
@@ -3133,8 +3148,8 @@ void HeroCharacter::CastSelfAoE(uint8_t skillId, const glm::vec3 &targetPos) {
   case 4:  SoundManager::Play(SOUND_METEORITE01); break;  // Fire Ball
   case 5:  SoundManager::Play(SOUND_FLAME); break;        // Flame
   case 7:  SoundManager::Play(SOUND_ICE); break;          // Ice
-  case 8:  SoundManager::Play(SOUND_STORM); break;        // Twister
-  case 9:  SoundManager::Play(SOUND_EVIL); break;         // Evil Spirit
+  case 8:  if (!SoundManager::IsPlaying(SOUND_STORM)) SoundManager::Play(SOUND_STORM); break; // Twister
+  case 9:  if (!SoundManager::IsPlaying(SOUND_EVIL)) SoundManager::Play(SOUND_EVIL); break;   // Evil Spirit
   case 10: SoundManager::Play(SOUND_HELLFIRE); break;     // Hellfire
   case 12: SoundManager::Play(SOUND_FLASH); break;        // Aqua Beam
   case 17: SoundManager::Play(SOUND_METEORITE01); break;  // Energy Ball
@@ -3170,8 +3185,9 @@ void HeroCharacter::CastSelfAoE(uint8_t skillId, const glm::vec3 &targetPos) {
     case 9: // Evil Spirit — 4-directional beams from caster
       m_vfxManager->SpawnEvilSpirit(m_pos, m_facing);
       break;
-    case 10: // Hellfire — ground fire ring (beams spawned at blast phase)
-      m_vfxManager->SpawnHellfire(m_pos);
+    case 10: // Hellfire — VFX delayed to landing frame
+      m_pendingHellfire = true;
+      m_hellfireSpawned = false;
       break;
     case 12: // Aqua Beam — delayed: beam spawns at anim frame 5.5
       m_pendingAquaBeam = true;

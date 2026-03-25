@@ -69,6 +69,7 @@ struct LeafParticle {
   glm::vec3 angle{0.0f};        // Euler rotation (degrees)
   glm::vec3 turningForce{0.0f}; // Angular velocity (degrees/tick)
   float alpha = 1.0f;
+  float scale = 1.0f; // Particle size multiplier (snow uses larger)
   bool onGround = false;
 };
 
@@ -93,6 +94,10 @@ public:
     m_pointLights = lights;
   }
   void SetLuminosity(float l) { m_luminosity = l; }
+  void SetCameraFadeStart(float dist) { m_cameraFadeStart = dist; }
+  void SetCameraView(const glm::mat4 &viewProj) {
+    m_viewProj = viewProj;
+  }
   void SetMapId(int mapId) {
     m_mapId = mapId;
     // Clear all creatures on map change — prevents stale entities
@@ -105,12 +110,12 @@ public:
   }
 
 private:
-  static constexpr int MAX_BOIDS = 5;       // Lorencia bird count (Main 5.2: GOBoid.cpp)
+  static constexpr int MAX_BOIDS = 3;       // Lorencia bird count (reduced for ambience)
   static constexpr int MAX_BATS = 3;        // Dungeon bat count (reduced from 5)
   static constexpr int MAX_BUTTERFLIES = 3; // Noria butterfly count (reduced from 5)
   static constexpr int MAX_FISHS = 3;       // Lorencia fish count (GOBoid.cpp:1661)
-  static constexpr int MAX_RATS = 2;        // Dungeon rat count (Main 5.2: GOBoid.cpp MoveFishs)
-  static constexpr int MAX_LEAVES = 80;     // Lorencia leaf count (ZzzEffectFireLeave.cpp)
+  static constexpr int MAX_RATS = 5;        // Dungeon rat count
+  static constexpr int MAX_LEAVES = 160;    // Shared leaf/snow count (doubled for denser Devias snow)
   static constexpr int MAX_POINT_LIGHTS = 64;
 
   Boid m_boids[MAX_BOIDS];
@@ -163,6 +168,8 @@ private:
   std::vector<glm::vec3> m_terrainLightmap;
   std::vector<PointLight> m_pointLights;
   float m_luminosity = 1.0f;
+  float m_cameraFadeStart = 350.0f; // Distance at which boids start fading (default 350)
+  glm::mat4 m_viewProj{1.0f};
   int m_mapId = 0; // 0=Lorencia, 1=Dungeon
 
   // World time accumulator (ticks at 25fps equivalent)
@@ -179,12 +186,13 @@ private:
   void updateRats(float dt, const glm::vec3 &heroPos);
   void updateButterflies(float dt, const glm::vec3 &heroPos);
   void updateFishs(float dt, const glm::vec3 &heroPos);
-  void moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction);
-  void moveBat(Boid &b, const glm::vec3 &heroPos);
-  void moveButterfly(Boid &b, const glm::vec3 &heroPos);
-  void moveBoidGroup(Boid &b);
-  void moveBoidFlock(Boid &b, int selfIdx);
+  void moveBird(Boid &b, const glm::vec3 &heroPos, int heroAction, float tickFrac);
+  void moveBat(Boid &b, const glm::vec3 &heroPos, float tickFrac);
+  void moveButterfly(Boid &b, const glm::vec3 &heroPos, float tickFrac);
+  void moveBoidGroup(Boid &b, float tickFrac);
+  void moveBoidFlock(Boid &b, int selfIdx, float tickFrac);
   void alphaFade(float &alpha, float target, float dt);
+  bool isInCameraView(const glm::vec3 &pos) const;
 
   void renderBoid(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);
   void renderBat(const Boid &b, const glm::mat4 &view, const glm::mat4 &proj, const glm::vec3 &eye);

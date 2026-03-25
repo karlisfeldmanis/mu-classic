@@ -22,7 +22,7 @@ static InventoryUIContext s_ctxStore;
 const InventoryUIContext *s_ctx = &s_ctxStore;
 
 // Potion cooldown constant
-static constexpr float POTION_COOLDOWN_TIME = 30.0f;
+static constexpr float POTION_COOLDOWN_TIME = 1.5f;
 
 // Equipment layout rects (virtual coords)
 static const EquipSlotRect g_equipLayoutRects[] = {
@@ -75,6 +75,7 @@ int g_dragFromSkillSlot = -1;
 bool g_dragFromRmcSlot = false;
 static int g_dragFromShopSlot =
     -1; // Primary slot in s_shopGrid when dragging from shop
+
 
 // SkillDef struct defined in InventoryUI_Internal.hpp
 
@@ -225,14 +226,35 @@ void DrawStyledPanel(ImDrawList *dl, float x0, float y0, float x1, float y1,
 
 void DrawStyledSlot(ImDrawList *dl, ImVec2 p0, ImVec2 p1, bool hovered,
                     float rounding) {
-  dl->AddRectFilled(p0, p1, IM_COL32(12, 12, 22, 220), rounding);
+  // Gradient background — darker top, lighter bottom for depth
+  dl->AddRectFilledMultiColor(p0, p1,
+      IM_COL32(8, 8, 16, 230), IM_COL32(8, 8, 16, 230),
+      IM_COL32(16, 14, 22, 230), IM_COL32(16, 14, 22, 230));
+  // Inner shadow — top and left edges (inset bevel)
   dl->AddLine(ImVec2(p0.x + 1, p0.y + 1), ImVec2(p1.x - 1, p0.y + 1),
-              IM_COL32(0, 0, 0, 100));
+              IM_COL32(0, 0, 0, 150));
+  dl->AddLine(ImVec2(p0.x + 1, p0.y + 2), ImVec2(p1.x - 1, p0.y + 2),
+              IM_COL32(0, 0, 0, 80));
   dl->AddLine(ImVec2(p0.x + 1, p0.y + 1), ImVec2(p0.x + 1, p1.y - 1),
-              IM_COL32(0, 0, 0, 100));
-  ImU32 borderCol =
-      hovered ? IM_COL32(180, 160, 90, 200) : IM_COL32(65, 60, 45, 200);
-  dl->AddRect(p0, p1, borderCol, rounding);
+              IM_COL32(0, 0, 0, 150));
+  dl->AddLine(ImVec2(p0.x + 2, p0.y + 2), ImVec2(p0.x + 2, p1.y - 1),
+              IM_COL32(0, 0, 0, 80));
+  // Inner highlight — bottom and right edges (light catch)
+  dl->AddLine(ImVec2(p0.x + 2, p1.y - 2), ImVec2(p1.x - 1, p1.y - 2),
+              IM_COL32(50, 45, 35, 60));
+  dl->AddLine(ImVec2(p1.x - 2, p0.y + 2), ImVec2(p1.x - 2, p1.y - 1),
+              IM_COL32(50, 45, 35, 60));
+  // Hover inner glow
+  if (hovered)
+    dl->AddRectFilled(ImVec2(p0.x + 2, p0.y + 2), ImVec2(p1.x - 2, p1.y - 2),
+                      IM_COL32(180, 150, 60, 18), rounding);
+  // Outer dark border
+  dl->AddRect(p0, p1, IM_COL32(25, 20, 15, 220), rounding, 0, 1.5f);
+  // Inner gold border
+  ImU32 innerBorder = hovered ? IM_COL32(220, 190, 90, 220)
+                              : IM_COL32(85, 75, 45, 180);
+  dl->AddRect(ImVec2(p0.x + 1, p0.y + 1), ImVec2(p1.x - 1, p1.y - 1),
+              innerBorder, rounding);
 }
 
 void DrawStyledBar(ImDrawList *dl, float x, float y, float w, float h,
@@ -267,8 +289,10 @@ void DrawOrb(ImDrawList *dl, float cx, float cy, float radius, float frac,
              const char *label) {
   frac = std::clamp(frac, 0.0f, 1.0f);
 
-  // 1. Empty orb background (dark interior)
+  // 1. Empty orb background (dark interior with subtle vignette)
   dl->AddCircleFilled(ImVec2(cx, cy), radius - 2, emptyColor, 64);
+  // Edge vignette — darker ring near the rim
+  dl->AddCircle(ImVec2(cx, cy), radius - 6, IM_COL32(0, 0, 0, 40), 64, 6.0f);
 
   // 2. Filled portion — clip from bottom up
   if (frac > 0.01f) {
@@ -276,8 +300,6 @@ void DrawOrb(ImDrawList *dl, float cx, float cy, float radius, float frac,
     float clipTop = cy + radius - fillH;
     dl->PushClipRect(ImVec2(cx - radius, clipTop),
                      ImVec2(cx + radius, cy + radius + 1), true);
-    // Gradient fill from top to bottom of the fill portion
-    // Use two half-circles for the gradient effect
     float midY = clipTop + fillH * 0.5f;
     // Top half of fill
     dl->AddCircleFilled(ImVec2(cx, cy), radius - 3, fillTop, 64);
@@ -288,29 +310,58 @@ void DrawOrb(ImDrawList *dl, float cx, float cy, float radius, float frac,
     dl->PopClipRect();
     dl->PopClipRect();
 
-    // Specular highlight — small bright arc near top of fill
-    float hlY = clipTop + 4.0f;
-    dl->PushClipRect(ImVec2(cx - radius * 0.5f, hlY),
-                     ImVec2(cx + radius * 0.5f, hlY + 8.0f), true);
-    dl->AddCircleFilled(ImVec2(cx, cy), radius - 6, IM_COL32(255, 255, 255, 35),
+    // Edge darkening on fill (vignette)
+    dl->PushClipRect(ImVec2(cx - radius, clipTop),
+                     ImVec2(cx + radius, cy + radius + 1), true);
+    dl->AddCircle(ImVec2(cx, cy), radius - 6, IM_COL32(0, 0, 0, 50), 64, 8.0f);
+    dl->PopClipRect();
+
+    // Specular highlight — bright arc near top of fill
+    float hlY = clipTop + 2.0f;
+    dl->PushClipRect(ImVec2(cx - radius * 0.55f, hlY),
+                     ImVec2(cx + radius * 0.55f, hlY + 10.0f), true);
+    dl->AddCircleFilled(ImVec2(cx, cy), radius - 6, IM_COL32(255, 255, 255, 50),
                         64);
     dl->PopClipRect();
   }
 
-  // 3. Ornate frame ring (outer)
-  dl->AddCircle(ImVec2(cx, cy), radius, IM_COL32(15, 12, 8, 255), 64, 4.0f);
-  dl->AddCircle(ImVec2(cx, cy), radius - 1, frameColor, 64, 2.0f);
-  dl->AddCircle(ImVec2(cx, cy), radius + 1, IM_COL32(30, 25, 15, 200), 64,
-                1.0f);
+  // 3. Multi-layer ornate frame
+  // Outermost dark shadow ring
+  dl->AddCircle(ImVec2(cx, cy), radius + 3, IM_COL32(8, 6, 4, 200), 64, 3.0f);
+  // Main gold band (thick)
+  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(140, 115, 55, 255), 64, 5.0f);
+  // Bright highlight edge on top half of frame (metallic sheen)
+  dl->PushClipRect(ImVec2(cx - radius - 6, cy - radius - 6),
+                   ImVec2(cx + radius + 6, cy), true);
+  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(220, 195, 110, 100), 64, 2.0f);
+  dl->PopClipRect();
+  // Dark shadow on bottom half of frame
+  dl->PushClipRect(ImVec2(cx - radius - 6, cy),
+                   ImVec2(cx + radius + 6, cy + radius + 6), true);
+  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(60, 45, 20, 180), 64, 2.0f);
+  dl->PopClipRect();
+  // Inner highlight edge
+  dl->AddCircle(ImVec2(cx, cy), radius - 2, IM_COL32(200, 175, 90, 80), 64, 1.0f);
+  // Inner dark border
+  dl->AddCircle(ImVec2(cx, cy), radius - 3.5f, IM_COL32(0, 0, 0, 100), 64, 1.5f);
 
-  // 4. Inner shadow ring
-  dl->AddCircle(ImVec2(cx, cy), radius - 4, IM_COL32(0, 0, 0, 60), 64, 1.5f);
+  // 4. Rivet dots around the frame
+  constexpr int RIVET_COUNT = 8;
+  for (int i = 0; i < RIVET_COUNT; i++) {
+    float angle = (float)i * (2.0f * 3.14159f / RIVET_COUNT) - 3.14159f * 0.5f;
+    float rx = cx + cosf(angle) * (radius + 0.5f);
+    float ry = cy + sinf(angle) * (radius + 0.5f);
+    float rivetR = std::max(1.5f, radius * 0.04f);
+    dl->AddCircleFilled(ImVec2(rx + 1, ry + 1), rivetR, IM_COL32(0, 0, 0, 120), 12);
+    dl->AddCircleFilled(ImVec2(rx, ry), rivetR, IM_COL32(200, 175, 90, 220), 12);
+    dl->AddCircleFilled(ImVec2(rx - 0.5f, ry - 0.5f), rivetR * 0.5f, IM_COL32(240, 220, 150, 100), 8);
+  }
 
   // 5. Text overlay centered in orb
   if (label && label[0]) {
     ImVec2 tsz = ImGui::CalcTextSize(label);
     float tx = cx - tsz.x * 0.5f;
-    float ty = cy - tsz.y * 0.5f + 6.0f; // slightly below center
+    float ty = cy - tsz.y * 0.5f + 6.0f;
     dl->AddText(ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 220), label);
     dl->AddText(ImVec2(tx, ty), IM_COL32(255, 255, 255, 230), label);
   }
@@ -1868,7 +1919,7 @@ bool HandlePanelClick(float vx, float vy) {
       }
     }
 
-    // Bag grid: start drag
+    // Bag grid: start drag (or handle upgrade mode click)
     float gridRX = 15.0f, gridRY = 208.0f;
     float cellW = 20.0f, cellH = 20.0f, gap = 0.0f;
 
@@ -1903,6 +1954,7 @@ bool HandlePanelClick(float vx, float vy) {
                 }
               }
             }
+
             g_dragFromSlot = primarySlot;
             g_dragFromEquipSlot = -1;
             g_dragDefIndex = s_ctx->inventory[primarySlot].defIndex;
@@ -2325,6 +2377,36 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
           relY < ep.y + ep.h) {
         // Dragging FROM Inventory TO Equipment
         if (g_dragFromSlot >= 0) {
+          // Check if dragging a jewel onto equipped item (upgrade)
+          uint8_t jCat = (uint8_t)(g_dragDefIndex / 32);
+          uint8_t jIdx = (uint8_t)(g_dragDefIndex % 32);
+          bool isJewel = (jCat == 14 && (jIdx == 13 || jIdx == 14));
+          if (isJewel && s_ctx->equipSlots[ep.slot].equipped) {
+            bool isBless = (jIdx == 13);
+            uint8_t tCat = s_ctx->equipSlots[ep.slot].category;
+            uint8_t tIdx = s_ctx->equipSlots[ep.slot].itemIndex;
+            int tLevel = s_ctx->equipSlots[ep.slot].itemLevel;
+            bool validTarget = (tCat <= 11) || (tCat == 12 && tIdx <= 6);
+            if (tCat == 4 && (tIdx == 7 || tIdx == 15)) validTarget = false;
+
+            if (!validTarget) {
+              ShowNotification("Cannot upgrade this item!");
+              SoundManager::Play(SOUND_ERROR01);
+            } else if (isBless && tLevel >= 6) {
+              ShowNotification("Item already +6! Use Jewel of Soul.");
+              SoundManager::Play(SOUND_ERROR01);
+            } else if (!isBless && tLevel >= 9) {
+              ShowNotification("Item already +9! Need Chaos Machine.");
+              SoundManager::Play(SOUND_ERROR01);
+            } else if (*s_ctx->syncDone) {
+              // Send upgrade with equipment slot encoded as 64 + slot
+              s_ctx->server->SendItemUpgrade((uint8_t)g_dragFromSlot,
+                                             (uint8_t)(64 + ep.slot));
+              SoundManager::Play(SOUND_JEWEL01);
+            }
+            return;
+          }
+
           if (!CanEquipItem(g_dragDefIndex)) {
             g_isDragging = false;
             g_dragFromSlot = -1;
@@ -2571,6 +2653,21 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
                 (it->second.category == 14 ||
                  (it->second.category == 13 &&
                   (it->second.itemIndex == 2 || it->second.itemIndex == 3)))) {
+              // Level requirement check for mounts
+              if (it->second.category == 13 && s_ctx->serverLevel &&
+                  *s_ctx->serverLevel < it->second.levelReq) {
+                char msg[64];
+                snprintf(msg, sizeof(msg), "Required Level: %d", it->second.levelReq);
+                ShowNotification(msg);
+                SoundManager::Play(SOUND_ERROR01);
+                return;
+              }
+              // Don't allow replacing mount slot while currently mounted
+              if (it->second.category == 13 && s_ctx->hero && s_ctx->hero->IsMounted()) {
+                ShowNotification("Dismount first!");
+                SoundManager::Play(SOUND_ERROR01);
+                return;
+              }
               s_ctx->potionBar[i] = g_dragDefIndex;
               SoundManager::Play(SOUND_GET_ITEM01);
               return;
@@ -2682,29 +2779,81 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
             }
           }
         }
-        // Dragging FROM Inventory TO Inventory (Move)
+        // Dragging FROM Inventory TO Inventory (Move or Upgrade)
         else if (g_dragFromSlot >= 0 && g_dragFromSlot != targetSlot) {
-          // Temporarily clear old area to check fit
-          int16_t di = g_dragDefIndex;
-          uint8_t dq = g_dragQuantity;
-          uint8_t dl = g_dragItemLevel;
+          // Check if this is a jewel upgrade (Bless/Soul dropped on target item)
+          uint8_t dragCat = (uint8_t)(g_dragDefIndex / 32);
+          uint8_t dragIdx = (uint8_t)(g_dragDefIndex % 32);
+          bool isJewelBless = (dragCat == 14 && dragIdx == 13);
+          bool isJewelSoul = (dragCat == 14 && dragIdx == 14);
 
-          ClearBagItem(g_dragFromSlot);
-          if (CheckBagFit(di, targetSlot)) {
-            SetBagItem(targetSlot, di, dq, dl);
-            // Send move packet to server
-            if (*s_ctx->syncDone)
-              s_ctx->server->SendInventoryMove(
-                  static_cast<uint8_t>(g_dragFromSlot),
-                  static_cast<uint8_t>(targetSlot));
+          if ((isJewelBless || isJewelSoul) &&
+              s_ctx->inventory[targetSlot].occupied) {
+            // Find primary slot of target
+            int tPrimary = targetSlot;
+            if (!s_ctx->inventory[targetSlot].primary) {
+              int16_t tdi = s_ctx->inventory[targetSlot].defIndex;
+              int tRow = targetSlot / 8, tCol = targetSlot % 8;
+              for (int r = 0; r <= tRow; r++) {
+                for (int c2 = 0; c2 <= tCol; c2++) {
+                  int s = r * 8 + c2;
+                  if (s_ctx->inventory[s].occupied &&
+                      s_ctx->inventory[s].primary &&
+                      s_ctx->inventory[s].defIndex == tdi) {
+                    auto it2 = g_itemDefs.find(tdi);
+                    if (it2 != g_itemDefs.end() &&
+                        r + it2->second.height > tRow &&
+                        c2 + it2->second.width > tCol)
+                      tPrimary = s;
+                  }
+                }
+              }
+            }
 
-            SoundManager::Play(SOUND_GET_ITEM01);
-            std::cout << "[UI] Moved item from " << g_dragFromSlot << " to "
-                      << targetSlot << std::endl;
+            auto &target = s_ctx->inventory[tPrimary];
+            uint8_t tCat = (uint8_t)(target.defIndex / 32);
+            uint8_t tIdx = (uint8_t)(target.defIndex % 32);
+            int tLevel = target.itemLevel;
+
+            // Validate: weapons (0-5), shields (6), armor (7-11), wings (12 idx 0-6)
+            bool validTarget = (tCat <= 11) || (tCat == 12 && tIdx <= 6);
+            if (tCat == 4 && (tIdx == 7 || tIdx == 15)) validTarget = false;
+
+            if (!validTarget) {
+              ShowNotification("Cannot upgrade this item!");
+              SoundManager::Play(SOUND_ERROR01);
+            } else if (isJewelBless && tLevel >= 6) {
+              ShowNotification("Item already +6! Use Jewel of Soul.");
+              SoundManager::Play(SOUND_ERROR01);
+            } else if (isJewelSoul && tLevel >= 9) {
+              ShowNotification("Item already at max level!");
+              SoundManager::Play(SOUND_ERROR01);
+            } else if (*s_ctx->syncDone) {
+              s_ctx->server->SendItemUpgrade((uint8_t)g_dragFromSlot,
+                                             (uint8_t)tPrimary);
+              SoundManager::Play(SOUND_JEWEL01);
+            }
           } else {
-            // Restore old area
-            SetBagItem(g_dragFromSlot, di, dq, dl);
-            std::cout << "[UI] Cannot move: target area occupied" << std::endl;
+            // Normal inventory move
+            int16_t di = g_dragDefIndex;
+            uint8_t dq = g_dragQuantity;
+            uint8_t dl = g_dragItemLevel;
+
+            ClearBagItem(g_dragFromSlot);
+            if (CheckBagFit(di, targetSlot)) {
+              SetBagItem(targetSlot, di, dq, dl);
+              if (*s_ctx->syncDone)
+                s_ctx->server->SendInventoryMove(
+                    static_cast<uint8_t>(g_dragFromSlot),
+                    static_cast<uint8_t>(targetSlot));
+
+              SoundManager::Play(SOUND_GET_ITEM01);
+              std::cout << "[UI] Moved item from " << g_dragFromSlot << " to "
+                        << targetSlot << std::endl;
+            } else {
+              SetBagItem(g_dragFromSlot, di, dq, dl);
+              std::cout << "[UI] Cannot move: target area occupied" << std::endl;
+            }
           }
         }
       }

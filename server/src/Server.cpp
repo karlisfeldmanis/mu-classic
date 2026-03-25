@@ -32,6 +32,7 @@ bool Server::Start(uint16_t port) {
   m_db.SeedNpcSpawns();
   m_db.SeedMonsterSpawns();
   m_db.SeedItemDefinitions();
+  m_db.SeedClassDefinitions();
   m_db.SeedQuests();
   QuestHandler::Init(m_db);
 
@@ -985,7 +986,8 @@ void Server::OnClientConnected(Session &session) {
   // Auto-assign account (no login flow yet)
   session.accountId = 1;
 
-  // Send item catalog once per connection (static data)
+  // Send static data once per connection
+  CharacterHandler::SendClassDefinitions(session, m_db);
   CharacterHandler::SendItemCatalog(session, m_db);
 
   // Send character list — client enters character select screen
@@ -1105,6 +1107,9 @@ void Server::TransitionMap(Session &session, uint8_t newMapId,
   m_world.SetActiveMap(newMapId);
   m_world.LoadNpcsFromDB(m_db, newMapId);
   m_world.LoadMonstersFromDB(m_db, newMapId);
+
+  // Refresh combat stats (pet bonuses, defense) after map transition
+  CharacterHandler::RefreshCombatStats(session, m_db, session.characterId);
 
   // Send map change packet to client
   PMSG_MAP_CHANGE_SEND pkt{};

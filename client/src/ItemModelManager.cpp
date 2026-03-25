@@ -588,6 +588,13 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
   int itemIndex = (defIndex >= 0) ? (defIndex % 32) : -1;
   int blendMeshIdx = (category >= 0) ? GetItemBlendMesh(category, itemIndex) : -1;
 
+  // Ground items: self-lit, no directional/terrain/point light reaction
+  // Override lighting uniforms so items appear uniformly bright
+  shader->setVec4("u_terrainLight", glm::vec4(0.85f, 0.85f, 0.85f, 0.0f));
+  shader->setVec4("u_lightCount", glm::vec4(0.0f));
+  shader->setVec4("u_params2", glm::vec4(1.0f, 0.01f, 0.0f, 0.0f));
+  shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+
   for (int mi = 0; mi < (int)model->meshes.size(); ++mi) {
     const auto &mb = model->meshes[mi];
     if (mb.hidden || mb.indexCount == 0)

@@ -113,9 +113,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     sym3 = uint(texture2D(s_symmetryMap, coord3).r * 255.0 + 0.5);
     attr3 = uint(texture2D(s_attributeMap, coord3).r * 255.0 + 0.5);
 
-    // Check if any bilinear neighbor has TW_NOGROUND (bridge area)
-    bool anyNoGround = ((attr0 & 8u) != 0u) || ((attr1 & 8u) != 0u)
-                    || ((attr2 & 8u) != 0u) || ((attr3 & 8u) != 0u);
+    // Check if any bilinear neighbor has TW_NOGROUND (0x08) or bridge mark (0x20)
+    uint snapMask = 8u | 32u;
+    bool anyNoGround = ((attr0 & snapMask) != 0u) || ((attr1 & snapMask) != 0u)
+                    || ((attr2 & snapMask) != 0u) || ((attr3 & snapMask) != 0u);
 
     // Snap void (tile 255) neighbors to center tile to prevent garbage
     // texture bleeding at void/rift edges. Bridge cells are patched CPU-side

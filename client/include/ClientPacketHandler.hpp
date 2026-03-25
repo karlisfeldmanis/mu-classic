@@ -3,6 +3,7 @@
 
 #include "CharacterSelect.hpp"
 #include "ClientTypes.hpp"
+#include "PacketDefs.hpp"
 #include "HeroCharacter.hpp"
 #include "ItemDatabase.hpp"
 #include "MonsterManager.hpp"
@@ -88,6 +89,9 @@ struct ClientGameState {
     QuestCatalogReward classReward[4][2];
   };
   std::vector<QuestCatalogEntry> *questCatalog = nullptr;
+
+  // Class definitions (received from server for character creation UI)
+  std::vector<PMSG_CLASS_DEF_ENTRY> classDefinitions;
 
   // Active buffs (Elf auras)
   struct ActiveBuff {

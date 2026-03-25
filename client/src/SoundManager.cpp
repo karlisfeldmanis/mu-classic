@@ -2,6 +2,7 @@
 #define MINIMP3_IMPLEMENTATION
 #include "minimp3.h"
 #include "minimp3_ex.h"
+#include "stb_vorbis.c"
 #include <al.h>
 #include <alc.h>
 #include <cstdint>
@@ -11,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <vector>
 
 namespace SoundManager {
@@ -41,6 +43,7 @@ static ALuint s_musicBuffer = 0;
 static ALuint s_musicSource = 0;
 static float s_musicVolume = 0.7f;
 static std::string s_currentMusic; // Currently playing music file path
+static std::set<std::string> s_playedTracks; // Tracks already played this session
 
 // ── Fade state ──
 enum class FadeState { NONE, FADING_OUT, FADING_IN };
@@ -48,6 +51,10 @@ static FadeState s_fadeState = FadeState::NONE;
 static float s_fadeTimer = 0.0f;
 static float s_fadeDuration = 1.5f;
 static std::string s_pendingTrack; // Track to play after fade-out (empty = just stop)
+
+// ── Silence timeout — allow replay after quiet period ──
+static float s_silenceTimer = 0.0f;
+static constexpr float MUSIC_SILENCE_TIMEOUT = 180.0f; // 3 minutes of silence
 
 // ── WAV Loader ──
 
@@ -617,6 +624,21 @@ void StopAll() {
       alSourceStop(slot.sources[i]);
 }
 
+bool IsPlaying(int soundId) {
+  if (!s_initialized)
+    return false;
+  auto it = s_sounds.find(soundId);
+  if (it == s_sounds.end())
+    return false;
+  for (int i = 0; i < it->second.maxCh; i++) {
+    ALint state;
+    alGetSourcei(it->second.sources[i], AL_SOURCE_STATE, &state);
+    if (state == AL_PLAYING)
+      return true;
+  }
+  return false;
+}
+
 void Play3D(int soundId, float x, float y, float z) {
   if (!s_initialized)
     return;
@@ -675,7 +697,7 @@ void SetMasterVolume(float vol) {
 
 // ── Music (MP3) ──
 
-void PlayMusic(const std::string &filename) {
+void PlayMusic(const std::string &filename, bool loop) {
   if (!s_initialized)
     return;
 
@@ -689,39 +711,60 @@ void PlayMusic(const std::string &filename) {
 
   StopMusic();
 
-  // Decode MP3 to PCM using minimp3
-  mp3dec_t mp3d;
-  mp3dec_file_info_t info;
-  mp3dec_init(&mp3d);
+  short *pcmData = nullptr;
+  int channels = 0, sampleRate = 0;
+  size_t totalSamples = 0;
+  bool isOgg = filename.size() >= 4 &&
+               filename.compare(filename.size() - 4, 4, ".ogg") == 0;
 
-  if (mp3dec_load(&mp3d, filename.c_str(), &info, nullptr, nullptr)) {
-    std::cerr << "[Music] Failed to decode: " << filename << std::endl;
-    return;
+  if (isOgg) {
+    int oggChannels, oggRate;
+    int sampleCount = stb_vorbis_decode_filename(
+        filename.c_str(), &oggChannels, &oggRate, &pcmData);
+    if (sampleCount <= 0 || !pcmData) {
+      std::cerr << "[Music] Failed to decode OGG: " << filename << std::endl;
+      if (pcmData) free(pcmData);
+      return;
+    }
+    channels = oggChannels;
+    sampleRate = oggRate;
+    totalSamples = (size_t)sampleCount * channels;
+  } else {
+    mp3dec_t mp3d;
+    mp3dec_file_info_t info;
+    mp3dec_init(&mp3d);
+    if (mp3dec_load(&mp3d, filename.c_str(), &info, nullptr, nullptr)) {
+      std::cerr << "[Music] Failed to decode: " << filename << std::endl;
+      return;
+    }
+    if (info.samples == 0 || !info.buffer) {
+      std::cerr << "[Music] Empty MP3: " << filename << std::endl;
+      if (info.buffer) free(info.buffer);
+      return;
+    }
+    pcmData = info.buffer;
+    channels = info.channels;
+    sampleRate = info.hz;
+    totalSamples = info.samples;
   }
 
-  if (info.samples == 0 || !info.buffer) {
-    std::cerr << "[Music] Empty MP3: " << filename << std::endl;
-    if (info.buffer)
-      free(info.buffer);
-    return;
-  }
-
-  ALenum format = (info.channels == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
-  ALsizei dataSize = (ALsizei)(info.samples * sizeof(mp3d_sample_t));
+  ALenum format = (channels == 1) ? AL_FORMAT_MONO16 : AL_FORMAT_STEREO16;
+  ALsizei dataSize = (ALsizei)(totalSamples * sizeof(short));
 
   alGenBuffers(1, &s_musicBuffer);
-  alBufferData(s_musicBuffer, format, info.buffer, dataSize, info.hz);
-  free(info.buffer);
+  alBufferData(s_musicBuffer, format, pcmData, dataSize, sampleRate);
+  free(pcmData);
 
   alGenSources(1, &s_musicSource);
   alSourcei(s_musicSource, AL_BUFFER, (ALint)s_musicBuffer);
-  alSourcei(s_musicSource, AL_LOOPING, AL_TRUE);
+  alSourcei(s_musicSource, AL_LOOPING, loop ? AL_TRUE : AL_FALSE);
   alSourcef(s_musicSource, AL_GAIN, s_musicVolume);
   alSourcei(s_musicSource, AL_SOURCE_RELATIVE, AL_TRUE);
   alSource3f(s_musicSource, AL_POSITION, 0.0f, 0.0f, 0.0f);
   alSourcePlay(s_musicSource);
 
   s_currentMusic = filename;
+  s_playedTracks.insert(filename);
   auto pos = filename.find_last_of("/\\");
   std::string name = (pos != std::string::npos) ? filename.substr(pos + 1) : filename;
   std::cout << "[Music] Playing: " << name << std::endl;
@@ -770,6 +813,10 @@ void CrossfadeTo(const std::string &filename, float fadeSeconds) {
   if (s_currentMusic == filename && IsMusicPlaying())
     return;
 
+  // Don't replay tracks that already played this session (play once per map visit)
+  if (s_playedTracks.count(filename))
+    return;
+
   // If no music playing, just start directly with fade-in
   if (!IsMusicPlaying()) {
     PlayMusic(filename);
@@ -800,7 +847,21 @@ void FadeOut(float fadeSeconds) {
 }
 
 void UpdateMusic(float deltaTime) {
-  if (!s_initialized || s_fadeState == FadeState::NONE)
+  if (!s_initialized)
+    return;
+
+  // Track silence: when no music playing and no fade active, count up
+  if (!IsMusicPlaying() && s_fadeState == FadeState::NONE) {
+    s_silenceTimer += deltaTime;
+    if (s_silenceTimer >= MUSIC_SILENCE_TIMEOUT) {
+      s_playedTracks.clear(); // Allow tracks to replay
+      s_silenceTimer = 0.0f;
+    }
+  } else {
+    s_silenceTimer = 0.0f;
+  }
+
+  if (s_fadeState == FadeState::NONE)
     return;
 
   s_fadeTimer += deltaTime;

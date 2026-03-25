@@ -251,7 +251,8 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
 
   CharacterClass charCls = static_cast<CharacterClass>(session.classCode);
   session.maxHp =
-      StatCalculator::CalculateMaxHP(charCls, session.level, session.vitality);
+      StatCalculator::CalculateMaxHP(charCls, session.level, session.vitality) +
+      session.petBonusMaxHp;
   session.hp = std::min(static_cast<int>(c.life), session.maxHp);
   if (session.hp <= 0)
     session.hp = session.maxHp;
@@ -304,6 +305,19 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
 
   // Send skill list to client
   CharacterHandler::SendSkillList(session);
+
+  // Re-send active buffs (elf auras) so client restores visual effects
+  for (int b = 0; b < 2; b++) {
+    if (session.buffs[b].active && session.buffs[b].remaining > 0.0f) {
+      PMSG_BUFF_EFFECT_SEND bpkt{};
+      bpkt.h = MakeC1Header(sizeof(bpkt), Opcode::BUFF_EFFECT);
+      bpkt.buffType = session.buffs[b].type;
+      bpkt.active = 1;
+      bpkt.value = static_cast<uint16_t>(session.buffs[b].value);
+      bpkt.duration = session.buffs[b].remaining;
+      session.Send(&bpkt, sizeof(bpkt));
+    }
+  }
 
   printf("[World] Character '%s' entered Lorencia at (%d,%d) STR=%d "
          "weapon=%d-%d def=%d zen=%u skills=%zu\n",

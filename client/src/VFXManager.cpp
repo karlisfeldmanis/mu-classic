@@ -2388,18 +2388,20 @@ void VFXManager::renderFireModel(const SpellProjectile &p,
   m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
   m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
 
-  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
-                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint64_t stAlpha = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                   | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  uint64_t stAdd = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_ADD;
 
   m_modelShader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (const auto &mb : m_fireMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
-    if (mb.bmdTextureId == 1) continue; // Skip glow mesh
     bgfx::setTransform(glm::value_ptr(model));
     m_modelShader->setTexture(0, "s_texColor", mb.texture);
     bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
-    bgfx::setState(state);
+    // Main 5.2 BlendMesh=1: mesh with textureId 1 renders additive (fire glow)
+    bgfx::setState(mb.bmdTextureId == 1 ? stAdd : stAlpha);
     bgfx::submit(0, m_modelShader->program);
   }
 }

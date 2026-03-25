@@ -187,6 +187,37 @@ Monsters track consecutive A* pathfinding failures during a chase.
 When transitioning IDLE→WANDERING, the server emits `MON_MOVE` with the wander target immediately.
 Without this emit, the client never sees the monster start walking.
 
+## Dungeon Traps (Types 100-102)
+
+Traps are `KIND_TRAP` entities with special server-side AI and client-side VFX.
+
+### Trap Types
+
+| Type | Name | Model | Attack Range | Behavior |
+|------|------|-------|-------------|----------|
+| 100 | Lance Trap | Trap01.bmd | 4 (grid cells) | Pressure plate — attacks players in range on cooldown |
+| 101 | Iron Stick | Trap02.bmd | 1 | Pressure plate — attacks adjacent players |
+| 102 | Fire Trap | FireTrap01.bmd | 4 | Step-on activation — player must stand ON trap tile to trigger AoE |
+
+### Trap Stats (OpenMU Version075)
+- All traps: 1.0s attack cooldown, ShieldBypassChance=1.0 (100% shield bypass)
+- Lance: HP=1000, Damage=100-110, Defense=400
+- Iron Stick: HP=400, Damage=55-65, Defense=100
+- Fire: HP=600, Damage=90-100, Defense=200
+
+### Server-Side AI (`processTrapAI` in GameWorld.cpp)
+- **Lance/Iron Stick (100-101)**: Standard cooldown loop — scan players within grid `attackRange`, deal damage to all in range.
+- **Fire Trap (102)**: Two-step activation — first checks if any player is standing ON the trap's exact grid cell (step-on trigger). Only then does it deal AoE damage to all players within `attackRange`.
+- Traps never move, never aggro, never die. They are stationary hazards.
+
+### Client-Side VFX
+- **Lance Trap idle**: Continuous rotating `SPELL_LIGHTNING` particles at +150 above position (~8/sec), matching Main 5.2 `BITMAP_LIGHTNING+1` sprites.
+- **Lance/Iron Stick attack**: `SOUND_TRAP01` (aGrate.wav) + `SPELL_LIGHTNING` burst (lance only).
+- **Fire Trap attack**: `SOUND_FLAME` + `SPELL_FIRE` burst.
+- **VFX trigger**: Fires in `TriggerAttackAnimation` (on server attack packet), NOT continuously.
+- **Iron Stick animation**: Toggles between action 0 and action 1 on attack.
+- **World object HiddenMesh=-2**: Trap world objects (types 39/40/51) are invisible in Dungeon — `ObjectRenderer` skips them.
+
 ## Reference Code
 
 - `ZzzCharacter.cpp:CreateMonster()` (line 12577) -- Type-to-model mapping + scale
@@ -197,5 +228,5 @@ Without this emit, the client never sees the monster start walking.
 - `Monster.txt` -- Stats table
 - `MonsterSetBase.txt` -- Spawn positions
 - `_define.h:483` -- Action constants
-- `server/src/GameWorld.cpp` -- Server-side AI state machine, pathfinding, terrain attributes
+- `server/src/GameWorld.cpp` -- Server-side AI state machine, pathfinding, terrain attributes, trap AI
 - `src/PathFinder.cpp` -- A* pathfinding implementation

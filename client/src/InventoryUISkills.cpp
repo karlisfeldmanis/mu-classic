@@ -237,26 +237,44 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
 
   ImVec2 mp = ImGui::GetIO().MousePos;
 
-  // ══════════════ Background panel (dark gothic stone) ══════════════
+  // ══════════════ Background panel (dark gothic stone, multi-layer frame) ══════════════
   {
     float bgX = c.ToScreenX(PANEL_LEFT - 4.0f);
     float bgY = c.ToScreenY(ROW_VY - 8.0f);
     float bgX1 = c.ToScreenX(PANEL_RIGHT + 4.0f);
     float bgY1 = c.ToScreenY(ROW_VY + SLOT + 8.0f);
-    // Dark stone gradient
+    // Dark stone gradient background
     dl->AddRectFilledMultiColor(
-        ImVec2(bgX, bgY), ImVec2(bgX1, bgY1), IM_COL32(12, 10, 8, 240),
-        IM_COL32(12, 10, 8, 240), IM_COL32(18, 15, 12, 235),
-        IM_COL32(18, 15, 12, 235));
-    // Outer dark border
-    dl->AddRect(ImVec2(bgX, bgY), ImVec2(bgX1, bgY1), IM_COL32(8, 6, 4, 255),
-                4.0f, 0, 2.5f);
-    // Inner gold trim
-    dl->AddRect(ImVec2(bgX + 2, bgY + 2), ImVec2(bgX1 - 2, bgY1 - 2),
-                IM_COL32(120, 100, 55, 100), 3.0f);
-    // Top decorative line (filigree accent)
-    dl->AddLine(ImVec2(bgX + 10, bgY + 1), ImVec2(bgX1 - 10, bgY + 1),
-                IM_COL32(160, 135, 70, 80));
+        ImVec2(bgX, bgY), ImVec2(bgX1, bgY1), IM_COL32(14, 12, 10, 245),
+        IM_COL32(14, 12, 10, 245), IM_COL32(20, 17, 14, 240),
+        IM_COL32(20, 17, 14, 240));
+    // Outermost shadow border (3px, very dark)
+    dl->AddRect(ImVec2(bgX - 1, bgY - 1), ImVec2(bgX1 + 1, bgY1 + 1),
+                IM_COL32(5, 4, 3, 220), 4.0f, 0, 3.0f);
+    // Main gold trim band
+    dl->AddRect(ImVec2(bgX, bgY), ImVec2(bgX1, bgY1),
+                IM_COL32(130, 108, 52, 200), 4.0f, 0, 2.0f);
+    // Inner dark border
+    dl->AddRect(ImVec2(bgX + 3, bgY + 3), ImVec2(bgX1 - 3, bgY1 - 3),
+                IM_COL32(20, 16, 12, 200), 2.0f);
+    // Top highlight line (light catch on metallic frame)
+    dl->AddLine(ImVec2(bgX + 6, bgY + 1), ImVec2(bgX1 - 6, bgY + 1),
+                IM_COL32(200, 175, 90, 70));
+    // Bottom shadow line
+    dl->AddLine(ImVec2(bgX + 6, bgY1 - 1), ImVec2(bgX1 - 6, bgY1 - 1),
+                IM_COL32(0, 0, 0, 80));
+    // Corner rivet dots (4 corners)
+    float rivetR = 2.5f;
+    ImVec2 corners[] = {
+      {bgX + 7, bgY + 7}, {bgX1 - 7, bgY + 7},
+      {bgX + 7, bgY1 - 7}, {bgX1 - 7, bgY1 - 7}
+    };
+    for (auto &cp : corners) {
+      dl->AddCircleFilled(ImVec2(cp.x + 1, cp.y + 1), rivetR, IM_COL32(0, 0, 0, 100), 10);
+      dl->AddCircleFilled(cp, rivetR, IM_COL32(180, 155, 75, 200), 10);
+      dl->AddCircleFilled(ImVec2(cp.x - 0.5f, cp.y - 0.5f), rivetR * 0.4f,
+                          IM_COL32(230, 210, 140, 80), 8);
+    }
   }
 
   // ══════════════ HP Orb (left) ══════════════
@@ -347,40 +365,61 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     for (int i = 0; i < MBTN_COUNT; i++) {
       float bx = bStartX + i * (bs + MBTN_SCREEN_GAP);
       float by = bStartY;
-      ImVec2 bp0(bx, by), bp1(bx + bs, by + bs);
-      bool hov = mp.x >= bp0.x && mp.x < bp1.x && mp.y >= bp0.y && mp.y < bp1.y;
+      float bcx = bx + bs * 0.5f;
+      float bcy = by + bs * 0.5f;
+      float br = bs * 0.5f;
+      // Circular hit test
+      float dx = mp.x - bcx, dy = mp.y - bcy;
+      bool hov = (dx * dx + dy * dy) <= (br * br);
       bool disabled = (i == 3 && tDisabled);
-      // Gothic dark stone button
-      ImU32 topFill = disabled ? IM_COL32(12, 10, 8, 200)
-                      : hov    ? IM_COL32(40, 32, 22, 240)
-                               : IM_COL32(18, 14, 10, 230);
-      ImU32 botFill = disabled ? IM_COL32(8, 6, 5, 200)
-                      : hov    ? IM_COL32(30, 24, 16, 240)
-                               : IM_COL32(12, 10, 8, 230);
-      dl->AddRectFilledMultiColor(bp0, bp1, topFill, topFill, botFill, botFill);
+      // Filled circle background
+      ImU32 bgCol = disabled ? IM_COL32(10, 8, 6, 200)
+                    : hov    ? IM_COL32(35, 28, 20, 240)
+                             : IM_COL32(16, 13, 10, 230);
+      dl->AddCircleFilled(ImVec2(bcx, bcy), br, bgCol, 32);
+      // Top-half highlight for 3D metallic look
+      dl->PushClipRect(ImVec2(bcx - br, bcy - br), ImVec2(bcx + br, bcy), true);
+      ImU32 hlCol = disabled ? IM_COL32(20, 16, 12, 80)
+                    : hov    ? IM_COL32(60, 48, 30, 120)
+                             : IM_COL32(30, 24, 18, 80);
+      dl->AddCircleFilled(ImVec2(bcx, bcy), br - 1, hlCol, 32);
+      dl->PopClipRect();
+      // Outer dark shadow ring
+      dl->AddCircle(ImVec2(bcx, bcy), br + 1, IM_COL32(5, 4, 3, 180), 32, 2.0f);
+      // Main border ring
       ImU32 borderCol = disabled ? IM_COL32(40, 35, 25, 100)
-                        : hov    ? IM_COL32(200, 170, 80, 230)
-                                 : IM_COL32(100, 85, 45, 160);
-      dl->AddRect(bp0, bp1, borderCol, 3.0f);
+                        : hov    ? IM_COL32(210, 180, 85, 240)
+                                 : IM_COL32(110, 92, 48, 180);
+      dl->AddCircle(ImVec2(bcx, bcy), br, borderCol, 32, 1.5f);
+      // Inner highlight ring (top half only for sheen)
+      dl->PushClipRect(ImVec2(bcx - br, bcy - br), ImVec2(bcx + br, bcy - 2), true);
+      dl->AddCircle(ImVec2(bcx, bcy), br - 2,
+                    disabled ? IM_COL32(40, 35, 25, 30) : IM_COL32(180, 155, 80, 50),
+                    32, 1.0f);
+      dl->PopClipRect();
+      // Inner shadow ring
+      dl->AddCircle(ImVec2(bcx, bcy), br - 3, IM_COL32(0, 0, 0, 50), 32, 1.0f);
+      // Text label centered
       ImVec2 tsz = ImGui::CalcTextSize(btnLabels[i]);
       ImU32 textCol =
           disabled ? IM_COL32(80, 70, 55, 140) : IM_COL32(200, 185, 150, 240);
       DrawShadowText(dl,
-                     ImVec2(bx + (bs - tsz.x) * 0.5f, by + (bs - tsz.y) * 0.5f),
+                     ImVec2(bcx - tsz.x * 0.5f, bcy - tsz.y * 0.5f),
                      textCol, btnLabels[i]);
-      // Teleport cooldown overlay
+      // Teleport cooldown overlay (circular)
       if (i == 3 && s_ctx->hero && s_ctx->hero->GetTeleportCooldown() > 0.0f) {
         float cd = s_ctx->hero->GetTeleportCooldown();
         float cdMax = s_ctx->hero->GetTeleportCooldownMax();
         float cdFrac = cd / cdMax;
         float fillH = bs * cdFrac;
-        dl->AddRectFilled(bp0, ImVec2(bp1.x, bp0.y + fillH),
-                          IM_COL32(10, 10, 10, 180), 3.0f);
+        dl->PushClipRect(ImVec2(bcx - br, bcy - br), ImVec2(bcx + br, bcy - br + fillH), true);
+        dl->AddCircleFilled(ImVec2(bcx, bcy), br, IM_COL32(10, 10, 10, 180), 32);
+        dl->PopClipRect();
         char cdBuf[8];
         snprintf(cdBuf, sizeof(cdBuf), "%d", (int)ceil(cd));
         ImVec2 cdsz = ImGui::CalcTextSize(cdBuf);
         DrawShadowText(dl,
-                       ImVec2(bx + (bs - cdsz.x) * 0.5f, by + bs - cdsz.y - 2),
+                       ImVec2(bcx - cdsz.x * 0.5f, bcy + br * 0.3f),
                        IM_COL32(255, 180, 80, 255), cdBuf);
       }
     }
@@ -416,11 +455,16 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
           AddRenderJob({it->second.modelFile, defIdx, (int)sx + 4,
                         potY, (int)sz - 8,
                         (int)sz - 8, false});
-          char cbuf[16];
-          snprintf(cbuf, sizeof(cbuf), "%d", count);
-          ImVec2 tsz = ImGui::CalcTextSize(cbuf);
-          dl->AddText(ImVec2(sx + sz - tsz.x - 2, sy + sz - 14),
-                      IM_COL32(255, 210, 80, 255), cbuf);
+          // Mounts are unique — don't show quantity count
+          bool isMount = (it->second.category == 13 &&
+                         (it->second.itemIndex == 2 || it->second.itemIndex == 3));
+          if (!isMount) {
+            char cbuf[16];
+            snprintf(cbuf, sizeof(cbuf), "%d", count);
+            ImVec2 tsz = ImGui::CalcTextSize(cbuf);
+            dl->AddText(ImVec2(sx + sz - tsz.x - 2, sy + sz - 14),
+                        IM_COL32(255, 210, 80, 255), cbuf);
+          }
         }
       }
     }
@@ -434,6 +478,15 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
       snprintf(cd.text, sizeof(cd.text), "%d",
                (int)ceil(*s_ctx->potionCooldown));
       g_deferredCooldowns.push_back(cd);
+    }
+
+    // Gold border for active mount in quickslot
+    if (defIdx != -1 && s_ctx->hero && s_ctx->hero->IsMounted()) {
+      auto mit = ItemDatabase::GetItemDefs().find(defIdx);
+      if (mit != ItemDatabase::GetItemDefs().end() &&
+          mit->second.category == 13 &&
+          (mit->second.itemIndex == 2 || mit->second.itemIndex == 3))
+        dl->AddRect(p0, p1, IM_COL32(255, 210, 80, 255), 3.0f, 0, 2.0f);
     }
 
     // Potion slot tooltip
@@ -753,8 +806,10 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
       ImVec2 sp0(sx, barY);
       ImVec2 sp1(sx + segW, barY + barH);
 
-      // Segment background
-      dl->AddRectFilled(sp0, sp1, IM_COL32(8, 8, 12, 200), 1.0f);
+      // Segment background — gradient for depth
+      dl->AddRectFilledMultiColor(sp0, sp1,
+          IM_COL32(5, 5, 10, 210), IM_COL32(5, 5, 10, 210),
+          IM_COL32(12, 12, 20, 210), IM_COL32(12, 12, 20, 210));
 
       // Fill based on XP fraction
       float segStart = (float)i / (float)XP_SEGMENTS;
@@ -764,27 +819,34 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
             std::clamp((xpFrac - segStart) / (segEnd - segStart), 0.0f, 1.0f);
         float fillW = segW * segFrac;
         dl->AddRectFilledMultiColor(
-            sp0, ImVec2(sx + fillW, barY + barH), IM_COL32(50, 180, 220, 220),
-            IM_COL32(50, 180, 220, 220), IM_COL32(30, 130, 170, 220),
-            IM_COL32(30, 130, 170, 220));
-        // Subtle highlight at top
+            sp0, ImVec2(sx + fillW, barY + barH),
+            IM_COL32(80, 210, 240, 230), IM_COL32(80, 210, 240, 230),
+            IM_COL32(30, 140, 180, 230), IM_COL32(30, 140, 180, 230));
+        // Bright top highlight (2px)
         dl->AddLine(ImVec2(sx + 1, barY + 1), ImVec2(sx + fillW - 1, barY + 1),
-                    IM_COL32(255, 255, 255, 30));
+                    IM_COL32(200, 255, 255, 50));
+        dl->AddLine(ImVec2(sx + 1, barY + 2), ImVec2(sx + fillW - 1, barY + 2),
+                    IM_COL32(200, 255, 255, 25));
       }
 
-      // Thin border
-      dl->AddRect(sp0, sp1, IM_COL32(40, 40, 50, 120), 1.0f);
+      // 2-layer border — outer dark, inner subtle gold
+      dl->AddRect(sp0, sp1, IM_COL32(0, 0, 0, 160), 1.0f);
+      dl->AddRect(ImVec2(sp0.x + 1, sp0.y + 1), ImVec2(sp1.x - 1, sp1.y - 1),
+                  IM_COL32(70, 60, 35, 50), 1.0f);
     }
 
-    // Level + XP text centered above the bar
+    // Level + XP text centered above the bar (Cinzel font, larger)
+    float uiS = (float)winH / 768.0f;
     char xpLabel[64];
-    snprintf(xpLabel, sizeof(xpLabel), "Lv.%d  -  %.1f%%", curLv,
+    snprintf(xpLabel, sizeof(xpLabel), "Level %d  -  %.1f%%", curLv,
              xpFrac * 100.0f);
-    ImVec2 tsz = ImGui::CalcTextSize(xpLabel);
+    ImFont *xpFont = s_ctx->fontBold ? s_ctx->fontBold : ImGui::GetFont();
+    float xpFs = 16.0f * uiS;
+    ImVec2 tsz = xpFont->CalcTextSizeA(xpFs, FLT_MAX, 0, xpLabel);
     float tx = barLeft + (totalW - tsz.x) * 0.5f;
-    float ty = barY - tsz.y - 2.0f;
-    dl->AddText(ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 200), xpLabel);
-    dl->AddText(ImVec2(tx, ty), IM_COL32(200, 190, 140, 220), xpLabel);
+    float ty = barY - tsz.y - 3.0f;
+    dl->AddText(xpFont, xpFs, ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 200), xpLabel);
+    dl->AddText(xpFont, xpFs, ImVec2(tx, ty), IM_COL32(220, 200, 150, 240), xpLabel);
   }
 }
 
@@ -1071,10 +1133,11 @@ void RenderCastBar(ImDrawList *dl) {
     remaining = std::max(0.0f, timer);
   }
 
-  // Minimal layout: narrow bar centered on screen
+  // Minimal layout: narrow bar centered on screen, scaled for fullscreen
   ImVec2 disp = ImGui::GetIO().DisplaySize;
-  float barW = 220.0f;
-  float barH = 14.0f;
+  float uiScale = ImGui::GetIO().FontGlobalScale;
+  float barW = 220.0f * uiScale;
+  float barH = 14.0f * uiScale;
   float bx = (disp.x - barW) * 0.5f;
   float by = disp.y * 0.68f; // Above HUD bar
 

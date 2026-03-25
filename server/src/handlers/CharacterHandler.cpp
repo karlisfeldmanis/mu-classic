@@ -24,10 +24,12 @@ void SendCharStats(Session &session, Database &db, int characterId) {
   for (auto &slot : equip) {
     auto itemDef = db.GetItemDefinition(slot.category, slot.itemIndex);
     if (itemDef.id > 0) {
-      session.totalDefense +=
-          itemDef.defense + GetDefenseLevelBonus(slot.category, slot.itemLevel);
       if (slot.category >= 6 && slot.category <= 11) {
+        session.totalDefense +=
+            itemDef.defense + GetDefenseLevelBonus(slot.category, slot.itemLevel);
         session.totalDefense += (slot.optionFlags & 0x07) * 4;
+      } else {
+        session.totalDefense += itemDef.defense;
       }
     }
   }
@@ -257,11 +259,14 @@ void RefreshCombatStats(Session &session, Database &db, int characterId) {
         leftDmgMax = itemDef.damageMax + wpnBonus;
         hasLeftWeapon = true;
       }
-      session.totalDefense +=
-          itemDef.defense + GetDefenseLevelBonus(slot.category, slot.itemLevel);
-      // Additional Option defense bonus (+4 per level for armor/shield)
+      // Only armor (6=shield, 7-11=helm/armor/pants/gloves/boots) get defense
+      // level bonus. Weapons (0-5) contribute base defense only (usually 0).
       if (slot.category >= 6 && slot.category <= 11) {
+        session.totalDefense +=
+            itemDef.defense + GetDefenseLevelBonus(slot.category, slot.itemLevel);
         session.totalDefense += (slot.optionFlags & 0x07) * 4;
+      } else {
+        session.totalDefense += itemDef.defense;
       }
 
       if (slot.slot == 7) { // Wings
@@ -312,19 +317,40 @@ void RefreshCombatStats(Session &session, Database &db, int characterId) {
   }
 
   // Pet bonuses (slot 8, category 13)
+  // Also check if mount replaced pet in slot 8 — scan inventory for owned pets.
+  // This allows Imp/Guardian Angel buffs to persist while mounted.
   session.petBonusMaxHp = 0;
   session.petDamageReduction = 0.0f;
   session.petAttackMultiplier = 1.0f;
+  bool hasPetInSlot8 = false;
   for (auto &slot : equip) {
     if (slot.slot == 8 && slot.category == 13) {
       if (slot.itemIndex == 0) { // Guardian Angel: +50 HP, 20% dmg reduction
         session.petBonusMaxHp = 50;
         session.petDamageReduction = 0.2f;
+        hasPetInSlot8 = true;
       } else if (slot.itemIndex == 1) { // Imp: 30% attack increase
         session.petAttackMultiplier = 1.3f;
+        hasPetInSlot8 = true;
       } else if (slot.itemIndex == 3) { // Dinorant: 15% atk, 10% dmg reduction
         session.petAttackMultiplier = 1.15f;
         session.petDamageReduction = 0.1f;
+      }
+    }
+  }
+  // If slot 8 has a mount (not a pet), check inventory for owned pet items
+  if (!hasPetInSlot8) {
+    auto inv = db.GetCharacterInventory(characterId);
+    for (auto &item : inv) {
+      int cat = item.defIndex / 32;
+      int idx = item.defIndex % 32;
+      if (cat == 13 && idx == 0) { // Guardian Angel in bag
+        session.petBonusMaxHp = 50;
+        session.petDamageReduction = 0.2f;
+        break;
+      } else if (cat == 13 && idx == 1) { // Imp in bag
+        session.petAttackMultiplier = 1.3f;
+        break;
       }
     }
   }
@@ -729,30 +755,49 @@ void HandleEquip(Session &session, const std::vector<uint8_t> &packet,
   uint8_t newItemOpt = 0; // Carry optionFlags from bag
   if (eq->category != 0xFF) {
     int16_t dIdx = (int16_t)((int)eq->category * 32 + (int)eq->itemIndex);
+    // First pass: match by defIndex AND itemLevel for exact match
     for (int i = 0; i < 64; i++) {
       if (session.bag[i].occupied && session.bag[i].primary &&
-          session.bag[i].defIndex == dIdx) {
-        newItemQty = session.bag[i].quantity;
-        newItemOpt = session.bag[i].optionFlags;
-        // Clear bag slot (including multi-cell)
-        auto dI = db.GetItemDefinition(dIdx);
-        int w = dI.width > 0 ? dI.width : 1;
-        int h = dI.height > 0 ? dI.height : 1;
-        int r = i / 8, c = i % 8;
-        for (int hh = 0; hh < h; hh++) {
-          for (int ww = 0; ww < w; ww++) {
-            int s = (r + hh) * 8 + (c + ww);
-            if (s < 64)
-              session.bag[s] = {};
-          }
-        }
+          session.bag[i].defIndex == dIdx &&
+          session.bag[i].itemLevel == eq->itemLevel) {
         freedSlot = i;
-        db.DeleteCharacterInventoryItem(charId, i);
-        printf("[Character] Removed equipped item from bag slot %d (def=%d qty=%d)\n",
-               i, dIdx, newItemQty);
         break;
       }
     }
+    // Fallback: match by defIndex only (for level-0 items or mismatches)
+    if (freedSlot < 0) {
+      for (int i = 0; i < 64; i++) {
+        if (session.bag[i].occupied && session.bag[i].primary &&
+            session.bag[i].defIndex == dIdx) {
+          freedSlot = i;
+          break;
+        }
+      }
+    }
+    if (freedSlot < 0) {
+      printf("[Character] REJECTED equip: item def=%d +%d not found in bag!\n",
+             dIdx, eq->itemLevel);
+      SendEquipment(session, db, charId);
+      InventoryHandler::SendInventorySync(session);
+      return;
+    }
+    newItemQty = session.bag[freedSlot].quantity;
+    newItemOpt = session.bag[freedSlot].optionFlags;
+    // Clear bag slot (including multi-cell)
+    auto dI = db.GetItemDefinition(dIdx);
+    int w = dI.width > 0 ? dI.width : 1;
+    int h = dI.height > 0 ? dI.height : 1;
+    int r = freedSlot / 8, c2 = freedSlot % 8;
+    for (int hh = 0; hh < h; hh++) {
+      for (int ww = 0; ww < w; ww++) {
+        int s = (r + hh) * 8 + (c2 + ww);
+        if (s < 64)
+          session.bag[s] = {};
+      }
+    }
+    db.DeleteCharacterInventoryItem(charId, freedSlot);
+    printf("[Character] Removed equipped item from bag slot %d (def=%d +%d qty=%d)\n",
+           freedSlot, dIdx, eq->itemLevel, newItemQty);
   }
 
   // Move old equipped item back to inventory (both unequip AND swap cases)
@@ -1007,6 +1052,28 @@ void SendItemCatalog(Session &session, Database &db) {
   session.Send(packet.data(), packet.size());
   printf("[Character] Sent item catalog (%d items, %zu bytes) to fd=%d\n",
          count, totalSize, session.GetFd());
+}
+
+void SendClassDefinitions(Session &session, Database &db) {
+  auto classes = db.GetClassDefinitions();
+  uint8_t count = static_cast<uint8_t>(classes.size());
+  size_t entrySize = sizeof(PMSG_CLASS_DEF_ENTRY);
+  size_t totalSize = 4 + 1 + count * entrySize; // C2 header(4) + count(1) + entries
+
+  std::vector<uint8_t> packet(totalSize, 0);
+  auto *head = reinterpret_cast<PWMSG_HEAD *>(packet.data());
+  *head = MakeC2Header(static_cast<uint16_t>(totalSize), Opcode::CLASS_DEFINITIONS);
+  packet[4] = count;
+
+  for (uint8_t i = 0; i < count; i++) {
+    auto *entry = reinterpret_cast<PMSG_CLASS_DEF_ENTRY *>(
+        packet.data() + 5 + i * entrySize);
+    *entry = classes[i];
+  }
+
+  session.Send(packet.data(), packet.size());
+  printf("[Character] Sent class definitions (%d classes) to fd=%d\n",
+         count, session.GetFd());
 }
 
 } // namespace CharacterHandler

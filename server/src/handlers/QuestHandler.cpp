@@ -41,15 +41,15 @@ static uint32_t GetQuestZenReward(const Database::QuestDefData &q) {
 }
 
 // Compute XP reward from monster stats.
-// Formula: sum of (monster_level^2 * kills * 300) per target, minimum 5000.
+// Formula: sum of (monster_level * kills * 500) per target, minimum 5000.
+// Linear scaling to prevent quadratic blowup at high levels.
 static uint32_t GetQuestXpReward(const Database::QuestDefData &q) {
   uint32_t xp = 0;
   for (int t = 0; t < q.targetCount; t++) {
     const auto *def =
         GameWorld::FindMonsterTypeDef(q.targets[t].monsterType);
     if (def)
-      xp += (uint32_t)(def->level * def->level) * q.targets[t].killsRequired *
-            300;
+      xp += (uint32_t)def->level * q.targets[t].killsRequired * 500;
   }
   return std::max(xp, (uint32_t)5000);
 }
@@ -106,14 +106,14 @@ static void GiveItemReward(Session &session, Database &db,
         session.bag[slot].category = cat;
         session.bag[slot].itemIndex = idx;
         session.bag[slot].quantity = 1;
-        session.bag[slot].itemLevel = reward.itemLevel;
+        session.bag[slot].itemLevel = std::min(reward.itemLevel, (uint8_t)11);
         session.bag[slot].primary = (slot == outSlot);
       }
     }
   }
 
   db.SaveCharacterInventory(session.characterId, reward.defIndex, 1,
-                            reward.itemLevel, outSlot);
+                            std::min(reward.itemLevel, (uint8_t)11), outSlot);
 
   printf("[Quest] fd=%d received item: %s +%d (slot %d)\n", session.GetFd(),
          def.name.c_str(), reward.itemLevel, outSlot);

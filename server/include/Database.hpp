@@ -5,6 +5,7 @@
 #include <sqlite3.h>
 #include <string>
 #include <vector>
+#include "PacketDefs.hpp"
 
 struct NpcSpawnData {
   int id = 0;
@@ -242,6 +243,10 @@ public:
   };
   void SeedQuests();
   std::vector<QuestDefData> LoadAllQuests();
+
+  // Class definitions (for character creation UI)
+  void SeedClassDefinitions();
+  std::vector<PMSG_CLASS_DEF_ENTRY> GetClassDefinitions();
 
   // Chat log persistence
   struct ChatLogEntry {

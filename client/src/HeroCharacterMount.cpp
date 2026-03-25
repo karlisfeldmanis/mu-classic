@@ -240,7 +240,8 @@ void HeroCharacter::renderMountModel(const glm::mat4 &view, const glm::mat4 &pro
 // ─── Mount Equip / Unequip ───────────────────────────────────────────────────
 
 void HeroCharacter::EquipMount(uint8_t itemIndex) {
-  UnequipPet();    // Can't have pet + mount simultaneously
+  // Pet stays active — mount is from quickslot, pet is from equipment slot 8.
+  // They don't conflict: server keeps Imp buff while client shows both models.
   UnequipMount();  // Clear previous mount
 
   // Main 5.2 ZzzOpenData.cpp: ride models are in Data/Skill/

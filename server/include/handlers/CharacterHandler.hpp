@@ -27,6 +27,9 @@ void SendSkillList(Session &session);
 // Send full item definition catalog to client
 void SendItemCatalog(Session &session, Database &db);
 
+// Send class definitions for character creation UI
+void SendClassDefinitions(Session &session, Database &db);
+
 // Packet handlers
 void HandleCharSave(Session &session, const std::vector<uint8_t> &packet,
                     Database &db);

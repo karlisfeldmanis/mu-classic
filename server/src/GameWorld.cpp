@@ -1516,7 +1516,9 @@ void GameWorld::processTrapAI(MonsterInstance &mon, float dt,
     return;
   }
 
-  // Lance Trap (100) / Iron Stick Trap (101): pressure plate (exact grid cell)
+  // Lance Trap (100): AttackSingleWhenPressedTrapIntelligence, attackRange=4
+  // Detects and hits a single player within 4 grid cells (OpenMU Version075)
+  // Iron Stick Trap (101): exact grid cell only (attackRange=0, viewRange=1)
   for (auto &p : players) {
     if (p.dead)
       continue;
@@ -1527,7 +1529,15 @@ void GameWorld::processTrapAI(MonsterInstance &mon, float dt,
     if (IsSafeZone(p.worldX, p.worldZ))
       continue;
 
-    if (pGridX == mon.gridX && pGridZ == mon.gridY) {
+    int dx = std::abs(pGridX - mon.gridX);
+    int dz = std::abs(pGridZ - mon.gridY);
+    int dist = std::max(dx, dz); // Chebyshev distance
+
+    bool inRange = (mon.type == 100)
+                       ? (dist <= mon.attackRange) // Lance: range 4
+                       : (dist == 0);              // Iron Stick: exact tile
+
+    if (inRange) {
       int dmgRange = mon.attackMax - mon.attackMin;
       int dmg = mon.attackMin + (dmgRange > 0 ? (rand() % (dmgRange + 1)) : 0);
       int defReduction = p.defense / 10;
@@ -1542,7 +1552,7 @@ void GameWorld::processTrapAI(MonsterInstance &mon, float dt,
       attacks.push_back(result);
 
       mon.attackCooldown = mon.atkCooldownTime;
-      break; // One target per tick
+      break; // Single target per activation
     }
   }
 }
@@ -2401,8 +2411,8 @@ std::vector<GroundDrop> GameWorld::SpawnDrops(float worldX, float worldZ,
     drop.quantity = qty;
     drop.itemLevel = lvl;
     drop.optionFlags = optFlags;
-    drop.worldX = worldX + (float)(rand() % 60 - 30);
-    drop.worldZ = worldZ + (float)(rand() % 60 - 30);
+    drop.worldX = worldX;
+    drop.worldZ = worldZ;
     drop.age = 0.0f;
     m_drops.push_back(drop);
     spawned.push_back(drop);
@@ -2440,7 +2450,7 @@ std::vector<GroundDrop> GameWorld::SpawnDrops(float worldX, float worldZ,
     const auto &picked = PickWeighted(pool);
     uint8_t dropLvl = 0;
     if (picked.maxPlus > 0) {
-      dropLvl = rand() % (picked.maxPlus + 1);
+      dropLvl = std::min((uint8_t)(rand() % (picked.maxPlus + 1)), (uint8_t)11);
     }
 
     // Roll item options for equipment (categories 0-11)
@@ -2450,8 +2460,8 @@ std::vector<GroundDrop> GameWorld::SpawnDrops(float worldX, float worldZ,
       // Luck: 5% base + 1% per 5 monster levels (max ~25%)
       if (rand() % 100 < (5 + monsterLevel / 5))
         optFlags |= 0x40;
-      // Skill: 5% base + 1% per 5 monster levels
-      if (rand() % 100 < (5 + monsterLevel / 5))
+      // Skill: bows/crossbows only (cat 4) — multi-shot
+      if (cat == 4 && rand() % 100 < (5 + monsterLevel / 5))
         optFlags |= 0x80;
       // Additional Option: 15% chance, level scales with monster level
       if (rand() % 100 < 15) {

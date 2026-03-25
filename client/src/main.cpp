@@ -69,6 +69,7 @@ static constexpr bgfx::ViewId PP_VIEW_COMPOSITE = 9;
 static constexpr uint16_t SHADOW_MAP_SIZE = 4096;
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -463,9 +464,9 @@ static void ReconstructBridgeAttributes(TerrainData &td, const MapConfig &cfg,
     int gx = (int)(obj.position.z / 100.0f);
     float angZ = std::abs(std::fmod(glm::degrees(obj.rotation.z) + 360.0f, 180.0f));
     bool spanAlongGZ = (std::abs(angZ - 90.0f) < 45.0f);
-    // Bridge halves are ~5 cells apart perpendicular; ±2 ensures overlap in middle
-    int rGZ = spanAlongGZ ? 3 : 2;
-    int rGX = spanAlongGZ ? 2 : 3;
+    // Bridge halves are ~5 cells apart perpendicular; generous radius to cover edges
+    int rGZ = spanAlongGZ ? 4 : 3;
+    int rGX = spanAlongGZ ? 3 : 4;
 
     for (int dz = -rGZ; dz <= rGZ; ++dz) {
       for (int dx = -rGX; dx <= rGX; ++dx) {
@@ -477,6 +478,7 @@ static void ReconstructBridgeAttributes(TerrainData &td, const MapConfig &cfg,
         if (std::abs(h - obj.position.y) < 80.0f) {
           td.mapping.attributes[idx] &= ~(0x04 | 0x08); // clear TW_NOMOVE + TW_NOGROUND
           td.mapping.attributes[idx] &= ~0x10;           // clear TW_WATER
+          td.mapping.attributes[idx] |= 0x20;            // mark as bridge for shader snap
           bridgeZone[idx] = true;
         }
         // Below-bridge cells: leave completely untouched (keep original water/void)
@@ -522,7 +524,7 @@ static int16_t g_potionBar[4] = {850, 851, 852,
                                  -1}; // Apple, SmallHP, MedHP, (empty)
 static int8_t g_skillBar[10] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 static float g_potionCooldown = 0.0f; // Potion cooldown timer (seconds)
-static constexpr float POTION_COOLDOWN_TIME = 30.0f;
+static constexpr float POTION_COOLDOWN_TIME = 15.0f;
 static bool g_shopOpen = false;
 bool g_windStarted = false; // Global: reset by ChangeMap for 3D wind restart
 static bool g_showGameMenu = false;
@@ -858,6 +860,14 @@ static void RenderLoadingFrame(float progress, const char *status) {
   ImGui_BackendNewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
+  // Suppress ImGui's default fallback window
+  ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+  ImGui::SetNextWindowPos(ImVec2(-200, -200), ImGuiCond_Always);
+  ImGui::Begin("Debug##Loading", nullptr,
+               ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+               ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
+               ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+  ImGui::End();
   ImDrawList *dl = ImGui::GetForegroundDrawList();
 
   // Black background
@@ -1228,6 +1238,7 @@ static void RenderPostProcess(int fbW, int fbH) {
   // Pass 6: Composite — scene + bloom → backbuffer
   bgfx::setViewName(PP_VIEW_COMPOSITE, "Composite");
   bgfx::setViewRect(PP_VIEW_COMPOSITE, 0, 0, uint16_t(fbW), uint16_t(fbH));
+  bgfx::setViewClear(PP_VIEW_COMPOSITE, BGFX_CLEAR_COLOR, 0x000000FF, 1.0f, 0);
   bgfx::setViewFrameBuffer(PP_VIEW_COMPOSITE, BGFX_INVALID_HANDLE);
   pp.composite->setTexture(0, "s_scene", pp.sceneColorTex);
   pp.composite->setTexture(1, "s_bloom", pp.bloomTex[0]);
@@ -1285,9 +1296,7 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
   // Dungeon torches (Main 5.2: tall fire stand + standard lantern)
   static const LightTemplate dungeonTorchProps = {glm::vec3(0.75f, 0.43f, 0.21f),
                                                   700.0f, 200.0f};
-  // Lance Trap (type 100): blue lightning glow (Main 5.2: BITMAP_LIGHTNING)
-  static const LightTemplate lanceTrapProps = {glm::vec3(0.22f, 0.32f, 0.8f),
-                                               500.0f, 50.0f};
+  // (Lance Trap light removed — Main 5.2 has no terrain light for dungeon traps)
   // Noria mystical lights — cyan/blue tint (Main 5.2: Vector(L*0.4,L*0.7,L*1.0))
   static const LightTemplate noriaLightProps = {glm::vec3(0.4f, 0.65f, 0.95f),
                                                  600.0f, 150.0f};
@@ -1315,8 +1324,7 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
   case 131:
   case 132:
     return &lightFixtureProps;
-  case 39: // Lance Trap (dungeon) — blue lightning glow
-    return (mapId == 1) ? &lanceTrapProps : nullptr;
+  // case 39: Lance Trap — removed (Main 5.2 has no terrain light for dungeon traps)
   case 150:
     return &candleProps;
   case 78: // StoneMuWall02 — torch/window glow (BlendMesh=3)
@@ -1453,10 +1461,20 @@ int main(int argc, char **argv) {
   ImGui::CreateContext();
   ImGuiIO &io = ImGui::GetIO();
   (void)io;
-  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+  io.IniFilename = nullptr; // Disable imgui.ini persistence
 
   // Setup Dear ImGui style
   ImGui::StyleColorsDark();
+  // Make default window background + border fully transparent so any
+  // accidental/default windows are invisible.  Real UI windows push their
+  // own style colours before Begin().
+  {
+    ImGuiStyle &style = ImGui::GetStyle();
+    style.Colors[ImGuiCol_WindowBg]   = ImVec4(0, 0, 0, 0);
+    style.Colors[ImGuiCol_Border]     = ImVec4(0, 0, 0, 0);
+    style.Colors[ImGuiCol_BorderShadow] = ImVec4(0, 0, 0, 0);
+    style.WindowBorderSize = 0.0f;
+  }
 
   // Setup Platform/Renderer backends
   ImGui_ImplGlfw_InitForOther(window, true);
@@ -1839,6 +1857,10 @@ int main(int argc, char **argv) {
     };
     csCtx.onExit = [&]() { glfwSetWindowShouldClose(window, GLFW_TRUE); };
     csCtx.onToggleFullscreen = [&]() { ToggleFullscreen(window); };
+    csCtx.fontDefault = g_fontDefault;
+    csCtx.fontBold = g_fontBold;
+    csCtx.fontRegion = g_fontRegion;
+    if (g_clientState) csCtx.classDefinitions = &g_clientState->classDefinitions;
     ChromeGlow::LoadTextures(g_dataPath);
     CharacterSelect::Init(csCtx);
   }
@@ -1867,7 +1889,7 @@ int main(int argc, char **argv) {
   SystemMessageLog::Init();
 
   g_gameState = GameState::CHAR_SELECT;
-  SoundManager::PlayMusic(g_dataPath + "/Music/main_theme.mp3");
+  SoundManager::PlayMusic(g_dataPath + "/Music/crywolf_before-01.ogg", true);
   std::cout << "[State] -> CHAR_SELECT (waiting for character list)"
             << std::endl;
 
@@ -1976,6 +1998,10 @@ int main(int argc, char **argv) {
 
         g_worldInitialized = true;
         std::cout << "[State] -> INGAME" << std::endl;
+
+        // Play map theme once on first visit
+        if (GetMapConfig(g_currentMapId)->safeMusic)
+          SoundManager::CrossfadeTo(g_dataPath + "/" + GetMapConfig(g_currentMapId)->safeMusic);
 
         // Apply command-line camera overrides
         if ((autoScreenshot || autoGif) && !hasCustomPos) {
@@ -2874,6 +2900,10 @@ int main(int argc, char **argv) {
     // Update music fade transitions
     SoundManager::UpdateMusic(deltaTime);
 
+    // Re-trigger safe zone music after silence timeout (plays once, then waits again)
+    if (g_hero.IsInSafeZone() && !SoundManager::IsMusicPlaying() && g_mapCfg->safeMusic)
+      SoundManager::CrossfadeTo(g_dataPath + "/" + g_mapCfg->safeMusic);
+
     // Auto-screenshot/diagnostic camera override
     if ((autoScreenshot || autoDiag) && diagFrame == 60) {
       glm::vec3 hPos = g_hero.GetPosition();
@@ -3079,6 +3109,7 @@ int main(int argc, char **argv) {
 
     // Boids — birds in Lorencia, bats in Dungeon (BoidManager handles map
     // logic)
+    g_boidManager.SetCameraView(projection * view);
     g_boidManager.Update(deltaTime, g_hero.GetPosition(), 0, currentFrame);
     g_fireEffect.Render(view, projection);
     g_objectRenderer.RenderLightningSprites(view, projection, currentFrame);
@@ -3248,6 +3279,41 @@ int main(int argc, char **argv) {
       InventoryUI::RenderQuickbar(dl, g_hudCoords);
       InventoryUI::RenderCastBar(dl);
 
+      // ── FPS counter (top-left) ──
+      {
+        float uiS = ImGui::GetIO().FontGlobalScale;
+        float fps = (smoothedDelta > 0.0f) ? 1.0f / smoothedDelta : 0.0f;
+        char fpsBuf[16];
+        snprintf(fpsBuf, sizeof(fpsBuf), "%.0f FPS", fps);
+        float fSize = 18.0f * uiS;
+        float px = 8.0f * uiS, py = 6.0f * uiS;
+        dl->AddText(g_fontDefault, fSize, ImVec2(px + 1, py + 1), IM_COL32(0, 0, 0, 100), fpsBuf);
+        dl->AddText(g_fontDefault, fSize, ImVec2(px, py), IM_COL32(200, 200, 200, 180), fpsBuf);
+      }
+
+      // ── Map name + coordinates + time (top-right) ──
+      {
+        float uiS = ImGui::GetIO().FontGlobalScale;
+        ImVec2 disp = ImGui::GetIO().DisplaySize;
+        float fSize = 18.0f * uiS;
+        glm::vec3 hPos = g_hero.GetPosition();
+        int gx = (int)(hPos.z / 100.0f), gz = (int)(hPos.x / 100.0f);
+        const char *mapName = g_mapCfg ? g_mapCfg->regionName : "Unknown";
+
+        // Server time (use system local time)
+        auto now = std::chrono::system_clock::now();
+        std::time_t tt = std::chrono::system_clock::to_time_t(now);
+        std::tm *lt = std::localtime(&tt);
+        char infoBuf[80];
+        snprintf(infoBuf, sizeof(infoBuf), "%s  %d, %d  %02d:%02d",
+                 mapName, gx, gz, lt->tm_hour, lt->tm_min);
+        ImVec2 tsz = g_fontDefault->CalcTextSizeA(fSize, FLT_MAX, 0, infoBuf);
+        float ix = disp.x - tsz.x - 10.0f * uiS;
+        float py = 6.0f * uiS;
+        dl->AddText(g_fontDefault, fSize, ImVec2(ix + 1, py + 1), IM_COL32(0, 0, 0, 100), infoBuf);
+        dl->AddText(g_fontDefault, fSize, ImVec2(ix, py), IM_COL32(210, 200, 170, 200), infoBuf);
+      }
+
       // ── Summon unit frame (WoW-style, left of HP orb) ──
       {
         MonsterInfo sumInfo;
@@ -3326,7 +3392,7 @@ int main(int argc, char **argv) {
 
       // ── Floating damage numbers ──
       FloatingDamageRenderer::UpdateAndRender(
-          g_floatingDmg, MAX_FLOATING_DAMAGE, deltaTime, dl, g_fontDefault,
+          g_floatingDmg, MAX_FLOATING_DAMAGE, deltaTime, dl, g_fontBold,
           view, projection, winW, winH);
 
       // ── System message log ──
@@ -3461,7 +3527,7 @@ int main(int argc, char **argv) {
         int npcQuests[(int)g_questCatalog.size()];
         int npcQuestCount = 0;
         for (int qi = 0; qi < (int)g_questCatalog.size(); qi++)
-          if (g_questCatalog[qi].guardType == guardType)
+          if (g_questCatalog[qi].guardType == guardType && !IsQuestCompleted(qi))
             npcQuests[npcQuestCount++] = qi;
         std::sort(npcQuests, npcQuests + npcQuestCount, [](int a, int b) {
           return g_questCatalog[a].recommendedLevel < g_questCatalog[b].recommendedLevel;
@@ -4570,67 +4636,91 @@ int main(int argc, char **argv) {
 
       // Centered panel
       float ms = ImGui::GetIO().DisplaySize.y / 768.0f; // menu scale
-      float panelW = 250.0f * ms, panelH = 235.0f * ms;
+      float panelW = 260.0f * ms, panelH = 240.0f * ms;
       float px = (dispSize.x - panelW) * 0.5f;
       float py = (dispSize.y - panelH) * 0.5f;
       ImVec2 pMin(px, py), pMax(px + panelW, py + panelH);
 
-      // Panel background and border (matches InventoryUI style)
-      dl->AddRectFilled(pMin, pMax, IM_COL32(15, 15, 25, 240), 4.0f);
-      dl->AddRect(pMin, pMax, IM_COL32(120, 100, 60, 255), 4.0f, 0, 1.5f);
+      // Panel background: gradient fill
+      dl->AddRectFilledMultiColor(pMin, pMax,
+          IM_COL32(18, 14, 10, 245), IM_COL32(18, 14, 10, 245),
+          IM_COL32(10, 8, 6, 250), IM_COL32(10, 8, 6, 250));
+      // Outer dark border
+      dl->AddRect(pMin, pMax, IM_COL32(6, 5, 3, 255), 2.0f, 0, 1.5f);
+      // Gold frame
+      dl->AddRect(ImVec2(px + 2, py + 2), ImVec2(px + panelW - 2, py + panelH - 2),
+                  IM_COL32(130, 110, 50, 200), 1.0f, 0, 1.5f);
 
-      // Title: "Game Menu"
+      // Title: "Game Menu" with shadow
       const char *title = "Game Menu";
       ImVec2 titleSize = ImGui::CalcTextSize(title);
       float titleX = px + (panelW - titleSize.x) * 0.5f;
-      dl->AddText(ImVec2(titleX, py + 14.0f * ms), IM_COL32(255, 210, 80, 255),
-                  title);
+      DrawShadowText(dl, ImVec2(titleX, py + 16.0f * ms),
+                     IM_COL32(255, 215, 90, 255), title);
+      // Separator line under title
+      float sepY = py + 38.0f * ms;
+      dl->AddLine(ImVec2(px + 16 * ms, sepY), ImVec2(px + panelW - 16 * ms, sepY),
+                  IM_COL32(100, 85, 40, 150));
 
-      // Button dimensions and positions
-      float btnW = 180.0f * ms, btnH = 36.0f * ms;
-      float btnX = px + (panelW - btnW) * 0.5f;
-      float btn1Y = py + 50.0f * ms;  // "Full Screen"
-      float btn2Y = py + 100.0f * ms; // "Switch Character"
-      float btn3Y = py + 160.0f * ms; // "Exit Game"
-
-      ImVec2 mousePos = ImGui::GetIO().MousePos;
-      bool mouseClicked = ImGui::GetIO().MouseClicked[0];
-
-      // Helper lambda for buttons
-      auto drawButton = [&](float bx, float by, float bw, float bh,
-                            const char *label) -> bool {
-        ImVec2 bMin(bx, by), bMax(bx + bw, by + bh);
-        bool hovered = mousePos.x >= bx && mousePos.x <= bx + bw &&
-                       mousePos.y >= by && mousePos.y <= by + bh;
-        ImU32 bgCol =
-            hovered ? IM_COL32(60, 50, 30, 255) : IM_COL32(35, 30, 20, 255);
-        ImU32 borderCol =
-            hovered ? IM_COL32(200, 170, 60, 255) : IM_COL32(120, 100, 60, 200);
-        dl->AddRectFilled(bMin, bMax, bgCol, 3.0f);
-        dl->AddRect(bMin, bMax, borderCol, 3.0f, 0, 1.2f);
-        ImVec2 labelSize = ImGui::CalcTextSize(label);
-        float lx = bx + (bw - labelSize.x) * 0.5f;
-        float ly = by + (bh - labelSize.y) * 0.5f;
-        ImU32 textCol = hovered ? IM_COL32(255, 230, 150, 255)
-                                : IM_COL32(200, 190, 160, 255);
-        dl->AddText(ImVec2(lx, ly), textCol, label);
-        return hovered && mouseClicked;
+      // Ornate button helper (same style as CharacterSelect)
+      auto drawMenuBtn = [&](float bx, float by, float bw, float bh,
+                             const char *label) -> bool {
+        ImVec2 mp = ImGui::GetMousePos();
+        bool hov = mp.x >= bx && mp.x <= bx + bw && mp.y >= by && mp.y <= by + bh;
+        bool held = hov && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        bool clicked = hov && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        // Outer dark
+        dl->AddRect(ImVec2(bx, by), ImVec2(bx + bw, by + bh),
+                    IM_COL32(8, 6, 4, 255), 2.0f, 0, 1.5f);
+        // Gold frame
+        ImU32 goldCol = hov ? IM_COL32(200, 170, 75, 240)
+                            : IM_COL32(145, 120, 55, 220);
+        dl->AddRect(ImVec2(bx + 2, by + 2), ImVec2(bx + bw - 2, by + bh - 2),
+                    goldCol, 1.0f, 0, 1.5f);
+        // Crimson gradient fill
+        float ix = bx + 4, iy = by + 4, iw = bw - 8, ih = bh - 8;
+        ImU32 topCol = held  ? IM_COL32(130, 45, 30, 255)
+                     : hov   ? IM_COL32(110, 35, 25, 250)
+                              : IM_COL32(80, 25, 20, 240);
+        ImU32 botCol = held  ? IM_COL32(75, 22, 16, 255)
+                     : hov   ? IM_COL32(60, 18, 14, 250)
+                              : IM_COL32(40, 12, 10, 240);
+        dl->AddRectFilledMultiColor(ImVec2(ix, iy), ImVec2(ix + iw, iy + ih),
+                                    topCol, topCol, botCol, botCol);
+        // Top highlight
+        dl->AddLine(ImVec2(ix + 1, iy + 1), ImVec2(ix + iw - 1, iy + 1),
+                    IM_COL32(255, 200, 150, hov ? (uint8_t)50 : (uint8_t)30));
+        // Bottom shadow
+        dl->AddLine(ImVec2(ix + 1, iy + ih - 1), ImVec2(ix + iw - 1, iy + ih - 1),
+                    IM_COL32(0, 0, 0, 80));
+        // Text
+        ImVec2 ts = ImGui::CalcTextSize(label);
+        DrawShadowText(dl, ImVec2(bx + (bw - ts.x) * 0.5f, by + (bh - ts.y) * 0.5f),
+                       IM_COL32(240, 220, 155, 255), label);
+        return clicked;
       };
 
+      // Button dimensions and positions
+      float btnW = 190.0f * ms, btnH = 38.0f * ms;
+      float btnX = px + (panelW - btnW) * 0.5f;
+      float btn1Y = py + 52.0f * ms;
+      float btn2Y = py + 102.0f * ms;
+      float btn3Y = py + 162.0f * ms;
+
       // "Full Screen" / "Windowed" toggle button
-      if (drawButton(btnX, btn1Y, btnW, btnH,
-                     g_isFullscreen ? "Windowed" : "Full Screen")) {
+      if (drawMenuBtn(btnX, btn1Y, btnW, btnH,
+                      g_isFullscreen ? "Windowed" : "Full Screen")) {
         SoundManager::Play(SOUND_CLICK01);
         ToggleFullscreen(window);
         g_showGameMenu = false;
       }
 
       // "Switch Character" button
-      if (drawButton(btnX, btn2Y, btnW, btnH, "Switch Character")) {
+      if (drawMenuBtn(btnX, btn2Y, btnW, btnH, "Switch Character")) {
         SoundManager::Play(SOUND_CLICK01);
         SoundManager::StopAll();
         SoundManager::StopMusic();
-        SoundManager::PlayMusic(g_dataPath + "/Music/main_theme.mp3");
+        SoundManager::PlayMusic(g_dataPath + "/Music/crywolf_before-01.ogg", true);
         g_server.SendCharListRequest();
         g_showGameMenu = false;
         g_hero.StopMoving();
@@ -4661,11 +4751,15 @@ int main(int argc, char **argv) {
         };
         csCtx.onExit = [&]() { glfwSetWindowShouldClose(window, GLFW_TRUE); };
         csCtx.onToggleFullscreen = [&]() { ToggleFullscreen(window); };
+        csCtx.fontDefault = g_fontDefault;
+        csCtx.fontBold = g_fontBold;
+        csCtx.fontRegion = g_fontRegion;
+        if (g_clientState) csCtx.classDefinitions = &g_clientState->classDefinitions;
         CharacterSelect::Init(csCtx);
       }
 
       // "Exit Game" button
-      if (drawButton(btnX, btn3Y, btnW, btnH, "Exit Game")) {
+      if (drawMenuBtn(btnX, btn3Y, btnW, btnH, "Exit Game")) {
         SoundManager::Play(SOUND_CLICK01);
         glfwSetWindowShouldClose(window, GLFW_TRUE);
       }
@@ -4692,6 +4786,7 @@ int main(int argc, char **argv) {
       ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.47f, 0.39f, 0.24f, 1.0f));
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6, 4));
       ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 3.0f);
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
       ImGui::Begin("##CommandTerminal", nullptr,
                    ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
@@ -4771,7 +4866,7 @@ int main(int argc, char **argv) {
       }
 
       ImGui::End();
-      ImGui::PopStyleVar(2);
+      ImGui::PopStyleVar(3);
       ImGui::PopStyleColor(2);
     }
 
@@ -4808,6 +4903,14 @@ int main(int argc, char **argv) {
       ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
+      // Suppress ImGui's default fallback window (overlay uses foreground draw list only)
+      ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+      ImGui::SetNextWindowPos(ImVec2(-200, -200), ImGuiCond_Always);
+      ImGui::Begin("Debug##Overlay", nullptr,
+                   ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                   ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
+                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+      ImGui::End();
 
       if (InventoryUI::HasDeferredCooldowns()) {
         InventoryUI::FlushDeferredCooldowns();
@@ -4928,6 +5031,14 @@ int main(int argc, char **argv) {
       ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
+      // Suppress ImGui's default fallback window
+      ImGui::SetNextWindowSize(ImVec2(0, 0), ImGuiCond_Always);
+      ImGui::SetNextWindowPos(ImVec2(-200, -200), ImGuiCond_Always);
+      ImGui::Begin("Debug##Transition", nullptr,
+                   ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs |
+                   ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
+                   ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+      ImGui::End();
       int winW, winH;
       glfwGetWindowSize(window, &winW, &winH);
       ImDrawList *dl = ImGui::GetForegroundDrawList();
@@ -5568,10 +5679,9 @@ static void ChangeMap(uint8_t mapId, uint8_t spawnX, uint8_t spawnY,
     g_hero.SetInSafeZone(inSafe);
     if (GetMapConfig(mapId)->ambientLoop && !inSafe && !GetMapConfig(mapId)->hasWind)
       SoundManager::PlayLoop(GetMapConfig(mapId)->ambientLoop);
-    if (inSafe && GetMapConfig(mapId)->safeMusic)
+    // Play map theme once on first visit (CrossfadeTo skips if already played)
+    if (GetMapConfig(mapId)->safeMusic)
       SoundManager::CrossfadeTo(g_dataPath + "/" + GetMapConfig(mapId)->safeMusic);
-    else if (!inSafe && GetMapConfig(mapId)->wildMusic)
-      SoundManager::CrossfadeTo(g_dataPath + "/" + GetMapConfig(mapId)->wildMusic);
   }
 
 }

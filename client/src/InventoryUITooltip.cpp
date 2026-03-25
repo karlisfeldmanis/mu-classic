@@ -158,12 +158,10 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
       accessorySlot = "Pet";
     } else if (aidx == 2) {
       accessoryEffect = "Rideable Mount";
-      accessoryEffect2 = "+30% Movement Speed";
       accessorySlot = "Pet";
     } else if (aidx == 3) {
       accessoryEffect = "Rideable Mount";
-      accessoryEffect2 = "+50% Movement Speed";
-      accessoryEffect3 = "Enables Flying";
+      accessoryEffect2 = "Enables Flying";
       accessorySlot = "Pet";
     } else if (aidx == 8) {
       accessoryEffect = "+50 Ice Resistance";
@@ -242,6 +240,10 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
   if (def->category <= 5 && def->attackSpeed > 0) {
     th += lineH; hasStats = true;
   }
+  // DPS line for weapons with both damage and speed
+  if (def->category <= 5 && (def->dmgMin > 0 || def->dmgMax > 0) && def->attackSpeed > 0) {
+    th += lineH;
+  }
   if (staffRise > 0) {
     th += lineH; hasStats = true;
   }
@@ -280,6 +282,9 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
   }
   if (accessoryEffect2) th += lineH;
   if (accessoryEffect3) th += lineH;
+  // Mounts are unique items
+  bool isMount = (def->category == 13 && (defIndex % 32 == 2 || defIndex % 32 == 3));
+  if (isMount) th += lineH;
 
   if (skillDef) {
     if (hasStats || hasEffects) th += sepH;
@@ -368,19 +373,24 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     AddPendingTooltipLine(TT_WHITE, buf);
 
     if (equippedCID) {
-      int eqDmgBonus = kEnhanceTable[std::min(equippedLevel, 15)];
-      int avgNew = (dMin + dMax) / 2;
-      int avgOld = ((int)equippedCID->dmgMin + eqDmgBonus + (int)equippedCID->dmgMax + eqDmgBonus) / 2;
-      int diff = avgNew - avgOld;
-      char cmpBuf[48];
-      if (diff > 0) {
-        snprintf(cmpBuf, sizeof(cmpBuf), "  (+%d vs equipped)", diff);
-        AddPendingTooltipLine(TT_GREEN, cmpBuf);
-      } else if (diff < 0) {
-        snprintf(cmpBuf, sizeof(cmpBuf), "  (%d vs equipped)", diff);
-        AddPendingTooltipLine(TT_RED, cmpBuf);
-      } else {
-        AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
+      // Skip damage comparison between physical and magic weapons
+      bool newIsMagic = (def->category == 5 && def->magicPower > 0);
+      bool eqIsMagic = (equippedCID->category == 5 && equippedCID->magicPower > 0);
+      if (newIsMagic == eqIsMagic) {
+        int eqDmgBonus = kEnhanceTable[std::min(equippedLevel, 15)];
+        int avgNew = (dMin + dMax) / 2;
+        int avgOld = ((int)equippedCID->dmgMin + eqDmgBonus + (int)equippedCID->dmgMax + eqDmgBonus) / 2;
+        int diff = avgNew - avgOld;
+        char cmpBuf[48];
+        if (diff > 0) {
+          snprintf(cmpBuf, sizeof(cmpBuf), "  (+%d vs equipped)", diff);
+          AddPendingTooltipLine(TT_GREEN, cmpBuf);
+        } else if (diff < 0) {
+          snprintf(cmpBuf, sizeof(cmpBuf), "  (%d vs equipped)", diff);
+          AddPendingTooltipLine(TT_RED, cmpBuf);
+        } else {
+          AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
+        }
       }
     }
   }
@@ -391,10 +401,40 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     AddPendingTooltipLine(TT_WHITE, buf);
   }
 
+  // DPS = average damage * attacks per second
+  // Attack speed multiplier: 1.0 + weaponSpeed * 0.015 (from HeroCharacter)
+  // Base cooldown: 0.6s → attacks/sec = (1 + speed*0.015) / 0.6
+  if (def->category <= 5 && (def->dmgMin > 0 || def->dmgMax > 0) && def->attackSpeed > 0) {
+    int dpsDmgMin = def->dmgMin + levelDmgBonus;
+    int dpsDmgMax = def->dmgMax + levelDmgBonus;
+    float avgDmg = (float)(dpsDmgMin + dpsDmgMax) / 2.0f;
+    float aps = (1.0f + def->attackSpeed * 0.015f) / 0.6f;
+    float dps = avgDmg * aps;
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%.1f DPS", dps);
+    AddPendingTooltipLine(TT_GOLD, buf);
+  }
+
   if (staffRise > 0) {
     char buf[48];
     snprintf(buf, sizeof(buf), "+%d%% Magic Damage", staffRise);
     AddPendingTooltipLine(TT_GREEN, buf);
+
+    // Compare magic damage % vs equipped staff
+    if (equippedCID && equippedCID->category == 5 && equippedCID->magicPower > 0) {
+      int eqStaffRise = CalculateStaffRise(equippedCID->magicPower, equippedLevel);
+      int diff = staffRise - eqStaffRise;
+      char cmpBuf[48];
+      if (diff > 0) {
+        snprintf(cmpBuf, sizeof(cmpBuf), "  (+%d%% vs equipped)", diff);
+        AddPendingTooltipLine(TT_GREEN, cmpBuf);
+      } else if (diff < 0) {
+        snprintf(cmpBuf, sizeof(cmpBuf), "  (%d%% vs equipped)", diff);
+        AddPendingTooltipLine(TT_RED, cmpBuf);
+      } else {
+        AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
+      }
+    }
   }
 
   if ((def->category == 6 || (def->category >= 7 && def->category <= 11)) &&
@@ -486,6 +526,9 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     char buf[64];
     snprintf(buf, sizeof(buf), "Equip: %s", accessoryEffect3);
     AddPendingTooltipLine(TT_GREEN, buf);
+  }
+  if (isMount) {
+    AddPendingTooltipLine(TT_GOLD, "Unique");
   }
 
   // ─── Skill info ─────────────────────────────────────────────────────────

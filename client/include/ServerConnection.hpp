@@ -35,6 +35,7 @@ public:
   void SendStatAlloc(uint8_t statType);
   void SendInventoryMove(uint8_t from, uint8_t to);
   void SendItemUse(uint8_t slot);
+  void SendItemUpgrade(uint8_t jewelSlot, uint8_t targetSlot);
   void SendDropItem(uint8_t bagSlot);
   void SendGridMove(uint8_t gridX, uint8_t gridY);
 

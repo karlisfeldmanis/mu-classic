@@ -329,7 +329,7 @@ private:
   glm::vec3 m_target{12800.0f, 0.0f, 12800.0f};
   float m_facing = 0.0f;
   float m_targetFacing = 0.0f;
-  float m_speed = 334.0f;
+  float m_speed = 375.0f; // Main 5.2: 15 units/tick * 25fps (run speed)
   bool m_moving = false;
 
   // Animation
@@ -501,6 +501,10 @@ private:
   bool m_pendingAquaBeam = false;   // True during wind-up before beam spawns
   bool m_aquaBeamSpawned = false;   // Set true once beam is fired
   float m_aquaGatherTimer = 0.0f;   // Tick accumulator for gathering particle spawns
+
+  // Hellfire: VFX triggers on landing, not at cast start
+  bool m_pendingHellfire = false;
+  bool m_hellfireSpawned = false;
 
   // Delayed skill packet for Flash — damage sent when beam spawns, not on click
   bool m_aquaPacketReady = false;    // True when beam spawns → main loop sends packet

@@ -302,9 +302,6 @@ static void HandleNpcInteraction(int npcIdx) {
   *s_ctx->selectedNpc = npcIdx;
   s_ctx->hero->CancelAttack();
   s_ctx->hero->ClearPendingPickup();
-  // Auto-dismount on NPC interaction
-  if (s_ctx->hero->IsMounted())
-    s_ctx->hero->UnequipMount();
 
   NpcInfo info = s_ctx->npcMgr->GetNpcInfo(npcIdx);
   float dist = glm::distance(s_ctx->hero->GetPosition(), info.position);
@@ -441,9 +438,6 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
           if (!CheckRangedAmmo()) {
             // Block attack — wrong or missing ammo for bow/crossbow
           } else {
-            // Auto-dismount on monster attack
-            if (s_ctx->hero->IsMounted())
-              s_ctx->hero->UnequipMount();
             MonsterInfo info = s_ctx->monsterMgr->GetMonsterInfo(monHit);
             s_ctx->hero->AttackMonster(monHit, info.position);
             s_ctx->hero->ClearPendingPickup();

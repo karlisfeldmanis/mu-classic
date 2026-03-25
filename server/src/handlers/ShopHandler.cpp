@@ -236,6 +236,18 @@ void HandleShopBuy(Session &session, const std::vector<uint8_t> &packet,
     return; // Not enough zen
   }
 
+  // Mounts are unique — only one of each type allowed
+  if (cat == 13 && (idx == 2 || idx == 3)) {
+    for (int i = 0; i < 64; i++) {
+      if (session.bag[i].occupied && session.bag[i].primary &&
+          session.bag[i].category == cat && session.bag[i].itemIndex == idx) {
+        printf("[Shop] Buy rejected: already owns mount cat=%d idx=%d\n", cat, idx);
+        session.Send(&res, sizeof(res));
+        return;
+      }
+    }
+  }
+
   printf("[Shop] Buying item defIdx=%d (qty=%u, price=%u)\n", recv->defIndex,
          buyStack, price);
 
@@ -310,17 +322,17 @@ void HandleShopBuy(Session &session, const std::vector<uint8_t> &packet,
       session.bag[s].defIndex = recv->defIndex;
       session.bag[s].category = cat;
       session.bag[s].itemIndex = idx;
-      session.bag[s].itemLevel = recv->itemLevel;
+      session.bag[s].itemLevel = 0; // Shop items always +0
     }
   }
   session.bag[slot].defIndex = recv->defIndex;
   session.bag[slot].quantity = buyStack;
-  session.bag[slot].itemLevel = recv->itemLevel;
+  session.bag[slot].itemLevel = 0; // Shop items always +0
   session.bag[slot].category = cat;
   session.bag[slot].itemIndex = idx;
 
   db.SaveCharacterInventory(session.characterId, recv->defIndex,
-                            session.bag[slot].quantity, recv->itemLevel, slot);
+                            session.bag[slot].quantity, 0, slot);
 
   res.result = 1;
   session.Send(&res, sizeof(res));
