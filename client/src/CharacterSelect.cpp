@@ -1898,17 +1898,19 @@ void Render(int windowWidth, int windowHeight) {
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
       model = glm::rotate(model, facing, glm::vec3(0, 0, 1));
 
-      // Uniform setter lambda
+      // Uniform setter lambda (with optional baseTint and terrainLight dim)
       auto setCSUniforms = [&](float bml, float chromeMode, float chromeTime,
-                               const glm::vec3 &glowColor) {
+                               const glm::vec3 &glowColor,
+                               const glm::vec3 &baseTint = glm::vec3(1),
+                               float dim = 1.0f) {
         s_modelShader->setVec4("u_params", glm::vec4(1.0f, bml, chromeMode, chromeTime));
         s_modelShader->setVec4("u_params2", glm::vec4(CS_LUMINOSITY, 0, 0, 0));
         s_modelShader->setVec4("u_viewPos", glm::vec4(camPos, 0));
         s_modelShader->setVec4("u_lightPos", glm::vec4(s_sunLightPos, 0));
         s_modelShader->setVec4("u_lightColor", glm::vec4(lightColor, 0));
-        s_modelShader->setVec4("u_terrainLight", glm::vec4(tLight, 0));
+        s_modelShader->setVec4("u_terrainLight", glm::vec4(tLight * dim, 0));
         s_modelShader->setVec4("u_glowColor", glm::vec4(glowColor, 0));
-        s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 0));
+        s_modelShader->setVec4("u_baseTint", glm::vec4(baseTint, 0));
         s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
         s_modelShader->setVec4("u_fogParams", glm::vec4(0, 0, 0, 0));
         s_modelShader->setVec4("u_fogColor", glm::vec4(0));
@@ -1919,6 +1921,24 @@ void Render(int windowWidth, int windowHeight) {
           s_modelShader->setMat4("u_lightMtx", s_lightMtx);
         s_modelShader->uploadPointLights(plCount, s_pointLights.data());
       };
+      // Glow-pass uniform setter: no shadow, no fog, flat terrainLight
+      auto setCSGlowUniforms = [&](float chromeMode, float chromeTime,
+                                   const glm::vec3 &glowColor) {
+        s_modelShader->setVec4("u_params", glm::vec4(1.0f, 1.0f, chromeMode, chromeTime));
+        s_modelShader->setVec4("u_params2", glm::vec4(CS_LUMINOSITY, 0, 0, 0));
+        s_modelShader->setVec4("u_viewPos", glm::vec4(camPos, 0));
+        s_modelShader->setVec4("u_lightPos", glm::vec4(s_sunLightPos, 0));
+        s_modelShader->setVec4("u_lightColor", glm::vec4(lightColor, 0));
+        s_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+        s_modelShader->setVec4("u_glowColor", glm::vec4(glowColor, 0));
+        s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 0));
+        s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
+        s_modelShader->setVec4("u_fogParams", glm::vec4(0, 0, 0, 0));
+        s_modelShader->setVec4("u_fogColor", glm::vec4(0));
+        s_modelShader->setVec4("u_shadowParams", glm::vec4(0));
+      };
+      // +3/+5 tint helper
+      float g_Lum = 0.8f + 0.2f * sinf((float)glfwGetTime() * 2.0f);
 
       // Draw helper lambda
       auto bgfxDraw = [&](MeshBuffers &mb, uint64_t state) {
@@ -1933,11 +1953,20 @@ void Render(int windowWidth, int windowHeight) {
         bgfx::submit(0, s_modelShader->program);
       };
 
-      // Body parts
+      // Body parts (with +3/+5 tint and +7+ dim)
       for (int p = 0; p < PART_COUNT; p++) {
+        uint8_t plvl = s_slots[i].equip[2 + p].itemLevel;
+        glm::vec3 pTint(1.0f);
+        float pDim = 1.0f;
+        if (plvl >= 5 && plvl < 7)
+          pTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
+        else if (plvl >= 3 && plvl < 7)
+          pTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
+        if (plvl >= 9) pDim = 0.9f;
+        else if (plvl >= 7) pDim = 0.8f;
         for (auto &mb : s_slotRender[i].meshes[p]) {
           if (mb.indexCount == 0 || mb.hidden) continue;
-          setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+          setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f), pTint, pDim);
           bgfxDraw(mb, mb.bright ? stAdd : stAlpha);
         }
       }
@@ -1950,36 +1979,54 @@ void Render(int windowWidth, int windowHeight) {
         }
       }
 
-      // Weapon
+      // Weapon (with +3/+5 tint and +7+ dim)
       {
+        uint8_t wlvl = s_slots[i].equip[0].itemLevel;
+        glm::vec3 wTint(1.0f);
+        float wDim = 1.0f;
+        if (wlvl >= 5 && wlvl < 7)
+          wTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
+        else if (wlvl >= 3 && wlvl < 7)
+          wTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
+        if (wlvl >= 9) wDim = 0.9f;
+        else if (wlvl >= 7) wDim = 0.8f;
         int blendIdx = s_slotRender[i].weaponBlendMesh;
         int mi = 0;
         for (auto &mb : s_slotRender[i].weaponMeshes) {
           if (mb.indexCount == 0) { mi++; continue; }
           if (blendIdx >= 0 && mi == blendIdx) {
             float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
-            setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f));
+            setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
             bgfxDraw(mb, stAdd);
           } else {
-            setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+            setCSUniforms(wDim, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
             bgfxDraw(mb, stAlpha);
           }
           mi++;
         }
       }
 
-      // Shield
+      // Shield (with +3/+5 tint and +7+ dim)
       {
+        uint8_t slvl = s_slots[i].equip[1].itemLevel;
+        glm::vec3 sTint(1.0f);
+        float sDim = 1.0f;
+        if (slvl >= 5 && slvl < 7)
+          sTint = glm::vec3(g_Lum * 0.5f, g_Lum * 0.7f, g_Lum);
+        else if (slvl >= 3 && slvl < 7)
+          sTint = glm::vec3(g_Lum, g_Lum * 0.6f, g_Lum * 0.6f);
+        if (slvl >= 9) sDim = 0.9f;
+        else if (slvl >= 7) sDim = 0.8f;
         int blendIdx = s_slotRender[i].shieldBlendMesh;
         int mi = 0;
         for (auto &mb : s_slotRender[i].shieldMeshes) {
           if (mb.indexCount == 0) { mi++; continue; }
           if (blendIdx >= 0 && mi == blendIdx) {
             float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
-            setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f));
+            setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
             bgfxDraw(mb, stAdd);
           } else {
-            setCSUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+            setCSUniforms(sDim, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
             bgfxDraw(mb, stAlpha);
           }
           mi++;
@@ -1995,13 +2042,14 @@ void Render(int windowWidth, int windowHeight) {
         }
       }
 
-      // ChromeGlow (+7/+9/+11/+13 item glow)
+      // ChromeGlow (+7/+9/+11/+13 item glow — shadow-free)
       {
         bool anyGlow = false;
         for (int p = 0; p < PART_COUNT; p++) {
           if (s_slots[i].equip[2 + p].itemLevel >= 7) { anyGlow = true; break; }
         }
         if (s_slots[i].equip[0].itemLevel >= 7) anyGlow = true;
+        if (s_slots[i].equip[1].itemLevel >= 7) anyGlow = true;
 
         if (anyGlow && TexValid(ChromeGlow::GetTextures().chrome1)) {
           float t = (float)glfwGetTime();
@@ -2014,7 +2062,7 @@ void Render(int windowWidth, int windowHeight) {
             int n = ChromeGlow::GetGlowPasses(lvl, 7 + p,
                                                s_slots[i].equip[2 + p].itemIndex, passes);
             for (int gp = 0; gp < n; ++gp) {
-              setCSUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+              setCSGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
               for (auto &mb : s_slotRender[i].meshes[p]) {
                 if (mb.indexCount == 0 || mb.hidden) continue;
                 s_modelShader->setTexture(0, "s_texColor", passes[gp].texture);
@@ -2037,8 +2085,8 @@ void Render(int windowWidth, int windowHeight) {
             int wBlend = s_slotRender[i].weaponBlendMesh;
             for (int gp = 0; gp < n; ++gp) {
               float wScale = 0.7f / (float)n;
-              setCSUniforms(1.0f, (float)passes[gp].chromeMode, t,
-                            passes[gp].color * wScale);
+              setCSGlowUniforms((float)passes[gp].chromeMode, t,
+                                passes[gp].color * wScale);
               int wmi = 0;
               for (auto &mb : s_slotRender[i].weaponMeshes) {
                 if (mb.indexCount == 0 || (wBlend >= 0 && wmi == wBlend)) { wmi++; continue; }
@@ -2050,6 +2098,30 @@ void Render(int windowWidth, int windowHeight) {
                 bgfx::setState(stAdd);
                 bgfx::submit(0, s_modelShader->program);
                 wmi++;
+              }
+            }
+          }
+
+          // Shield glow
+          uint8_t slv = s_slots[i].equip[1].itemLevel;
+          if (slv >= 7) {
+            ChromeGlow::GlowPass passes[3];
+            int n = ChromeGlow::GetGlowPasses(slv, 6,
+                                               s_slots[i].equip[1].itemIndex, passes);
+            int sBlend = s_slotRender[i].shieldBlendMesh;
+            for (int gp = 0; gp < n; ++gp) {
+              setCSGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
+              int smi = 0;
+              for (auto &mb : s_slotRender[i].shieldMeshes) {
+                if (mb.indexCount == 0 || (sBlend >= 0 && smi == sBlend)) { smi++; continue; }
+                s_modelShader->setTexture(0, "s_texColor", passes[gp].texture);
+                bgfx::setTransform(glm::value_ptr(model));
+                if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+                else bgfx::setVertexBuffer(0, mb.vbo);
+                bgfx::setIndexBuffer(mb.ebo);
+                bgfx::setState(stAdd);
+                bgfx::submit(0, s_modelShader->program);
+                smi++;
               }
             }
           }

@@ -60,9 +60,25 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
     break;
 
   // Character
-  case Opcode::CHARSAVE:
+  case Opcode::CHARSAVE: {
+    bool wasDead = session.dead;
     CharacterHandler::HandleCharSave(session, packet, db);
+    // Respawn teleport: if player was dead and is now alive, move to map safe zone
+    if (wasDead && !session.dead) {
+      uint8_t spawnX = 0, spawnY = 0;
+      switch (session.mapId) {
+      case 0: spawnX = 125; spawnY = 125; break;   // Lorencia center
+      case 1: spawnX = 108; spawnY = 247; break;   // Dungeon entrance
+      case 2: spawnX = 210; spawnY = 40;  break;   // Devias center
+      case 3: spawnX = 174; spawnY = 110; break;   // Noria center
+      case 4: spawnX = 208; spawnY = 75;  break;   // Lost Tower entrance
+      }
+      if (spawnX != 0 || spawnY != 0) {
+        server.TransitionMap(session, session.mapId, spawnX, spawnY);
+      }
+    }
     break;
+  }
   case Opcode::EQUIP:
     CharacterHandler::HandleEquip(session, packet, db);
     break;
@@ -134,8 +150,9 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       else if (mapId == 1) { sx = 108; sy = 247; }   // Dungeon entrance
       else if (mapId == 2) { sx = 210; sy = 40; }    // Devias center
       else if (mapId == 3) { sx = 174; sy = 110; }   // Noria center
+      else if (mapId == 4) { sx = 208; sy = 75; }    // Lost Tower NPC area
     }
-    if (mapId <= 3) { // Allow maps 0-3
+    if (mapId <= 4) { // Allow maps 0-4
       server.TransitionMap(session, mapId, sx, sy);
     }
     break;

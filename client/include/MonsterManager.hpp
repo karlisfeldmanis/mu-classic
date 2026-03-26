@@ -97,6 +97,7 @@ public:
   // 0x29: Server damage result — update HP, play hit animation
   void SetMonsterHP(int index, int hp, int maxHp);
   void TriggerHitAnimation(int index);
+  void ApplyFreeze(int index);
 
   // 0x2A: Server death notification — play die animation
   void SetMonsterDying(int index);
@@ -208,6 +209,11 @@ private:
     int hiddenMesh = -1;
     // AABB from mesh upload — actual model bounding box for nameplate positioning
     AABB meshBounds{};
+    // Body parts for armored humanoid monsters (e.g. Cursed Wizard wears full armor)
+    // Non-owning pointers — actual BMDData owned by m_ownedBmds
+    std::vector<BMDData *> bodyParts;
+    // PVP red glow tint (Main 5.2: PK=PVP_MURDERER2 → red body light)
+    bool isPvpGlow = false;
 
     // Helper: get the BMD to use for bone/animation computation
     BMDData *getAnimBmd() const { return animBmd ? animBmd : bmd; }
@@ -247,6 +253,10 @@ private:
     int stormTime = 0;
     float stormTickTimer = 0.0f;
 
+    // Main 5.2: eDeBuff_Freeze — ice spell freeze effect
+    // BodyLight=(0.3, 0.5, 1.0), 50% animation speed, decays 0.03/frame
+    float frozenTimer = 0.0f;
+
     int level = 0;         // Server-authoritative level (from viewport packet)
     int levelOverride = 0; // Scaled level from server (summons); 0 = use model default
 
@@ -275,6 +285,11 @@ private:
 
 
     std::vector<MeshBuffers> meshBuffers;
+    // Body part mesh buffers (parallel to model.bodyParts — armor pieces)
+    struct BodyPartMeshSet {
+      std::vector<MeshBuffers> meshBuffers;
+    };
+    std::vector<BodyPartMeshSet> bodyPartMeshes;
     // Per-weapon mesh buffers (parallel to model.weaponDefs)
     struct WeaponMeshSet {
       std::vector<MeshBuffers> meshBuffers;

@@ -127,6 +127,24 @@ void VFXManager::Init(const std::string &effectDataPath) {
   if (!TexValid(m_flareForceTexture))
     m_flareForceTexture = m_energyTexture; // Fallback
 
+  // MuSven: BITMAP_LIGHTNING+1 — rotating cross sprite for Lance Trap
+  m_lightning2Texture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/lightning2.OZJ");
+  if (!TexValid(m_lightning2Texture))
+    m_lightning2Texture = m_lightningTexture; // Fallback to JointThunder01
+
+  // MuSven: BITMAP_SHINY — sparkle particle for Lance Trap blade tips
+  m_shinyTexture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/Shiny01.OZJ");
+  if (!TexValid(m_shinyTexture))
+    m_shinyTexture = m_sparkTexture; // Fallback to Spark01
+
+  // Main 5.2: BITMAP_SHINY+1 — Shadow monster white glow aura (Shiny02.OZJ)
+  m_shiny2Texture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Effect/Shiny02.OZJ");
+  if (!TexValid(m_shiny2Texture))
+    m_shiny2Texture = m_shinyTexture; // Fallback to Shiny01
+
   if (!TexValid(m_bloodTexture))
     std::cerr << "[VFX] Failed to load blood texture" << std::endl;
   if (!TexValid(m_sparkTexture))
@@ -237,6 +255,22 @@ void VFXManager::Init(const std::string &effectDataPath) {
     }
     std::cout << "[VFX] Storm01.bmd loaded: " << m_stormMeshes.size()
               << " meshes" << std::endl;
+  }
+
+  // Load PowerWave model (Main 5.2/MuSven: MODEL_MAGIC2 = Data/Skill/Magic02.bmd)
+  m_magic2Bmd = BMDParser::Parse(skillPath + "Magic02.bmd");
+  if (m_magic2Bmd) {
+    auto bones = ComputeBoneMatrices(m_magic2Bmd.get(), 0, 0);
+    AABB dummyAABB{};
+    for (auto &mesh : m_magic2Bmd->Meshes) {
+      UploadMeshWithBones(mesh, skillPath, bones, m_magic2Meshes, dummyAABB,
+                          false);
+    }
+    std::cout << "[VFX] Magic02.bmd loaded: " << m_magic2Meshes.size()
+              << " meshes" << std::endl;
+  } else {
+    std::cerr << "[VFX] Failed to load Magic02.bmd — PowerWave will use billboard fallback"
+              << std::endl;
   }
 
   // Load Hellfire ground circle models (Main 5.2: MODEL_CIRCLE = Circle01.bmd)
@@ -439,7 +473,7 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       p.scale = 30.0f + (float)(rand() % 20);
       p.maxLifetime = 0.32f + (float)(rand() % 24) / 100.0f;
       p.color = glm::vec3(1.0f, 0.8f, 0.3f);
-      p.alpha = 1.0f;
+      p.alpha = 0.55f; // Lower alpha — overlapping additive particles blend softly (no stripes)
       break;
     }
     case ParticleType::ENERGY: {
@@ -790,6 +824,60 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       p.alpha = 0.85f;
       break;
     }
+    case ParticleType::TRAP_LIGHTNING: {
+      // MuSven: BITMAP_LIGHTNING+1 — rotating cross sprite at trap center
+      // Nearly stationary, slow fade, large scale. Rotation set by caller.
+      p.velocity = glm::vec3(0.0f);
+      p.scale = 80.0f; // Large cross sprite (overridden by caller)
+      p.maxLifetime = 0.12f; // Short — redrawn every frame by trap BodyLight
+      p.color = glm::vec3(0.4f, 0.8f, 1.0f); // Blue-cyan (overridden by caller)
+      p.alpha = 0.9f;
+      p.frame = -1.0f; // Full texture UV (not sprite sheet)
+      break;
+    }
+    case ParticleType::TRAP_GLOW: {
+      // MuSven: BITMAP_LIGHT — steady glow point at lance blade tips
+      // Stationary, quick fade (redrawn each frame), moderate scale.
+      p.velocity = glm::vec3(0.0f);
+      p.scale = 30.0f; // Glow point size
+      p.maxLifetime = 0.12f; // Redrawn each frame
+      p.color = glm::vec3(1.0f, 1.0f, 1.0f); // White
+      p.alpha = 0.8f;
+      break;
+    }
+    case ParticleType::TRAP_SHINY: {
+      // MuSven: BITMAP_SHINY — sparkle particle at blade tips (1/32 chance)
+      // Short lived, stationary, small bright flash
+      p.velocity = glm::vec3((float)(rand() % 10 - 5),
+                             (float)(rand() % 20 + 5),
+                             (float)(rand() % 10 - 5));
+      p.scale = 12.0f + (float)(rand() % 8); // 12-20
+      p.maxLifetime = 0.3f + (float)(rand() % 15) / 100.0f; // 0.3-0.45s
+      p.color = glm::vec3(0.8f, 0.9f, 1.0f); // Cool white
+      p.alpha = 1.0f;
+      break;
+    }
+    case ParticleType::MONSTER_SHINY: {
+      // Shadow aura: large blurry violet glow per bone.
+      // Longer lifetime (0.15s) with lower alpha creates smooth overlap across
+      // multiple 0.04s spawn cycles (~3-4 sprites per bone at any time).
+      p.velocity = glm::vec3(0.0f);
+      p.scale = 80.0f;
+      p.maxLifetime = 0.15f;
+      p.color = glm::vec3(0.55f, 0.45f, 0.75f);
+      p.alpha = 0.35f; // Lower alpha — overlapping sprites accumulate to full glow
+      break;
+    }
+    case ParticleType::MONSTER_MAGIC: {
+      // Poison Shadow aura: same large blurry approach as Shadow but green.
+      // Scale 70 (matching Shadow's enveloping coverage), longer lifetime for smooth blend.
+      p.velocity = glm::vec3(0.0f);
+      p.scale = 70.0f;
+      p.maxLifetime = 0.15f;
+      p.color = glm::vec3(0.2f, 0.7f, 0.1f);
+      p.alpha = 0.35f;
+      break;
+    }
     }
 
     p.lifetime = p.maxLifetime;
@@ -804,6 +892,19 @@ void VFXManager::SpawnBurstColored(ParticleType type, const glm::vec3 &position,
   SpawnBurst(type, position, count);
   for (size_t i = before; i < m_particles.size(); ++i) {
     m_particles[i].color = color;
+  }
+}
+
+void VFXManager::SpawnTrapSprite(ParticleType type, const glm::vec3 &position,
+                                  const glm::vec3 &color, float rotation,
+                                  float scale) {
+  // Spawn a single particle with explicit rotation and scale.
+  // Used for MuSven BodyLight rotating cross sprites (BITMAP_LIGHTNING+1).
+  SpawnBurstColored(type, position, color, 1);
+  if (!m_particles.empty()) {
+    auto &p = m_particles.back();
+    p.rotation = rotation;
+    p.scale = scale;
   }
 }
 
@@ -1398,6 +1499,22 @@ void VFXManager::Update(float deltaTime) {
       p.velocity.z *= (1.0f - 3.0f * deltaTime);
       p.scale *= (1.0f - 1.2f * deltaTime);
       break;
+    case ParticleType::TRAP_LIGHTNING:
+      // MuSven: Rotating cross sprite — stationary, no movement, hold scale
+      // Rotation is fixed at spawn (WorldTime-based), fades out quickly
+      break;
+    case ParticleType::TRAP_GLOW:
+      // MuSven: BITMAP_LIGHT — steady glow, no movement, hold scale
+      break;
+    case ParticleType::TRAP_SHINY:
+      // MuSven: BITMAP_SHINY — sparkle, gentle drift, shrink
+      p.velocity *= (1.0f - 2.0f * deltaTime);
+      p.scale *= (1.0f - 2.0f * deltaTime);
+      break;
+    case ParticleType::MONSTER_SHINY:
+    case ParticleType::MONSTER_MAGIC:
+      // 1-frame sprites — no animation, constant scale/alpha until expiry
+      break;
     case ParticleType::FLARE:
       // Main 5.2: BITMAP_FLASH — stationary, rapid scale shrink + alpha fade
       p.scale *= (1.0f - 3.0f * deltaTime);
@@ -1613,6 +1730,8 @@ void VFXManager::Update(float deltaTime) {
   // Update ice crystals and shards
   updateIceCrystals(deltaTime);
   updateIceShards(deltaTime);
+  // Update PowerWave ground waves
+  updatePowerWaves(deltaTime);
 
   // Update ribbons
   for (int i = (int)m_ribbons.size() - 1; i >= 0; --i) {
@@ -1764,7 +1883,8 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
     m_modelShader->setVec4("u_shadowParams", glm::vec4(0.0f));
 
   // BGFX billboard batch draw helper using transient instance data
-  auto drawBatchBgfx = [&](ParticleType type, TexHandle texture, bool additive) {
+  // blendMode: 0=alpha, 1=additive (GL_ONE,GL_ONE), 2=subtractive (GL_ZERO,GL_INV_SRC_COLOR)
+  auto drawBatchBgfx = [&](ParticleType type, TexHandle texture, int blendMode) {
     if (!TexValid(texture))
       return;
     // Collect particles of this type
@@ -1800,7 +1920,11 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
 
     uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
                    | BGFX_STATE_DEPTH_TEST_LESS;
-    if (additive)
+    if (blendMode == 2)
+      // Main 5.2: EnableAlphaBlendMinus — subtractive (darkening aura)
+      state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ZERO,
+                                       BGFX_STATE_BLEND_INV_SRC_COLOR);
+    else if (blendMode == 1)
       state |= BGFX_STATE_BLEND_ADD;
     else
       state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
@@ -1874,12 +1998,29 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
   drawBatchBgfx(ParticleType::BUFF_AURA,
                 TexValid(m_energyTexture) ? m_energyTexture : m_flareTexture, true);
 
+  // Dungeon trap VFX (MuSven BodyLight: additive sprites)
+  drawBatchBgfx(ParticleType::TRAP_LIGHTNING,
+                TexValid(m_lightning2Texture) ? m_lightning2Texture : m_energyTexture, true);
+  drawBatchBgfx(ParticleType::TRAP_GLOW,
+                TexValid(m_flareTexture) ? m_flareTexture : m_energyTexture, true);
+  drawBatchBgfx(ParticleType::TRAP_SHINY,
+                TexValid(m_shinyTexture) ? m_shinyTexture : m_sparkTexture, true);
+
+  // Lost Tower monster ambient auras (both additive)
+  // Shadow: dim ghostly violet glow (original subtractive is invisible on dark floors)
+  drawBatchBgfx(ParticleType::MONSTER_SHINY,
+                TexValid(m_shiny2Texture) ? m_shiny2Texture : m_shinyTexture, 1);
+  // Poison Shadow: bright green glow (Main 5.2 SubType=0 additive)
+  drawBatchBgfx(ParticleType::MONSTER_MAGIC,
+                TexValid(m_magicGroundTexture) ? m_magicGroundTexture : m_flareTexture, 1);
+
   // 3D spell models — use model shader for MeshBuffers with BGFX handles
   renderSpellProjectiles(view, projection);
   renderLightningBolts(view, projection);
   renderMeteorBolts(view, projection);
   renderIceCrystals(view, projection);
   renderIceShards(view, projection);
+  renderPowerWaves(view, projection);
   renderPoisonClouds(view, projection);
   renderTwisterStorms(view, projection);
   renderStoneDebris(view, projection);
@@ -2398,7 +2539,8 @@ void VFXManager::renderFireModel(const SpellProjectile &p,
     if (mb.indexCount == 0 || mb.hidden) continue;
     bgfx::setTransform(glm::value_ptr(model));
     m_modelShader->setTexture(0, "s_texColor", mb.texture);
-    bgfx::setVertexBuffer(0, mb.vbo);
+    if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+    else bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
     // Main 5.2 BlendMesh=1: mesh with textureId 1 renders additive (fire glow)
     bgfx::setState(mb.bmdTextureId == 1 ? stAdd : stAlpha);
@@ -2499,6 +2641,17 @@ void VFXManager::GetActiveSpellLights(std::vector<glm::vec3> &positions,
     positions.push_back(pc.position);
     colors.push_back(glm::vec3(L * 0.3f, L * 1.0f, L * 0.6f));
     ranges.push_back(200.0f); // range=2 grid cells
+    objectTypes.push_back(-1);
+  }
+
+  // PowerWave terrain light — MuSven: blue-cyan (L*0.3, L*0.6, L*1.0)
+  for (const auto &pw : m_powerWaves) {
+    float ticksRemaining = pw.lifetime / 0.04f;
+    float L = std::min(ticksRemaining * 0.1f, 1.0f);
+    if (L <= 0.01f) continue;
+    positions.push_back(pw.position);
+    colors.push_back(glm::vec3(L * 0.3f, L * 0.6f, L * 1.0f));
+    ranges.push_back(200.0f);
     objectTypes.push_back(-1);
   }
 
@@ -2639,7 +2792,8 @@ void VFXManager::Cleanup() {
                           m_explosionTexture,   m_infernoFireTexture,
                           m_spark3Texture,      m_flareBlueTexture,
                           m_blurTexture,        m_motionBlurTexture,
-                          m_spark2Texture,      m_flareForceTexture};
+                          m_spark2Texture,      m_flareForceTexture,
+                          m_shiny2Texture};
   for (auto t : textures) {
     if (TexValid(t))
       TexDestroy(t);

@@ -135,7 +135,8 @@ static bool TryKnockback(Session &session, MonsterInstance *mon,
 // Shared combat logic: calculate damage, apply to monster, handle aggro/kill/XP
 static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
                                  int bonusDamage, GameWorld &world,
-                                 Server &server, bool isMagic = false) {
+                                 Server &server, bool isMagic = false,
+                                 int *outAgHits = nullptr) {
   CharacterClass charCls = static_cast<CharacterClass>(session.classCode);
   bool hasBow = session.hasBow;
 
@@ -258,6 +259,9 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
     } else {
       mon->hp -= damage;
     }
+    // DK AG gain: +1 AG per successful damage hit
+    if (damage > 0 && outAgHits)
+      (*outAgHits)++;
     // Track player threat for aggro system (summon threat comparison)
     mon->playerThreat += static_cast<float>(damage);
   }
@@ -451,10 +455,6 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
       mon->aiState == MonsterInstance::AIState::DEAD)
     return;
 
-  // Traps are invulnerable (Main 5.2: KIND_TRAP cannot be attacked)
-  if (mon->type >= 100 && mon->type <= 102)
-    return;
-
   // Bow/crossbow requires correct ammo type in left hand (slot 1)
   // Bows (idx 0-6, 17) need Arrows (idx 15), Crossbows (idx 8-14, 16, 18) need Bolts (idx 7)
   if (session.hasBow) {
@@ -508,8 +508,6 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
         continue;
       if (other.evading)
         continue;
-      if (other.type >= 100 && other.type <= 102)
-        continue; // Traps
       float dx = other.worldX - mon->worldX;
       float dz = other.worldZ - mon->worldZ;
       if (dx * dx + dz * dz < 150.0f * 150.0f) {
@@ -521,10 +519,9 @@ void HandleAttack(Session &session, const std::vector<uint8_t> &packet,
     }
   }
 
-  // AG recovery on auto-attack hit (DK only)
+  // AG recovery on auto-attack hit (DK only): +1 AG per hit
   if (session.classCode == 16 && session.ag < session.maxAg) {
-    int agGain = std::max(1, session.maxAg / 50); // 2% of maxAG
-    session.ag = std::min(session.ag + agGain, session.maxAg);
+    session.ag = std::min(session.ag + 1, session.maxAg);
     CharacterHandler::SendCharStats(session);
   }
 }
@@ -782,9 +779,6 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
       if (other.aiState == MonsterInstance::AIState::DYING ||
           other.aiState == MonsterInstance::AIState::DEAD)
         continue;
-      if (other.type >= 100 && other.type <= 102)
-        continue; // Traps are invulnerable
-
       bool inRange = false;
       if (isLinePath && lenSq > 0.01f) {
         // Distance from monster to line segment (caster → target)
@@ -804,16 +798,19 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
 
       if (inRange) {
         ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
-                             server, skillDef->isMagic);
+                             server, skillDef->isMagic, &aoeHits);
         // Twisting Slash (skill 41): double hit (spin start + spin end)
         if (skillDef->skillId == 41 && other.hp > 0) {
           ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
-                               server, skillDef->isMagic);
+                               server, skillDef->isMagic, &aoeHits);
         }
         if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0)
           other.stormTime = 10;
-        aoeHits++;
       }
+    }
+    // DK AG gain: +1 AG per hit in ground-target AoE
+    if (session.classCode == 16 && aoeHits > 0 && session.ag < session.maxAg) {
+      session.ag = std::min(session.ag + aoeHits, session.maxAg);
     }
     CharacterHandler::SendCharStats(session);
     return;
@@ -822,12 +819,10 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   if (!mon || mon->aiState == MonsterInstance::AIState::DYING ||
       mon->aiState == MonsterInstance::AIState::DEAD)
     return;
-  if (mon->type >= 100 && mon->type <= 102)
-    return; // Traps are invulnerable
-
   // Apply damage with skill bonus to primary target
+  int skillAgHits = 0;
   ApplyDamageToMonster(session, mon, skillDef->damageBonus, world, server,
-                       skillDef->isMagic);
+                       skillDef->isMagic, &skillAgHits);
   session.attackTargetMonsterIdx = mon->index; // Track for summon assist
 
   // Main 5.2: gObjBackSpring — knockback for Lightning and DK basic skills
@@ -848,12 +843,18 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
   // Twisting Slash (skill 41): double hit (spin start + spin end)
   if (skillDef->skillId == 41 && mon->hp > 0) {
     ApplyDamageToMonster(session, mon, skillDef->damageBonus, world, server,
-                         skillDef->isMagic);
+                         skillDef->isMagic, &skillAgHits);
   }
 
   // Main 5.2: Twister/Evil Spirit applies StormTime=10 AI stun (only if alive)
   if ((skillDef->skillId == 8 || skillDef->skillId == 9) && mon->hp > 0)
     mon->stormTime = 10;
+
+  // Ice (skill 7): apply eDeBuff_Freeze — movement freeze
+  // MuSven: don't re-apply if already frozen, ~1.3s duration
+  if (skillDef->skillId == 7 && mon->hp > 0 && mon->freezeTimer <= 0.0f) {
+    mon->freezeTimer = 1.0f;
+  }
 
   // Poison (skill 1): apply DoT debuff — OpenMU PoisonMagicEffect
   // Duration 10s, tick every 3s, tick damage = 30% of initial hit
@@ -886,13 +887,11 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
       if (other.aiState == MonsterInstance::AIState::DYING ||
           other.aiState == MonsterInstance::AIState::DEAD)
         continue;
-      if (other.type >= 100 && other.type <= 102)
-        continue; // Traps are invulnerable
       float dx = other.worldX - cx;
       float dz = other.worldZ - cz;
       if (dx * dx + dz * dz <= r2) {
         ApplyDamageToMonster(session, &other, skillDef->damageBonus, world,
-                             server, skillDef->isMagic);
+                             server, skillDef->isMagic, &skillAgHits);
         // Main 5.2: Twister/Evil Spirit stuns AoE targets too (only if alive)
         if ((skillDef->skillId == 8 || skillDef->skillId == 9) && other.hp > 0)
           other.stormTime = 10;
@@ -901,11 +900,10 @@ void HandleSkillAttack(Session &session, const std::vector<uint8_t> &packet,
     }
   }
 
-  // AG recovery on skill damage hit (DK only) — each hit that deals damage
-  // restores a small amount of AG (same as auto-attack: 2% of maxAG)
-  if (session.classCode == 16 && session.ag < session.maxAg) {
-    int agGain = std::max(1, session.maxAg / 50); // 2% of maxAG
-    session.ag = std::min(session.ag + agGain, session.maxAg);
+  // DK AG gain: +1 AG per successful damage hit
+  // Twisting Slash double-hits = 2 AG, AoE hits each grant 1 AG
+  if (session.classCode == 16 && skillAgHits > 0 && session.ag < session.maxAg) {
+    session.ag = std::min(session.ag + skillAgHits, session.maxAg);
   }
 
   // Send updated stats (so client sees AG decrease)

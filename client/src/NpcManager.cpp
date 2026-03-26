@@ -736,7 +736,7 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       int guardItemIdx = (npc.npcType == 256) ? 5 : 9;
       float t = (float)glfwGetTime();
       uint64_t glowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
-                         | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD;
+                         | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
       for (int p = 0; p < (int)npc.bodyParts.size(); ++p) {
         auto &bp = npc.bodyParts[p];
         ChromeGlow::GlowPass passes[3];
@@ -755,6 +755,8 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
           }
         }
       }
+      // Reset uniforms after guard glow passes
+      setNpcUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
     }
 
     // ── Guard weapon rendering (Main 5.2: ZzzCharacter.cpp:13859-13890) ──

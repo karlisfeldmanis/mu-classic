@@ -134,6 +134,11 @@ public:
   float poisonTickTimer = 0.0f; // Accumulator for 3-second tick interval
   float poisonDuration = 0.0f;  // Remaining poison duration
 
+  // Monster→player freeze debuff (Main 5.2: Ice Monster type 22, Ice Queen type 25)
+  // 50% move speed, 50% animation speed, ~1.3s duration, blue tint
+  bool frozen = false;
+  float frozenDuration = 0.0f; // Remaining freeze duration
+
   // Learned skills (skill IDs)
   std::vector<uint8_t> learnedSkills;
 

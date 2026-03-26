@@ -8,8 +8,10 @@ SAMPLER2D(s_lightMap, 2);
 
 // Packed parameters: x=objectAlpha, y=blendMeshLight, z=chromeMode, w=chromeTime
 uniform vec4 u_params;
-// Packed parameters2: x=luminosity, y=unused, z=unused, w=unused
+// Packed parameters2: x=luminosity, y=decalMode(<-0.5), z=cliffFade, w=cliffTopH
 uniform vec4 u_params2;
+// UV offset (applied in vertex shader — needed in fragment for decal mode)
+uniform vec4 u_texCoordOffset;
 
 // Shadow mapping
 uniform mat4 u_lightMtx;       // lightProj * lightView
@@ -166,6 +168,21 @@ void main()
     }
 
     gl_FragColor = vec4(finalLight, objectAlpha) * texColor;
+
+    // Decal mode: brightness + edge fade to hide square polygon outline
+    // Activated by setting u_params2.y < -0.5 (negative value signals decal mode)
+    if (u_params2.y < -0.5) {
+        // 1) Brightness fade: dark pixels (JPEG artifacts, background) become transparent
+        //    Star pattern is bright (>0.15), artifacts are dim (<0.05)
+        float brightness = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+        float brightFade = smoothstep(0.04, 0.12, brightness);
+        // 2) Square edge fade: clip outermost 2% of polygon (Chebyshev distance)
+        vec2 origUV = v_texcoord0 - u_texCoordOffset.xy;
+        vec2 uvFromCenter = origUV - vec2(0.5, 0.5);
+        float edgeDist = max(abs(uvFromCenter.x), abs(uvFromCenter.y));
+        float edgeFade = 1.0 - smoothstep(0.48, 0.50, edgeDist);
+        gl_FragColor.a *= brightFade * edgeFade;
+    }
 
     // Fog
     if (u_fogParams.z > 0.5) {

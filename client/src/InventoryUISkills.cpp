@@ -32,7 +32,7 @@ static uint16_t GetSkillLevelReq(uint8_t skillId) {
   // DW scrolls (category 15)
   static const uint8_t scrollSkillToItem[][2] = {
       {1, 0},  {2, 1},  {3, 2},  {4, 3},   {5, 4},  {6, 5}, {7, 6},
-      {8, 7},  {9, 8},  {10, 9}, {12, 11}, {13, 12}, {14, 13},
+      {8, 7},  {9, 8},  {10, 9}, {11, 10}, {12, 11}, {13, 12}, {14, 13},
   };
   for (auto &m : scrollSkillToItem) {
     if (m[0] == skillId) {
@@ -292,9 +292,9 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     snprintf(hpLabel, sizeof(hpLabel), "%d/%d", std::max(curHP, 0), maxHP);
 
     DrawOrb(dl, orbSX, orbSY, orbSR, hpFrac,
-            IM_COL32(200, 40, 30, 240),  // fill top: bright red
-            IM_COL32(120, 15, 10, 240),  // fill bottom: dark red
-            IM_COL32(20, 8, 8, 220),     // empty: very dark red
+            IM_COL32(255, 80, 50, 245),  // fill top: bright vivid red
+            IM_COL32(80, 5, 5, 240),     // fill bottom: very dark red
+            IM_COL32(15, 5, 5, 220),     // empty: near black
             IM_COL32(140, 115, 60, 200), // frame: gold
             hpLabel);
 
@@ -325,9 +325,9 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
       emptyCol = IM_COL32(20, 12, 5, 220);   // dark orange-brown
       resName = "AG";
     } else {
-      fillTop = IM_COL32(40, 80, 220, 240); // blue top
-      fillBot = IM_COL32(15, 35, 140, 240); // blue bottom
-      emptyCol = IM_COL32(8, 8, 20, 220);   // dark blue
+      fillTop = IM_COL32(80, 140, 255, 245); // bright vivid blue
+      fillBot = IM_COL32(5, 20, 90, 240);    // very dark blue
+      emptyCol = IM_COL32(5, 5, 15, 220);    // near black
       resName = "MP";
     }
 
@@ -349,21 +349,30 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     dl->AddText(ImVec2(nlx, nly), nameCol, resName);
   }
 
-  // ══════════════ CISTML buttons (screen-pixel, bottom-right corner)
+  // ══════════════ CISLM buttons (screen-pixel, bottom-right corner)
   // ══════════════
   {
-    const char *btnLabels[] = {"C", "I", "S", "T", "L"};
-    bool tDisabled = (s_ctx->hero && s_ctx->hero->IsInSafeZone());
+    const char *btnLabels[] = {"C", "I", "S", "L", "M"};
+    // Icon indices: 0=Character, 1=Inventory, 2=Skills, 4=Quests, 5=Map
+    // (skip 3=Teleport which was removed)
+    int iconIndices[] = {0, 1, 2, 4, 5};
 
     // Position in screen pixels: bottom-right corner
+    // Scale all pixel constants by resolution (designed for 768p)
     float scrW = (float)winW, scrH = (float)winH;
-    float bs = MBTN_SCREEN_BTN;
-    float bStartX = scrW - MBTN_SCREEN_RIGHT_PAD - MBTN_SCREEN_TOTAL_W;
-    float bStartY =
-        scrH - XP_SCREEN_BOTTOM - XP_SCREEN_H - MBTN_SCREEN_BOTTOM_PAD - bs;
+    float uiS = scrH / 768.0f;
+    float bs = MBTN_SCREEN_BTN * uiS;
+    float btnGap = MBTN_SCREEN_GAP * uiS;
+    float rightPad = MBTN_SCREEN_RIGHT_PAD * uiS;
+    float bottomPad = MBTN_SCREEN_BOTTOM_PAD * uiS;
+    float xpH = XP_SCREEN_H * uiS;
+    float xpBot = XP_SCREEN_BOTTOM * uiS;
+    float totalBtnW = bs * MBTN_COUNT + btnGap * (MBTN_COUNT - 1);
+    float bStartX = scrW - rightPad - totalBtnW;
+    float bStartY = scrH - xpBot - xpH - bottomPad - bs;
 
     for (int i = 0; i < MBTN_COUNT; i++) {
-      float bx = bStartX + i * (bs + MBTN_SCREEN_GAP);
+      float bx = bStartX + i * (bs + btnGap);
       float by = bStartY;
       float bcx = bx + bs * 0.5f;
       float bcy = by + bs * 0.5f;
@@ -371,56 +380,63 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
       // Circular hit test
       float dx = mp.x - bcx, dy = mp.y - bcy;
       bool hov = (dx * dx + dy * dy) <= (br * br);
-      bool disabled = (i == 3 && tDisabled);
       // Filled circle background
-      ImU32 bgCol = disabled ? IM_COL32(10, 8, 6, 200)
-                    : hov    ? IM_COL32(35, 28, 20, 240)
-                             : IM_COL32(16, 13, 10, 230);
+      ImU32 bgCol = hov ? IM_COL32(35, 28, 20, 240)
+                        : IM_COL32(16, 13, 10, 230);
       dl->AddCircleFilled(ImVec2(bcx, bcy), br, bgCol, 32);
       // Top-half highlight for 3D metallic look
       dl->PushClipRect(ImVec2(bcx - br, bcy - br), ImVec2(bcx + br, bcy), true);
-      ImU32 hlCol = disabled ? IM_COL32(20, 16, 12, 80)
-                    : hov    ? IM_COL32(60, 48, 30, 120)
-                             : IM_COL32(30, 24, 18, 80);
+      ImU32 hlCol = hov ? IM_COL32(60, 48, 30, 120)
+                        : IM_COL32(30, 24, 18, 80);
       dl->AddCircleFilled(ImVec2(bcx, bcy), br - 1, hlCol, 32);
       dl->PopClipRect();
       // Outer dark shadow ring
       dl->AddCircle(ImVec2(bcx, bcy), br + 1, IM_COL32(5, 4, 3, 180), 32, 2.0f);
       // Main border ring
-      ImU32 borderCol = disabled ? IM_COL32(40, 35, 25, 100)
-                        : hov    ? IM_COL32(210, 180, 85, 240)
-                                 : IM_COL32(110, 92, 48, 180);
+      ImU32 borderCol = hov ? IM_COL32(210, 180, 85, 240)
+                            : IM_COL32(110, 92, 48, 180);
       dl->AddCircle(ImVec2(bcx, bcy), br, borderCol, 32, 1.5f);
       // Inner highlight ring (top half only for sheen)
       dl->PushClipRect(ImVec2(bcx - br, bcy - br), ImVec2(bcx + br, bcy - 2), true);
-      dl->AddCircle(ImVec2(bcx, bcy), br - 2,
-                    disabled ? IM_COL32(40, 35, 25, 30) : IM_COL32(180, 155, 80, 50),
+      dl->AddCircle(ImVec2(bcx, bcy), br - 2, IM_COL32(180, 155, 80, 50),
                     32, 1.0f);
       dl->PopClipRect();
       // Inner shadow ring
       dl->AddCircle(ImVec2(bcx, bcy), br - 3, IM_COL32(0, 0, 0, 50), 32, 1.0f);
-      // Text label centered
-      ImVec2 tsz = ImGui::CalcTextSize(btnLabels[i]);
-      ImU32 textCol =
-          disabled ? IM_COL32(80, 70, 55, 140) : IM_COL32(200, 185, 150, 240);
-      DrawShadowText(dl,
-                     ImVec2(bcx - tsz.x * 0.5f, bcy - tsz.y * 0.5f),
-                     textCol, btnLabels[i]);
-      // Teleport cooldown overlay (circular)
-      if (i == 3 && s_ctx->hero && s_ctx->hero->GetTeleportCooldown() > 0.0f) {
-        float cd = s_ctx->hero->GetTeleportCooldown();
-        float cdMax = s_ctx->hero->GetTeleportCooldownMax();
-        float cdFrac = cd / cdMax;
-        float fillH = bs * cdFrac;
-        dl->PushClipRect(ImVec2(bcx - br, bcy - br), ImVec2(bcx + br, bcy - br + fillH), true);
-        dl->AddCircleFilled(ImVec2(bcx, bcy), br, IM_COL32(10, 10, 10, 180), 32);
-        dl->PopClipRect();
-        char cdBuf[8];
-        snprintf(cdBuf, sizeof(cdBuf), "%d", (int)ceil(cd));
-        ImVec2 cdsz = ImGui::CalcTextSize(cdBuf);
-        DrawShadowText(dl,
-                       ImVec2(bcx - cdsz.x * 0.5f, bcy + br * 0.3f),
-                       IM_COL32(255, 180, 80, 255), cdBuf);
+      // Render icon as main button content (prominent)
+      int iconIdx = iconIndices[i];
+      if (TexValid(g_texMenuBtnIcons[iconIdx])) {
+        float iconPad = br * 0.22f;
+        ImU32 iconTint = IM_COL32(190, 175, 140, 180);
+        if (hov)
+          iconTint = IM_COL32(240, 220, 160, 220);
+        dl->AddImage((ImTextureID)TexImID(g_texMenuBtnIcons[iconIdx]),
+                     ImVec2(bcx - br + iconPad, bcy - br + iconPad),
+                     ImVec2(bcx + br - iconPad, bcy + br - iconPad),
+                     ImVec2(0, 0), ImVec2(1, 1), iconTint);
+      }
+      // Letter badge (small circle at upper-right with keybind letter)
+      {
+        float badgeR = br * 0.32f;
+        float badgeX = bcx + br * 0.55f;
+        float badgeY = bcy - br * 0.55f;
+        // Badge background
+        dl->AddCircleFilled(ImVec2(badgeX, badgeY), badgeR + 1,
+                            IM_COL32(0, 0, 0, 180), 16);
+        dl->AddCircleFilled(ImVec2(badgeX, badgeY), badgeR,
+                            IM_COL32(30, 25, 18, 230), 16);
+        dl->AddCircle(ImVec2(badgeX, badgeY), badgeR,
+                      IM_COL32(130, 110, 55, 180), 16, 1.0f);
+        // Badge letter
+        ImVec2 tsz = ImGui::CalcTextSize(btnLabels[i]);
+        float lScale = 0.85f;
+        ImU32 textCol = IM_COL32(210, 195, 155, 240);
+        dl->AddText(ImVec2(badgeX - tsz.x * lScale * 0.5f + 1,
+                           badgeY - tsz.y * lScale * 0.5f + 1),
+                    IM_COL32(0, 0, 0, 200), btnLabels[i]);
+        dl->AddText(ImVec2(badgeX - tsz.x * lScale * 0.5f,
+                           badgeY - tsz.y * lScale * 0.5f),
+                    textCol, btnLabels[i]);
       }
     }
   }
@@ -637,14 +653,14 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
           ic.texIdx = 2;
           ic.name = "Uniria";
           ic.desc = "Increases movement speed";
-          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+50%% Move Speed");
+          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+20%% Move Speed");
           ic.borderCol = IM_COL32(100, 200, 255, 180);
           ic.bgCol = IM_COL32(10, 15, 20, 200);
         } else { // Dinorant
           ic.texIdx = 3;
           ic.name = "Dinorant";
           ic.desc = "Enables flight, boosts speed";
-          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+100%% Move Speed");
+          snprintf(ic.bonusLine, sizeof(ic.bonusLine), "+25%% Move Speed");
           ic.borderCol = IM_COL32(40, 180, 140, 180);
           ic.bgCol = IM_COL32(8, 18, 14, 200);
         }
@@ -806,33 +822,73 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
       ImVec2 sp0(sx, barY);
       ImVec2 sp1(sx + segW, barY + barH);
 
-      // Segment background — gradient for depth
+      // Segment background — deeper gradient with inner bevel
       dl->AddRectFilledMultiColor(sp0, sp1,
-          IM_COL32(5, 5, 10, 210), IM_COL32(5, 5, 10, 210),
-          IM_COL32(12, 12, 20, 210), IM_COL32(12, 12, 20, 210));
+          IM_COL32(3, 3, 8, 230), IM_COL32(3, 3, 8, 230),
+          IM_COL32(10, 10, 18, 230), IM_COL32(10, 10, 18, 230));
+      // Top inner shadow (inset bevel)
+      dl->AddLine(ImVec2(sx + 1, barY + 1), ImVec2(sx + segW - 1, barY + 1),
+                  IM_COL32(0, 0, 0, 120));
+      // Bottom inner highlight
+      dl->AddLine(ImVec2(sx + 1, barY + barH - 1), ImVec2(sx + segW - 1, barY + barH - 1),
+                  IM_COL32(30, 30, 50, 40));
 
-      // Fill based on XP fraction
+      // Fill based on XP fraction — 3-color gradient
       float segStart = (float)i / (float)XP_SEGMENTS;
       float segEnd = (float)(i + 1) / (float)XP_SEGMENTS;
       if (xpFrac > segStart) {
         float segFrac =
             std::clamp((xpFrac - segStart) / (segEnd - segStart), 0.0f, 1.0f);
         float fillW = segW * segFrac;
+
+        // Main fill: 3-row gradient (bright cyan → teal → deep blue)
+        float midY = barY + barH * 0.4f;
+        // Top portion (bright cyan)
         dl->AddRectFilledMultiColor(
-            sp0, ImVec2(sx + fillW, barY + barH),
-            IM_COL32(80, 210, 240, 230), IM_COL32(80, 210, 240, 230),
-            IM_COL32(30, 140, 180, 230), IM_COL32(30, 140, 180, 230));
-        // Bright top highlight (2px)
+            sp0, ImVec2(sx + fillW, midY),
+            IM_COL32(100, 230, 255, 240), IM_COL32(100, 230, 255, 240),
+            IM_COL32(50, 190, 230, 240), IM_COL32(50, 190, 230, 240));
+        // Bottom portion (teal → deep blue)
+        dl->AddRectFilledMultiColor(
+            ImVec2(sx, midY), ImVec2(sx + fillW, barY + barH),
+            IM_COL32(50, 190, 230, 240), IM_COL32(50, 190, 230, 240),
+            IM_COL32(20, 100, 160, 240), IM_COL32(20, 100, 160, 240));
+
+        // Bright top highlight (3px, more visible)
         dl->AddLine(ImVec2(sx + 1, barY + 1), ImVec2(sx + fillW - 1, barY + 1),
-                    IM_COL32(200, 255, 255, 50));
+                    IM_COL32(220, 255, 255, 80));
         dl->AddLine(ImVec2(sx + 1, barY + 2), ImVec2(sx + fillW - 1, barY + 2),
-                    IM_COL32(200, 255, 255, 25));
+                    IM_COL32(180, 240, 255, 40));
+        dl->AddLine(ImVec2(sx + 1, barY + 3), ImVec2(sx + fillW - 1, barY + 3),
+                    IM_COL32(140, 220, 255, 20));
+
+        // Leading edge glow (bright vertical line at fill edge)
+        if (segFrac < 0.99f && fillW > 2.0f) {
+          dl->AddRectFilled(
+              ImVec2(sx + fillW - 2, barY + 1),
+              ImVec2(sx + fillW, barY + barH - 1),
+              IM_COL32(200, 255, 255, 100));
+          // Glow halo around leading edge
+          dl->AddRectFilled(
+              ImVec2(sx + fillW - 4, barY),
+              ImVec2(sx + fillW + 1, barY + barH),
+              IM_COL32(100, 220, 255, 25));
+        }
       }
 
-      // 2-layer border — outer dark, inner subtle gold
-      dl->AddRect(sp0, sp1, IM_COL32(0, 0, 0, 160), 1.0f);
+      // 10% tick marks within each segment (subtle vertical lines)
+      for (int t = 1; t < 10; t++) {
+        float tickX = sx + segW * ((float)t / 10.0f);
+        dl->AddLine(ImVec2(tickX, barY + 1), ImVec2(tickX, barY + barH - 1),
+                    IM_COL32(40, 40, 60, 40));
+      }
+
+      // 3-layer border — outer shadow, gold frame, inner dark
+      dl->AddRect(ImVec2(sp0.x - 1, sp0.y - 1), ImVec2(sp1.x + 1, sp1.y + 1),
+                  IM_COL32(0, 0, 0, 100), 1.0f);
+      dl->AddRect(sp0, sp1, IM_COL32(90, 75, 40, 140), 1.0f);
       dl->AddRect(ImVec2(sp0.x + 1, sp0.y + 1), ImVec2(sp1.x - 1, sp1.y - 1),
-                  IM_COL32(70, 60, 35, 50), 1.0f);
+                  IM_COL32(50, 45, 30, 50), 1.0f);
     }
 
     // Level + XP text centered above the bar (Cinzel font, larger)
@@ -863,15 +919,15 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
   const char *resourceLabel = isDK ? "AG" : "Mana";
   const char *panelTitle = isDK ? "Skills" : "Spells";
 
-  // Grid layout: adapt rows to skill count
-  static constexpr int GRID_COLS = 4;
+  // Grid layout: cleaner spacing, slightly smaller cells
+  static constexpr int GRID_COLS = 5;
   int GRID_ROWS = (skillCount + GRID_COLS - 1) / GRID_COLS;
-  static constexpr float CELL_W = 110.0f;
-  static constexpr float CELL_H = 105.0f;
-  static constexpr float CELL_PAD = 10.0f;
-  static constexpr float TITLE_H = 32.0f;
-  static constexpr float FOOTER_H = 24.0f;
-  static constexpr float MARGIN = 16.0f;
+  static constexpr float CELL_W = 105.0f;
+  static constexpr float CELL_H = 95.0f;
+  static constexpr float CELL_PAD = 12.0f;
+  static constexpr float TITLE_H = 36.0f;
+  static constexpr float FOOTER_H = 28.0f;
+  static constexpr float MARGIN = 18.0f;
 
   float pw = MARGIN * 2 + GRID_COLS * CELL_W + (GRID_COLS - 1) * CELL_PAD;
   float ph = TITLE_H + MARGIN + GRID_ROWS * CELL_H +
@@ -894,13 +950,23 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
   DrawStyledPanel(dl, c.ToScreenX(px), c.ToScreenY(py), c.ToScreenX(px + pw),
                   c.ToScreenY(py + ph), 6.0f);
 
-  // Title -- centered with strong shadow
+  // Title -- bold font, centered with gold separator
   {
-    const char *title = panelTitle;
-    ImVec2 tsz = ImGui::CalcTextSize(title);
+    ImFont *titleFont = s_ctx->fontBold ? s_ctx->fontBold : ImGui::GetFont();
+    float titleFs = titleFont->LegacySize * ImGui::GetIO().FontGlobalScale;
+    ImVec2 tsz = titleFont->CalcTextSizeA(titleFs, FLT_MAX, 0, panelTitle);
     float tx = c.ToScreenX(px + pw * 0.5f) - tsz.x * 0.5f;
-    float ty = c.ToScreenY(py + 10.0f);
-    DrawShadowText(dl, ImVec2(tx, ty), colTitle, title, 2);
+    float ty = c.ToScreenY(py + 8.0f);
+    dl->AddText(titleFont, titleFs, ImVec2(tx + 2, ty + 2), IM_COL32(0, 0, 0, 230), panelTitle);
+    dl->AddText(titleFont, titleFs, ImVec2(tx, ty), colTitle, panelTitle);
+    // Gold separator line
+    float sepY = c.ToScreenY(py + TITLE_H - 2.0f);
+    float sepL = c.ToScreenX(px + MARGIN);
+    float sepR = c.ToScreenX(px + pw - MARGIN);
+    dl->AddLine(ImVec2(sepL, sepY), ImVec2(sepR, sepY),
+                IM_COL32(130, 108, 52, 140), 1.0f);
+    dl->AddLine(ImVec2(sepL, sepY + 1), ImVec2(sepR, sepY + 1),
+                IM_COL32(0, 0, 0, 100), 1.0f);
   }
 
   // Close button (top-right)
@@ -941,11 +1007,11 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
 
   ImVec2 mousePos = ImGui::GetIO().MousePos;
 
-  // Icon display size (preserve 20:28 aspect ratio = 5:7)
-  static constexpr float ICON_DISP_W = 46.0f;
-  static constexpr float ICON_DISP_H = 64.0f; // 46 * 28/20 = 64.4
+  // Icon display size (smaller, preserve 20:28 aspect ratio)
+  static constexpr float ICON_DISP_W = 38.0f;
+  static constexpr float ICON_DISP_H = 53.0f; // 38 * 28/20 ≈ 53
 
-  float gridStartY = py + TITLE_H;
+  float gridStartY = py + TITLE_H + 4.0f;
 
   for (int i = 0; i < skillCount; i++) {
     const auto &skill = skills[i];
@@ -963,10 +1029,13 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
     bool cellHovered = mousePos.x >= cMin.x && mousePos.x < cMax.x &&
                        mousePos.y >= cMin.y && mousePos.y < cMax.y;
 
-    ImU32 cellBg =
-        cellHovered ? IM_COL32(40, 45, 65, 220) : IM_COL32(25, 28, 40, 200);
-    dl->AddRectFilled(cMin, cMax, cellBg, 4.0f);
-    dl->AddRect(cMin, cMax, IM_COL32(50, 55, 75, 150), 4.0f);
+    // Use DrawStyledSlot for consistent Diablo-style gothic cells
+    DrawStyledSlot(dl, cMin, cMax, cellHovered, 4.0f);
+    // Learned skill: subtle gold inner glow
+    if (learned) {
+      dl->AddRect(ImVec2(cMin.x + 2, cMin.y + 2), ImVec2(cMax.x - 2, cMax.y - 2),
+                  IM_COL32(180, 150, 60, 50), 3.0f, 0, 1.0f);
+    }
 
     // Icon centered at top of cell
     if (TexValid(g_texSkillIcons)) {
@@ -997,7 +1066,7 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
         iconAlpha = 100 + (int)(155.0f *
                                 std::min(1.0f, *s_ctx->learnSkillTimer / 3.0f));
       else
-        iconAlpha = 100;
+        iconAlpha = 80;
       ImU32 iconTint = IM_COL32(255, 255, 255, iconAlpha);
       dl->AddImage((ImTextureID)TexImID(g_texSkillIcons), iMin, iMax,
                    ImVec2(u0, v0), ImVec2(u1, v1), iconTint);
@@ -1023,19 +1092,20 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
       std::cout << "[Skill] Started dragging skill " << skill.name << std::endl;
     }
 
-    // Skill name centered below icon
+    // Skill name centered below icon (clipped to cell width)
     {
       ImU32 nameCol = learned ? colValue : colDim;
-      ImVec2 nsz = ImGui::CalcTextSize(skill.name);
-      float nameY = cy + 6.0f + ICON_DISP_H + 4.0f;
-      // Clamp text to cell width
-      float nx = c.ToScreenX(cx + CELL_W * 0.5f) - nsz.x * 0.5f;
-      float cellLeft = c.ToScreenX(cx + 2.0f);
-      if (nx < cellLeft)
-        nx = cellLeft;
+      float nameY = cy + 5.0f + ICON_DISP_H + 3.0f;
+      float cellScrL = c.ToScreenX(cx + 3.0f);
+      float cellScrR = c.ToScreenX(cx + CELL_W - 3.0f);
       float ny = c.ToScreenY(nameY);
+      ImVec2 nsz = ImGui::CalcTextSize(skill.name);
+      float nx = c.ToScreenX(cx + CELL_W * 0.5f) - nsz.x * 0.5f;
+      if (nx < cellScrL) nx = cellScrL;
+      dl->PushClipRect(ImVec2(cellScrL, ny), ImVec2(cellScrR, ny + nsz.y + 2), true);
       dl->AddText(ImVec2(nx + 1, ny + 1), IM_COL32(0, 0, 0, 180), skill.name);
       dl->AddText(ImVec2(nx, ny), nameCol, skill.name);
+      dl->PopClipRect();
     }
 
     // Level req badge (bottom-right corner of cell, only if > 1)
@@ -1047,21 +1117,22 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
       if (!learned)
         reqCol = (reqCol & 0x00FFFFFF) | 0x64000000;
       ImVec2 rsz = ImGui::CalcTextSize(buf);
-      float rx = c.ToScreenX(cx + CELL_W - 3.0f) - rsz.x;
-      float ry = c.ToScreenY(cy + CELL_H - 16.0f);
+      float rx = c.ToScreenX(cx + CELL_W - 4.0f) - rsz.x;
+      float ry = c.ToScreenY(cy + CELL_H - 14.0f);
       dl->AddText(ImVec2(rx + 1, ry + 1), IM_COL32(0, 0, 0, 180), buf);
       dl->AddText(ImVec2(rx, ry), reqCol, buf);
     }
 
-    // Tooltip on hover
+    // Tooltip on hover (with header separator)
     if (cellHovered) {
-      float tw = 200;
+      float tw = 210;
       float lineH = 18;
       int numLines = 5;
-      float th = lineH * numLines + 10;
+      float th = lineH * numLines + 12;
 
       BeginPendingTooltip(tw, th);
-      AddPendingTooltipLine(colTitle, skill.name);
+      AddPendingTooltipLine(colTitle, skill.name, 1);
+      AddTooltipSeparator();
 
       snprintf(buf, sizeof(buf), "%s Cost: %d", resourceLabel,
                skill.resourceCost);
@@ -1083,16 +1154,23 @@ void RenderSkillPanel(ImDrawList *dl, const UICoords &c) {
     }
   }
 
-  // Footer -- centered
+  // Footer separator + text
+  {
+    float sepY = c.ToScreenY(py + ph - FOOTER_H - 2.0f);
+    float sepL = c.ToScreenX(px + MARGIN);
+    float sepR = c.ToScreenX(px + pw - MARGIN);
+    dl->AddLine(ImVec2(sepL, sepY), ImVec2(sepR, sepY),
+                IM_COL32(130, 108, 52, 100), 1.0f);
+  }
   int learnedCount =
       s_ctx->learnedSkills ? (int)s_ctx->learnedSkills->size() : 0;
   snprintf(buf, sizeof(buf), "Learned: %d / %d", learnedCount, skillCount);
   {
     ImVec2 fsz = ImGui::CalcTextSize(buf);
     float fx = c.ToScreenX(px + pw * 0.5f) - fsz.x * 0.5f;
-    float fy = c.ToScreenY(py + ph - FOOTER_H);
+    float fy = c.ToScreenY(py + ph - FOOTER_H + 4.0f);
     dl->AddText(ImVec2(fx + 1, fy + 1), IM_COL32(0, 0, 0, 180), buf);
-    dl->AddText(ImVec2(fx, fy), colLabel, buf);
+    dl->AddText(ImVec2(fx, fy), IM_COL32(200, 180, 120, 220), buf);
   }
 }
 

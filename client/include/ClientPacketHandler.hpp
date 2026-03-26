@@ -53,7 +53,7 @@ struct ClientGameState {
   int *serverDefense = nullptr;
   int *serverAttackSpeed = nullptr;
   int *serverMagicSpeed = nullptr;
-  int16_t *potionBar = nullptr; // [3]
+  int16_t *potionBar = nullptr; // [4]
   int8_t *skillBar = nullptr;   // [10]
   int8_t *rmcSkillId = nullptr;
   int *heroCharacterId = nullptr;
@@ -103,10 +103,12 @@ struct ClientGameState {
   };
   ActiveBuff activeBuffs[2]; // [0]=Defense, [1]=Damage
 
-  // Active debuffs (monster poison)
+  // Active debuffs (monster poison / ice freeze)
   bool poisoned = false;
   float poisonRemaining = 0.0f;
   float poisonMaxDuration = 0.0f;
+  bool frozen = false;
+  float frozenRemaining = 0.0f;
 
   // Callbacks for main.cpp-specific functionality
   std::function<void(const glm::vec3 &, int, uint8_t)> spawnDamageNumber;

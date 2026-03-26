@@ -248,4 +248,14 @@ if(APPLE)
         "-framework QuartzCore" "-framework Metal" "-framework MetalKit")
 endif()
 
-message(STATUS "Configured MuRemaster, ModelViewer, CharViewer, BgfxInitTest, ShadowTest")
+# BMD Inspector CLI tool (no rendering deps — just BMDParser + filesystem)
+add_executable(BmdInspect ../tools/bmd_inspect.cpp src/BMDParser.cpp src/BMDUtils.cpp)
+target_include_directories(BmdInspect PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/bgfx.cmake/bx/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/external/glm
+)
+# BMDParser uses glm types — glm is header-only, no link needed
+# No BGFX, GLFW, OpenAL, or rendering dependencies
+
+message(STATUS "Configured MuRemaster, ModelViewer, CharViewer, BgfxInitTest, ShadowTest, BmdInspect")

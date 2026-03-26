@@ -683,6 +683,9 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
               SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4);
               break;
             }
+            // Main 5.2: Ice spell (7) applies eDeBuff_Freeze on hit
+            if (heroSkill == 7 && p->damageType != 0)
+              g_state->monsterManager->ApplyFreeze(idx);
             // Note: Twister StormTime spin is applied by proximity check
             // in main loop when tornado VFX reaches the monster, not here
             // Main 5.2: Giant (7), Ghost (11), traps (100-102) excluded from blood
@@ -871,6 +874,21 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         } else {
           g_state->poisoned = false;
           g_state->poisonRemaining = 0.0f;
+        }
+      }
+      if (p->debuffType == 2) { // Freeze (Ice Monster / Ice Queen)
+        if (p->active) {
+          g_state->frozen = true;
+          g_state->frozenRemaining = p->duration;
+          // Spawn ice VFX on hero
+          if (g_state->hero && g_state->vfxManager) {
+            glm::vec3 heroPos = g_state->hero->GetPosition();
+            g_state->vfxManager->SpawnIceStrike(heroPos);
+          }
+          SoundManager::Play(SOUND_ICE);
+        } else {
+          g_state->frozen = false;
+          g_state->frozenRemaining = 0.0f;
         }
       }
     }

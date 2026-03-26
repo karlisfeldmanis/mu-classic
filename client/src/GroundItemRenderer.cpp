@@ -345,7 +345,8 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
     if (gi.defIndex == -1) {
       snprintf(label, sizeof(label), "%d Zen", gi.quantity);
     } else {
-      // Build label with item level and option suffixes
+      // Build label: "Name +Level" with option indicators
+      // Additional Option shown as (Opt+N) to avoid confusion with enhancement level
       char optSuffix[48] = {};
       if (gi.optionFlags != 0) {
         char *p = optSuffix;
@@ -354,8 +355,11 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
         if (gi.optionFlags & 0x40)
           p += snprintf(p, sizeof(optSuffix) - (p - optSuffix), " +Luck");
         int addLvl = gi.optionFlags & 0x07;
-        if (addLvl > 0)
-          snprintf(p, sizeof(optSuffix) - (p - optSuffix), " +%d", addLvl * 4);
+        if (addLvl > 0) {
+          uint8_t cat = (uint8_t)(gi.defIndex / 32);
+          const char *optType = (cat <= 5) ? "Dmg" : "Def";
+          snprintf(p, sizeof(optSuffix) - (p - optSuffix), " (+%d %s)", addLvl * 4, optType);
+        }
       }
       if (gi.itemLevel > 0)
         snprintf(label, sizeof(label), "%s +%d%s", name, gi.itemLevel, optSuffix);

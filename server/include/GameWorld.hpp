@@ -175,6 +175,10 @@ struct MonsterInstance {
   float staggerDelay = 0.0f;    // Per-monster random offset for attack timing
   bool evading = false;          // True during RETURNING (invulnerable)
 
+  // Main 5.2: eDeBuff_Freeze — Ice spell freeze (pauses movement)
+  // Duration ~1.3s, decays at 0.75/sec. Monster cannot move but can be attacked.
+  float freezeTimer = 0.0f;
+
   // Poison DoT debuff (Main 5.2: AT_SKILL_POISON, OpenMU PoisonMagicEffect)
   bool poisoned = false;        // Currently has poison debuff
   float poisonTickTimer = 0.0f; // Accumulator for 3-second tick interval
@@ -418,11 +422,6 @@ private:
                        std::vector<MonsterMoveUpdate> &outMoves,
                        std::vector<MonsterAttackResult> &attacks,
                        std::vector<SummonHitResult> *outSummonHits);
-
-  // Trap AI: immobile, damages players who step on/near
-  void processTrapAI(MonsterInstance &mon, float dt,
-                     std::vector<PlayerTarget> &players,
-                     std::vector<MonsterAttackResult> &attacks);
 
   // Monster targeting a summon (threat system: monster chases + attacks summon)
   void processSummonTargeting(MonsterInstance &mon, MonsterInstance &summon,

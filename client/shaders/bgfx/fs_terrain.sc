@@ -260,6 +260,12 @@ void main()
         // Minimap: simplified rendering (no fog/shadow)
     }
 
+    // Dark ground plane (passType = 2): just vertex color, no textures
+    if (u_terrainParams.w > 1.5) {
+        gl_FragColor = vec4(v_color0.rgb, 1.0);
+        return;
+    }
+
     vec2 uvBase = v_texcoord0 * 256.0;
 
     // Smooth alpha sampling

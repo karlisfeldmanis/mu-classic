@@ -460,6 +460,7 @@ void HandleItemUse(Session &session, const std::vector<uint8_t> &packet,
         {7, 8},   // Scroll of Twister → Twister
         {8, 9},   // Scroll of Evil Spirit → Evil Spirit
         {9, 10},  // Scroll of Hellfire → Hellfire
+        {10, 11}, // Scroll of Power Wave → Power Wave
         {11, 12}, // Scroll of Aqua Beam → Aqua Beam
         {12, 13}, // Scroll of Cometfall → Cometfall
         {13, 14}, // Scroll of Inferno → Inferno

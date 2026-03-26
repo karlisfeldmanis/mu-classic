@@ -47,6 +47,15 @@ static const std::unordered_map<uint16_t, std::string> s_monsterNames = {
     {31, "Agon"},
     {32, "Stone Golem"},
     {33, "Elite Goblin"},
+    // Lost Tower monsters (types 34-41)
+    {34, "Cursed Wizard"},
+    {35, "Death Gorgon"},
+    {36, "Shadow"},
+    {37, "Devil"},
+    {38, "Balrog"},
+    {39, "Poison Shadow"},
+    {40, "Death Knight"},
+    {41, "Death Cow"},
     // Elf summon
     {150, "Bali"}};
 
@@ -460,7 +469,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
       m_models[idx].defense = 27;
       m_models[idx].defenseRate = 27;
       m_models[idx].attackRate = 110;
-      m_models[idx].blendMesh = 0; // Icy glow on mesh 0
+      m_models[idx].blendMesh = -1; // No glow — only 1 mesh (ice_m.jpg, normal tex)
     }
     m_typeToModel[22] = idx;
   }
@@ -497,7 +506,7 @@ void MonsterManager::InitModels(const std::string &dataPath) {
       m_models[idx].defense = 90;
       m_models[idx].defenseRate = 90;
       m_models[idx].attackRate = 260;
-      m_models[idx].blendMesh = 2; // Boss glow effect
+      m_models[idx].blendMesh = 2; // Cape mesh (snow_queen02.jpg) — additive blend (black=transparent)
     }
     m_typeToModel[25] = idx;
   }
@@ -810,6 +819,21 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     // Gorgon (type 18): MODEL_GORGON_STAFF = MODEL_STAFF+4 = Staff05.bmd
     // Main 5.2: c->Weapon[0].LinkBone = 30
     loadMonsterWeapon(18, "Staff05.bmd", 30, noRot, noOff);
+
+    // Lost Tower monster weapons (Main 5.2 ZzzCharacter.cpp)
+    // Death Gorgon (type 35): MODEL_AXE+8 = Axe09.bmd, dual wield
+    // Monster12.bmd LinkBone: [0]=30, [1]=39
+    loadMonsterWeapon(35, "Axe09.bmd", 30, noRot, noOff);
+    loadMonsterWeapon(35, "Axe09.bmd", 39, noRot, noOff);
+    // Balrog (type 38): MODEL_SPEAR+9 = Spear10.bmd, Level=9
+    // Monster28.bmd LinkBone: [0]=17
+    loadMonsterWeapon(38, "Spear10.bmd", 17, noRot, noOff);
+    // Death Knight (type 40): MODEL_SWORD+14 = Sword15.bmd
+    // Monster30.bmd LinkBone: [0]=30
+    loadMonsterWeapon(40, "Sword15.bmd", 30, noRot, noOff);
+    // Death Cow (type 41): MODEL_MACE+3 = Mace04.bmd
+    // Monster31.bmd LinkBone: [0]=42 (shares with Bull Fighter model)
+    loadMonsterWeapon(41, "Mace04.bmd", 42, noRot, noOff);
   }
 
   // Bali (type 150) — Elf summon (MONSTER_MODEL_BALI=32 → Monster33.bmd)
@@ -825,41 +849,205 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[150] = idx;
   }
 
-  // ── Dungeon traps (types 100-102) ──
-  // Main 5.2 ZzzCharacter.cpp:13669: Trap types use WORLD OBJECT models.
-  //   case 100 → CreateCharacter(Key, 39) → Object2/Object40.bmd (Lance Trap)
-  //   case 101 → CreateCharacter(Key, 40) → Object2/Object41.bmd (Iron Stick)
-  //   case 102 → CreateCharacter(Key, 51) → Object2/Object52.bmd (Fire Trap)
-  // MapManager.cpp: AccessModel(i, DirName, "Object", i+1) → type N = ObjectN+1.bmd
-  // Scales from CreateCharacterPointer default (Main 5.2).
-  // Attack effects: type 39→MODEL_SAW (Saw01.bmd), type 40→SetAction(1),
-  //                 type 51→BITMAP_FIRE+1 (ZzzCharacter.cpp:1109-1123)
+  // ── Lost Tower monsters (types 34-41) ──
+  // Main 5.2 ZzzCharacter.cpp CreateCharacterPointer: case 34-41
+  // Model enum values differ from server type — NOT type+1!
+  // Type 34 (Cursed Wizard) uses Player.bmd (humanoid) — handled separately below
+
+  // Cursed Wizard (type 34): Main 5.2 ZzzCharacter.cpp:13303-13327
+  // Uses MODEL_PLAYER with legendary armor set (HELM+3, ARMOR+3, PANTS+3,
+  // GLOVES+3, BOOTS+3), weapons (STAFF+5, SHIELD+14), PK=PVP_MURDERER2.
+  if (m_playerBmd) {
+    std::string playerPath = dataPath + "/Player/";
+    std::string itemPath = dataPath + "/Item/";
+
+    // Find root bone (same as skeleton warrior setup)
+    int cwRootBone = -1;
+    for (int i = 0; i < (int)m_playerBmd->Bones.size(); ++i) {
+      if (!m_playerBmd->Bones[i].Dummy && m_playerBmd->Bones[i].Parent == -1) {
+        cwRootBone = i;
+        break;
+      }
+    }
+
+    // Load armor body part BMDs (item index 3 → file number 4)
+    const char *armorFiles[] = {
+        "HelmMale04.bmd", "ArmorMale04.bmd", "PantMale04.bmd",
+        "GloveMale04.bmd", "BootMale04.bmd"};
+
+    // Use ArmorMale04.bmd as primary mesh source (largest body piece)
+    auto armorBmd = BMDParser::Parse(playerPath + "ArmorMale04.bmd");
+    if (armorBmd) {
+      MonsterModel model;
+      model.name = "Cursed Wizard";
+      model.texDir = playerPath;
+      model.bmd = armorBmd.get();
+      model.animBmd = m_playerBmd.get();
+      model.scale = 1.0f;
+      model.collisionRadius = 80.0f;
+      model.collisionHeight = 150.0f;
+      model.rootBone = cwRootBone;
+      model.defense = 95;
+      model.defenseRate = 80;
+      model.attackRate = 270;
+      model.isPvpGlow = true;
+
+      // DW caster action map — attack uses ACTION_SKILL_HAND1 (146) = meteor cast pose
+      int cwActionMap[7] = {4, 4, 17, 146, 146, 230, 231};
+      for (int i = 0; i < 7; ++i)
+        model.actionMap[i] = cwActionMap[i];
+
+      // Pre-upload primary mesh (ArmorMale04) using Player.bmd identity bones
+      auto identBones = ComputeBoneMatrices(m_playerBmd.get());
+      for (auto &mesh : armorBmd->Meshes) {
+        UploadMeshWithBones(mesh, playerPath, identBones, model.meshBuffers,
+                            model.meshBounds, true);
+      }
+
+      // Load remaining body parts (helm, pants, gloves, boots)
+      for (const char *armorFile : armorFiles) {
+        if (std::string(armorFile) == "ArmorMale04.bmd")
+          continue; // Already loaded as primary
+        auto partBmd = BMDParser::Parse(playerPath + armorFile);
+        if (partBmd) {
+          model.bodyParts.push_back(partBmd.get());
+          m_ownedBmds.push_back(std::move(partBmd));
+        }
+      }
+
+      m_ownedBmds.push_back(std::move(armorBmd));
+      int idx = (int)m_models.size();
+      m_models.push_back(std::move(model));
+      m_typeToModel[34] = idx;
+
+      // Load weapons: Staff+5 (R-Hand bone 33), Shield+14 (L-Hand bone 42)
+      glm::vec3 noRot(0), noOff(0);
+      auto staffBmd = BMDParser::Parse(itemPath + "Staff06.bmd");
+      if (staffBmd) {
+        WeaponDef wd;
+        wd.bmd = staffBmd.get();
+        wd.texDir = itemPath;
+        wd.attachBone = 33;
+        wd.rot = noRot;
+        wd.offset = noOff;
+        wd.cachedLocalBones = ComputeBoneMatrices(wd.bmd);
+        m_models[idx].weaponDefs.push_back(std::move(wd));
+        m_ownedBmds.push_back(std::move(staffBmd));
+      }
+      auto shieldBmd = BMDParser::Parse(itemPath + "Shield15.bmd");
+      if (shieldBmd) {
+        WeaponDef wd;
+        wd.bmd = shieldBmd.get();
+        wd.texDir = itemPath;
+        wd.attachBone = 42;
+        wd.rot = noRot;
+        wd.offset = noOff;
+        wd.cachedLocalBones = ComputeBoneMatrices(wd.bmd);
+        m_models[idx].weaponDefs.push_back(std::move(wd));
+        m_ownedBmds.push_back(std::move(shieldBmd));
+      }
+
+      std::cout << "[Monster] Loaded Cursed Wizard: Player.bmd + "
+                << (model.bodyParts.size() + 1) << " armor parts + "
+                << m_models[idx].weaponDefs.size() << " weapons (PVP glow)"
+                << std::endl;
+    }
+  } else {
+    // Fallback if Player.bmd not loaded: use Lich model
+    int idx = loadMonsterModel("Monster05.bmd", "Cursed Wizard", 1.0f, 80.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 95;
+      m_models[idx].defenseRate = 80;
+      m_models[idx].attackRate = 270;
+    }
+    m_typeToModel[34] = idx;
+  }
+
+  // Death Gorgon (type 35): reuses Gorgon model (Monster12.bmd)
+  // Main 5.2: scale=1.3, Level=2, BlendMesh=1, BlendMeshLight=1.0
+  // Dual Axe09.bmd weapons (bones 30, 39)
   {
-    std::string object2Dir = dataPath + "/Object2/";
+    int idx = loadMonsterModel("Monster12.bmd", "Death Gorgon", 1.3f, 120.0f, 200.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 130;
+      m_models[idx].defenseRate = 94;
+      m_models[idx].attackRate = 320;
+      m_models[idx].blendMesh = 1;
+    }
+    m_typeToModel[35] = idx;
+  }
 
-    // Lance Trap: type 100 → world obj 39 → Object40.bmd
-    int lanceTrapIdx = loadMonsterModel(
-        "../Object2/Object40.bmd", "Lance Trap", 1.4f, 80.0f, 50.0f, 0.0f,
-        object2Dir);
-    if (lanceTrapIdx >= 0)
-      m_models[lanceTrapIdx].level = 80;
-    m_typeToModel[100] = lanceTrapIdx;
+  // Shadow (type 36): Monster29.bmd — no weapon
+  // Main 5.2: scale=1.2
+  {
+    int idx = loadMonsterModel("Monster29.bmd", "Shadow", 1.2f, 80.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 78;
+      m_models[idx].defenseRate = 67;
+      m_models[idx].attackRate = 235;
+    }
+    m_typeToModel[36] = idx;
+  }
 
-    // Iron Stick Trap: type 101 → world obj 40 → Object41.bmd
-    int ironTrapIdx = loadMonsterModel(
-        "../Object2/Object41.bmd", "Iron Stick Trap", 1.35f, 80.0f, 50.0f,
-        0.0f, object2Dir);
-    if (ironTrapIdx >= 0)
-      m_models[ironTrapIdx].level = 80;
-    m_typeToModel[101] = ironTrapIdx;
+  // Devil (type 37): Monster27.bmd — no weapon
+  // Main 5.2: scale=1.1
+  {
+    int idx = loadMonsterModel("Monster27.bmd", "Devil", 1.1f, 100.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 115;
+      m_models[idx].defenseRate = 88;
+      m_models[idx].attackRate = 300;
+    }
+    m_typeToModel[37] = idx;
+  }
 
-    // Fire Trap: type 102 → world obj 51 → Object52.bmd
-    int fireTrapIdx = loadMonsterModel(
-        "../Object2/Object52.bmd", "Fire Trap", 1.1f, 80.0f, 50.0f, 0.0f,
-        object2Dir);
-    if (fireTrapIdx >= 0)
-      m_models[fireTrapIdx].level = 80;
-    m_typeToModel[102] = fireTrapIdx;
+  // Balrog (type 38): Monster28.bmd — Spear10.bmd weapon (bone 17)
+  // Main 5.2: scale=1.6, also shared with type 67 (Metal Balrog)
+  {
+    int idx = loadMonsterModel("Monster28.bmd", "Balrog", 1.6f, 130.0f, 250.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 160;
+      m_models[idx].defenseRate = 99;
+      m_models[idx].attackRate = 330;
+    }
+    m_typeToModel[38] = idx;
+  }
+
+  // Poison Shadow (type 39): reuses Shadow model (Monster29.bmd)
+  // Main 5.2: scale=1.2, Level=1 — no weapon
+  {
+    int idx = loadMonsterModel("Monster29.bmd", "Poison Shadow", 1.2f, 80.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 85;
+      m_models[idx].defenseRate = 73;
+      m_models[idx].attackRate = 250;
+    }
+    m_typeToModel[39] = idx;
+  }
+
+  // Death Knight (type 40): Monster30.bmd — Sword15.bmd weapon (bone 30)
+  // Main 5.2: scale=1.3, BlendMesh=3 (cape renders additive with UV scroll)
+  {
+    int idx = loadMonsterModel("Monster30.bmd", "Death Knight", 1.3f, 100.0f, 180.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 120;
+      m_models[idx].defenseRate = 91;
+      m_models[idx].attackRate = 310;
+      m_models[idx].blendMesh = 3; // Main 5.2: cape mesh additive with UV scroll
+    }
+    m_typeToModel[40] = idx;
+  }
+
+  // Death Cow (type 41): Monster31.bmd — Mace04.bmd weapon (bone 42)
+  // Main 5.2: scale=1.1
+  {
+    int idx = loadMonsterModel("Monster31.bmd", "Death Cow", 1.1f, 100.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 110;
+      m_models[idx].defenseRate = 85;
+      m_models[idx].attackRate = 285;
+    }
+    m_typeToModel[41] = idx;
   }
 
   // Load Debris models (not mapped to server types)
@@ -976,6 +1164,19 @@ void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
     mon.corpseAlpha = 0.0f;
   }
 
+  // Create per-instance body part mesh buffers (armored humanoid monsters)
+  for (auto *partBmd : mdl.bodyParts) {
+    MonsterInstance::BodyPartMeshSet bpms;
+    if (partBmd) {
+      AABB partAABB{};
+      for (auto &mesh : partBmd->Meshes) {
+        UploadMeshWithBones(mesh, mdl.texDir, bones, bpms.meshBuffers, partAABB,
+                            true);
+      }
+    }
+    mon.bodyPartMeshes.push_back(std::move(bpms));
+  }
+
   // Create per-instance weapon mesh buffers (skeleton types)
   for (auto &wd : mdl.weaponDefs) {
     MonsterInstance::WeaponMeshSet wms;
@@ -1068,6 +1269,8 @@ float MonsterManager::getAnimSpeed(uint16_t monsterType, int action) const {
     speed *= 0.7f;
   } else if (monsterType == 32) { // Stone Golem (model 25)
     speed *= 0.7f;
+  } else if (monsterType == 37) { // Devil — Main 5.2: 0.4x ALL animations
+    speed *= 0.4f;
   }
 
   // Specific walk speed overrides (ZzzOpenData.cpp:2378-2392)
@@ -1097,6 +1300,11 @@ float MonsterManager::getAnimSpeed(uint16_t monsterType, int action) const {
       speed = 0.5f; // Beetle Monster (MONSTER_MODEL_BEETLE_MONSTER=21)
     else if (monsterType == 33)
       speed = 0.6f; // Elite Goblin (shares MODEL_GOBLIN=19 with Goblin)
+    // Lost Tower walk speed overrides (Main 5.2 ZzzOpenData.cpp)
+    else if (monsterType == 39)
+      speed = 0.22f; // Poison Shadow — slower walk
+    else if (monsterType == 41)
+      speed = 0.18f; // Death Cow — slowest walk in Lost Tower
   }
 
   return speed * 25.0f; // Scale to 25fps base
@@ -1174,6 +1382,17 @@ void MonsterManager::playIdleSound(MonsterInstance &mon) {
   case 29: SoundManager::Play3D(SOUND_MONSTER_HUNTER1 + rand() % 2, px, py, pz); break;
   case 30: case 31: case 32: SoundManager::Play3D(SOUND_MONSTER_GOLEM1 + rand() % 2, px, py, pz); break;
   case 150: SoundManager::Play3D(SOUND_MONSTER_BALI1 + rand() % 2, px, py, pz); break;
+  // Lost Tower monsters — Main 5.2 ZzzOpenData.cpp SetMonsterSound per model
+  case 34: // Cursed Wizard — DW character, uses mBepar idle
+    SoundManager::Play3D(SOUND_MONSTER_BEPAR1 + rand() % 2, px, py, pz); break;
+  case 35: // Death Gorgon — Gorgon model sounds
+    SoundManager::Play3D(SOUND_MONSTER_GORGON1 + rand() % 2, px, py, pz); break;
+  case 36: case 39: // Shadow + Poison Shadow — mShadow idle
+    SoundManager::Play3D(SOUND_MONSTER_SHADOW1 + rand() % 2, px, py, pz); break;
+  case 37: case 38: // Devil + Balrog — mBalrog idle
+    SoundManager::Play3D(SOUND_MONSTER_BALROG1 + rand() % 2, px, py, pz); break;
+  case 40: case 41: // Death Knight + Death Cow — ogre sounds
+    SoundManager::Play3D(SOUND_MONSTER_OGRE1 + rand() % 2, px, py, pz); break;
   default: break;
   }
 }
@@ -1402,9 +1621,7 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
   }
 
   case MonsterState::ATTACKING: {
-    // Traps: fixed facing from spawn direction (Main 5.2: KIND_TRAP immobile)
-    bool isTrap = (mon.monsterType >= 100 && mon.monsterType <= 102);
-    if (!isTrap) {
+    {
       // Face the attack target during attack animation
       glm::vec3 facePos = m_playerPos; // Default: face player
       bool hasFaceTarget = !m_playerDead;
@@ -1606,6 +1823,13 @@ void MonsterManager::Update(float deltaTime) {
       updateStateMachine(mon, deltaTime);
     }
 
+    // Main 5.2: eDeBuff_Freeze timer decay (0.03 per frame at 25fps = 0.75/sec)
+    if (mon.frozenTimer > 0.0f) {
+      mon.frozenTimer -= 0.75f * deltaTime;
+      if (mon.frozenTimer < 0.0f)
+        mon.frozenTimer = 0.0f;
+    }
+
     idx++;
   }
 
@@ -1618,6 +1842,8 @@ void MonsterManager::Update(float deltaTime) {
 void MonsterManager::ClearMonsters() {
   for (auto &mon : m_monsters) {
     CleanupMeshBuffers(mon.meshBuffers);
+    for (auto &bpms : mon.bodyPartMeshes)
+      CleanupMeshBuffers(bpms.meshBuffers);
     for (auto &wms : mon.weaponMeshes)
       CleanupMeshBuffers(wms.meshBuffers);
     for (auto &sm : mon.shadowMeshes) {
@@ -1761,13 +1987,12 @@ void MonsterManager::SetMonsterDying(int index) {
   if (index < 0 || index >= (int)m_monsters.size())
     return;
   auto &mon = m_monsters[index];
-  if (mon.monsterType >= 100 && mon.monsterType <= 102)
-    return; // Traps don't die
   if (mon.state != MonsterState::DYING && mon.state != MonsterState::DEAD) {
     mon.hp = 0;
     mon.state = MonsterState::DYING;
     mon.stateTimer = 0.0f;
     mon.pendingAttack = false;
+    mon.frozenTimer = 0.0f; // Clear freeze on death
     setAction(mon, ACTION_DIE);
 
     // Monster death sounds (Main 5.2: PlayMonsterSound) — distance gated
@@ -1866,6 +2091,29 @@ void MonsterManager::SetMonsterDying(int index) {
       case 150: // Bali (Elf summon) — no unique death sound, use Golem
         SoundManager::Play3D(SOUND_MONSTER_GOLEMDIE, px, py, pz);
         break;
+      // Lost Tower monsters — Main 5.2 ZzzOpenData.cpp SetMonsterSound
+      case 34: // Cursed Wizard — DW character, mBepar2 death sound
+        SoundManager::Play3D(SOUND_MONSTER_BEPAR2, px, py, pz);
+        break;
+      case 35: // Death Gorgon — reuses Gorgon sounds (model 11)
+        SoundManager::Play3D(SOUND_MONSTER_GORGONDIE, px, py, pz);
+        break;
+      case 36: // Shadow — mShadowDie (model 28)
+      case 39: // Poison Shadow — same model/sounds as Shadow
+        SoundManager::Play3D(SOUND_MONSTER_SHADOWDIE, px, py, pz);
+        break;
+      case 37: // Devil — mYetiDie (model 26, Main 5.2: Sounds[4]=107)
+        SoundManager::Play3D(SOUND_MONSTER_YETIDIE, px, py, pz);
+        break;
+      case 38: // Balrog — mBalrogDie (model 27)
+        SoundManager::Play3D(SOUND_MONSTER_BALROGDIE, px, py, pz);
+        break;
+      case 40: // Death Knight — mDarkKnightDie (model 29)
+        SoundManager::Play3D(SOUND_MONSTER_DARKKNIGHTDIE, px, py, pz);
+        break;
+      case 41: // Death Cow — mBullDie (model 30, same sounds as Bull Fighter)
+        SoundManager::Play3D(SOUND_MONSTER_BULLDIE, px, py, pz);
+        break;
       default: break;
       }
       }
@@ -1878,6 +2126,12 @@ void MonsterManager::SetMonsterDying(int index) {
     } else if (mon.monsterType == 7 || mon.monsterType == 32) {
       // Giant (7) + Stone Golem (32): stone debris on death
       spawnDebris(m_stoneModelIdx, mon.position + glm::vec3(0, 80, 0), 8);
+    } else if (mon.monsterType == 41) {
+      // Death Cow (type 41): bone explosion death (Main 5.2: MODEL_BONE1 + 10x MODEL_BONE2)
+      // Instant corpse hide + bone debris burst + SOUND_BONE2
+      spawnDebris(m_boneModelIdx, mon.position + glm::vec3(0, 60, 0), 10);
+      SoundManager::Play3D(SOUND_BONE2, mon.position.x, mon.position.y, mon.position.z);
+      mon.corpseAlpha = 0.0f; // Instant hide (no fade)
     }
   }
 }
@@ -1898,6 +2152,19 @@ void MonsterManager::TriggerHitAnimation(int index) {
   mon.stateTimer = 0.5f;
 }
 
+void MonsterManager::ApplyFreeze(int index) {
+  if (index < 0 || index >= (int)m_monsters.size())
+    return;
+  auto &mon = m_monsters[index];
+  if (mon.state == MonsterState::DYING || mon.state == MonsterState::DEAD)
+    return;
+  // Main 5.2: don't re-apply if already frozen
+  if (mon.frozenTimer > 0.0f)
+    return;
+  // MuSven: Freeze decays at 0.03/frame. At 25fps, 1.0 / (0.03*25) ≈ 1.33s
+  mon.frozenTimer = 1.0f;
+}
+
 void MonsterManager::TriggerAttackAnimation(int index) {
   if (index < 0 || index >= (int)m_monsters.size())
     return;
@@ -1908,16 +2175,11 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     return; // Don't attack while spinning from Twister stun
 
   // Server-authoritative: attack packet means monster is ready to attack.
-  // Traps are immobile — don't set serverChasing (they return to IDLE after attack)
-  bool isTrap = (mon.monsterType >= 100 && mon.monsterType <= 102);
-  if (!isTrap)
-    mon.serverChasing = true;
+  mon.serverChasing = true;
 
   // If still mid-spline (walking to target), defer the attack until the walk
   // finishes so the monster smoothly approaches before attacking — no teleport.
-  // Traps never walk, so skip this check for them.
-  if (!isTrap &&
-      (mon.state == MonsterState::CHASING || mon.state == MonsterState::WALKING) &&
+  if ((mon.state == MonsterState::CHASING || mon.state == MonsterState::WALKING) &&
       mon.splinePoints.size() >= 2 &&
       mon.splineT < (float)(mon.splinePoints.size() - 1) - 0.1f) {
     mon.pendingAttack = true;
@@ -1926,47 +2188,6 @@ void MonsterManager::TriggerAttackAnimation(int index) {
 
   mon.pendingAttack = false;
   mon.state = MonsterState::ATTACKING;
-
-  // Dungeon traps (100-102): special attack handling (Main 5.2 CharacterAnimation)
-  if (isTrap) {
-    // Iron stick trap (101): toggle to action 1 (swing), resets to 0 on idle
-    // Lance/Fire traps: use action 1 if available, else action 0
-    auto &tmdl = m_models[mon.modelIdx];
-    BMDData *tBmd = tmdl.getAnimBmd();
-    int trapAction = (tBmd && tBmd->Actions.size() > 1) ? 1 : 0;
-    setAction(mon, trapAction);
-    mon.stateTimer = 1.0f; // 1 second attack duration
-
-    // Trap attack VFX + sounds (Main 5.2: CharacterAnimation triggers)
-    float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
-    float dx = px - m_playerPos.x, dz = pz - m_playerPos.z;
-    if (dx * dx + dz * dz < 1200.0f * 1200.0f) {
-      if (mon.monsterType == 100) {
-        // Lance Trap: MODEL_SAW spinning blade + SOUND_TRAP01
-        // Main 5.2 ZzzEffect.cpp: Saw01.bmd at Position[2]+=130, Angle[2]-=30/tick
-        SoundManager::Play3D(SOUND_TRAP01, px, py, pz);
-        if (m_vfxManager) {
-          glm::vec3 vfxPos = mon.position;
-          vfxPos.y += 130.0f * mon.scale;
-          // Electric burst (Main 5.2: BITMAP_LIGHTNING+1 on lance activation)
-          m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, vfxPos, 6);
-          m_vfxManager->SpawnBurst(ParticleType::HIT_SPARK, vfxPos, 4);
-        }
-      } else if (mon.monsterType == 101) {
-        // Iron Stick Trap: grinding sound (SOUND_TRAP01)
-        SoundManager::Play3D(SOUND_TRAP01, px, py, pz);
-      } else if (mon.monsterType == 102) {
-        // Fire Trap: fire burst + flame sound (BITMAP_FIRE+1 + SOUND_FLAME)
-        SoundManager::Play3D(SOUND_FLAME, px, py, pz);
-        if (m_vfxManager) {
-          glm::vec3 vfxPos = mon.position;
-          vfxPos.y += 40.0f;
-          m_vfxManager->SpawnBurst(ParticleType::SPELL_FIRE, vfxPos, 5);
-        }
-      }
-    }
-    return; // Skip normal monster attack logic
-  }
 
   // Attack animation duration based on action keys / speed
   auto &mdl = m_models[mon.modelIdx];
@@ -2005,9 +2226,9 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     case 4: // Elite Bull Fighter (Wizard sounds)
       SoundManager::Play3D(SOUND_MONSTER_WIZARDATTACK1 + rand() % 2, px, py, pz);
       break;
-    case 6: // Lich — idle sound + Main 5.2: SOUND_THUNDER01 on lightning cast
+    case 6: // Lich — Main 5.2: SOUND_METEORITE01 on meteorite cast (NOT thunder)
       SoundManager::Play3D(SOUND_MONSTER_LARVA1 + rand() % 2, px, py, pz);
-      SoundManager::Play3D(SOUND_LICH_THUNDER, px, py, pz);
+      SoundManager::Play3D(SOUND_METEORITE01, px, py, pz);
       break;
     case 5: // Hell Hound — reuses Hound attack sounds
       SoundManager::Play3D(SOUND_MONSTER_HOUNDATTACK1 + rand() % 2, px, py, pz);
@@ -2091,19 +2312,44 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     case 150: // Bali (Elf summon)
       SoundManager::Play3D(SOUND_MONSTER_BALIATTACK1 + rand() % 2, px, py, pz);
       break;
+    // Lost Tower monsters — Main 5.2 ZzzOpenData.cpp SetMonsterSound per model
+    case 34: // Cursed Wizard — DW-style meteorite cast sound
+      SoundManager::Play3D(SOUND_METEORITE01, px, py, pz);
+      break;
+    case 35: // Death Gorgon — mGorgonAttack (model 11)
+      SoundManager::Play3D(SOUND_MONSTER_GORGONATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 36: // Shadow — mShadowAttack (model 28)
+    case 39: // Poison Shadow — same model/sounds
+      SoundManager::Play3D(SOUND_MONSTER_SHADOWATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 37: // Devil — mSatanAttack1 (model 26, Main 5.2: Sounds[2,3]=106)
+      SoundManager::Play3D(SOUND_MONSTER_SATANATTACK1, px, py, pz);
+      break;
+    case 38: // Balrog — mWizardAttack2 + mGorgonAttack2 (model 27)
+      SoundManager::Play3D(SOUND_MONSTER_WIZARDATTACK2, px, py, pz);
+      break;
+    case 40: // Death Knight — mDarkKnightAttack (model 29)
+      SoundManager::Play3D(SOUND_MONSTER_DARKKNIGHTATTACK1 + rand() % 2, px, py, pz);
+      break;
+    case 41: // Death Cow — mBullAttack (model 30, same sounds as Bull Fighter)
+      SoundManager::Play3D(SOUND_MONSTER_BULLATTACK1 + rand() % 2, px, py, pz);
+      break;
     default: break;
     }
     }
   }
 
-  // Trigger Lich VFX (Monster Type 6 + Thunder Lich 9) — Main 5.2: two
-  // BITMAP_JOINT_THUNDER ribbons (thick scale=50 + thin scale=10) from weapon
-  // bone to target
-  if ((mon.monsterType == 6 || mon.monsterType == 9) && m_vfxManager) {
+  // ── Lich (type 6): Meteorite spell (OpenMU: AT_SKILL_METEO = skill 2)
+  // MuSven: CreateEffect(MODEL_FIRE, target) — falling fireball from above
+  if (mon.monsterType == 6 && m_vfxManager) {
+    m_vfxManager->SpawnMeteorStrike(m_playerPos);
+  }
+
+  // ── Thunder Lich (type 9): Lightning spell (OpenMU: AT_SKILL_LIGHTNING = 3)
+  // MuSven: two BITMAP_JOINT_THUNDER ribbons from staff to target
+  if (mon.monsterType == 9 && m_vfxManager) {
     glm::vec3 startPos = mon.position;
-    // Try to get weapon bone position (bone 41, Main 5.2 Lich LinkBone)
-    // Bone matrices are in model-local space — must apply model rotation
-    // (-90°Z, -90°Y, facing) to convert to world space
     if (41 < (int)mon.cachedBones.size()) {
       glm::mat4 modelRot = glm::mat4(1.0f);
       modelRot =
@@ -2116,15 +2362,64 @@ void MonsterManager::TriggerAttackAnimation(int index) {
       glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
       startPos = boneWorld * mon.scale + mon.position;
     } else {
-      startPos.y += 100.0f * mon.scale; // Fallback: above head in world space
+      startPos.y += 100.0f * mon.scale;
     }
-    // Two-pass ribbon: thick outer + thin inner (Main 5.2 pattern)
     m_vfxManager->SpawnRibbon(startPos, m_playerPos, 50.0f,
                               glm::vec3(0.5f, 0.5f, 1.0f), 0.5f);
     m_vfxManager->SpawnRibbon(startPos, m_playerPos, 10.0f,
                               glm::vec3(0.7f, 0.8f, 1.0f), 0.5f);
-    // Energy burst at hand (Main 5.2: CreateParticle(BITMAP_ENERGY))
     m_vfxManager->SpawnBurst(ParticleType::ENERGY, startPos, 3);
+  }
+
+  // ── Hell Spider (type 13): PowerWave (OpenMU: AT_SKILL_POWERWAVE = 11)
+  // MuSven: 1x MODEL_MAGIC2 stationary ground wave at monster position
+  if (mon.monsterType == 13 && m_vfxManager) {
+    glm::vec3 toPlayer = m_playerPos - mon.position;
+    float spellFacing = std::atan2(toPlayer.x, toPlayer.z);
+    std::cout << "[PW-DBG] HellSpider monPos=(" << mon.position.x << "," << mon.position.z
+              << ") playerPos=(" << m_playerPos.x << "," << m_playerPos.z
+              << ") toPlayer=(" << toPlayer.x << "," << toPlayer.z
+              << ") facing=" << spellFacing << " mon.facing=" << mon.facing << std::endl;
+    m_vfxManager->SpawnPowerWave(mon.position, spellFacing);
+  }
+
+  // ── Yeti (type 19): EnergyBall (OpenMU: AT_SKILL_ENERGYBALL = 17)
+  // MuSven: MODEL_SNOW1 snowball arc; we use energy ball projectile
+  if (mon.monsterType == 19 && m_vfxManager) {
+    m_vfxManager->SpawnSpellProjectile(17, mon.position, m_playerPos);
+  }
+
+  // ── Ice Queen (type 25): PowerWave (OpenMU: AT_SKILL_POWERWAVE = 11)
+  // MuSven: 3x MODEL_MAGIC2 (center + ±10° fan), boss triple wave
+  if (mon.monsterType == 25 && m_vfxManager) {
+    glm::vec3 toPlayer = m_playerPos - mon.position;
+    float spellFacing = std::atan2(toPlayer.x, toPlayer.z);
+    std::cout << "[PW-DBG] IceQueen monPos=(" << mon.position.x << "," << mon.position.z
+              << ") playerPos=(" << m_playerPos.x << "," << m_playerPos.z
+              << ") toPlayer=(" << toPlayer.x << "," << toPlayer.z
+              << ") facing=" << spellFacing << " mon.facing=" << mon.facing << std::endl;
+    m_vfxManager->SpawnPowerWave(mon.position, spellFacing);
+    // ±10° fan waves
+    float fan = glm::radians(10.0f);
+    m_vfxManager->SpawnPowerWave(mon.position, spellFacing + fan);
+    m_vfxManager->SpawnPowerWave(mon.position, spellFacing - fan);
+  }
+
+  // ── Poison Bull (type 8) + Larva (type 12): Poison on-hit
+  // OpenMU: AT_SKILL_POISON = 1, 10x BITMAP_SMOKE + green glow at target
+  if ((mon.monsterType == 8 || mon.monsterType == 12) && m_vfxManager) {
+    m_vfxManager->SpawnBurst(ParticleType::SPELL_POISON,
+                             m_playerPos + glm::vec3(0, 40, 0), 8);
+    m_vfxManager->SpawnBurst(ParticleType::SMOKE,
+                             m_playerPos + glm::vec3(0, 60, 0), 5);
+  }
+
+  // ── Ice Monster (type 22): Ice on-hit (OpenMU: AT_SKILL_SLOW = 7)
+  // MuSven: MODEL_ICE crystal + 5x MODEL_ICE_SMALL + cold terrain light
+  if (mon.monsterType == 22 && m_vfxManager) {
+    m_vfxManager->SpawnIceStrike(m_playerPos);
+    m_vfxManager->SpawnBurst(ParticleType::SPELL_ICE,
+                             m_playerPos + glm::vec3(0, 30, 0), 6);
   }
 
   // Skeleton Archer (type 15): fire arrow toward player
@@ -2163,6 +2458,70 @@ void MonsterManager::TriggerAttackAnimation(int index) {
       arrowStart = boneWorld * mon.scale + mon.position;
     }
     SpawnArrow(arrowStart, m_playerPos + glm::vec3(0, 50, 0), 1600.0f);
+  }
+
+  // ── Devil (type 37): 4 laser joints from weapon bones 16, 25 to target
+  // Main 5.2: BITMAP_JOINT_LASER+1 + BITMAP_FIRE at weapon bones
+  if (mon.monsterType == 37 && m_vfxManager) {
+    SoundManager::Play3D(SOUND_LICH_THUNDER, mon.position.x, mon.position.y, mon.position.z);
+    glm::mat4 modelRot = glm::mat4(1.0f);
+    modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+    for (int hand : {16, 25}) {
+      if (hand < (int)mon.cachedBones.size()) {
+        const auto &bm = mon.cachedBones[hand];
+        glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+        glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+        glm::vec3 startPos = boneWorld * mon.scale + mon.position;
+        m_vfxManager->SpawnRibbon(startPos, m_playerPos + glm::vec3(0, 50, 0),
+                                  50.0f, glm::vec3(0.8f, 0.3f, 0.3f), 0.4f);
+        m_vfxManager->SpawnBurst(ParticleType::FIRE, startPos, 2);
+      }
+    }
+  }
+
+  // ── Poison Shadow (type 39): 2 thunder ribbons from weapon bone to target
+  // Main 5.2: BITMAP_JOINT_THUNDER at scale 50 + 10, BITMAP_ENERGY particle
+  if (mon.monsterType == 39 && m_vfxManager) {
+    glm::vec3 startPos = mon.position + glm::vec3(0, 80.0f * mon.scale, 0);
+    // Use bone 30 (weapon link bone 0) if available
+    if (30 < (int)mon.cachedBones.size()) {
+      glm::mat4 modelRot = glm::mat4(1.0f);
+      modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+      modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+      modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+      glm::vec3 offset(0.0f, -130.0f, 0.0f); // Main 5.2: (0, -130, 0)
+      const auto &bm = mon.cachedBones[30];
+      glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+      glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+      startPos = boneWorld * mon.scale + mon.position;
+    }
+    glm::vec3 target = m_playerPos + glm::vec3(0, 50, 0);
+    m_vfxManager->SpawnRibbon(startPos, target, 50.0f,
+                              glm::vec3(0.3f, 0.8f, 0.3f), 0.4f);
+    m_vfxManager->SpawnRibbon(startPos, target, 10.0f,
+                              glm::vec3(0.4f, 0.9f, 0.4f), 0.4f);
+    m_vfxManager->SpawnBurstColored(ParticleType::ENERGY, startPos,
+                                    glm::vec3(0.2f, 0.7f, 0.1f), 3);
+  }
+
+  // ── Cursed Wizard (type 34): Meteorite spell (AT_SKILL_METEO)
+  // Main 5.2: same as Lich — fireball from sky at target
+  if (mon.monsterType == 34 && m_vfxManager) {
+    m_vfxManager->SpawnMeteorStrike(m_playerPos);
+  }
+
+  // ── Death Gorgon (type 35): Boss ring attack (AT_SKILL_BOSS)
+  // Main 5.2: 18 MODEL_FIRE in radial ring + SOUND_METEORITE01
+  if (mon.monsterType == 35 && m_vfxManager) {
+    SoundManager::Play3D(SOUND_METEORITE01, mon.position.x, mon.position.y, mon.position.z);
+    for (int i = 0; i < 12; ++i) {
+      float angle = (float)i * 30.0f * (3.14159f / 180.0f);
+      float r = 80.0f;
+      glm::vec3 ringPos = mon.position + glm::vec3(cosf(angle) * r, 20.0f, sinf(angle) * r);
+      m_vfxManager->SpawnBurst(ParticleType::FIRE, ringPos, 2);
+    }
   }
 }
 
@@ -2321,8 +2680,9 @@ void MonsterManager::SetMonsterServerPosition(int index, float worldX,
       mon.splinePoints.push_back(glm::vec3(wx, wy, wz));
     }
   } else {
-    // Pathfinding failed — fall back to direct line to target
-    mon.splinePoints.push_back(newTarget);
+    // Pathfinding failed — stay at current position instead of clipping through walls.
+    // Server will send corrected positions; monster appears to pause briefly.
+    mon.splinePoints.push_back(mon.position);
   }
 
   // Pre-compute spline rate: constant world-unit speed regardless of segment
@@ -2388,28 +2748,17 @@ int MonsterManager::CalcXPReward(int monsterIndex, int playerLevel) const {
   return std::max(1, xp);
 }
 
-// Dungeon traps: only Fire Trap (type 102 = FireLight02) emits a point light,
-// since ObjectRenderer skips type 51 objects in dungeon (they become trap entities).
-// Stone traps (100/101) don't glow. Aida red/blue lights are for types 304-309.
 void MonsterManager::GetTrapPointLights(
     std::vector<glm::vec3> &positions, std::vector<glm::vec3> &colors,
     std::vector<float> &ranges, std::vector<int> &objectTypes) const {
-  for (const auto &mon : m_monsters) {
-    if (mon.state == MonsterState::DEAD || mon.state == MonsterState::DYING)
-      continue;
-    if (mon.monsterType == 102) {
-      // Fire Trap (FireLight02): warm fire glow (matches other FireLight objects)
-      positions.push_back(mon.position);
-      colors.push_back(glm::vec3(0.8f, 0.4f, 0.1f));
-      ranges.push_back(300.0f);
-      objectTypes.push_back(102);
-    }
-  }
+  // No trap types currently spawned
 }
 
 void MonsterManager::Cleanup() {
   for (auto &mon : m_monsters) {
     CleanupMeshBuffers(mon.meshBuffers);
+    for (auto &bpms : mon.bodyPartMeshes)
+      CleanupMeshBuffers(bpms.meshBuffers);
     for (auto &wms : mon.weaponMeshes)
       CleanupMeshBuffers(wms.meshBuffers);
     for (auto &sm : mon.shadowMeshes) {

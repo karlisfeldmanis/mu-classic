@@ -480,7 +480,9 @@ void VFXManager::renderHellfireEffects(const glm::mat4 &view,
   if (!hasCircle && !hasCircleLight) return;
 
   glm::mat4 invView = glm::inverse(view);
-  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  // u_params2.y = -1.0 activates decal mode: brightness-based alpha fade
+  // removes visible square outline from JPEG texture edges on Circle BMD models
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, -1.0f, 0.0f, 0.0f));
   m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
   m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
   m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
@@ -489,16 +491,17 @@ void VFXManager::renderHellfireEffects(const glm::mat4 &view,
   m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
   m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
   m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
-  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+  // No depth test — ground decal must always be visible on uneven terrain
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
                  | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
 
   for (const auto &hf : m_hellfireEffects) {
     float ticksLeft = hf.lifetime / 0.04f;
 
-    // Layer 1: Circle01.bmd
+    // Layer 1: Circle01.bmd pentagram
     if (hasCircle) {
       float blendLight = ticksLeft * 0.1f;
-      glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position);
+      glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position + glm::vec3(0, 10, 0));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
       model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
       m_modelShader->setVec4("u_params", glm::vec4(1.0f, blendLight, 0, 0));
@@ -514,16 +517,13 @@ void VFXManager::renderHellfireEffects(const glm::mat4 &view,
       }
     }
 
-    // Layer 2: Circle02.bmd (MODEL_CIRCLE_LIGHT) with UV scroll
+    // Layer 2: Circle02.bmd light overlay with UV scroll
     if (hasCircleLight) {
       float lightTicks = std::min(ticksLeft, 40.0f);
-      float blendLight2;
-      if (lightTicks >= 30.0f)
-        blendLight2 = (40.0f - lightTicks) * 0.1f;
-      else
-        blendLight2 = lightTicks * 0.1f;
+      float blendLight2 = (lightTicks >= 30.0f) ? (40.0f - lightTicks) * 0.1f
+                                                  : lightTicks * 0.1f;
       if (blendLight2 > 0.01f) {
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position);
+        glm::mat4 model = glm::translate(glm::mat4(1.0f), hf.position + glm::vec3(0, 11, 0));
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
         model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
         m_modelShader->setVec4("u_params", glm::vec4(1.0f, blendLight2, 0, 0));

@@ -15,8 +15,10 @@ inline float g_uiPanelScale = 1.5f; // constant panel scale in virtual coords
 inline constexpr float BASE_PANEL_W = 190.0f;
 inline constexpr float BASE_PANEL_H = 429.0f;
 inline constexpr float PANEL_Y = 20.0f;
+inline constexpr float CHARINFO_PANEL_W = 360.0f; // wider two-column char info panel
 inline float PanelW()      { return BASE_PANEL_W * g_uiPanelScale; }
 inline float PanelH()      { return BASE_PANEL_H * g_uiPanelScale; }
+inline float CharInfoPanelW() { return CHARINFO_PANEL_W * g_uiPanelScale; }
 inline float PanelXRight() { return 1270.0f - PanelW(); }
 
 inline constexpr int SKILL_ICON_COLS = 25;
@@ -25,7 +27,7 @@ inline constexpr float SKILL_ICON_H = 56.0f;
 inline constexpr float SKILL_TEX_SIZE = 1024.0f;
 
 inline constexpr int NUM_DK_SKILLS = 8;
-inline constexpr int NUM_DW_SPELLS = 14;
+inline constexpr int NUM_DW_SPELLS = 15;
 inline constexpr int NUM_ELF_SKILLS = 10;
 
 // ─── Shared structs ─────────────────────────────────────────────────────────
@@ -63,6 +65,7 @@ extern const InventoryUIContext *s_ctx;
 extern PendingTooltip g_pendingTooltip;
 extern TexHandle g_texSkillIcons;
 extern TexHandle g_texAuraIcons[4]; // 0=Guardian Angel, 1=Imp, 2=Uniria, 3=Dinorant
+extern TexHandle g_texMenuBtnIcons[6]; // 0=Character, 1=Inventory, 2=Skills, 3=Teleport, 4=Quests, 5=Map
 extern bool g_isDragging;
 extern int16_t g_dragDefIndex;
 extern int g_dragFromSlot;
@@ -131,13 +134,13 @@ inline constexpr int XP_SEGMENTS = 10;          // fragmented bar segments
 inline constexpr float XP_SEG_GAP = 2.0f;       // gap between segments
 
 // CISTML button screen-pixel constants
-inline constexpr int MBTN_COUNT = 5;
-inline constexpr float MBTN_SCREEN_BTN = 28.0f; // button size in screen px
-inline constexpr float MBTN_SCREEN_GAP = 3.0f;  // gap between buttons
+inline constexpr int MBTN_COUNT = 5; // C, I, S, L, M (no Teleport)
+inline constexpr float MBTN_SCREEN_BTN = 34.0f; // button size in screen px (scaled down)
+inline constexpr float MBTN_SCREEN_GAP = 8.0f;  // gap between buttons
 inline constexpr float MBTN_SCREEN_TOTAL_W =
     MBTN_SCREEN_BTN * MBTN_COUNT + MBTN_SCREEN_GAP * (MBTN_COUNT - 1);
 inline constexpr float MBTN_SCREEN_RIGHT_PAD = 20.0f;  // from right screen edge
-inline constexpr float MBTN_SCREEN_BOTTOM_PAD = 20.0f; // from XP bar top
+inline constexpr float MBTN_SCREEN_BOTTOM_PAD = 16.0f; // from XP bar top
 
 // Horizontal layout — slots centered, orbs flanking
 // Total slot area: 4 pots + gap + 4 skills + gap + RMC = 9 slots + 2 extra gaps

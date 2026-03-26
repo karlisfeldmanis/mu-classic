@@ -62,7 +62,8 @@ void MonsterManager::renderDebris(const glm::mat4 &view,
     return;
 
   glm::vec4 fogParams, fogColor;
-  if (m_mapId == 1) {
+  if (m_mapId == 1 || m_mapId == 4) {
+    // Dungeon + Lost Tower: black fog, short range (indoor)
     fogColor = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
     fogParams = glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f);
   } else {
@@ -154,7 +155,8 @@ void MonsterManager::renderArrows(const glm::mat4 &view,
     return;
 
   glm::vec4 fogParams, fogColor;
-  if (m_mapId == 1) {
+  if (m_mapId == 1 || m_mapId == 4) {
+    // Dungeon + Lost Tower: black fog, short range (indoor)
     fogColor = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
     fogParams = glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f);
   } else {

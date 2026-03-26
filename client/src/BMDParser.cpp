@@ -24,7 +24,7 @@ template <typename T> T ReadRaw(const uint8_t *data, size_t &ptr) {
   return val;
 }
 
-std::unique_ptr<BMDData> BMDParser::Parse(const std::string &path) {
+std::unique_ptr<BMDData> BMDParser::Parse(const std::string &path, bool quiet) {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
     std::cerr << "[BMDParser] Cannot open file: " << path << std::endl;
@@ -46,8 +46,9 @@ std::unique_ptr<BMDData> BMDParser::Parse(const std::string &path) {
   uint8_t version = buffer[3];
   size_t ptr = 4;
 
-  std::cout << "[BMDParser] " << path << " Version: 0x" << std::hex
-            << (int)version << std::dec << " File size: " << size << std::endl;
+  if (!quiet)
+    std::cout << "[BMDParser] " << path << " Version: 0x" << std::hex
+              << (int)version << std::dec << " File size: " << size << std::endl;
 
   auto bmd = std::make_unique<BMDData>();
   bmd->Version = version;
@@ -78,8 +79,9 @@ std::unique_ptr<BMDData> BMDParser::Parse(const std::string &path) {
   short numBones = ReadRaw<short>(data, ptr);
   short numActions = ReadRaw<short>(data, ptr);
 
-  std::cout << "[BMDParser] Meshes: " << numMeshes << " Bones: " << numBones
-            << " Actions: " << numActions << std::endl;
+  if (!quiet)
+    std::cout << "[BMDParser] Meshes: " << numMeshes << " Bones: " << numBones
+              << " Actions: " << numActions << std::endl;
 
   if (numMeshes < 0 || numMeshes > 1000) {
     std::cerr << "[BMDParser] Invalid mesh count: " << numMeshes << std::endl;
@@ -124,10 +126,12 @@ std::unique_ptr<BMDData> BMDParser::Parse(const std::string &path) {
     m.TextureName = texName;
     ptr += 32;
 
-    std::cout << " [Mesh " << i << "] Verts: " << m.NumVertices
-              << " Norms: " << m.NumNormals << " Tex: " << m.NumTexCoords
-              << " Tris: " << m.NumTriangles << " Texture: " << m.TextureName;
-    std::cout << std::endl;
+    if (!quiet) {
+      std::cout << " [Mesh " << i << "] Verts: " << m.NumVertices
+                << " Norms: " << m.NumNormals << " Tex: " << m.NumTexCoords
+                << " Tris: " << m.NumTriangles << " Texture: " << m.TextureName;
+      std::cout << std::endl;
+    }
   }
 
   bmd->Actions.resize(numActions);
@@ -187,9 +191,10 @@ std::unique_ptr<BMDData> BMDParser::Parse(const std::string &path) {
     if (anyVert) {
       bmd->Min = min;
       bmd->Max = max;
-      std::cout << "[BMDParser] AABB: Min(" << min.x << "," << min.y << ","
-                << min.z << ") Max(" << max.x << "," << max.y << "," << max.z
-                << ")" << std::endl;
+      if (!quiet)
+        std::cout << "[BMDParser] AABB: Min(" << min.x << "," << min.y << ","
+                  << min.z << ") Max(" << max.x << "," << max.y << "," << max.z
+                  << ")" << std::endl;
     }
   }
 

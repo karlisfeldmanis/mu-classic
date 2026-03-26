@@ -435,6 +435,7 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
           HandlePickupClick(window, mx, my);
         } else if (monHit >= 0 &&
                    !s_ctx->monsterMgr->IsSummon(s_ctx->monsterMgr->GetServerIndex(monHit))) {
+          // Start attack — dismount happens later when the attack actually fires
           if (!CheckRangedAmmo()) {
             // Block attack — wrong or missing ammo for bow/crossbow
           } else {
@@ -666,31 +667,11 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
       *s_ctx->showSkillWindow = !*s_ctx->showSkillWindow;
       SoundManager::Play(SOUND_INTERFACE01);
     }
-    if (key == GLFW_KEY_T) {
-      if (s_ctx->teleportingToTown && !*s_ctx->teleportingToTown) {
-        if (s_ctx->hero && s_ctx->hero->IsDead()) {
-          // Can't teleport when dead
-        } else if (s_ctx->hero && s_ctx->hero->IsInSafeZone()) {
-          InventoryUI::ShowNotification("Already in town!");
-          SoundManager::Play(SOUND_ERROR01);
-        } else if (s_ctx->hero && s_ctx->hero->GetTeleportCooldown() > 0.0f) {
-          char buf[64];
-          snprintf(buf, sizeof(buf), "Teleport on cooldown (%.0fs)",
-                   s_ctx->hero->GetTeleportCooldown());
-          InventoryUI::ShowNotification(buf);
-          SoundManager::Play(SOUND_ERROR01);
-        } else {
-          s_ctx->hero->CancelAttack();
-          s_ctx->hero->ClearGlobalCooldown();
-          s_ctx->hero->StopMoving();
-          if (s_ctx->hero->IsMounted())
-            s_ctx->hero->UnequipMount();
-          *s_ctx->teleportingToTown = true;
-          *s_ctx->teleportTimer = s_ctx->teleportCastTime;
-          SoundManager::Play(SOUND_SUMMON);
-        }
-      }
+    if (key == GLFW_KEY_M) {
+      *s_ctx->showMapWindow = !*s_ctx->showMapWindow;
+      SoundManager::Play(SOUND_INTERFACE01);
     }
+    // T key removed — teleport/warp is done through the Map panel (M key)
     if (key == GLFW_KEY_L) {
       *s_ctx->showQuestLog = !*s_ctx->showQuestLog;
       SoundManager::Play(SOUND_INTERFACE01);
@@ -758,6 +739,10 @@ static void key_callback(GLFWwindow *window, int key, int scancode, int action,
         }
         if (*s_ctx->showSkillWindow) {
           *s_ctx->showSkillWindow = false;
+          closedSomething = true;
+        }
+        if (*s_ctx->showMapWindow) {
+          *s_ctx->showMapWindow = false;
           closedSomething = true;
         }
         if (*s_ctx->questLogSelected >= 0) {

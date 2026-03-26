@@ -1,5 +1,5 @@
 $input a_position, i_data0, i_data1, i_data2
-$output v_texcoord0, v_color0, v_alpha
+$output v_texcoord0, v_color0, v_alpha, v_localuv
 
 #include <bgfx_shader.sh>
 
@@ -52,6 +52,9 @@ void main()
         // Full texture
         v_texcoord0 = vec2(u, v);
     }
+
+    // Local UV (0-1 within cell) for radial fade — unaffected by sprite sheet
+    v_localuv = vec2(u, v);
 
     v_color0 = vec4(iColor, 1.0);
     v_alpha = iAlpha;

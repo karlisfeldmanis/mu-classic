@@ -234,6 +234,59 @@ static const std::string g_dataPath = "Data";
 
 // Current map ID (0=Lorencia, 1=Dungeon, 2=Devias). File world = mapId + 1.
 static int g_currentMapId = 0;
+static int g_currentFloor = 0; // 0 = no floor designation, 1+ = floor number
+
+// Determine floor number from grid position using nearest gate anchor points
+static int DetermineFloor(int mapId, int gx, int gy) {
+  if (mapId == 4) { // Lost Tower — 7 floors
+    struct Anchor { int x, y, floor; };
+    static const Anchor anchors[] = {
+        {208, 75, 1}, {190, 7, 1},     // LT1: Lorencia entry, return from LT2
+        {245, 236, 2}, {168, 164, 2},   // LT2
+        {86, 167, 3}, {136, 244, 3},    // LT3
+        {87, 87, 4}, {136, 134, 4},     // LT4
+        {129, 53, 5}, {131, 16, 5},     // LT5
+        {53, 53, 6}, {6, 6, 6},         // LT6
+        {8, 86, 7},                      // LT7
+    };
+    int best = 1, bestD = INT_MAX;
+    for (auto &a : anchors) {
+      int d = (gx - a.x) * (gx - a.x) + (gy - a.y) * (gy - a.y);
+      if (d < bestD) { bestD = d; best = a.floor; }
+    }
+    return best;
+  }
+  if (mapId == 1) { // Dungeon — 3 floors
+    struct Anchor { int x, y, floor; };
+    static const Anchor anchors[] = {
+        {108, 247, 1}, {240, 150, 1},   // D1: Lorencia entry, return from D2
+        {232, 126, 2}, {4, 16, 2},      // D2
+        {3, 84, 3}, {29, 125, 3}, {6, 32, 3}, // D3 (+ internal passages)
+    };
+    int best = 1, bestD = INT_MAX;
+    for (auto &a : anchors) {
+      int d = (gx - a.x) * (gx - a.x) + (gy - a.y) * (gy - a.y);
+      if (d < bestD) { bestD = d; best = a.floor; }
+    }
+    return best;
+  }
+  return 0; // no floor designation for other maps
+}
+
+// Format floor-specific display name (e.g., "Lost Tower 3", "Dungeon 2")
+static const char *GetFloorDisplayName() {
+  static char buf[64];
+  static const char *mapNames[] = {
+      "Lorencia", "Dungeon", "Devias", "Noria", "Lost Tower"};
+  const char *base = (g_currentMapId >= 0 && g_currentMapId < 5)
+                         ? mapNames[g_currentMapId]
+                         : "Unknown";
+  if (g_currentFloor > 1) {
+    snprintf(buf, sizeof(buf), "%s %d", base, g_currentFloor);
+    return buf;
+  }
+  return base; // floor 0 or 1 = just the base name
+}
 // Per-map clear color (Main 5.2 ZzzScene.cpp:2059)
 static ImVec4 g_clearColor =
     ImVec4(10.0f / 256.0f, 20.0f / 256.0f, 14.0f / 256.0f, 1.0f);
@@ -257,7 +310,6 @@ struct MapConfig {
 
   // Feature flags
   bool hasSky, hasGrass, hasDoors, hasLeaves, hasWind;
-  bool hasDungeonTraps;
 
   // Sound
   int ambientLoop; // SOUND_WIND01, SOUND_DUNGEON01, or 0
@@ -304,8 +356,7 @@ static const MapConfig MAP_CONFIGS[] = {
         true,
         false,
         true,
-        true,
-        false, // sky, grass, doors, leaves, wind, traps
+        true,  // sky, grass, doors, leaves, wind
         SOUND_WIND01,
         "Music/MuTheme.mp3",
         nullptr, // no music outside safe zone (wind only)
@@ -342,8 +393,7 @@ static const MapConfig MAP_CONFIGS[] = {
         false,
         false,
         false,
-        false,
-        true, // sky, grass, doors, leaves, wind, traps
+        false, // sky, grass, doors, leaves, wind
         SOUND_DUNGEON01,
         "Music/Dungeon.mp3",
         nullptr,
@@ -380,8 +430,7 @@ static const MapConfig MAP_CONFIGS[] = {
         true,
         true,
         true,
-        true,
-        false, // sky, grass, doors, leaves, wind, traps
+        true,  // sky, grass, doors, leaves, wind
         SOUND_WIND01,
         "Music/Devias.mp3",
         nullptr,
@@ -392,8 +441,8 @@ static const MapConfig MAP_CONFIGS[] = {
         1,
         true,
         10, // roofHiding
-        {80},
-        1, // bridgeTypes (MODEL_BRIDGE, same as Lorencia)
+        {0},
+        0, // bridgeTypes: none — Devias terrain attributes are correct as-is
     },
     {
         // Noria (mapId=3)
@@ -418,12 +467,48 @@ static const MapConfig MAP_CONFIGS[] = {
         true,
         false,
         true,
-        true,
-        false, // sky, grass, doors, leaves, wind, traps
+        true,  // sky, grass, doors, leaves, wind
         SOUND_WIND01,
         "Music/Noria.mp3",
         nullptr, // no combat music
         false, // useNamedObjects (Object4/ numbered)
+        {0},
+        0,
+        {0},
+        0,
+        false,
+        0, // roofHiding (none)
+        {0},
+        0, // bridgeTypes (none)
+    },
+    {
+        // Lost Tower (mapId=4)
+        4,
+        "Lost Tower",
+        0.f,
+        0.f,
+        0.f, // clearColor (black — indoor)
+        0.f,
+        0.f,
+        0.f, // fogColor (black)
+        800.f,
+        2500.f,
+        0.9f, // fogNear, fogFar, luminosity (dark indoor)
+        0.25f,
+        0.55f,
+        0.25f, // bloom, threshold, vignette
+        0.90f,
+        0.85f,
+        1.05f, // colorTint (cool blue stone)
+        false,
+        false,
+        false,
+        false,
+        false, // sky, grass, doors, leaves, wind
+        SOUND_DUNGEON01,
+        "Music/lost_tower_a.mp3",
+        nullptr,
+        false, // useNamedObjects (Object5/ numbered)
         {0},
         0,
         {0},
@@ -543,6 +628,7 @@ static int g_questDialogSelected =
 static bool g_showQuestLog = false; // L key quest log window
 static int g_questLogSelected = -1; // Quest log detail view (-1 = none)
 static float g_qldPanelRect[4] = {}; // Quest log detail panel bounds
+static bool g_showMapWindow = false; // M key map/warp window
 static bool g_showMinimap = false;  // TAB key minimap overlay
 static bool g_mouseOverUIPanel =
     false; // Set each frame: true if cursor is over any UI panel
@@ -763,10 +849,13 @@ static constexpr float LEARN_SKILL_DURATION = 3.0f; // Seconds of heal anim
 static int8_t g_rmcSkillId = -1;
 static bool g_rightMouseHeld = false;
 
-// Town teleport state
+// Teleport / warp cast state
 static bool g_teleportingToTown = false;
 static float g_teleportTimer = 0.0f;
-static constexpr float TELEPORT_CAST_TIME = 2.5f; // Seconds of heal anim
+static constexpr float TELEPORT_CAST_TIME = 2.5f; // Seconds of cast anim
+static int g_warpTargetMapId = -1; // -1 = town recall, >=0 = map warp target
+static int g_warpTargetGX = 0;
+static int g_warpTargetGZ = 0;
 
 // Mount toggle state (M key)
 static bool g_mountToggling = false;
@@ -1342,6 +1431,16 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
     return (mapId == 3) ? &noriaLightProps : nullptr;
   case 35:
     return (mapId == 3) ? &noriaLightLargeProps : nullptr;
+  // Lost Tower (mapId=4) torch/fire objects
+  // Main 5.2: type 19 = fire torch (red), type 20 = lightning pillar (blue)
+  case 19:
+    return (mapId == 4) ? &dungeonTorchProps : nullptr;
+  case 20:
+    return (mapId == 4) ? &noriaLightProps : nullptr; // blue-tinted lightning pillar
+  case 23: // Lost Tower window glow
+    return (mapId == 4) ? &candleProps : nullptr;
+  case 40: // Lost Tower electrical tower
+    return (mapId == 4) ? &noriaLightLargeProps : nullptr;
   default:
     return nullptr;
   }
@@ -1623,6 +1722,8 @@ int main(int argc, char **argv) {
     ctx.showInventory = &g_showInventory;
     ctx.showSkillWindow = &g_showSkillWindow;
     ctx.showQuestLog = &g_showQuestLog;
+    ctx.showMapWindow = &g_showMapWindow;
+    ctx.currentMapId = &g_currentMapId;
     ctx.learnedSkills = &g_learnedSkills;
     ctx.potionBar = g_potionBar;
     ctx.skillBar = g_skillBar;
@@ -1651,6 +1752,9 @@ int main(int argc, char **argv) {
     ctx.teleportingToTown = &g_teleportingToTown;
     ctx.teleportTimer = &g_teleportTimer;
     ctx.teleportCastTime = TELEPORT_CAST_TIME;
+    ctx.warpTargetMapId = &g_warpTargetMapId;
+    ctx.warpTargetGX = &g_warpTargetGX;
+    ctx.warpTargetGZ = &g_warpTargetGZ;
     ctx.learnSkillDuration = LEARN_SKILL_DURATION;
     ctx.mountToggling = &g_mountToggling;
     ctx.mountToggleTimer = &g_mountToggleTimer;
@@ -1686,6 +1790,7 @@ int main(int argc, char **argv) {
     inputCtx.showCharInfo = &g_showCharInfo;
     inputCtx.showInventory = &g_showInventory;
     inputCtx.showSkillWindow = &g_showSkillWindow;
+    inputCtx.showMapWindow = &g_showMapWindow;
     inputCtx.hoveredNpc = &g_hoveredNpc;
     inputCtx.hoveredMonster = &g_hoveredMonster;
     inputCtx.hoveredGroundItem = &g_hoveredGroundItem;
@@ -2252,6 +2357,15 @@ int main(int argc, char **argv) {
           }
         }
         g_hero.SetPoisoned(g_clientState->poisoned);
+        // Tick freeze duration + sync tint to hero
+        if (g_clientState->frozen) {
+          g_clientState->frozenRemaining -= deltaTime;
+          if (g_clientState->frozenRemaining <= 0) {
+            g_clientState->frozen = false;
+            g_clientState->frozenRemaining = 0.0f;
+          }
+        }
+        g_hero.SetFrozen(g_clientState->frozen);
         // Sync buff aura state to hero for VFX particle spawning
         g_hero.SetBuffDefense(g_clientState->activeBuffs[0].active);
         g_hero.SetBuffDamage(g_clientState->activeBuffs[1].active);
@@ -2351,6 +2465,9 @@ int main(int argc, char **argv) {
           g_hero.ClearGlobalCooldown();
         }
         if (g_hero.CheckAttackHit()) {
+          // Dismount when attack actually fires (not on click — user can cancel)
+          if (g_hero.IsMounted())
+            g_hero.UnequipMount();
           int targetIdx = g_hero.GetAttackTarget();
           if (targetIdx >= 0 &&
               targetIdx < g_monsterManager.GetMonsterCount()) {
@@ -2608,7 +2725,8 @@ int main(int argc, char **argv) {
       }
     }
 
-    // Town teleport: play heal animation, then warp to class home city
+    // Teleport/warp cast: play cast animation, then warp to target
+    // g_warpTargetMapId >= 0: map warp (from M panel), -1: not used (T removed)
     if (g_teleportingToTown && g_hero.IsDead()) {
       g_teleportingToTown = false; // Cancel teleport if hero died during cast
     }
@@ -2624,67 +2742,24 @@ int main(int argc, char **argv) {
         if (g_hero.IsMounted())
           g_hero.UnequipMount();
 
-        // Teleport to current map's safe zone (Dungeon → Lorencia)
-        int homeMapId = g_currentMapId;
-        int homeGX = 137, homeGZ = 126; // Lorencia default
-        if (g_currentMapId == 1) {
-          homeMapId = 0; // Dungeon → Lorencia
-        } else if (g_currentMapId == 2) {
-          homeGX = 210; homeGZ = 40; // Devias town center
-        } else if (g_currentMapId == 3) {
-          homeGX = 174; homeGZ = 110; // Noria town center
-        }
+        int targetMapId = g_warpTargetMapId;
+        int targetGX = g_warpTargetGX;
+        int targetGZ = g_warpTargetGZ;
+        g_warpTargetMapId = -1; // Reset
 
-        if (g_currentMapId != homeMapId) {
-          SoundManager::StopAll();
-          g_server.SendWarpCommand(homeMapId, homeGX, homeGZ);
-          g_hero.SetAction(1);
-          g_hero.SetTeleportCooldown();
-          // Start transition overlay immediately
-          g_mapTransitionActive = true;
-          g_mapTransitionPhase = 0;
-          g_mapTransitionAlpha = 0.0f;
-          g_mapTransitionFrames = 0;
-          g_mapTransMapId = homeMapId;
-          g_mapTransSpawnX = homeGX;
-          g_mapTransSpawnY = homeGZ;
-        } else {
-          // Already on home map — teleport to town center
-          const int S = TerrainParser::TERRAIN_SIZE;
-          int startGX = homeGX, startGZ = homeGZ;
-          glm::vec3 spawnPos((float)startGZ * 100.0f, 0.0f, (float)startGX * 100.0f);
-          for (int radius = 0; radius < 30; radius++) {
-            bool found = false;
-            for (int dy = -radius; dy <= radius && !found; dy++) {
-              for (int dx = -radius; dx <= radius && !found; dx++) {
-                if (radius > 0 && std::abs(dx) != radius &&
-                    std::abs(dy) != radius)
-                  continue;
-                int cx = startGX + dx, cz = startGZ + dy;
-                if (cx < 1 || cz < 1 || cx >= S - 1 || cz >= S - 1)
-                  continue;
-                uint8_t attr =
-                    g_terrainDataPtr->mapping.attributes[cz * S + cx];
-                if ((attr & 0x04) == 0 && (attr & 0x08) == 0) {
-                  spawnPos =
-                      glm::vec3((float)cz * 100.0f, 0.0f, (float)cx * 100.0f);
-                  found = true;
-                }
-              }
-            }
-            if (found)
-              break;
-          }
-          SoundManager::StopAll();
-          g_hero.SetPosition(spawnPos);
-          g_hero.SnapToTerrain();
-          g_hero.SetAction(1);
-          g_camera.SetPosition(g_hero.GetPosition());
-          g_server.SendPrecisePosition(spawnPos.x, spawnPos.z);
-          g_objectRenderer.ResetDoorStates();
-          InventoryUI::ShowRegionName(GetMapConfig(g_currentMapId)->regionName);
-          g_hero.SetTeleportCooldown();
-        }
+        // Always use full warp path (even same-map) so server relocates
+        // summons, refreshes monster viewport, and updates spawn position.
+        SoundManager::StopAll();
+        g_server.SendWarpCommand(targetMapId, targetGX, targetGZ);
+        g_hero.SetAction(1);
+        g_hero.SetTeleportCooldown();
+        g_mapTransitionActive = true;
+        g_mapTransitionPhase = 0;
+        g_mapTransitionAlpha = 0.0f;
+        g_mapTransitionFrames = 0;
+        g_mapTransMapId = targetMapId;
+        g_mapTransSpawnX = targetGX;
+        g_mapTransSpawnY = targetGZ;
       }
     }
 
@@ -2715,6 +2790,9 @@ int main(int argc, char **argv) {
         g_clientState->poisonRemaining = 0.0f;
         g_clientState->poisonMaxDuration = 0.0f;
         g_hero.SetPoisoned(false);
+        g_clientState->frozen = false;
+        g_clientState->frozenRemaining = 0.0f;
+        g_hero.SetFrozen(false);
         // Clear buffs too (they shouldn't persist through death)
         for (int b = 0; b < 2; b++) {
           g_clientState->activeBuffs[b].active = false;
@@ -2734,6 +2812,9 @@ int main(int argc, char **argv) {
       } else if (g_currentMapId == 3) {
         // Noria: respawn near Elf Lala (town center)
         respawnGX = 174; respawnGZ = 110;
+      } else if (g_currentMapId == 4) {
+        // Lost Tower: respawn in Lost Tower 1 safe zone
+        respawnGX = 208; respawnGZ = 75;
       }
 
       glm::vec3 spawnPos((float)respawnGZ * 100.0f, 0.0f,
@@ -3298,7 +3379,7 @@ int main(int argc, char **argv) {
         float fSize = 18.0f * uiS;
         glm::vec3 hPos = g_hero.GetPosition();
         int gx = (int)(hPos.z / 100.0f), gz = (int)(hPos.x / 100.0f);
-        const char *mapName = g_mapCfg ? g_mapCfg->regionName : "Unknown";
+        const char *mapName = GetFloorDisplayName();
 
         // Server time (use system local time)
         auto now = std::chrono::system_clock::now();
@@ -4616,6 +4697,8 @@ int main(int argc, char **argv) {
       InventoryUI::RenderCharInfoPanel(panelDl, g_hudCoords);
     if (g_showSkillWindow)
       InventoryUI::RenderSkillPanel(panelDl, g_hudCoords);
+    if (g_showMapWindow)
+      InventoryUI::RenderMapPanel(panelDl, g_hudCoords);
     if (g_showInventory || g_shopOpen) {
       bool wasShowInvent = g_showInventory;
       g_showInventory = true; // force flag for proper layout parsing
@@ -4808,48 +4891,7 @@ int main(int argc, char **argv) {
         for (auto &c : cmdLower)
           c = (char)std::tolower((unsigned char)c);
 
-        if (cmdLower.find("/warp ") == 0 || cmdLower.find("/move ") == 0) {
-          std::string arg = cmdLower.substr(cmdLower.find(' ') + 1);
-          while (!arg.empty() && arg[0] == ' ')
-            arg.erase(arg.begin());
-
-          uint8_t mapId = 255;
-          uint8_t sx = 0, sy = 0;
-          if (arg == "lorencia" || arg == "0") {
-            mapId = 0;
-            sx = 125;
-            sy = 125;
-          } else if (arg == "dungeon" || arg == "dungeon 1" || arg == "1") {
-            mapId = 1;
-            sx = 108;
-            sy = 247;
-          } else if (arg == "dungeon 2" || arg == "dungeon2") {
-            mapId = 1;
-            sx = 231;
-            sy = 126;
-          } else if (arg == "dungeon 3" || arg == "dungeon3") {
-            mapId = 1;
-            sx = 233;
-            sy = 23;
-          } else if (arg == "devias" || arg == "2") {
-            mapId = 2;
-            sx = 210;
-            sy = 40;
-          } else if (arg == "noria" || arg == "3") {
-            mapId = 3;
-            sx = 174;
-            sy = 110;
-          }
-
-          if (mapId != 255) {
-            g_server.SendWarpCommand(mapId, sx, sy);
-            SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
-                                  "Warping to %s...", arg.c_str());
-          } else {
-            SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(255, 100, 100, 255),
-                                  "Unknown map: %s", arg.c_str());
-          }
-        } else {
+        {
           SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(255, 200, 100, 255),
                                 "Unknown command: %s", cmd.c_str());
         }
@@ -4971,14 +5013,16 @@ int main(int argc, char **argv) {
         over = true; // full-screen overlay or terminal open
       } else {
         // InventoryUI panels — virtual coords
-        if (g_showCharInfo && InventoryUI::IsPointInPanel(
-                                  vx, vy, InventoryUI::GetCharInfoPanelX()))
+        if (g_showCharInfo && InventoryUI::IsCharInfoPointInPanel(vx, vy))
           over = true;
         if (g_showInventory && InventoryUI::IsPointInPanel(
                                    vx, vy, InventoryUI::GetInventoryPanelX()))
           over = true;
         if (g_shopOpen &&
             InventoryUI::IsPointInPanel(vx, vy, InventoryUI::GetShopPanelX()))
+          over = true;
+        if (g_showMapWindow && InventoryUI::IsPointInPanel(
+                                    vx, vy, InventoryUI::GetCharInfoPanelX()))
           over = true;
         // Skill window — virtual coords
         if (g_showSkillWindow) {
@@ -5211,10 +5255,12 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
   // Stop char select music — actual game music chosen after spawn position is
   // known
   SoundManager::StopMusic();
-  // Show region name (Main 5.2: CUIMapName on map enter)
-  // Note: if char is on dungeon map, ChangeMap() will override this with
-  // "Dungeon"
-  InventoryUI::ShowRegionName(GetMapConfig(g_currentMapId)->regionName);
+  // Determine floor from spawn position and show floor-specific region name
+  if (serverData.hasSpawnPos)
+    g_currentFloor = DetermineFloor(g_currentMapId, serverData.spawnGridX, serverData.spawnGridY);
+  else
+    g_currentFloor = 0;
+  InventoryUI::ShowRegionName(GetFloorDisplayName());
   g_npcManager.SetTerrainLightmap(g_terrainDataPtr->lightmap);
   g_npcManager.SetVFXManager(&g_vfxManager);
   InventoryUI::RecalcEquipmentStats();
@@ -5377,9 +5423,6 @@ static void ApplyMapAtmosphere(const MapConfig &cfg) {
   g_monsterManager.SetMapId(cfg.mapId);
   g_npcManager.SetMapId(cfg.mapId);
   g_hero.SetMapId(cfg.mapId);
-
-  // Region name display
-  InventoryUI::ShowRegionName(cfg.regionName);
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5411,7 +5454,9 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
   // Patch void (tile 255) AND water (tile 5) in bridge zone with nearest
   // valid ground tile. Water tiles left under the bridge cause visible bleed
   // at bridge edges due to bilinear interpolation in the terrain shader.
-  if (!bridgeZone.empty()) {
+  // Lorencia-only: Devias/Dungeon bridges have different geometry that breaks
+  // with this aggressive patching.
+  if (!bridgeZone.empty() && cfg.mapId == 0) {
     auto &l1 = g_terrainDataOwned->mapping.layer1;
     auto &l2 = g_terrainDataOwned->mapping.layer2;
     for (int i = 0; i < 256 * 256; i++) {
@@ -5443,7 +5488,8 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
   // where bridges sit. Sample brightness from nearest non-void terrain and
   // fill bridge zone cells so bridges, characters, and objects are properly lit.
   // Must happen BEFORE g_terrainDataPtr assignment so all subsystems get the fix.
-  if (!bridgeZone.empty() && !g_terrainDataOwned->lightmap.empty()) {
+  // Lorencia-only: other maps don't need this aggressive lightmap override.
+  if (!bridgeZone.empty() && !g_terrainDataOwned->lightmap.empty() && cfg.mapId == 0) {
     const int S = 256;
     auto &lm = g_terrainDataOwned->lightmap;
     // Compute distance-to-bridge for each cell
@@ -5553,15 +5599,6 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
       g_fireEffect.AddWaterSmokeEmitter(worldPos + glm::vec3(0, 120, 0));
     }
   }
-  if (cfg.hasDungeonTraps) {
-    for (auto &inst : g_objectRenderer.GetInstances()) {
-      glm::vec3 trapPos = glm::vec3(inst.modelMatrix[3]);
-      if (inst.type == 39)
-        g_fireEffect.AddEmitter(trapPos + glm::vec3(0.0f, 50.0f, 0.0f));
-      else if (inst.type == 51)
-        g_fireEffect.AddEmitter(trapPos + glm::vec3(0.0f, 30.0f, 0.0f));
-    }
-  }
 
   // ── Collect point lights + register ambient fire emitters ──
   g_pointLights.clear();
@@ -5582,7 +5619,8 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
     // Register fire emitters (BlendMesh glow replaced by VFX particles)
     bool isFire = (inst.type == 50 || inst.type == 51 || inst.type == 52 ||
                    inst.type == 150 ||
-                   (mapId == 1 && (inst.type == 41 || inst.type == 42)));
+                   (mapId == 1 && (inst.type == 41 || inst.type == 42)) ||
+                   (mapId == 4 && inst.type == 19));
     if (isFire) {
       float intensity = (inst.type == 150) ? 0.3f :   // candle
                         (inst.type == 52)  ? 1.2f :   // bonfire
@@ -5664,6 +5702,10 @@ static void ChangeMap(uint8_t mapId, uint8_t spawnX, uint8_t spawnY,
   g_hero.SetPosition(glm::vec3(heroX, 0.0f, heroZ));
   g_hero.SnapToTerrain();
   g_camera.SetPosition(g_hero.GetPosition());
+
+  // Determine floor number and show floor-specific region name
+  g_currentFloor = DetermineFloor(mapId, spawnX, spawnY);
+  InventoryUI::ShowRegionName(GetFloorDisplayName());
 
   // Sound/music transition — reset wind state so 3D loop restarts
   SoundManager::StopAll();

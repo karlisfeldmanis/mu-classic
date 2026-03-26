@@ -44,6 +44,7 @@ bool Server::Start(uint16_t port) {
   m_world.LoadTerrainAttributesForMap(1, "Data/World2/EncTerrain2.att");
   m_world.LoadTerrainAttributesForMap(2, "Data/World3/EncTerrain3.att");
   m_world.LoadTerrainAttributesForMap(3, "Data/World4/EncTerrain4.att");
+  m_world.LoadTerrainAttributesForMap(4, "Data/World5/EncTerrain5.att");
   m_world.SetActiveMap(0);
 
   // Load NPC and monster data from database
@@ -451,6 +452,8 @@ void Server::Run() {
               s->buffs[0].active = false;
               s->buffs[1].active = false;
               s->poisoned = false;
+              s->frozen = false;
+              s->frozenDuration = 0.0f;
               // Despawn summon on owner death
               if (s->activeSummonIndex > 0) {
                 PMSG_SUMMON_DESPAWN_SEND dpkt{};
@@ -462,9 +465,8 @@ void Server::Run() {
                 s->activeSummonType = -1;
               }
               // Player died: drop aggro and return to spawn (evade mode)
-              // Traps stay IDLE — they don't chase or return
               auto *mon = m_world.FindMonster(atk.monsterIndex);
-              if (mon && !(mon->type >= 100 && mon->type <= 102)) {
+              if (mon) {
                 mon->aggroTargetFd = -1;
                 mon->aiState = MonsterInstance::AIState::RETURNING;
                 mon->evading = true;
@@ -503,6 +505,24 @@ void Server::Run() {
                   dpkt.debuffType = 1; // Poison
                   dpkt.active = 1;
                   dpkt.duration = 20.0f;
+                  s->Send(&dpkt, sizeof(dpkt));
+                }
+              }
+            }
+
+            // Monster→player freeze (Main 5.2: Ice Monster type 22, Ice Queen type 25)
+            // MuSven: SkillSuccess check, ~25% chance, ~1.3s duration
+            if (atk.damage > 0 && !s->frozen) {
+              auto *atkMon = m_world.FindMonster(atk.monsterIndex);
+              if (atkMon && (atkMon->type == 22 || atkMon->type == 25)) {
+                if (rand() % 4 == 0) { // 25% chance (SkillSuccess analog)
+                  s->frozen = true;
+                  s->frozenDuration = 1.3f; // ~1.3s (MuSven: 0.03/frame * 25fps)
+                  PMSG_DEBUFF_EFFECT_SEND dpkt{};
+                  dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::DEBUFF_EFFECT);
+                  dpkt.debuffType = 2; // Freeze
+                  dpkt.active = 1;
+                  dpkt.duration = 1.3f;
                   s->Send(&dpkt, sizeof(dpkt));
                 }
               }
@@ -694,6 +714,8 @@ void Server::Run() {
             session->hp = 0;
             session->dead = true;
             session->poisoned = false;
+            session->frozen = false;
+            session->frozenDuration = 0.0f;
             // Clear buffs on death
             session->buffs[0].active = false;
             session->buffs[1].active = false;
@@ -706,6 +728,20 @@ void Server::Run() {
           pkt.remainingHp = (float)session->hp;
           session->Send(&pkt, sizeof(pkt));
           CharacterHandler::SendCharStats(*session);
+        }
+      }
+      // Tick player freeze debuff (Ice Monster/Ice Queen → player)
+      if (session->frozen && session->inWorld && !session->dead) {
+        session->frozenDuration -= dt;
+        if (session->frozenDuration <= 0.0f) {
+          session->frozen = false;
+          session->frozenDuration = 0.0f;
+          PMSG_DEBUFF_EFFECT_SEND dpkt{};
+          dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::DEBUFF_EFFECT);
+          dpkt.debuffType = 2; // Freeze
+          dpkt.active = 0;
+          dpkt.duration = 0;
+          session->Send(&dpkt, sizeof(dpkt));
         }
       }
       if (session->gateTransitionCooldown > 0.0f) {
@@ -1074,6 +1110,51 @@ void Server::CheckGateZones(Session &session) {
     // Noria → Lorencia (OpenMU gate 25→26, widened trigger zone)
     TransitionMap(session, 0, 215, 244);
   }
+  // ── Lorencia ↔ Lost Tower gates ──
+  else if (session.mapId == 0 && gx >= 162 && gx <= 166 && gy >= 0 && gy <= 1) {
+    // Lorencia → Lost Tower (OpenMU gate 43→42, north edge)
+    TransitionMap(session, 4, 208, 75);
+  }
+  // ── Lost Tower internal floor gates (same map, coordinate teleport) ──
+  // Spawn offsets: each destination must land OUTSIDE the return gate trigger zone
+  // to prevent re-warp loop after the 3s cooldown expires.
+  else if (session.mapId == 4 && gx >= 190 && gx <= 191 && gy >= 6 && gy <= 8) {
+    // Gate 30→31: spawn outside return trigger (241-244, 237-238)
+    TransitionMap(session, 4, 245, 236);
+  } else if (session.mapId == 4 && gx >= 241 && gx <= 244 && gy >= 237 && gy <= 238) {
+    // Gate 31→30: spawn outside return trigger (190-191, 6-8)
+    TransitionMap(session, 4, 188, 7);
+  } else if (session.mapId == 4 && gx >= 166 && gx <= 167 && gy >= 163 && gy <= 166) {
+    // Gate 32→33: spawn outside return trigger (86-87, 166-168)
+    TransitionMap(session, 4, 84, 167);
+  } else if (session.mapId == 4 && gx >= 86 && gx <= 87 && gy >= 166 && gy <= 168) {
+    // Gate 33→32: spawn outside return trigger (166-167, 163-166)
+    TransitionMap(session, 4, 168, 164);
+  } else if (session.mapId == 4 && gx >= 132 && gx <= 135 && gy >= 245 && gy <= 246) {
+    // Gate 34→35: spawn outside return trigger (87-88, 86-89)
+    TransitionMap(session, 4, 85, 87);
+  } else if (session.mapId == 4 && gx >= 87 && gx <= 88 && gy >= 86 && gy <= 89) {
+    // Gate 35→34: spawn outside return trigger (132-135, 245-246)
+    TransitionMap(session, 4, 136, 244);
+  } else if (session.mapId == 4 && gx >= 132 && gx <= 135 && gy >= 135 && gy <= 136) {
+    // Gate 36→37: spawn outside return trigger (128-131, 53-54)
+    TransitionMap(session, 4, 127, 52);
+  } else if (session.mapId == 4 && gx >= 128 && gx <= 131 && gy >= 53 && gy <= 54) {
+    // Gate 37→36: spawn outside return trigger (132-135, 135-136)
+    TransitionMap(session, 4, 136, 134);
+  } else if (session.mapId == 4 && gx >= 131 && gx <= 132 && gy >= 15 && gy <= 18) {
+    // Gate 38→39: spawn outside return trigger (52-55, 53-54)
+    TransitionMap(session, 4, 51, 52);
+  } else if (session.mapId == 4 && gx >= 52 && gx <= 55 && gy >= 53 && gy <= 54) {
+    // Gate 39→38: spawn outside return trigger (131-132, 15-18)
+    TransitionMap(session, 4, 133, 16);
+  } else if (session.mapId == 4 && gx >= 6 && gx <= 7 && gy >= 5 && gy <= 8) {
+    // Gate 40→41: spawn outside return trigger (8-9, 85-87)
+    TransitionMap(session, 4, 10, 88);
+  } else if (session.mapId == 4 && gx >= 8 && gx <= 9 && gy >= 85 && gy <= 87) {
+    // Gate 41→40: spawn outside return trigger (6-7, 5-8)
+    TransitionMap(session, 4, 5, 9);
+  }
 }
 
 void Server::TransitionMap(Session &session, uint8_t newMapId,
@@ -1091,6 +1172,10 @@ void Server::TransitionMap(Session &session, uint8_t newMapId,
     session.activeSummonIndex = 0;
     // Keep activeSummonType — will respawn on new map
   }
+
+  // Clear debuffs on map transition
+  session.frozen = false;
+  session.frozenDuration = 0.0f;
 
   // Update session
   session.mapId = newMapId;

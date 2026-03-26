@@ -41,7 +41,12 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
   // Types 19/92/93 are aurora curtains on Devias but cannons on Lorencia
   case 19:
     if (mapId == 3) return 0; // Noria: additive mesh 0
+    if (mapId == 4) return 4; // Lost Tower: fire torch additive mesh 4
     return (mapId == 2) ? 0 : -1; // Devias: aurora additive
+  case 20:
+    return (mapId == 4) ? 4 : -1; // Lost Tower: lightning pillar additive mesh 4
+  case 23:
+    return (mapId == 4) ? 1 : -1; // Lost Tower: window/grate additive mesh 1
   case 92:
   case 93:
     return (mapId == 2) ? 0 : -1; // Aurora additive only on Devias
@@ -53,6 +58,7 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
   case 17:
     return (mapId == 3) ? 0 : -1; // Noria: additive mesh 0
   case 18:
+    if (mapId == 4) return 1; // Lost Tower: additive mesh 1
     return (mapId == 3) ? 2 : -1; // Noria: glowing mesh 2
   case 37:
     return (mapId == 3) ? 0 : -1; // Noria: additive mesh 0
@@ -473,21 +479,7 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
       continue;
     }
 
-    // Skip grass BMD objects (types 20-29) that float above terrain.
-    // Ground-level grass is kept; only hide ones clearly above rocks/cliffs.
-    if (obj.type >= 20 && obj.type <= 29 && !terrainHeightmap.empty()) {
-      float wx = obj.position.x;  // GL_X
-      float wz = obj.position.z;  // GL_Z
-      int gz = (int)(wx / 100.0f);
-      int gx = (int)(wz / 100.0f);
-      if (gz >= 0 && gz < 256 && gx >= 0 && gx < 256) {
-        float terrH = terrainHeightmap[gz * 256 + gx];
-        if (obj.position.y > terrH + 40.0f) {
-          ++skipped;
-          continue;
-        }
-      }
-    }
+
 
     glm::vec3 objPos = obj.position;
 
@@ -1059,6 +1051,8 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     if (m_mapId == 1 && (inst.type == 39 || inst.type == 40 || inst.type == 51 ||
          inst.type == 52 || inst.type == 60))
       continue;
+    if (m_mapId == 4 && (inst.type == 24 || inst.type == 25)) // Lost Tower: HiddenMesh=-2 objects
+      continue;
     if (m_mapId == 2 && (inst.type == 91 || inst.type == 100))
       continue;
     if (m_mapId == 3 && inst.type == 38) // Noria pose box (HiddenMesh=-2)
@@ -1210,6 +1204,12 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           intensity = 1.0f;
         if (m_mapId == 1 && (inst.type == 41 || inst.type == 42)) {
           // Dungeon torches: phase-shifted flicker
+          float phase = inst.modelMatrix[3][0] * 0.013f;
+          intensity = 0.78f + 0.10f * std::sin(currentTime * 3.8f + phase)
+                            + 0.06f * std::sin(currentTime * 9.5f + phase * 2.1f);
+        }
+        if (m_mapId == 4 && (inst.type == 19 || inst.type == 20 || inst.type == 23)) {
+          // Lost Tower torches/windows: phase-shifted flicker
           float phase = inst.modelMatrix[3][0] * 0.013f;
           intensity = 0.78f + 0.10f * std::sin(currentTime * 3.8f + phase)
                             + 0.06f * std::sin(currentTime * 9.5f + phase * 2.1f);

@@ -429,6 +429,19 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
                          ? GetItemBlendMesh(category, itemIndex)
                          : -1;
 
+  // +3/+5 tint and +7+ dim (Main 5.2 ZzzObject.cpp:10183-10227)
+  float tNow = (float)glfwGetTime();
+  float gLum = 0.8f + 0.2f * sinf(tNow * 2.0f);
+  glm::vec3 tint(1.0f);
+  float baseDim = 1.0f;
+  if (itemLevel >= 5 && itemLevel < 7) {
+    tint = glm::vec3(gLum * 0.5f, gLum * 0.7f, gLum); // blue tint
+  } else if (itemLevel >= 3 && itemLevel < 7) {
+    tint = glm::vec3(gLum, gLum * 0.6f, gLum * 0.6f); // red tint
+  }
+  if (itemLevel >= 9) baseDim = 0.9f;
+  else if (itemLevel >= 7) baseDim = 0.8f;
+
   // Render meshes — no face culling for double-sided meshes
   for (int mi = 0; mi < (int)model->meshes.size(); ++mi) {
     const auto &mb = model->meshes[mi];
@@ -463,7 +476,7 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
                    | BGFX_STATE_MSAA;
 
     if (isGlowMesh) {
-      blendLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+      blendLight = sinf(tNow * 4.0f) * 0.3f + 0.7f;
       state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
       state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
     } else if (mb.bright) {
@@ -484,9 +497,9 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
     shader->setVec4("u_lightPos", glm::vec4(0.0f, 50.0f, 50.0f, 0.0f));
     shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     shader->setVec4("u_viewPos", glm::vec4(0.0f, 0.0f, 50.0f, 0.0f));
-    shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_terrainLight", glm::vec4(baseDim, baseDim, baseDim, 0.0f));
     shader->setVec4("u_glowColor", glm::vec4(0.0f));
-    shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_baseTint", glm::vec4(tint, 0.0f));
     shader->setVec4("u_fogParams", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f)); // no fog
     shader->setVec4("u_fogColor", glm::vec4(0.0f));
     shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
@@ -501,7 +514,6 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
 
   // Chrome glow passes for +7/+9/+11/+13
   if (itemLevel >= 7 && TexValid(ChromeGlow::GetTextures().chrome1) && category >= 0) {
-    float t = (float)glfwGetTime();
     ChromeGlow::GlowPass passes[3];
     int n = ChromeGlow::GetGlowPasses(itemLevel, category, itemIndex, passes);
     if (n > 0) {
@@ -526,7 +538,7 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
           shader->setTexture(0, "s_texColor", passes[gp].texture);
 
           shader->setVec4("u_params", glm::vec4(1.0f, 1.0f,
-                          (float)passes[gp].chromeMode, t));
+                          (float)passes[gp].chromeMode, tNow));
           shader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
           shader->setVec4("u_glowColor", glm::vec4(passes[gp].color, 0.0f));
           shader->setVec4("u_lightPos", glm::vec4(0.0f, 50.0f, 50.0f, 0.0f));
@@ -540,7 +552,7 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
           shader->setVec4("u_shadowParams", glm::vec4(0.0f));
 
           uint64_t glowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
-                             | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
+                             | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_MSAA
                              | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
                                                       BGFX_STATE_BLEND_ONE);
           bgfx::setState(glowState);

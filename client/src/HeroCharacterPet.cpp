@@ -49,8 +49,13 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
     bool charMoving = m_moving;
 
     // Orbit center trails behind character with natural delay
-    // Slow rate when moving = pet visibly lags on direction changes
-    float followRate = 1.0f - expf((charMoving ? -1.2f : -3.0f) * deltaTime);
+    // When mounted, increase follow speed so pet keeps up with faster movement
+    float mountMul = 1.0f;
+    if (isMountRiding()) {
+      if (m_mountEquippedIndex == 3) mountMul = 2.5f;       // Dinorant — fast
+      else if (m_mountEquippedIndex == 2) mountMul = 2.0f;   // Uniria
+    }
+    float followRate = 1.0f - expf((charMoving ? -1.2f * mountMul : -3.0f) * deltaTime);
     m_pet.orbitCenter.x += (m_pos.x - m_pet.orbitCenter.x) * followRate;
     m_pet.orbitCenter.z += (m_pos.z - m_pet.orbitCenter.z) * followRate;
     m_pet.orbitCenter.y += (m_pos.y - m_pet.orbitCenter.y) * followRate;

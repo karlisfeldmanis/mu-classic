@@ -225,6 +225,21 @@ enum SoundId {
   SOUND_MONSTER_BALIATTACK1 = 335,
   SOUND_MONSTER_BALIATTACK2 = 336,
 
+  // --- Lost Tower monsters (types 34-41) ---
+  // Balrog (type 38) — Main 5.2: SOUND_MONSTER + 108..112
+  SOUND_MONSTER_BALROG1 = 350,
+  SOUND_MONSTER_BALROG2 = 351,
+  SOUND_MONSTER_BALROGDIE = 352,
+  // Devil (type 37) — Main 5.2: mSatanAttack1 + mYeti idle/die reuse
+  SOUND_MONSTER_SATANATTACK1 = 353,
+  // Dark Knight monster attack/die (type 10 & Death Knight type 40)
+  SOUND_MONSTER_DARKKNIGHTATTACK1 = 354,
+  SOUND_MONSTER_DARKKNIGHTATTACK2 = 355,
+  SOUND_MONSTER_DARKKNIGHTDIE = 356,
+  // Cursed Wizard (type 34) — Main 5.2: SOUND_MONSTER+132/133 (mBepar)
+  SOUND_MONSTER_BEPAR1 = 357,
+  SOUND_MONSTER_BEPAR2 = 358,
+
   // Door sounds (Main 5.2: aDoor.wav, aCastleDoor.wav)
   SOUND_DOOR01 = 280, // Swinging wood door
   SOUND_DOOR02 = 281, // Sliding castle door

@@ -610,7 +610,7 @@ void BoidManager::moveBat(Boid &b, const glm::vec3 &heroPos, float tickFrac) {
   }
 
   // Bats always fly — erratic altitude changes, lower ceiling than birds
-  b.velocity = 1.2f; // Slightly faster than birds
+  b.velocity = 2.0f; // Bats fly faster than birds (birds=1.0)
   b.position.y += (float)(rand() % 20 - 10) * tickFrac; // More vertical jitter
   if (relH < 100.0f)
     b.direction.y = 12.0f; // consumed by moveBoidGroup (scaled there)
@@ -653,7 +653,7 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
       b.scale = 0.8f; // Main 5.2: bat scale 0.8
       b.shadowScale = 8.0f;
       b.ai = BoidAI::FLY; // Bats always fly
-      b.timer = (float)(rand() % 314) * 0.01f;
+      b.timer = 0.5f + (float)(rand() % 200) * 0.01f; // First screech 0.5-2.5s after spawn
       b.subType = 0;
       b.lifetime = 0;
       b.action = 0;
@@ -671,7 +671,7 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
     if (b.action >= 0 && b.action < (int)m_batBmd->Actions.size()) {
       int numKeys = m_batBmd->Actions[b.action].NumAnimationKeys;
       if (numKeys > 1) {
-        b.animFrame += 0.5f * dt * 25.0f; // Realistic wing beats
+        b.animFrame += 0.8f * dt * 25.0f; // Fast wing beats (bats fly faster than birds)
         if (b.animFrame >= (float)numKeys)
           b.animFrame = std::fmod(b.animFrame, (float)numKeys);
       }
@@ -715,10 +715,10 @@ void BoidManager::updateBats(float dt, const glm::vec3 &heroPos) {
       b.timer = 4.0f + (float)(rand() % 6); // 4-10 second interval
     }
 
-    // Random despawn
-    if (rand() % 512 == 0) {
+    // Random despawn (rare — let bats fly around for a while)
+    if (rand() % 2048 == 0) {
       b.live = false;
-      b.respawnDelay = 5.0f + (float)(rand() % 8);
+      b.respawnDelay = 3.0f + (float)(rand() % 5);
     }
 
     // Alpha fade
@@ -737,8 +737,8 @@ void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
 
     // Spawn new rat — delay spawning so they don't all appear at once
     if (!r.live) {
-      // ~0.1% chance per frame = average ~16s at 60fps before spawn attempt
-      if (rand() % 1000 != 0)
+      // ~0.033% chance per frame = average ~50s at 60fps before spawn attempt
+      if (rand() % 3000 != 0)
         continue;
       // Wider spread — spawn further from player so less in-your-face
       float spawnX = heroPos.x + (float)(rand() % 1600 - 800);
@@ -756,7 +756,7 @@ void BoidManager::updateRats(float dt, const glm::vec3 &heroPos) {
       r.scale = (float)(rand() % 4 + 4) * 0.1f; // 0.4-0.7
       r.velocity = 0.6f / r.scale;
       r.subType = 0;
-      r.lifetime = 300 + rand() % 300; // 12-24 seconds at 25fps
+      r.lifetime = 750 + rand() % 500; // 30-50 seconds at 25fps — let rats reach destinations
       r.action = 0;
       r.position.x = spawnX;
       r.position.z = spawnZ;
@@ -966,9 +966,16 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       spawnPos.z = heroPos.z + (float)(rand() % 1024 - 512);
       spawnPos.y = heroPos.y;
 
-      // Check if on water tile (layer1 == 5 for Lorencia)
+      // Check if on water tile and not near shore (layer1 == 5 for Lorencia)
       uint8_t layer1 = getTerrainLayer1(spawnPos.x, spawnPos.z);
       if (layer1 != 5)
+        continue;
+      // Skip spawn near shore — all 4 neighbors must also be water
+      const float sp = 200.0f;
+      if (getTerrainLayer1(spawnPos.x + sp, spawnPos.z) != 5 ||
+          getTerrainLayer1(spawnPos.x - sp, spawnPos.z) != 5 ||
+          getTerrainLayer1(spawnPos.x, spawnPos.z + sp) != 5 ||
+          getTerrainLayer1(spawnPos.x, spawnPos.z - sp) != 5)
         continue;
 
       f = Fish{}; // Reset
@@ -1002,15 +1009,23 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
     float cosA = std::cos(rad);
     float sinA = std::sin(rad);
     float speed = f.velocity * (float)(rand() % 4 + 6);
-    float dx = speed * cosA;
-    float dz = speed * sinA;
-    f.position.x += dx * dt * 25.0f;
-    f.position.z += dz * dt * 25.0f;
+    // MU: X += cos, Y += sin. GL: X=MU_Y, Z=MU_X → x += sin, z += cos
+    f.position.x += speed * sinA * dt * 25.0f;
+    f.position.z += speed * cosA * dt * 25.0f;
     f.position.y = getTerrainHeight(f.position.x, f.position.z);
 
-    // Check if still on water tile — if not, reverse and count wall hits
+    // Check if still on water tile or too close to shore — reverse if so
     uint8_t layer1 = getTerrainLayer1(f.position.x, f.position.z);
-    if (layer1 != 5) {
+    bool nearShore = false;
+    if (layer1 == 5) {
+      // Check neighboring cells (100 unit grid) for non-water
+      const float probe = 150.0f;
+      nearShore = getTerrainLayer1(f.position.x + probe, f.position.z) != 5
+               || getTerrainLayer1(f.position.x - probe, f.position.z) != 5
+               || getTerrainLayer1(f.position.x, f.position.z + probe) != 5
+               || getTerrainLayer1(f.position.x, f.position.z - probe) != 5;
+    }
+    if (layer1 != 5 || nearShore) {
       f.angle.z += 180.0f;
       if (f.angle.z >= 360.0f)
         f.angle.z -= 360.0f;
@@ -1221,7 +1236,6 @@ void BoidManager::Update(float deltaTime, const glm::vec3 &heroPos,
   if (m_mapId == 0) {
     // Lorencia: birds, fish, leaves
     updateBoids(deltaTime, heroPos, heroAction);
-    updateFishs(deltaTime, heroPos);
     updateLeaves(deltaTime, heroPos);
   } else if (m_mapId == 1) {
     // Dungeon: bats (flying) and rats (ground critters)
@@ -1314,6 +1328,7 @@ void BoidManager::renderBat(const Boid &b, const glm::mat4 &view,
 
   float alpha = b.alpha * camFade;
   glm::vec3 tLight = sampleTerrainLight(b.position);
+  m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (auto &mb : m_batMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
     bgfx::setTransform(glm::value_ptr(model));
@@ -1364,6 +1379,7 @@ void BoidManager::renderButterfly(const Boid &b, const glm::mat4 &view,
 
   float alpha = b.alpha * camFade;
   glm::vec3 tLight = sampleTerrainLight(b.position);
+  m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (auto &mb : m_butterflyMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
     bgfx::setTransform(glm::value_ptr(model));
@@ -1404,10 +1420,11 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
   glm::mat4 model = glm::translate(glm::mat4(1.0f), f.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(-f.angle.z), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, glm::radians(-f.angle.z + 45.0f), glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(f.scale));
 
   glm::vec3 tLight = sampleTerrainLight(f.position);
+  m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (auto &mb : m_fishMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
     bgfx::setTransform(glm::value_ptr(model));
@@ -1452,6 +1469,7 @@ void BoidManager::renderRat(const Fish &r, const glm::mat4 &view,
   model = glm::scale(model, glm::vec3(r.scale));
 
   glm::vec3 tLight = sampleTerrainLight(r.position);
+  m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
   for (auto &mb : m_ratMeshes) {
     if (mb.indexCount == 0 || mb.hidden) continue;
     bgfx::setTransform(glm::value_ptr(model));
@@ -1486,8 +1504,6 @@ void BoidManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   if (m_mapId == 0) {
     for (int i = 0; i < MAX_BOIDS; ++i)
       renderBoid(m_boids[i], view, proj, camPos);
-    for (int i = 0; i < MAX_FISHS; ++i)
-      renderFish(m_fishs[i], view, proj, camPos);
   } else if (m_mapId == 1) {
     for (int i = 0; i < MAX_BATS; ++i)
       renderBat(m_bats[i], view, proj, camPos);
@@ -1597,85 +1613,7 @@ void BoidManager::RenderShadows(const glm::mat4 &view, const glm::mat4 &proj) {
     }
   }
 
-  // Fish shadows (similar but using fish mesh)
-  if (m_fishBmd && bgfx::isValid(m_fishShadow.vbo)) {
-    for (int i = 0; i < MAX_FISHS; ++i) {
-      const Fish &f = m_fishs[i];
-      if (!f.live || f.alpha <= 0.001f)
-        continue;
-
-      auto bones = ComputeBoneMatricesInterpolated(m_fishBmd.get(), f.action,
-                                                    f.animFrame);
-
-      glm::mat4 model = glm::translate(glm::mat4(1.0f), f.position);
-      model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
-      model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-      model = glm::scale(model, glm::vec3(f.scale));
-
-      float facingRad = glm::radians(f.angle.z + 90.0f);
-      float cosF = std::cos(facingRad);
-      float sinF = std::sin(facingRad);
-
-      static std::vector<glm::vec3> shadowVerts;
-      shadowVerts.clear();
-      for (auto &mesh : m_fishBmd->Meshes) {
-        for (int ti = 0; ti < mesh.NumTriangles; ++ti) {
-          auto &tri = mesh.Triangles[ti];
-          for (int v = 0; v < 3; ++v) {
-            auto &sv = mesh.Vertices[tri.VertexIndex[v]];
-            glm::vec3 pos = sv.Position;
-            int bi = sv.Node;
-            if (bi >= 0 && bi < (int)bones.size())
-              pos = MuMath::TransformPoint((const float(*)[4])bones[bi].data(), pos);
-            pos *= f.scale;
-            float rx = pos.x * cosF - pos.y * sinF;
-            float ry = pos.x * sinF + pos.y * cosF;
-            pos.x = rx;
-            pos.y = ry;
-            if (pos.z < sy) {
-              float factor = 1.0f / (pos.z - sy);
-              pos.x += pos.z * (pos.x + sx) * factor;
-              pos.y += pos.z * (pos.y + sx) * factor;
-            }
-            pos.z = 5.0f;
-            shadowVerts.push_back(pos);
-          }
-          if (tri.Polygon == 4) {
-            int qi[3] = {0, 2, 3};
-            for (int v : qi) {
-              auto &sv = mesh.Vertices[tri.VertexIndex[v]];
-              glm::vec3 pos = sv.Position;
-              int bi = sv.Node;
-              if (bi >= 0 && bi < (int)bones.size())
-                pos = MuMath::TransformPoint((const float(*)[4])bones[bi].data(), pos);
-              pos *= f.scale;
-              float rx = pos.x * cosF - pos.y * sinF;
-              float ry = pos.x * sinF + pos.y * cosF;
-              pos.x = rx;
-              pos.y = ry;
-              if (pos.z < sy) {
-                float factor = 1.0f / (pos.z - sy);
-                pos.x += pos.z * (pos.x + sx) * factor;
-                pos.y += pos.z * (pos.y + sx) * factor;
-              }
-              pos.z = 5.0f;
-              shadowVerts.push_back(pos);
-            }
-          }
-        }
-      }
-
-      if (!shadowVerts.empty()) {
-        bgfx::update(m_fishShadow.vbo, 0,
-                      bgfx::copy(shadowVerts.data(), shadowVerts.size() * sizeof(glm::vec3)));
-        bgfx::setTransform(glm::value_ptr(model));
-        bgfx::setVertexBuffer(0, m_fishShadow.vbo, 0, (uint32_t)shadowVerts.size());
-        bgfx::setState(shadowState);
-        bgfx::setStencil(shadowStencil);
-        bgfx::submit(0, m_shadowShader->program);
-      }
-    }
-  }
+  // Fish shadows disabled (fish removed)
 
 }
 

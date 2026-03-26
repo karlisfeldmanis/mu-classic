@@ -53,6 +53,13 @@ enum class ParticleType {
   SET_WATERFALL, // Rising energy column particles (full set +10+)
   // Elf buff aura — orbiting particles around character (Main 5.2: MODEL_SPEARSKILL joints)
   BUFF_AURA,
+  // Dungeon trap VFX (Main 5.2/MuSven: BodyLight for world objects 39/40/51)
+  TRAP_LIGHTNING,  // MuSven: BITMAP_LIGHTNING+1 — rotating cross sprite (lightning2.OZJ)
+  TRAP_GLOW,       // MuSven: BITMAP_LIGHT — steady glow point (flare01.OZJ)
+  TRAP_SHINY,      // MuSven: BITMAP_SHINY — sparkle particle (Shiny01.OZJ)
+  // Lost Tower monster ambient auras (Main 5.2: per-bone sprite effects)
+  MONSTER_SHINY,   // Main 5.2: BITMAP_SHINY+1 (Shiny02.OZJ) — Shadow white glow aura
+  MONSTER_MAGIC,   // Main 5.2: BITMAP_MAGIC+1 (Magic_Ground2.OZJ) — Poison Shadow green aura
 };
 
 class VFXManager {
@@ -105,9 +112,17 @@ public:
   // Single vertical sky bolt for Lightning spell impact (lighter than Cometfall's twin bolts)
   void SpawnLightningImpactBolt(const glm::vec3 &targetPos);
 
+  // Spawn a single particle with explicit rotation and scale (for trap cross sprites)
+  void SpawnTrapSprite(ParticleType type, const glm::vec3 &position,
+                       const glm::vec3 &color, float rotation, float scale);
+
   // Main 5.2: Meteorite — single fireball falling from sky at target
   void SpawnMeteorStrike(const glm::vec3 &targetPos);
   void SpawnIceStrike(const glm::vec3 &targetPos);
+
+  // Main 5.2/MuSven: MODEL_MAGIC2 — PowerWave ground wave at caster position
+  // Stationary 3D model with UV scroll + brightness fade + smoke particles
+  void SpawnPowerWave(const glm::vec3 &casterPos, float facing);
 
   // Main 5.2: MODEL_POISON — spawn green cloud at target position
   void SpawnPoisonCloud(const glm::vec3 &targetPos);
@@ -508,10 +523,24 @@ private:
     glm::vec3 position;
     glm::vec3 velocity;  // Random outward direction (decays 10%/tick)
     float gravity;       // 200-575 units/sec upward (8-23 per tick), decreases by 75/sec
-    float angleX;        // Tumble rotation
+    float angleX;        // Tumble rotation (X axis)
+    float angleZ;        // Tumble rotation (Z axis) — Main 5.2: Angle[2] random init
     float scale;         // 0.8-1.1 (Main 5.2: rand()%4/10 + 0.8)
     float lifetime;      // 1.28-1.88s (32-47 ticks)
     float smokeTimer;
+  };
+
+  // Main 5.2/MuSven: MODEL_MAGIC2 — PowerWave traveling ground wave
+  // Direction(0,-60,0) rotated by facing = travels forward at 1500 u/s
+  // LifeTime=20, BlendMeshLight=LifeTime*0.1 (fades), UV scroll=-LifeTime*0.2
+  struct PowerWave {
+    glm::vec3 position;
+    glm::vec3 velocity;   // Main 5.2: Direction(0,-60,0) rotated by facing
+    float facing;         // Rotation in radians
+    float lifetime;       // Remaining time (seconds)
+    float maxLifetime;    // 0.8s (20 ticks @ 25fps)
+    float tickTimer;      // Accumulator for tick-rate effects
+    float smokeTimer;     // Accumulator for smoke particle spawning
   };
 
   // Main 5.2: EarthQuake01-08.bmd — ground crack decals for Rageful Blow (Fury Strike)
@@ -644,6 +673,7 @@ private:
   std::vector<DeathStabShock> m_deathStabShocks;
   std::vector<DeathStabArc> m_deathStabArcs;
   std::vector<DeathStabSpiral> m_deathStabSpirals;
+  std::vector<PowerWave> m_powerWaves;
 
   // Per-frame hero bone world positions (for bone-attached particles)
   std::vector<glm::vec3> m_heroBoneWorldPositions;
@@ -685,6 +715,9 @@ private:
   TexHandle m_motionBlurTexture = kInvalidTex;   // Main 5.2: BITMAP_BLUR+2 (Effect/motion_blur_r.OZJ) — skill
   TexHandle m_spark2Texture = kInvalidTex;       // Main 5.2: BITMAP_SPARK (Effect/Spark02.OZJ) — hit sparks
   TexHandle m_flareForceTexture = kInvalidTex;   // Main 5.2: BITMAP_FLARE_FORCE (Effect/NSkill.OZJ) — Death Stab spiral
+  TexHandle m_lightning2Texture = kInvalidTex;   // MuSven: BITMAP_LIGHTNING+1 (Effect/lightning2.OZJ) — trap cross sprite
+  TexHandle m_shinyTexture = kInvalidTex;        // MuSven: BITMAP_SHINY (Effect/Shiny01.OZJ) — trap sparkle
+  TexHandle m_shiny2Texture = kInvalidTex;       // Main 5.2: BITMAP_SHINY+1 (Effect/Shiny02.OZJ) — Shadow aura
 
   std::unique_ptr<Shader> m_shader;
   std::unique_ptr<Shader> m_lineShader;
@@ -727,6 +760,10 @@ private:
   // Evil Spirit beam head flash (Main 5.2: MODEL_LASER = Data/Skill/Laser01.bmd)
   std::unique_ptr<BMDData> m_laserBmd;
   std::vector<MeshBuffers> m_laserMeshes;
+
+  // PowerWave (Main 5.2: MODEL_MAGIC2 = Data/Skill/Magic02.bmd)
+  std::unique_ptr<BMDData> m_magic2Bmd;
+  std::vector<MeshBuffers> m_magic2Meshes;
 
   // Rageful Blow: EarthQuake01-08.bmd (Main 5.2: MODEL_SKILL_FURY_STRIKE+1..+8)
   // Indexed 1-8, slot 0 unused. Types 6 reuses 4's meshes.
@@ -809,6 +846,8 @@ private:
   void updateDeathStabSpirals(float dt);
   void renderDeathStabShocks(const glm::mat4 &view, const glm::mat4 &projection);
   void renderDeathStabSpirals(const glm::mat4 &view, const glm::mat4 &projection);
+  void updatePowerWaves(float dt);
+  void renderPowerWaves(const glm::mat4 &view, const glm::mat4 &projection);
 };
 
 #endif // VFX_MANAGER_HPP

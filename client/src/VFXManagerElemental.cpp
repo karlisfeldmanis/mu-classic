@@ -217,8 +217,8 @@ void VFXManager::renderMeteorBolts(const glm::mat4 &view,
     }
 
     float alpha = std::min(1.0f, m.lifetime / m.maxLifetime * 4.0f);
-    float blendLight = (float)(rand() % 4 + 4) * 0.1f;
-    m_modelShader->setVec4("u_params", glm::vec4(alpha, blendLight, 0, 0));
+    // Main 5.2: BlendMeshLight = 1.0 (default init, not modified for SubType 0)
+    m_modelShader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0, 0));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), m.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
@@ -255,8 +255,30 @@ void VFXManager::SpawnIceStrike(const glm::vec3 &targetPos) {
   crystal.smokeTimer = 0.0f;
   m_iceCrystals.push_back(crystal);
 
-  // Main 5.2 spawns 5x MODEL_ICE_SMALL debris shards here
-  // Disabled for now — focus on the ice crystal block only
+  // Main 5.2: 5x MODEL_ICE_SMALL debris shards with bouncing physics
+  for (int i = 0; i < 5; ++i) {
+    IceShard shard;
+    shard.position = targetPos + glm::vec3(0, 50.0f, 0);
+    // Random outward velocity (Main 5.2: Direction = random horizontal spread)
+    float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
+    float speed = (float)(rand() % 20 + 10); // 10-30 units/tick → scale to per-sec
+    shard.velocity = glm::vec3(std::cos(angle) * speed * 25.0f,
+                               0.0f,
+                               std::sin(angle) * speed * 25.0f);
+    // Main 5.2: Gravity = rand()%16+8 (upward initial, decreases by 3/tick)
+    shard.gravity = (float)(rand() % 16 + 8) * 25.0f; // Convert to per-second
+    shard.angleX = (float)(rand() % 360) * 3.14159f / 180.0f;
+    shard.angleZ = (float)(rand() % 360) * 3.14159f / 180.0f; // Main 5.2: Angle[2]
+    // Main 5.2: Scale = (rand()%4+8)*0.1 = 0.8-1.1, reduced for subtler debris
+    shard.scale = (float)(rand() % 3 + 2) * 0.05f; // 0.10-0.20
+    // Main 5.2: LifeTime = rand()%16+32 = 32-47 ticks = 1.28-1.88s
+    shard.lifetime = (float)(rand() % 16 + 32) / 25.0f;
+    shard.smokeTimer = 0.0f;
+    m_iceShards.push_back(shard);
+  }
+
+  // Initial impact particles
+  SpawnBurst(ParticleType::SPELL_ICE, targetPos + glm::vec3(0, 30, 0), 8);
 }
 
 void VFXManager::updateIceCrystals(float dt) {
@@ -303,8 +325,9 @@ void VFXManager::updateIceShards(float dt) {
     s.gravity -= 75.0f * dt; // 3/tick * 25tps = 75/sec
     s.position.y += s.gravity * dt;
 
-    // Main 5.2: Tumble rotation (Angle[0] -= Scale * 32 in air)
+    // Main 5.2: Tumble rotation (Angle[0] -= Scale * 32, Angle[2] spins too)
     s.angleX -= s.scale * 800.0f * dt; // 32 * 25fps
+    s.angleZ += s.scale * 400.0f * dt; // Z-axis spin
 
     // Terrain collision — bounce
     float groundH = m_getTerrainHeight
@@ -318,13 +341,16 @@ void VFXManager::updateIceShards(float dt) {
       s.lifetime -= 4.0f / 25.0f; // 4 ticks = 0.16s
       // Main 5.2: Angle[0] -= Scale * 128 (faster tumble on bounce)
       s.angleX -= s.scale * 128.0f;
+      s.angleZ += s.scale * 64.0f;
     }
 
-    // Main 5.2: ~10% chance per tick to spawn BITMAP_SMOKE (white)
+    // Main 5.2: ~10% chance per tick (rand()%10==0) to spawn BITMAP_SMOKE
     s.smokeTimer += dt;
-    if (s.smokeTimer >= 0.4f) { // ~every 10 ticks
-      s.smokeTimer -= 0.4f;
-      SpawnBurst(ParticleType::SMOKE, s.position, 1);
+    while (s.smokeTimer >= 0.04f) { // tick rate
+      s.smokeTimer -= 0.04f;
+      if (rand() % 10 == 0) {
+        SpawnBurst(ParticleType::SMOKE, s.position, 1);
+      }
     }
   }
   m_iceShards.erase(
@@ -381,17 +407,18 @@ void VFXManager::renderIceShards(const glm::mat4 &view,
   m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
   m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
   m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
-  // Normal alpha blend for solid ice debris
-  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
-                 | BGFX_STATE_DEPTH_TEST_LESS
-                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+  // Main 5.2: BlendMesh=0 → EnableAlphaBlend() (additive), BlendMeshLight=0.3
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_ADD;
   for (const auto &s : m_iceShards) {
     float alpha = std::min(1.0f, s.lifetime * 2.0f);
-    m_modelShader->setVec4("u_params", glm::vec4(alpha, 1.0f, 0, 0));
+    // Main 5.2: BlendMeshLight = 0.3 (additive glow)
+    m_modelShader->setVec4("u_params", glm::vec4(alpha, 0.5f, 0, 0));
     glm::mat4 model = glm::translate(glm::mat4(1.0f), s.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
     model = glm::rotate(model, s.angleX, glm::vec3(1, 0, 0));
+    model = glm::rotate(model, s.angleZ, glm::vec3(0, 0, 1));
     model = glm::scale(model, glm::vec3(s.scale));
     for (const auto &mb : m_iceSmallMeshes) {
       if (mb.indexCount == 0 || mb.hidden) continue;
@@ -806,6 +833,129 @@ void VFXManager::renderTwisterStorms(const glm::mat4 &view,
         state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
               | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
       }
+      bgfx::setTransform(glm::value_ptr(model));
+      m_modelShader->setTexture(0, "s_texColor", mb.texture);
+      bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      bgfx::setState(state);
+      bgfx::submit(0, m_modelShader->program);
+    }
+  }
+  m_modelShader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+}
+
+// ============================================================
+// PowerWave (Skill 11 / MODEL_MAGIC2) — Main 5.2/MuSven ground wave
+// ============================================================
+
+void VFXManager::SpawnPowerWave(const glm::vec3 &casterPos, float facing) {
+  PowerWave pw;
+  pw.position = casterPos;
+  // Main 5.2: Direction(0,-60,0) rotated by character's facing angle
+  // 60 units/tick * 25fps = 1500 units/sec forward travel speed
+  float speed = 60.0f * 25.0f; // 1500 units/sec
+  pw.velocity = glm::vec3(std::sin(facing) * speed, 0.0f,
+                           std::cos(facing) * speed);
+  pw.facing = facing;
+  pw.maxLifetime = 0.8f;  // 20 ticks @ 25fps
+  pw.lifetime = pw.maxLifetime;
+  pw.tickTimer = 0.0f;
+  pw.smokeTimer = 0.0f;
+  m_powerWaves.push_back(pw);
+
+  // Initial burst particles
+  SpawnBurst(ParticleType::SPELL_ENERGY, casterPos + glm::vec3(0, 20, 0), 5);
+}
+
+void VFXManager::updatePowerWaves(float dt) {
+  for (int i = (int)m_powerWaves.size() - 1; i >= 0; --i) {
+    auto &pw = m_powerWaves[i];
+    pw.lifetime -= dt;
+    if (pw.lifetime <= 0.0f) {
+      m_powerWaves[i] = m_powerWaves.back();
+      m_powerWaves.pop_back();
+      continue;
+    }
+
+    // Main 5.2: Position += Direction each tick — wave travels forward
+    pw.position += pw.velocity * dt;
+    // Snap to terrain height so wave follows ground contour
+    if (m_getTerrainHeight) {
+      pw.position.y = m_getTerrainHeight(pw.position.x, pw.position.z);
+    }
+
+    // Main 5.2: 4x BITMAP_SMOKE SubType 3 unconditionally per tick at wave center
+    pw.tickTimer += dt;
+    while (pw.tickTimer >= 0.04f) {
+      pw.tickTimer -= 0.04f;
+      for (int s = 0; s < 4; ++s) {
+        Particle smoke;
+        smoke.type = ParticleType::SMOKE;
+        smoke.position = pw.position + glm::vec3(
+            (float)(rand() % 40 - 20), (float)(rand() % 20 + 5),
+            (float)(rand() % 40 - 20));
+        smoke.velocity = glm::vec3(
+            (float)(rand() % 10 - 5) * 0.5f,
+            (float)(rand() % 20 + 20) * 1.5f,
+            (float)(rand() % 10 - 5) * 0.5f);
+        smoke.scale = (float)(rand() % 32 + 80) * 0.15f;
+        smoke.rotation = (float)(rand() % 360) * 3.14159f / 180.0f;
+        smoke.frame = -1.0f;
+        smoke.lifetime = 0.4f;
+        smoke.maxLifetime = 0.4f;
+        // Main 5.2: Light = (Luminosity*0.3, Luminosity*0.6, Luminosity) — blue-dominant
+        float L = pw.lifetime / pw.maxLifetime;
+        smoke.color = glm::vec3(L * 0.3f, L * 0.6f, L);
+        smoke.alpha = 0.6f;
+        m_particles.push_back(smoke);
+      }
+    }
+  }
+}
+
+void VFXManager::renderPowerWaves(const glm::mat4 &view,
+                                   const glm::mat4 &projection) {
+  if (m_powerWaves.empty() || m_magic2Meshes.empty() || !m_modelShader) return;
+  glm::mat4 invView = glm::inverse(view);
+  m_modelShader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+  m_modelShader->setVec4("u_lightCount", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_fogParams", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_glowColor", glm::vec4(0.0f));
+  m_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 1));
+  m_modelShader->setVec4("u_viewPos", glm::vec4(glm::vec3(invView[3]), 0));
+  m_modelShader->setVec4("u_lightPos", glm::vec4(0, 5000, 0, 0));
+  m_modelShader->setVec4("u_lightColor", glm::vec4(1, 1, 1, 0));
+  m_modelShader->setVec4("u_terrainLight", glm::vec4(1, 1, 1, 0));
+
+  for (const auto &pw : m_powerWaves) {
+    // Main 5.2: BlendMeshLight = LifeTime * 0.1 (starts at 2.0, fades to 0)
+    float ticksRemaining = pw.lifetime / 0.04f;
+    float blendMeshLight = ticksRemaining * 0.1f; // Uncapped — bright at start
+    // Main 5.2: BlendMeshTexCoordU = -LifeTime * 0.2 (UV scroll animation)
+    float uvScrollU = -ticksRemaining * 0.2f;
+    // Soft alpha: fade in quickly, fade out smoothly for transparency
+    float lifeFrac = pw.lifetime / pw.maxLifetime;
+    float alpha = std::min(0.7f, lifeFrac * 2.0f); // Max 0.7 — semi-transparent
+
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), pw.position);
+    // Standard BMD coordinate transform
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    // Face the wave toward the caster's facing direction
+    model = glm::rotate(model, pw.facing, glm::vec3(0, 0, 1));
+    // Rotate 90° so model length axis aligns with travel direction
+    model = glm::rotate(model, glm::radians(90.0f), glm::vec3(0, 1, 0));
+    // Main 5.2: default effect Scale = 0.9f
+    model = glm::scale(model, glm::vec3(0.9f));
+
+    for (const auto &mb : m_magic2Meshes) {
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      m_modelShader->setVec4("u_params", glm::vec4(alpha, blendMeshLight, 0, 0));
+      m_modelShader->setVec4("u_texCoordOffset", glm::vec4(uvScrollU, 0, 0, 0));
+      // SRC_ALPHA blend for semi-transparency (softer than pure additive)
+      uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                     | BGFX_STATE_DEPTH_TEST_LESS
+                     | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
       bgfx::setTransform(glm::value_ptr(model));
       m_modelShader->setTexture(0, "s_texColor", mb.texture);
       bgfx::setVertexBuffer(0, mb.vbo);

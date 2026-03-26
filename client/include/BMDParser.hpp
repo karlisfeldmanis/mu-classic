@@ -17,7 +17,8 @@ struct BMDData {
 
 class BMDParser {
 public:
-  static std::unique_ptr<BMDData> Parse(const std::string &path);
+  static std::unique_ptr<BMDData> Parse(const std::string &path,
+                                         bool quiet = false);
 
 private:
   static void Decrypt(uint8_t *dst, const uint8_t *src, size_t size);

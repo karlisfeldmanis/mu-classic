@@ -33,6 +33,7 @@ struct InputContext {
   bool *showCharInfo;
   bool *showInventory;
   bool *showSkillWindow;
+  bool *showMapWindow;
   int *hoveredNpc;
   int *hoveredMonster;
   int *hoveredGroundItem;

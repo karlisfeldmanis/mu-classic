@@ -440,8 +440,11 @@ int HeroCharacter::nextAttackAction() {
   case 4:                        // Bow / Crossbow
     return (m_weaponInfo.itemIndex >= 8) ? ACTION_ATTACK_CROSSBOW
                                          : ACTION_ATTACK_BOW;
-  case 5: // Staff — use fist attack for melee (magic is separate)
-    return ACTION_ATTACK_FIST;
+  case 5: // Staff — use matching sword/two-hand attack anim based on handedness
+    if (twoH) {
+      return ACTION_ATTACK_TWO_HAND_SWORD1 + (sc % 3);
+    }
+    return (sc % 2 == 0) ? ACTION_ATTACK_SWORD_R1 : ACTION_ATTACK_SWORD_R2;
   default:
     return ACTION_ATTACK_SWORD_R1;
   }
@@ -602,6 +605,9 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     // Main 5.2: Flash animation slowdown during gathering phase (frames 1.0-3.0)
     // PlaySpeed /= 2 creates dramatic wind-up before beam release
     if (m_activeSkillId == 12 && m_animFrame >= 1.0f && m_animFrame < 3.0f)
+      speed *= 0.5f;
+    // Main 5.2: eDeBuff_Freeze — 50% animation speed when frozen
+    if (m_frozen)
       speed *= 0.5f;
 
     // Idle animations use ping-pong (forward-backward) to eliminate loop seam
@@ -934,6 +940,9 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     glm::vec3 finalTint = hasTint ? partTint : glm::vec3(1.0f);
     if (m_poisoned)
       finalTint *= glm::vec3(0.3f, 1.0f, 0.5f);
+    // Freeze blue tint (Main 5.2: eDeBuff_Freeze BodyLight 0.3, 0.5, 1.0)
+    if (m_frozen)
+      finalTint *= glm::vec3(0.3f, 0.5f, 1.0f);
 
     for (auto &mb : m_parts[p].meshBuffers) {
       if (mb.indexCount == 0 || mb.hidden) continue;
@@ -952,12 +961,27 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
   }
 
-  // ── +7/+9/+11 armor glow passes (Main 5.2 RENDER_CHROME|RENDER_BRIGHT) ──
+  // ── +7/+9/+11/+13 armor glow passes (ChromeGlow module) ──
   // Main 5.2 ZzzObject.cpp RenderPartObjectEffect (line 10197-10264):
   // +7:  1 pass  = CHROME+BRIGHT (Chrome01.OZJ)
   // +9:  2 passes = CHROME+BRIGHT + METAL+BRIGHT (Chrome01 + Shiny01)
   // +11: 3 passes = CHROME2+BRIGHT + METAL+BRIGHT + CHROME+BRIGHT
-  // ── +7/+9/+11/+13 armor glow passes (ChromeGlow module) ──
+  // Glow-pass uniform helper: disables shadow sampling for additive overlay
+  auto setGlowUniforms = [&](float chromeMode, float chromeTime,
+                             const glm::vec3 &glowColor) {
+    m_shader->setVec4("u_params", glm::vec4(1.0f, 1.0f, chromeMode, chromeTime));
+    m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+    m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+    m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_glowColor", glm::vec4(glowColor, 0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    m_shader->setVec4("u_fogParams", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    m_shader->setVec4("u_fogColor", glm::vec4(0.0f));
+    m_shader->setVec4("u_shadowParams", glm::vec4(0.0f)); // No shadow on glow
+  };
   {
     bool anyGlow = false;
     for (int p = 0; p < PART_COUNT; ++p) {
@@ -972,7 +996,7 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         for (int gp = 0; gp < n; ++gp) {
           for (auto &mb : m_parts[p].meshBuffers) {
             if (mb.indexCount == 0 || mb.hidden) continue;
-            setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+            setGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
             bgfx::setTransform(glm::value_ptr(model));
             if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
             else bgfx::setVertexBuffer(0, mb.vbo);
@@ -984,6 +1008,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         }
       }
     }
+    // Reset uniforms after glow passes to prevent leaking into subsequent renderers
+    setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
   }
 
   // Draw weapon (if equipped)
@@ -1003,14 +1029,15 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       MuMath::IsCrossbow(m_weaponInfo.category, m_weaponInfo.itemIndex);
 
   int combatBone = isCrossbowWep ? BONE_R_HAND : wCat.attachBone;
-  int attachBone = (m_inSafeZone && BONE_BACK < (int)bones.size())
+  bool weaponOnBack = m_inSafeZone || isMountRiding();
+  int attachBone = (weaponOnBack && BONE_BACK < (int)bones.size())
                        ? BONE_BACK
                        : combatBone;
   if (m_weaponBmd && !m_weaponMeshBuffers.empty() &&
       attachBone < (int)bones.size()) {
 
     BoneWorldMatrix weaponOffsetMat;
-    if (m_inSafeZone) {
+    if (weaponOnBack) {
       // SafeZone back carry (bone 47) — shared offsets with char select
       glm::vec3 backRot, backOff;
       MuMath::GetWeaponBackOffsets(m_weaponInfo.category, m_weaponInfo.itemIndex,
@@ -1068,39 +1095,6 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       if (mb.indexCount == 0)
         continue;
 
-      std::vector<ViewerVertex> verts;
-      verts.reserve(mesh.NumTriangles * 3);
-      for (int ti = 0; ti < mesh.NumTriangles; ++ti) {
-        auto &tri = mesh.Triangles[ti];
-        for (int v = 0; v < 3; ++v) {
-          ViewerVertex vv;
-          auto &srcVert = mesh.Vertices[tri.VertexIndex[v]];
-          glm::vec3 srcPos = srcVert.Position;
-          glm::vec3 srcNorm = (tri.NormalIndex[v] < mesh.NumNormals)
-                                  ? mesh.Normals[tri.NormalIndex[v]].Normal
-                                  : glm::vec3(0, 0, 1);
-
-          int boneIdx = srcVert.Node;
-          if (boneIdx >= 0 && boneIdx < (int)wFinalBones.size()) {
-            vv.pos = MuMath::TransformPoint(
-                (const float(*)[4])wFinalBones[boneIdx].data(), srcPos);
-            vv.normal = MuMath::RotateVector(
-                (const float(*)[4])wFinalBones[boneIdx].data(), srcNorm);
-          } else {
-            vv.pos = MuMath::TransformPoint((const float(*)[4])parentMat.data(),
-                                            srcPos);
-            vv.normal = MuMath::RotateVector(
-                (const float(*)[4])parentMat.data(), srcNorm);
-          }
-          vv.tex =
-              (tri.TexCoordIndex[v] < mesh.NumTexCoords)
-                  ? glm::vec2(mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordU,
-                              mesh.TexCoords[tri.TexCoordIndex[v]].TexCoordV)
-                  : glm::vec2(0);
-          verts.push_back(vv);
-        }
-      }
-
       // Upload re-skinned vertices to GPU
       RetransformMeshWithBones(mesh, wFinalBones, mb);
 
@@ -1133,7 +1127,7 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
           auto &mb2 = m_weaponMeshBuffers[mi2];
           if (mb2.indexCount == 0) continue;
           if (m_weaponBlendMesh >= 0 && mi2 == m_weaponBlendMesh) continue;
-          setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+          setGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
           bgfx::setTransform(glm::value_ptr(model));
           if (mb2.isDynamic) bgfx::setVertexBuffer(0, mb2.dynVbo);
           else bgfx::setVertexBuffer(0, mb2.vbo);
@@ -1143,6 +1137,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
           bgfx::submit(0, m_shader->program);
         }
       }
+      // Reset uniforms after weapon glow passes
+      setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
     }
 
   }
@@ -1222,7 +1218,7 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         for (int gp = 0; gp < n; ++gp) {
           for (auto &mb : m_shieldMeshBuffers) {
             if (mb.indexCount == 0) continue;
-            setHeroUniforms(1.0f, (float)passes[gp].chromeMode, t, passes[gp].color);
+            setGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
             bgfx::setTransform(glm::value_ptr(model));
             if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
             else bgfx::setVertexBuffer(0, mb.vbo);
@@ -1232,6 +1228,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
             bgfx::submit(0, m_shader->program);
           }
         }
+        // Reset uniforms after shield glow passes
+        setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
       }
     } else {
       // Quiver: plain render, no tinting/glow
@@ -1886,9 +1884,15 @@ void HeroCharacter::ProcessMovement(float deltaTime) {
     m_targetFacing = atan2f(dir.z, -dir.x);
     m_facing = smoothFacing(m_facing, m_targetFacing, deltaTime);
 
-    // Main 5.2 CharacterMoveSpeed: Uniria/Dinorant = 15/tick = same as run speed.
-    // Mounts don't give a speed bonus — they force run state and allow flying.
+    // Mount speed bonus: Uniria +20%, Dinorant +25%
     float speed = m_speed;
+    if (isMountRiding()) {
+      if (m_mountEquippedIndex == 3) speed *= 1.25f;      // Dinorant
+      else if (m_mountEquippedIndex == 2) speed *= 1.20f;  // Uniria
+    }
+    // Main 5.2: eDeBuff_Freeze — 50% movement speed when frozen
+    if (m_frozen)
+      speed *= 0.5f;
     glm::vec3 step = dir * speed * deltaTime;
     glm::vec3 newPos = m_pos + step;
 
@@ -2521,14 +2525,6 @@ void HeroCharacter::AttackMonster(int monsterIndex,
     // Weapon-type-specific attack animation (Main 5.2 SwordCount cycle)
     int act = nextAttackAction();
     SetAction(act);
-    // Debug: log bow attack start for stuck-animation diagnostics
-    if (m_weaponInfo.category == 4) {
-      int nk = (act >= 0 && act < (int)m_skeleton->Actions.size())
-                   ? m_skeleton->Actions[act].NumAnimationKeys : 1;
-      std::cout << "[Hero] Bow SWINGING: action=" << act << " numKeys=" << nk
-                << " atkSpd=" << attackSpeedMultiplier()
-                << " target=" << m_attackTargetMonster << std::endl;
-    }
     // Main 5.2: weapon-type-specific swing sound (ZzzCharacter.cpp:1199-1204)
     if (HasWeapon()) {
       if (m_weaponInfo.category == 4) {
@@ -2659,10 +2655,15 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
           switch (m_activeSkillId) {
           case 17: // Energy Ball
           case 4:  // Fire Ball
-          case 11: // Power Wave
             m_vfxManager->SpawnSpellProjectile(m_activeSkillId, m_pos,
                                                m_attackTargetPos);
             break;
+          case 11: { // Power Wave — MODEL_MAGIC2 ground wave
+            float pwFacing = std::atan2(m_attackTargetPos.x - m_pos.x,
+                                         m_attackTargetPos.z - m_pos.z);
+            m_vfxManager->SpawnPowerWave(m_pos, pwFacing);
+            break;
+          }
           case 1: // Poison — Main 5.2: MODEL_POISON cloud + 10 smoke at target
             m_vfxManager->SpawnPoisonCloud(m_attackTargetPos);
             break;
@@ -3051,9 +3052,14 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
       switch (skillId) {
       case 17: // Energy Ball: traveling BITMAP_ENERGY projectile
       case 4:  // Fire Ball: traveling MODEL_FIRE projectile
-      case 11: // Power Wave: traveling ground-wave projectile
         m_vfxManager->SpawnSpellProjectile(skillId, m_pos, monsterPos);
         break;
+      case 11: { // Power Wave — MODEL_MAGIC2 ground wave toward target
+        float pwFacing = std::atan2(monsterPos.x - m_pos.x,
+                                     monsterPos.z - m_pos.z);
+        m_vfxManager->SpawnPowerWave(m_pos, pwFacing);
+        break;
+      }
       case 1: // Poison — Main 5.2: MODEL_POISON cloud + 10 smoke at target
         m_vfxManager->SpawnPoisonCloud(monsterPos);
         break;

@@ -51,7 +51,7 @@ struct CharacterData {
   uint64_t experience = 0;
   uint16_t levelUpPoints = 0;
   int8_t skillBar[10];
-  int16_t potionBar[3];
+  int16_t potionBar[4];
   int8_t rmcSkillId = -1;
   int16_t summonType = -1; // -1 = no active summon
   uint16_t cameraZoom = 8000; // Zoom * 10 (default 800.0)

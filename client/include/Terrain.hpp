@@ -91,6 +91,10 @@ private:
   bgfx::IndexBufferHandle voidEbo = BGFX_INVALID_HANDLE;
   size_t voidIndexCount = 0;
 
+  // Dark ground plane extending beyond map edges
+  bgfx::VertexBufferHandle groundVbo = BGFX_INVALID_HANDLE;
+  bgfx::IndexBufferHandle groundEbo = BGFX_INVALID_HANDLE;
+
   // Shadow map state
   bgfx::TextureHandle m_shadowMapTex = BGFX_INVALID_HANDLE;
   glm::mat4 m_lightMtx{1.0f};

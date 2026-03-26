@@ -39,6 +39,8 @@ struct InventoryUIContext {
   bool *showInventory;
   bool *showSkillWindow;
   bool *showQuestLog;
+  bool *showMapWindow;
+  int *currentMapId;
   std::vector<uint8_t> *learnedSkills;
   int16_t *potionBar; // [4]
   int8_t *skillBar;   // [10]
@@ -58,10 +60,13 @@ struct InventoryUIContext {
   int *serverAG; // AG for DK (separate from mana)
   int64_t *serverXP;
 
-  // Teleport trigger (T button)
+  // Teleport / warp cast
   bool *teleportingToTown;
   float *teleportTimer;
   float teleportCastTime;
+  int *warpTargetMapId;   // Target for map warp (-1 = town recall)
+  int *warpTargetGX;
+  int *warpTargetGZ;
   float learnSkillDuration;
 
   // Mount toggle (M key)
@@ -97,6 +102,7 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c);
 void RenderInventoryPanel(ImDrawList *dl, const UICoords &c);
 void RenderShopPanel(ImDrawList *dl, const UICoords &c);
 void RenderSkillPanel(ImDrawList *dl, const UICoords &c);
+void RenderMapPanel(ImDrawList *dl, const UICoords &c);
 void RenderRmcSlot(ImDrawList *dl, float screenX, float screenY, float size);
 void RenderQuickbar(ImDrawList *dl, const UICoords &c);
 void RenderSkillDragCursor(ImDrawList *dl);
@@ -138,6 +144,7 @@ float GetCharInfoPanelX();
 float GetInventoryPanelX();
 float GetShopPanelX();
 bool IsPointInPanel(float vx, float vy, float panelX);
+bool IsCharInfoPointInPanel(float vx, float vy);
 
 // Skill queries
 int GetSkillResourceCost(uint8_t skillId);

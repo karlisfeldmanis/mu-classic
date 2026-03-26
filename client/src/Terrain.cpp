@@ -37,6 +37,8 @@ void Terrain::Cleanup() {
   if (bgfx::isValid(ebo))  { bgfx::destroy(ebo);  ebo = BGFX_INVALID_HANDLE; }
   if (bgfx::isValid(voidVbo)) { bgfx::destroy(voidVbo); voidVbo = BGFX_INVALID_HANDLE; }
   if (bgfx::isValid(voidEbo)) { bgfx::destroy(voidEbo); voidEbo = BGFX_INVALID_HANDLE; }
+  if (bgfx::isValid(groundVbo)) { bgfx::destroy(groundVbo); groundVbo = BGFX_INVALID_HANDLE; }
+  if (bgfx::isValid(groundEbo)) { bgfx::destroy(groundEbo); groundEbo = BGFX_INVALID_HANDLE; }
   voidIndexCount = 0;
   TexDestroy(tileTextureArray);
   TexDestroy(layer1InfoMap);
@@ -437,6 +439,23 @@ void Terrain::Render(const glm::mat4 &view, const glm::mat4 &projection,
   bgfx::setIndexBuffer(ebo);
   bgfx::submit(0, shader->program);
 
+  // Dark ground plane behind terrain edges (Lorencia only — other maps use
+  // clear color + void gradient which this plane would obscure)
+  if (worldID == 0 && bgfx::isValid(groundVbo)) {
+    shader->setVec4("u_terrainParams",
+                    glm::vec4(time, (float)debugMode, m_luminosity, 2.0f)); // w=2: flat dark
+    shader->setVec4("u_fogParams",
+                    glm::vec4(m_fogNear, m_fogFar, m_fogHeightBase, m_fogHeightFade));
+    shader->setVec3("u_fogColor", m_fogColor);
+    shader->setVec3("u_viewPos", viewPos);
+    shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+    bgfx::setTransform(glm::value_ptr(model));
+    bgfx::setState(state);
+    bgfx::setVertexBuffer(0, groundVbo);
+    bgfx::setIndexBuffer(groundEbo);
+    bgfx::submit(0, shader->program);
+  }
+
   // Void mesh: cliff walls — no backface culling, vertex color gradient
   if (voidIndexCount > 0 && bgfx::isValid(voidVbo)) {
     // Re-set all uniforms/textures for this draw call (BGFX requires per-submit)
@@ -578,6 +597,36 @@ void Terrain::setupMesh(const std::vector<float> &heightmap,
   ebo = bgfx::createIndexBuffer(iMem, BGFX_BUFFER_INDEX32);
 
   voidIndexCount = 0;
+
+  // Dark ground plane extending beyond map edges.
+  // Large flat quad at low Y so the camera always sees dark ground, not void.
+  {
+    if (bgfx::isValid(groundVbo)) { bgfx::destroy(groundVbo); groundVbo = BGFX_INVALID_HANDLE; }
+    if (bgfx::isValid(groundEbo)) { bgfx::destroy(groundEbo); groundEbo = BGFX_INVALID_HANDLE; }
+
+    const float PAD = 5000.0f; // extend 5000 units beyond map in each direction
+    const float MAP = 25600.0f;
+    // Find minimum edge height to place the plane just below terrain
+    float minH = 9999.0f;
+    for (int e = 0; e < size; e++) {
+      minH = std::min(minH, heightmap[e]);                     // top row
+      minH = std::min(minH, heightmap[(size-1)*size + e]);     // bottom row
+      minH = std::min(minH, heightmap[e * size]);              // left col
+      minH = std::min(minH, heightmap[e * size + (size-1)]);   // right col
+    }
+    float planeY = minH - 20.0f;
+
+    glm::vec3 dark(0.02f, 0.02f, 0.02f);
+    Vertex gv[4] = {
+      {{-PAD,   planeY, -PAD},   {0,0}, dark},
+      {{MAP+PAD,planeY, -PAD},   {1,0}, dark},
+      {{MAP+PAD,planeY, MAP+PAD},{1,1}, dark},
+      {{-PAD,   planeY, MAP+PAD},{0,1}, dark},
+    };
+    uint32_t gi[6] = {0,1,2, 0,2,3};
+    groundVbo = bgfx::createVertexBuffer(bgfx::copy(gv, sizeof(gv)), s_terrainLayout);
+    groundEbo = bgfx::createIndexBuffer(bgfx::copy(gi, sizeof(gi)), BGFX_BUFFER_INDEX32);
+  }
 }
 
 void Terrain::setupTextures(const TerrainData &data,
@@ -938,6 +987,24 @@ void Terrain::applyDynamicLights() {
         m_workingLightRGBA[idx * 4 + 1] += color.g * lf;
         m_workingLightRGBA[idx * 4 + 2] += color.b * lf;
         // alpha stays 1.0
+      }
+    }
+  }
+
+  // Fade map-edge cells to black so point light circles aren't visible
+  // at the camera boundary. Lorencia only — other maps have void gradients
+  // at edges that this would destroy.
+  if (worldID == 0) {
+    const int EDGE_FADE = 8;
+    for (int y = 0; y < S; y++) {
+      for (int x = 0; x < S; x++) {
+        int edgeDist = std::min({x, y, S - 1 - x, S - 1 - y});
+        if (edgeDist >= EDGE_FADE) continue;
+        float t = (float)edgeDist / (float)EDGE_FADE; // 0=edge, 1=interior
+        int idx = y * S + x;
+        m_workingLightRGBA[idx * 4 + 0] *= t;
+        m_workingLightRGBA[idx * 4 + 1] *= t;
+        m_workingLightRGBA[idx * 4 + 2] *= t;
       }
     }
   }

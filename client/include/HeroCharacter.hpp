@@ -305,6 +305,7 @@ public:
   void SetLuminosity(float l) { m_luminosity = l; }
   void SetMapId(int mapId) { m_mapId = mapId; }
   void SetPoisoned(bool p) { m_poisoned = p; }
+  void SetFrozen(bool f) { m_frozen = f; }
 
   // Elf buff aura state (Main 5.2: eBuff_Defense / eBuff_Attack)
   void SetBuffDefense(bool active) { m_buffDefenseActive = active; }
@@ -703,6 +704,7 @@ private:
   float m_luminosity = 1.0f;
   int m_mapId = 0;
   bool m_poisoned = false; // Green tint when poisoned by monster
+  bool m_frozen = false;   // Blue tint + 50% speed when frozen by ice monster
 
   // Elf buff aura VFX state (Main 5.2: eBuff_Defense / eBuff_Attack)
   bool m_buffDefenseActive = false;

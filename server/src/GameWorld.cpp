@@ -36,7 +36,7 @@ static const MonsterTypeDef s_monsterDefs[] = {
     {9, "Thunder Lich", 2000, 70, 55, 140, 145, 220, 44, 2.2f, 0.4f, 3, 7, 4, true, 10.0f},
     {10, "Dark Knight", 3000, 80, 70, 150, 155, 240, 48, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},
     {11, "Ghost", 1000, 40, 39, 110, 115, 160, 32, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},
-    {12, "Larva", 750, 31, 31, 90, 95, 125, 25, 1.8f, 0.4f, 3, 4, 1, true, 10.0f},
+    {12, "Larva", 750, 31, 31, 90, 95, 125, 25, 1.8f, 0.4f, 3, 4, 1, true, 20.0f},
     {13, "Hell Spider", 1600, 60, 47, 130, 135, 200, 40, 1.6f, 0.4f, 3, 7, 4, true, 10.0f},
     {17, "Cyclops", 850, 35, 35, 100, 105, 140, 28, 1.6f, 0.4f, 3, 4, 1, true, 10.0f},
     {18, "Gorgon", 6000, 100, 82, 165, 175, 275, 55, 1.6f, 0.4f, 3, 7, 1, true, 10.0f},
@@ -57,11 +57,15 @@ static const MonsterTypeDef s_monsterDefs[] = {
     {31, "Agon", 340, 16, 16, 51, 57, 74, 16, 1.4f, 0.4f, 2, 4, 1, true, 10.0f},
     {32, "Stone Golem", 465, 20, 20, 62, 68, 86, 18, 2.2f, 0.4f, 2, 3, 2, true, 10.0f},
     {33, "Elite Goblin", 120, 8, 8, 19, 23, 33, 8, 1.6f, 0.4f, 3, 5, 1, true, 10.0f},
-    // --- Dungeon traps (OpenMU Version075, immobile, invulnerable) ---
-    // moveDelay=999 (never moves), moveRange=0, aggressive=false (trigger-based)
-    {100, "Lance Trap", 1000, 0, 500, 100, 110, 400, 80, 1.0f, 999.0f, 0, 4, 4, false, 3.0f},
-    {101, "Iron Stick Trap", 1000, 0, 500, 110, 130, 400, 80, 1.0f, 999.0f, 0, 1, 0, false, 3.0f},
-    {102, "Fire Trap", 1000, 0, 500, 130, 150, 400, 80, 1.0f, 999.0f, 0, 1, 2, false, 3.0f},
+    // --- Lost Tower monsters (OpenMU Version075 LostTower.cs) ---
+    {34, "Cursed Wizard", 4000, 95, 80, 160, 170, 270, 54, 2.0f, 0.4f, 3, 7, 4, true, 10.0f},
+    {35, "Death Gorgon", 6000, 130, 94, 200, 210, 320, 64, 2.0f, 0.4f, 3, 7, 1, true, 10.0f},
+    {36, "Shadow", 2800, 78, 67, 148, 153, 235, 47, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},
+    {37, "Devil", 5000, 115, 88, 180, 195, 300, 60, 2.0f, 0.4f, 3, 7, 4, true, 10.0f},
+    {38, "Balrog", 9000, 160, 99, 220, 240, 330, 66, 1.6f, 0.4f, 3, 7, 2, true, 150.0f},
+    {39, "Poison Shadow", 3500, 85, 73, 155, 160, 250, 50, 1.4f, 0.4f, 3, 5, 1, true, 10.0f},
+    {40, "Death Knight", 5500, 120, 91, 190, 200, 310, 62, 1.8f, 0.4f, 3, 7, 1, true, 10.0f},
+    {41, "Death Cow", 4500, 110, 85, 170, 180, 285, 57, 1.6f, 0.4f, 3, 7, 1, true, 10.0f},
     // --- Summon-only monsters (Elf summoning skills) ---
     {150, "Bali", 5000, 100, 75, 165, 170, 260, 52, 1.6f, 0.20f, 3, 7, 1, false, 10.0f},
 };
@@ -484,6 +488,27 @@ void GameWorld::LoadMonstersFromDB(Database &db, uint8_t mapId) {
          m_monsterInstances.empty() ? 0 : m_monsterInstances.back().index);
 }
 
+// ─── Line-of-sight check (Bresenham) ─────────────────────────────────────────
+// Returns true if no wall cells (TW_NOMOVE | TW_NOGROUND) block the line
+// between two grid positions. Used for ranged attack validation.
+static bool hasLineOfSight(int x0, int y0, int x1, int y1,
+                           const std::vector<uint8_t> &attrs, int gridSize) {
+  if (attrs.empty()) return true;
+  int dx = std::abs(x1 - x0), dy = std::abs(y1 - y0);
+  int sx = (x0 < x1) ? 1 : -1;
+  int sy = (y0 < y1) ? 1 : -1;
+  int err = dx - dy;
+  int cx = x0, cy = y0;
+  while (cx != x1 || cy != y1) {
+    int e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; cx += sx; }
+    if (e2 < dx)  { err += dx; cy += sy; }
+    if (cx < 0 || cy < 0 || cx >= gridSize || cy >= gridSize) return false;
+    if (attrs[cy * gridSize + cx] & 0x0C) return false; // Wall blocks LOS
+  }
+  return true;
+}
+
 // ─── Line-of-sight walkability check (Bresenham) ─────────────────────────────
 // Returns a direct path of grid cells from (x0,y0) to (x1,y1) if every cell
 // along the line is walkable. Returns empty vector if any cell is blocked.
@@ -778,9 +803,14 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
                                                target->gridX, target->gridY);
 
   // In attack range → APPROACHING (brief delay for client walk anim to finish)
-  if (distToTarget <= mon.attackRange &&
+  // Ranged monsters must also have line-of-sight (no walls blocking)
+  bool inRange = distToTarget <= mon.attackRange &&
       (mon.attackRange > 1 ||
-       WorldDistSq(mon, *target) <= MELEE_ATTACK_DIST_SQ)) {
+       WorldDistSq(mon, *target) <= MELEE_ATTACK_DIST_SQ);
+  bool losOk = (mon.attackRange <= 1) || // Melee doesn't need LOS check
+               hasLineOfSight(mon.gridX, mon.gridY, target->gridX, target->gridY,
+                              m_terrainAttributes, TERRAIN_SIZE);
+  if (inRange && losOk) {
     mon.aiState = MonsterInstance::AIState::APPROACHING;
     mon.approachTimer = 0.0f;
     mon.staggerDelay = calculateStaggerDelay(mon.aggroTargetFd);
@@ -788,9 +818,10 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
     return;
   }
 
-  // Already in attack range? Don't re-path — the check above will handle it
-  // (only for ranged monsters where attackRange > 1; melee needs to keep pathing)
-  if (mon.attackRange > 1 && distToTarget <= mon.attackRange) {
+  // Already in attack range with LOS? Don't re-path — the check above will
+  // handle transition to APPROACHING on next tick. Without LOS, keep pathing
+  // around the wall to find a clear shot.
+  if (mon.attackRange > 1 && distToTarget <= mon.attackRange && losOk) {
     mon.chaseFailCount = 0;
     mon.currentPath.clear();
     mon.pathStep = 0;
@@ -967,13 +998,14 @@ void GameWorld::processApproaching(MonsterInstance &mon, float dt,
     return;
   }
 
-  // Target moved out of range → resume chasing (with +1 tolerance)
-  // Use larger world-distance tolerance (2.5x) to prevent chase/attack
-  // oscillation when a player moves slightly during approach delay.
+  // Target moved out of range or lost LOS → resume chasing
   int dist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY, target->gridX,
                                        target->gridY);
   int rechaseRange = mon.attackRange + 1;
-  if (dist > rechaseRange ||
+  bool losBlocked = (mon.attackRange > 1) &&
+      !hasLineOfSight(mon.gridX, mon.gridY, target->gridX, target->gridY,
+                      m_terrainAttributes, TERRAIN_SIZE);
+  if (dist > rechaseRange || losBlocked ||
       (mon.attackRange <= 1 && dist > 1 && WorldDistSq(mon, *target) > MELEE_ATTACK_DIST_SQ * 2.5f)) {
     mon.aiState = MonsterInstance::AIState::CHASING;
     mon.currentPath.clear();
@@ -1017,14 +1049,15 @@ void GameWorld::processAttacking(MonsterInstance &mon, float dt,
     return;
   }
 
-  // Out of attack range → resume chasing (with +1 tolerance to prevent
-  // constant re-chase when player shifts 1 cell — reduces jostling)
-  // Skip world-distance check for Chebyshev dist <= 1 (truly adjacent) to
-  // prevent oscillation when player position updates lag slightly.
+  // Out of attack range or lost line-of-sight → resume chasing
+  // (+1 tolerance to prevent constant re-chase when player shifts 1 cell)
   int dist = PathFinder::ChebyshevDist(mon.gridX, mon.gridY, target->gridX,
                                        target->gridY);
   int rechaseRange = mon.attackRange + 1;
-  if (dist > rechaseRange ||
+  bool losBlocked = (mon.attackRange > 1) &&
+      !hasLineOfSight(mon.gridX, mon.gridY, target->gridX, target->gridY,
+                      m_terrainAttributes, TERRAIN_SIZE);
+  if (dist > rechaseRange || losBlocked ||
       (mon.attackRange <= 1 && dist > 1 && WorldDistSq(mon, *target) > MELEE_ATTACK_DIST_SQ * 2.5f)) {
     mon.aiState = MonsterInstance::AIState::CHASING;
     mon.currentPath.clear();
@@ -1229,6 +1262,7 @@ void GameWorld::Update(float dt,
         mon.attackCooldown = 1.5f;
         mon.chaseFailCount = 0;
         mon.poisoned = false;
+        mon.freezeTimer = 0.0f;
         mon.evading = false;
         mon.playerThreat = 0.0f;
         mon.summonThreat = 0.0f;
@@ -1346,12 +1380,6 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
       continue;
     }
 
-    // Traps: immobile, damage players who step on/near
-    if (mon.type >= 100 && mon.type <= 102) {
-      processTrapAI(mon, dt, players, attacks);
-      continue;
-    }
-
     // Tick respawn immunity timer toward 0 (negative = immune)
     if (mon.aggroTimer < 0.0f) {
       mon.aggroTimer += dt;
@@ -1413,6 +1441,14 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
       continue; // Skip AI state machine while stunned
     }
 
+    // Main 5.2: eDeBuff_Freeze — pause movement while frozen
+    if (mon.freezeTimer > 0.0f) {
+      mon.freezeTimer -= 0.75f * dt;
+      if (mon.freezeTimer < 0.0f)
+        mon.freezeTimer = 0.0f;
+      continue; // Skip AI state machine while frozen
+    }
+
     // Summon-targeting: if this monster has aggro on a summon, handle it
     if (mon.aggroSummonIdx > 0) {
       MonsterInstance *summon = nullptr;
@@ -1458,103 +1494,6 @@ GameWorld::ProcessMonsterAI(float dt, std::vector<PlayerTarget> &players,
     }
   }
   return attacks;
-}
-
-// ─── Trap AI (immobile, damages players who step on/near) ────────────────────
-
-void GameWorld::processTrapAI(MonsterInstance &mon, float dt,
-                              std::vector<PlayerTarget> &players,
-                              std::vector<MonsterAttackResult> &attacks) {
-  // Tick cooldown
-  if (mon.attackCooldown > 0.0f)
-    mon.attackCooldown -= dt;
-
-  if (mon.attackCooldown > 0.0f || players.empty())
-    return;
-
-  // Fire Trap (102): two-step — requires someone standing ON it to activate,
-  // then AoE hits everyone in facing direction within attackRange (OpenMU pattern)
-  if (mon.type == 102) {
-    bool activated = false;
-    for (auto &p : players) {
-      if (p.dead) continue;
-      if (IsSafeZone(p.worldX, p.worldZ)) continue;
-      int pGridX = (int)(p.worldZ / 100.0f);
-      int pGridZ = (int)(p.worldX / 100.0f);
-      if (pGridX == mon.gridX && pGridZ == mon.gridY) {
-        activated = true;
-        break;
-      }
-    }
-    if (!activated) return;
-
-    // Activated — hit all players in range
-    for (auto &p : players) {
-      if (p.dead) continue;
-      if (IsSafeZone(p.worldX, p.worldZ)) continue;
-      int pGridX = (int)(p.worldZ / 100.0f);
-      int pGridZ = (int)(p.worldX / 100.0f);
-      int dx = pGridX - mon.gridX;
-      int dz = pGridZ - mon.gridY;
-      int dist = std::max(std::abs(dx), std::abs(dz));
-      if (dist > mon.attackRange) continue;
-
-      int dmgRange = mon.attackMax - mon.attackMin;
-      int dmg = mon.attackMin + (dmgRange > 0 ? (rand() % (dmgRange + 1)) : 0);
-      int defReduction = p.defense / 10;
-      dmg = std::max(1, dmg - defReduction);
-
-      MonsterAttackResult result;
-      result.targetFd = p.fd;
-      result.monsterIndex = mon.index;
-      result.damage = (uint16_t)dmg;
-      result.damageType = 1;
-      result.remainingHp = 0;
-      attacks.push_back(result);
-    }
-    mon.attackCooldown = mon.atkCooldownTime;
-    return;
-  }
-
-  // Lance Trap (100): AttackSingleWhenPressedTrapIntelligence, attackRange=4
-  // Detects and hits a single player within 4 grid cells (OpenMU Version075)
-  // Iron Stick Trap (101): exact grid cell only (attackRange=0, viewRange=1)
-  for (auto &p : players) {
-    if (p.dead)
-      continue;
-
-    int pGridZ = (int)(p.worldX / 100.0f);
-    int pGridX = (int)(p.worldZ / 100.0f);
-
-    if (IsSafeZone(p.worldX, p.worldZ))
-      continue;
-
-    int dx = std::abs(pGridX - mon.gridX);
-    int dz = std::abs(pGridZ - mon.gridY);
-    int dist = std::max(dx, dz); // Chebyshev distance
-
-    bool inRange = (mon.type == 100)
-                       ? (dist <= mon.attackRange) // Lance: range 4
-                       : (dist == 0);              // Iron Stick: exact tile
-
-    if (inRange) {
-      int dmgRange = mon.attackMax - mon.attackMin;
-      int dmg = mon.attackMin + (dmgRange > 0 ? (rand() % (dmgRange + 1)) : 0);
-      int defReduction = p.defense / 10;
-      dmg = std::max(1, dmg - defReduction);
-
-      MonsterAttackResult result;
-      result.targetFd = p.fd;
-      result.monsterIndex = mon.index;
-      result.damage = (uint16_t)dmg;
-      result.damageType = 1;
-      result.remainingHp = 0;
-      attacks.push_back(result);
-
-      mon.attackCooldown = mon.atkCooldownTime;
-      break; // Single target per activation
-    }
-  }
 }
 
 // ─── Summon AI (follows owner, attacks nearby wild monsters) ─────────────────

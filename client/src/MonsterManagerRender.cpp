@@ -33,7 +33,8 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
   // BGFX: fog params for per-submit uniforms
   glm::vec4 fogParams, fogColor;
-  if (m_mapId == 1) {
+  if (m_mapId == 1 || m_mapId == 4) {
+    // Dungeon + Lost Tower: black fog, short range (indoor)
     fogColor = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
     fogParams = glm::vec4(800.0f, 2500.0f, 1.0f, 0.0f);
   } else {
@@ -157,6 +158,10 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
           animSpeed *= CHASE_SPEED / refMoveSpeed;
         }
       }
+
+      // Main 5.2: eDeBuff_Freeze — 50% animation speed when frozen
+      if (mon.frozenTimer > 0.0f)
+        animSpeed *= 0.5f;
 
       mon.animFrame += animSpeed * deltaTime;
 
@@ -302,33 +307,9 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
       // Lich (type 6) / Thunder Lich (type 9): no fire VFX
 
-      // Gorgon (type 18): ambient fire from random bones + red terrain glow
-      // Main 5.2: 10 fire particles per tick from random bones, red light (1,0.2,0)
-      if (mon.monsterType == 18 && mon.ambientVfxTimer >= 0.08f) {
-        int numBones = (int)bones.size();
-        if (numBones > 1) {
-          glm::mat4 modelRot = glm::mat4(1.0f);
-          modelRot =
-              glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
-          modelRot =
-              glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
-
-          for (int i = 0; i < 3; ++i) {
-            int boneIdx = rand() % numBones;
-            const auto &bm = bones[boneIdx];
-            glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
-            glm::vec3 scatter((float)(rand() % 20 - 10),
-                              (float)(rand() % 20 - 10),
-                              (float)(rand() % 20 - 10));
-            glm::vec3 worldPos =
-                glm::vec3(modelRot * glm::vec4(boneLocal + scatter, 1.0f));
-            glm::vec3 firePos = worldPos * mon.scale + mon.position;
-            m_vfxManager->SpawnBurst(ParticleType::FIRE, firePos, 1);
-          }
-          mon.ambientVfxTimer = 0.0f;
-        }
-      }
+      // Gorgon (type 18): NO fire aura — only BlendMeshLight flicker (handled in render)
+      // Main 5.2: fire aura is Death Gorgon only (Level==2, our type 35)
+      // Death Gorgon fire is handled below in the Lost Tower VFX section
 
       // Ambient smoke: Hound (1), Budge Dragon (2), Hell Hound (5),
       // Dark Knight (10), Larva (12)
@@ -365,50 +346,87 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
           mon.ambientVfxTimer = 0.0f;
         }
       }
-      // ── Dungeon trap VFX (Main 5.2 GMAida.cpp: RenderAidaMonsterVisual) ──
-      // Bone→world helper: transform bone-local position to world position
-      auto boneToWorld = [&](int boneIdx, glm::vec3 localOff = glm::vec3(0)) {
-        if (boneIdx < 0 || boneIdx >= (int)bones.size())
-          return mon.position;
-        const auto &bm = bones[boneIdx];
-        glm::vec3 worldOff(bm[0][0] * localOff.x + bm[0][1] * localOff.y +
-                               bm[0][2] * localOff.z,
-                           bm[1][0] * localOff.x + bm[1][1] * localOff.y +
-                               bm[1][2] * localOff.z,
-                           bm[2][0] * localOff.x + bm[2][1] * localOff.y +
-                               bm[2][2] * localOff.z);
-        glm::vec3 bonePos(bm[0][3], bm[1][3], bm[2][3]);
-        glm::mat4 mrot(1.0f);
-        mrot = glm::rotate(mrot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
-        mrot = glm::rotate(mrot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-        mrot = glm::rotate(mrot, mon.facing, glm::vec3(0, 0, 1));
-        glm::vec3 wp =
-            glm::vec3(mrot * glm::vec4(bonePos + worldOff, 1.0f));
-        return wp * mon.scale + mon.position;
-      };
+      // ── Lost Tower monster VFX (Main 5.2 RenderCharacter / MoveCharacterVisual) ──
 
-      // Trap idle VFX — Main 5.2 reference: Lance Trap has BITMAP_LIGHTNING+1
-      // on bones 57,61-65, BITMAP_SPARK from bone 58.  Fire Trap has ambient fire.
-      // We approximate with periodic spark/flame particles at the trap center.
-      if (m_vfxManager && (mon.monsterType == 100 || mon.monsterType == 102)) {
-        float vfxInterval = (mon.monsterType == 100) ? 0.4f : 0.25f;
-        if (mon.ambientVfxTimer >= vfxInterval) {
-          mon.ambientVfxTimer = 0.0f;
-          if (mon.monsterType == 100) {
-            // Lance Trap: electrical sparks crackling above mechanism
-            glm::vec3 sparkPos = mon.position +
-                glm::vec3((float)(rand() % 40 - 20), 60.0f + (float)(rand() % 40),
-                          (float)(rand() % 40 - 20));
-            m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, sparkPos, 1);
-          } else {
-            // Fire Trap: small ambient flame
-            glm::vec3 flamePos = mon.position +
-                glm::vec3((float)(rand() % 20 - 10), 20.0f + (float)(rand() % 20),
-                          (float)(rand() % 20 - 10));
-            m_vfxManager->SpawnBurst(ParticleType::FIRE, flamePos, 1);
+      // Death Gorgon (type 35, Level==2): full-body fire aura + red terrain glow
+      // Main 5.2: 10 fire particles per tick at random bones, light (L*1.0, L*0.2, L*0.0)
+      if (mon.monsterType == 35 && mon.ambientVfxTimer >= 0.08f) {
+        int numBones = (int)bones.size();
+        if (numBones > 1) {
+          glm::mat4 modelRot = glm::mat4(1.0f);
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+          for (int i = 0; i < 4; ++i) {
+            int boneIdx = rand() % numBones;
+            const auto &bm = bones[boneIdx];
+            glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+            glm::vec3 scatter((float)(rand() % 20 - 10), (float)(rand() % 20 - 10),
+                              (float)(rand() % 20 - 10));
+            glm::vec3 worldPos = glm::vec3(modelRot * glm::vec4(boneLocal + scatter, 1.0f));
+            glm::vec3 firePos = worldPos * mon.scale + mon.position;
+            m_vfxManager->SpawnBurst(ParticleType::FIRE, firePos, 1);
           }
+          mon.ambientVfxTimer = 0.0f;
         }
       }
+
+      // Shadow (type 36) + Poison Shadow (type 39): per-bone aura sprites
+      // Main 5.2 ZzzCharacter.cpp:10919 — MODEL_MONSTER01+28 (both share same BMD)
+      // c->Level==0 → Shadow: CreateSprite(BITMAP_SHINY+1, 2.5f, white, SubType=1 subtractive)
+      // c->Level==1 → Poison Shadow: CreateSprite(BITMAP_MAGIC+1, 0.8f, green, SubType=0 additive)
+      // ALL non-dummy bones except 15-20, 27-32 — every frame (25fps = 0.04s tick)
+      // Attack-time: 25% chance per bone spawns CreateParticle(BITMAP_ENERGY)
+      if ((mon.monsterType == 36 || mon.monsterType == 39) && mon.ambientVfxTimer >= 0.04f) {
+        int numBones = (int)bones.size();
+        if (numBones > 1) {
+          glm::mat4 modelRot = glm::mat4(1.0f);
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+          bool isAttacking = (mon.action == ACTION_ATTACK1 || mon.action == ACTION_ATTACK2);
+          ParticleType auraType = (mon.monsterType == 36) ? ParticleType::MONSTER_SHINY
+                                                          : ParticleType::MONSTER_MAGIC;
+          glm::vec3 auraColor = (mon.monsterType == 36) ? glm::vec3(0.55f, 0.45f, 0.75f)
+                                                        : glm::vec3(0.2f, 0.7f, 0.1f);
+          for (int i = 0; i < numBones; ++i) {
+            if (mdl.bmd->Bones[i].Dummy) continue;
+            if ((i >= 15 && i <= 20) || (i >= 27 && i <= 32)) continue;
+            const auto &bm = bones[i];
+            glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+            glm::vec3 worldPos = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+            glm::vec3 pos = worldPos * mon.scale + mon.position;
+            // Small random scatter to prevent exact bone stacking (reduces shimmer)
+            pos += glm::vec3((float)(rand() % 16 - 8), (float)(rand() % 16 - 8),
+                             (float)(rand() % 16 - 8));
+            // Ambient aura sprite (every bone, every tick)
+            m_vfxManager->SpawnBurstColored(auraType, pos, auraColor, 1);
+            // Attack-time: 25% chance per bone → BITMAP_ENERGY spark (Main 5.2: CreateParticle)
+            if (isAttacking && rand() % 4 == 0) {
+              m_vfxManager->SpawnBurstColored(ParticleType::ENERGY, pos, auraColor, 1);
+            }
+          }
+          mon.ambientVfxTimer = 0.0f;
+        }
+      }
+
+      // Death Knight (type 40): fire particle at bone 2 (chest), 50% chance per tick
+      // Main 5.2 MoveCharacterVisual: if(rand()%2==0) CreateParticle(BITMAP_FIRE, bone 2)
+      if (mon.monsterType == 40 && mon.ambientVfxTimer >= 0.08f) {
+        if (2 < (int)bones.size() && rand() % 2 == 0) {
+          glm::mat4 modelRot = glm::mat4(1.0f);
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+          const auto &bm = bones[2];
+          glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+          glm::vec3 worldPos = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+          glm::vec3 firePos = worldPos * mon.scale + mon.position;
+          m_vfxManager->SpawnBurst(ParticleType::FIRE, firePos, 1);
+        }
+        mon.ambientVfxTimer = 0.0f;
+      }
+
     }
 
     // Re-skin meshes
@@ -417,6 +435,21 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
          ++mi) {
       RetransformMeshWithBones(mdl.bmd->Meshes[mi], bones,
                                mon.meshBuffers[mi]);
+    }
+    // Re-skin body part meshes (armored humanoid monsters)
+    for (int bp = 0; bp < (int)mdl.bodyParts.size() &&
+                     bp < (int)mon.bodyPartMeshes.size();
+         ++bp) {
+      auto *partBmd = mdl.bodyParts[bp];
+      auto &bpms = mon.bodyPartMeshes[bp];
+      if (!partBmd)
+        continue;
+      for (int mi = 0; mi < (int)bpms.meshBuffers.size() &&
+                        mi < (int)partBmd->Meshes.size();
+           ++mi) {
+        RetransformMeshWithBones(partBmd->Meshes[mi], bones,
+                                 bpms.meshBuffers[mi]);
+      }
     }
 
     // Build model matrix
@@ -439,6 +472,14 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       monTint = glm::vec3(0.55f, 1.0f, 0.55f);
     else if (mon.monsterType == 11) // Ghost: spectral blue tint, darken skin
       monTint = glm::vec3(0.5f, 0.6f, 0.9f);
+
+    // PVP Murderer2 red glow (Main 5.2 ZzzCharacter.cpp:13327)
+    if (mdl.isPvpGlow)
+      monTint = glm::vec3(1.0f, 0.4f, 0.4f);
+
+    // Main 5.2: eDeBuff_Freeze — blue body tint when frozen
+    if (mon.frozenTimer > 0.0f)
+      monTint = glm::vec3(0.3f, 0.5f, 1.0f);
 
     // Spawn fade-in (0->1 over ~0.4s)
     if (mon.spawnAlpha < 1.0f) {
@@ -464,17 +505,28 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     if (renderAlpha <= 0.0f)
       continue;
 
-    // BlendMesh UV scroll (Main 5.2: Lich — texCoordV scrolls over time)
-    // -(float)((int)(WorldTime)%2000)*0.0005f
+    // BlendMesh UV scroll (Main 5.2 MoveCharacterVisual per-type)
     bool hasBlendMesh = (mdl.blendMesh >= 0);
-    float blendMeshUVOffset = 0.0f;
+    glm::vec4 blendMeshUVOff(0.0f);
     if (hasBlendMesh) {
+      // Default: Lich/Ghost UV-V scroll (2-sec cycle)
       int wt = (int)(m_worldTime * 1000.0f) % 2000;
-      blendMeshUVOffset = -(float)wt * 0.0005f;
+      blendMeshUVOff.y = -(float)wt * 0.0005f;
     }
-    // Ghost/Gorgon BlendMeshLight flicker (Main 5.2: (float)(rand()%10)*0.1f)
+    // Per-type UV scroll overrides (Main 5.2 MoveCharacterVisual)
+    if (mon.monsterType == 38) {
+      // Balrog: BlendMeshTexCoordV fast 1-sec cycle (lava surface)
+      int wt = (int)(m_worldTime * 1000.0f) % 1000;
+      blendMeshUVOff.y = -(float)wt * 0.001f;
+    } else if (mon.monsterType == 40) {
+      // Death Knight: BlendMeshTexCoordV fast 1-sec cycle (cape flow)
+      int wt = (int)(m_worldTime * 1000.0f) % 1000;
+      blendMeshUVOff.y = -(float)wt * 0.001f;
+    }
+    // Ghost/Gorgon/DeathGorgon/DeathKnight BlendMeshLight flicker
     float blendMeshLightVal = 1.0f;
-    if (mon.monsterType == 11 || mon.monsterType == 18) {
+    if (mon.monsterType == 11 || mon.monsterType == 18 ||
+        mon.monsterType == 35 || mon.monsterType == 40) {
       // Smooth flicker instead of pure random to avoid strobing at 60fps
       float phase = m_worldTime * 3.0f + (float)mon.serverIndex * 2.1f;
       blendMeshLightVal = 0.4f + 0.5f * (0.5f + 0.5f * std::sin(phase));
@@ -492,12 +544,22 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       if (isBlendMesh) {
         // Reduce additive glow light to prevent overbright near fire sources
         glm::vec3 blendLight = tLight * 0.4f;
-        monDrawMesh(model, mb, renderAlpha, blendMeshLightVal, blendLight, additiveState, monTint);
+        monDrawMesh(model, mb, renderAlpha, blendMeshLightVal, blendLight, additiveState, monTint, blendMeshUVOff);
       } else if (mb.noneBlend) {
         monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, noneBlendState, monTint);
       } else if (mb.bright) {
         monDrawMesh(model, mb, renderAlpha, 1.0f, tLight * 0.5f, additiveState, monTint);
       } else {
+        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState, monTint);
+      }
+    }
+
+    // Draw body part meshes (armored humanoid monsters)
+    for (int bp = 0; bp < (int)mon.bodyPartMeshes.size(); ++bp) {
+      auto &bpms = mon.bodyPartMeshes[bp];
+      for (auto &mb : bpms.meshBuffers) {
+        if (mb.indexCount == 0 || mb.hidden)
+          continue;
         monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState, monTint);
       }
     }
@@ -622,8 +684,6 @@ void MonsterManager::RenderShadows(const glm::mat4 &view,
   for (auto &mon : m_monsters) {
     if (mon.cachedBones.empty()) continue;
     if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f) continue;
-    // Main 5.2: KIND_TRAP has no shadow (ZzzCharacter.cpp:8320)
-    if (mon.monsterType >= 100 && mon.monsterType <= 102) continue;
 
     auto &mdl = m_models[mon.modelIdx];
     glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
@@ -752,21 +812,27 @@ void MonsterManager::RenderDepthPrepass(const glm::mat4 &view,
 
     // Only opaque meshes (skip BlendMesh, bright/additive)
     bool hasBlendMesh = (mdl.blendMesh >= 0);
-    for (auto &mb : mon.meshBuffers) {
-      if (mb.indexCount == 0 || mb.hidden) continue;
-      if (mdl.hiddenMesh >= 0 && mb.bmdTextureId == mdl.hiddenMesh) continue;
-      if (hasBlendMesh && mb.bmdTextureId == mdl.blendMesh) continue;
-      if (mb.noneBlend || mb.bright) continue;
-
+    auto depthDrawMesh = [&](const MeshBuffers &mb) {
+      if (mb.indexCount == 0 || mb.hidden) return;
+      if (mb.noneBlend || mb.bright) return;
       bgfx::setTransform(glm::value_ptr(model));
       if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
       else bgfx::setVertexBuffer(0, mb.vbo);
       bgfx::setIndexBuffer(mb.ebo);
       m_shader->setTexture(0, "s_texColor", mb.texture);
-      // Minimal uniforms for shader alpha-test (discard)
       m_shader->setVec4("u_params", glm::vec4(1.0f, 1.0f, 0.0f, 0.0f));
       bgfx::setState(depthState);
       bgfx::submit(0, m_shader->program);
+    };
+    for (auto &mb : mon.meshBuffers) {
+      if (mdl.hiddenMesh >= 0 && mb.bmdTextureId == mdl.hiddenMesh) continue;
+      if (hasBlendMesh && mb.bmdTextureId == mdl.blendMesh) continue;
+      depthDrawMesh(mb);
+    }
+    // Body part depth (armored humanoid monsters)
+    for (auto &bpms : mon.bodyPartMeshes) {
+      for (auto &mb : bpms.meshBuffers)
+        depthDrawMesh(mb);
     }
   }
 }
@@ -780,8 +846,6 @@ void MonsterManager::RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depth
   for (auto &mon : m_monsters) {
     if (mon.cachedBones.empty()) continue;
     if (mon.state == MonsterState::DEAD && mon.corpseAlpha <= 0.01f) continue;
-    // Main 5.2: KIND_TRAP has no shadow
-    if (mon.monsterType >= 100 && mon.monsterType <= 102) continue;
 
     auto &mdl = m_models[mon.modelIdx];
     glm::mat4 model = glm::translate(glm::mat4(1.0f), mon.position);
@@ -799,6 +863,18 @@ void MonsterManager::RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depth
       bgfx::setIndexBuffer(mb.ebo);
       bgfx::setState(state);
       bgfx::submit(viewId, depthProgram);
+    }
+    // Body part meshes (armored humanoid monsters)
+    for (auto &bpms : mon.bodyPartMeshes) {
+      for (auto &mb : bpms.meshBuffers) {
+        if (mb.hidden || mb.indexCount == 0) continue;
+        bgfx::setTransform(glm::value_ptr(model));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        bgfx::setState(state);
+        bgfx::submit(viewId, depthProgram);
+      }
     }
     // Weapon meshes (skeleton/lich types)
     for (auto &wms : mon.weaponMeshes) {
@@ -841,10 +917,10 @@ void MonsterManager::RenderSilhouetteOutline(int monsterIndex,
   glm::vec4 outlineParams(0.0f);
   glm::vec4 outlineColor(0.0f);
 
-  // Helper to submit all monster meshes (body + weapons)
+  // Helper to submit all monster meshes (body + body parts + weapons)
   auto submitMonsterMeshes = [&]() {
-    for (auto &mb : mon.meshBuffers) {
-      if (mb.indexCount == 0 || mb.hidden) continue;
+    auto submitMB = [&](const MeshBuffers &mb) {
+      if (mb.indexCount == 0 || mb.hidden) return;
       bgfx::setTransform(glm::value_ptr(stencilModel));
       if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
       else bgfx::setVertexBuffer(0, mb.vbo);
@@ -854,23 +930,17 @@ void MonsterManager::RenderSilhouetteOutline(int monsterIndex,
       m_outlineShader->setVec4("u_outlineParams", outlineParams);
       m_outlineShader->setVec4("u_outlineColor", outlineColor);
       bgfx::submit(0, m_outlineShader->program);
-    }
+    };
+    for (auto &mb : mon.meshBuffers)
+      submitMB(mb);
+    for (auto &bpms : mon.bodyPartMeshes)
+      for (auto &mb : bpms.meshBuffers)
+        submitMB(mb);
     for (int wi = 0;
          wi < (int)mdl.weaponDefs.size() && wi < (int)mon.weaponMeshes.size();
-         ++wi) {
-      for (auto &mb : mon.weaponMeshes[wi].meshBuffers) {
-        if (mb.indexCount == 0) continue;
-        bgfx::setTransform(glm::value_ptr(stencilModel));
-        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
-        else bgfx::setVertexBuffer(0, mb.vbo);
-        bgfx::setIndexBuffer(mb.ebo);
-        bgfx::setStencil(stencilFront, stencilBack);
-        bgfx::setState(state);
-        m_outlineShader->setVec4("u_outlineParams", outlineParams);
-        m_outlineShader->setVec4("u_outlineColor", outlineColor);
-        bgfx::submit(0, m_outlineShader->program);
-      }
-    }
+         ++wi)
+      for (auto &mb : mon.weaponMeshes[wi].meshBuffers)
+        submitMB(mb);
   };
 
   // === Pass 1: Write monster silhouette to stencil ===
@@ -919,8 +989,8 @@ static void renderSingleNameplate(MonsterManager *mgr, ImDrawList *dl,
                                    int targetIdx, int playerLevel,
                                    bool isSummon, bool isOwnSummon) {
   MonsterInfo mi = mgr->GetMonsterInfo(targetIdx);
-  if (mi.state == MonsterState::DEAD || mi.type >= 100)
-    return; // Traps (types 100-102) don't show nameplates/HP bars
+  if (mi.state == MonsterState::DEAD)
+    return;
 
   // Project monster head position to screen
   glm::vec4 worldPos(mi.position.x, mi.position.y + mi.height + 20.0f,

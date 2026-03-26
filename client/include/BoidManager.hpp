@@ -107,6 +107,8 @@ public:
     for (auto &f : m_fishs) f.live = false;
     for (auto &r : m_rats) r.live = false;
     for (auto &l : m_leaves) l.live = false;
+    // Dungeon is enclosed — bats need to be visible close to camera
+    m_cameraFadeStart = (mapId == 1) ? 80.0f : 350.0f;
   }
 
 private:

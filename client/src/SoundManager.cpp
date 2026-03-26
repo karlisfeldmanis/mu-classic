@@ -478,6 +478,17 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_MONSTER_BALIATTACK1, sndPath + "mBaliAttack1.wav", 2, true);
   LoadSound(SOUND_MONSTER_BALIATTACK2, sndPath + "mBaliAttack2.wav", 2, true);
 
+  // Lost Tower monsters — Balrog, Devil (Satan), Death Knight
+  LoadSound(SOUND_MONSTER_BALROG1, sndPath + "mBalrog1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BALROG2, sndPath + "mBalrog2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BALROGDIE, sndPath + "mBalrogDie.wav", 2, true);
+  LoadSound(SOUND_MONSTER_SATANATTACK1, sndPath + "mSatanAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_DARKKNIGHTATTACK1, sndPath + "mDarkKnightAttack1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_DARKKNIGHTATTACK2, sndPath + "mDarkKnightAttack2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_DARKKNIGHTDIE, sndPath + "mDarkKnightDie.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BEPAR1, sndPath + "mBepar1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_BEPAR2, sndPath + "mBepar2.wav", 2, true);
+
   // Bow/crossbow release sounds
   LoadSound(SOUND_BOW, sndPath + "eBow.wav", 3, false);
   LoadSound(SOUND_CROSSBOW, sndPath + "eCrossbow.wav", 3, false);
