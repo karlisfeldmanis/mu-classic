@@ -913,6 +913,27 @@ static int g_loadingFrames = 0;         // Frames spent in LOADING state
 static GLFWwindow *g_window = nullptr;      // Set once in main(), used by loading helpers
 
 // ── Fullscreen toggle ──
+static int g_fullscreenToggleFrame = -999; // ImGui frame count when fullscreen was toggled
+
+// Check if UI buttons should respond (prevents double-click after fullscreen toggle)
+bool UIButtonsReady() {
+  int currentFrame = ImGui::GetFrameCount();
+  if (currentFrame <= 0) return false; // ImGui not initialized
+
+  int framesSince = currentFrame - g_fullscreenToggleFrame;
+  bool ready = framesSince > 15; // Require 15+ frames (250ms at 60fps)
+
+  // Debug: print when buttons are blocked
+  static bool lastReady = true;
+  if (!ready && lastReady) {
+    printf("[UIButtons] Blocked after fullscreen toggle (frame %d, need %d more frames)\n",
+           currentFrame, 15 - framesSince + 1);
+  }
+  lastReady = ready;
+
+  return ready;
+}
+
 static void ToggleFullscreen(GLFWwindow *win) {
   if (g_isFullscreen) {
     // Return to windowed mode
@@ -930,6 +951,18 @@ static void ToggleFullscreen(GLFWwindow *win) {
                          mode->refreshRate);
     g_isFullscreen = true;
   }
+  g_fullscreenToggleFrame = ImGui::GetFrameCount(); // Store current frame
+
+  // CRITICAL FIX: Clear ImGui's mouse button state after window mode change
+  // When user clicks Fullscreen button, ImGui thinks mouse is still "down"
+  // This prevents the next button click (Connect) from registering
+  ImGuiIO &io = ImGui::GetIO();
+  for (int i = 0; i < 5; i++) {
+    io.MouseDown[i] = false;
+    io.MouseClicked[i] = false;
+    io.MouseReleased[i] = false;
+  }
+  printf("[ToggleFullscreen] Cleared ImGui mouse state\n");
 }
 
 // ── Loading helpers (unified preloader for all loading paths) ──
@@ -2953,6 +2986,12 @@ int main(int argc, char **argv) {
       if (g_mapCfg->hasDoors)
         g_objectRenderer.UpdateDoors(heroPos, deltaTime);
 
+      // Lost Tower skull tracking (Main 5.2: ZzzEffectFireLeave.cpp:88-113)
+      if (g_currentMapId == 4) {
+        bool heroMoving = g_hero.IsMoving();
+        g_objectRenderer.UpdateSkulls(heroPos, heroMoving, deltaTime);
+      }
+
       // SafeZone detection: attribute 0x01 = TW_SAFEZONE
       uint8_t heroAttr = 0;
       if (gx >= 0 && gz >= 0 && gx < S && gz < S)
@@ -3144,7 +3183,6 @@ int main(int argc, char **argv) {
     g_objectRenderer.Render(view, projection, g_camera.GetPosition(),
                             currentFrame);
 
-
     // Main 5.2 level-up VFX: 15 BITMAP_FLARE joints in a ring
     if (g_hero.LeveledUpThisFrame()) {
       g_vfxManager.SpawnLevelUpEffect(g_hero.GetPosition());
@@ -3194,6 +3232,9 @@ int main(int argc, char **argv) {
     g_boidManager.Update(deltaTime, g_hero.GetPosition(), 0, currentFrame);
     g_fireEffect.Render(view, projection);
     g_objectRenderer.RenderLightningSprites(view, projection, currentFrame);
+    if (g_currentMapId == 4) {
+      g_objectRenderer.RenderOrbSprites(view, projection, currentFrame);
+    }
 
     // Render ambient creatures (birds/fish/bats/leaves)
     g_boidManager.RenderShadows(view, projection);
@@ -5528,6 +5569,8 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
     }
   }
 
+  if (onProgress) onProgress(0.12f, "Preparing terrain...");
+
   g_terrainDataPtr = g_terrainDataOwned.get();
 
   if (onProgress) onProgress(0.15f, "Uploading terrain...");
@@ -5538,6 +5581,8 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
   std::cout << "[LoadWorld] Map " << fileWorldId << " (" << cfg.regionName
             << "): " << g_terrainDataPtr->heightmap.size() << " height samples, "
             << g_terrainDataPtr->objects.size() << " objects" << std::endl;
+
+  if (onProgress) onProgress(0.25f, "Preparing objects...");
 
   if (onProgress) onProgress(0.30f, "Loading objects...");
 
@@ -5559,6 +5604,8 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
                                         object1_path);
   }
 
+  if (onProgress) onProgress(0.50f, "Setting up objects...");
+
   if (onProgress) onProgress(0.55f, "Loading grass...");
 
   // ── Grass + doors ──
@@ -5571,6 +5618,8 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
   if (cfg.hasDoors)
     g_objectRenderer.InitDoors();
 
+  if (onProgress) onProgress(0.65f, "Preparing lighting...");
+
   if (onProgress) onProgress(0.70f, "Setting up lighting...");
 
   // ── Register fire/smoke emitters from world objects ──
@@ -5581,7 +5630,9 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
       glm::mat3 rot;
       for (int c = 0; c < 3; c++)
         rot[c] = glm::normalize(glm::vec3(inst.modelMatrix[c]));
-      g_fireEffect.AddEmitter(worldPos + rot * off);
+      // Lost Tower FlamePillar (type 24) uses tall flames, others use regular height
+      bool tallFlames = (inst.type == 24 && mapId == 4);
+      g_fireEffect.AddEmitter(worldPos + rot * off, tallFlames);
     }
   }
   for (auto &inst : g_objectRenderer.GetInstances()) {

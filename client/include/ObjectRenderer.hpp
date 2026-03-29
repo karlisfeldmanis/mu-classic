@@ -79,6 +79,14 @@ public:
   void RenderLightningSprites(const glm::mat4 &view, const glm::mat4 &projection,
                               float currentTime);
 
+  // Lost Tower skull tracking (Main 5.2: ZzzEffectFireLeave.cpp:88-113)
+  void UpdateSkulls(const glm::vec3 &heroPos, bool heroMoving, float deltaTime);
+
+  // Lost Tower orb/column sprites (types 19/20/40)
+  // Main 5.2: ZzzObject.cpp:2928-2960 — BITMAP_LIGHTNING+1 sprites at bones
+  void RenderOrbSprites(const glm::mat4 &view, const glm::mat4 &projection,
+                        float currentTime);
+
 private:
   // Devias door state (types 20,65,88 = swinging, 86 = sliding)
   // Main 5.2: ZzzObject.cpp:3871-3913
@@ -94,6 +102,15 @@ private:
   };
   std::vector<DoorState> m_doors;
   float m_doorCooldown = 0.0f; // Suppress door sounds after map load
+
+  // Lost Tower skull tracking (type 38, 777 instances)
+  // Main 5.2: ZzzEffectFireLeave.cpp:88-113 CheckSkull()
+  struct SkullState {
+    glm::vec3 direction{0.0f};     // Drift velocity
+    glm::vec2 headAngle{0.0f};     // Rotation delta (pitch, yaw)
+    bool wasTracking = false;      // For sound trigger
+  };
+  std::unordered_map<int, SkullState> m_skullStates;  // Key = instance index
   struct ModelCache {
     std::vector<MeshBuffers> meshBuffers;
     std::vector<BoneWorldMatrix> boneMatrices;
@@ -149,6 +166,8 @@ private:
   bgfx::IndexBufferHandle m_spriteQuadEBO = BGFX_INVALID_HANDLE;
   // Bilinear sample terrain lightmap at world position
   glm::vec3 SampleTerrainLight(const glm::vec3 &worldPos) const;
+  // Bilinear sample terrain height at world position
+  float SampleTerrainHeight(float worldX, float worldZ) const;
 
   std::unique_ptr<Shader> shader;
   std::unique_ptr<Shader> skinnedShader; // GPU-skinned program (bone matrices + tree sway)

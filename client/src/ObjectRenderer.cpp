@@ -1,4 +1,5 @@
 #include "ObjectRenderer.hpp"
+#include "FrustumCulling.hpp"
 #include "SoundManager.hpp"
 #include "TextureLoader.hpp"
 #include <cmath>
@@ -369,6 +370,7 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
                                  const std::string &objectDir) {
   int skipped = 0;
 
+  // Load all objects
   for (auto &obj : objects) {
     std::string filename = GetObjectBMDFilename(obj.type);
     if (filename.empty()) {
@@ -506,6 +508,7 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
                         glm::vec3(1.0f, 0.0f, 0.0f)); // MU X rotation
     model = glm::scale(model, glm::vec3(obj.scale));
 
+
     // Sample terrain lightmap at object's world position
     glm::vec3 worldPos = glm::vec3(model[3]);
     glm::vec3 tLight = SampleTerrainLight(worldPos);
@@ -562,7 +565,7 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
       io.height = pickHeight;
       m_interactiveObjects.push_back(io);
     }
-  }
+  }  // end object loop
 
   std::cout << "[ObjectRenderer] Loaded " << instances.size()
             << " object instances, " << modelCache.size()
@@ -874,6 +877,36 @@ glm::vec3 ObjectRenderer::SampleTerrainLight(const glm::vec3 &worldPos) const {
   return left + (right - left) * xd;
 }
 
+// Bilinear interpolation of terrain height at world position
+// Used for snapping rotated grass objects to terrain
+float ObjectRenderer::SampleTerrainHeight(float worldX, float worldZ) const {
+  const int SIZE = 256;
+  if (terrainHeightmap.size() < (size_t)(SIZE * SIZE))
+    return 0.0f;
+
+  // World → grid: WorldX maps to grid Z, WorldZ maps to grid X
+  float gz = worldX / 100.0f;
+  float gx = worldZ / 100.0f;
+
+  // Clamp to valid range
+  gz = std::clamp(gz, 0.0f, (float)(SIZE - 2));
+  gx = std::clamp(gx, 0.0f, (float)(SIZE - 2));
+
+  int xi = (int)gx;
+  int zi = (int)gz;
+  float xd = gx - (float)xi;
+  float zd = gz - (float)zi;
+
+  // Bilinear interpolation of 4 corners
+  float h00 = terrainHeightmap[zi * SIZE + xi];
+  float h10 = terrainHeightmap[zi * SIZE + (xi + 1)];
+  float h01 = terrainHeightmap[(zi + 1) * SIZE + xi];
+  float h11 = terrainHeightmap[(zi + 1) * SIZE + (xi + 1)];
+
+  return h00 * (1 - xd) * (1 - zd) + h10 * xd * (1 - zd) +
+         h01 * (1 - xd) * zd + h11 * xd * zd;
+}
+
 void ObjectRenderer::SetTypeAlpha(
     const std::unordered_map<int, float> &alphaMap) {
   typeAlphaMap = alphaMap;
@@ -955,22 +988,7 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     return;
 
   // Extract frustum planes from VP matrix for culling
-  glm::mat4 vp = projection * view;
-  glm::vec4 frustum[6];
-  frustum[0] = glm::vec4(vp[0][3] + vp[0][0], vp[1][3] + vp[1][0],
-                          vp[2][3] + vp[2][0], vp[3][3] + vp[3][0]);
-  frustum[1] = glm::vec4(vp[0][3] - vp[0][0], vp[1][3] - vp[1][0],
-                          vp[2][3] - vp[2][0], vp[3][3] - vp[3][0]);
-  frustum[2] = glm::vec4(vp[0][3] + vp[0][1], vp[1][3] + vp[1][1],
-                          vp[2][3] + vp[2][1], vp[3][3] + vp[3][1]);
-  frustum[3] = glm::vec4(vp[0][3] - vp[0][1], vp[1][3] - vp[1][1],
-                          vp[2][3] - vp[2][1], vp[3][3] - vp[3][1]);
-  frustum[4] = glm::vec4(vp[0][3] + vp[0][2], vp[1][3] + vp[1][2],
-                          vp[2][3] + vp[2][2], vp[3][3] + vp[3][2]);
-  frustum[5] = glm::vec4(vp[0][3] - vp[0][2], vp[1][3] - vp[1][2],
-                          vp[2][3] - vp[2][2], vp[3][3] - vp[3][2]);
-  for (int i = 0; i < 6; ++i)
-    frustum[i] /= glm::length(glm::vec3(frustum[i]));
+  auto frustum = FrustumCulling::ExtractFrustumPlanes(projection, view);
 
   // Upload point lights
   shader->uploadPointLights(plCount, plPositions.data(), plColors.data(), plRanges.data());
@@ -1068,15 +1086,8 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     {
       glm::vec3 objPos = glm::vec3(inst.modelMatrix[3]);
       float cullRadius = 500.0f;
-      bool outside = false;
-      for (int p = 0; p < 6; ++p) {
-        if (frustum[p].x * objPos.x + frustum[p].y * objPos.y +
-                frustum[p].z * objPos.z + frustum[p].w < -cullRadius) {
-          outside = true;
-          break;
-        }
-      }
-      if (outside) continue;
+      if (!FrustumCulling::IsSphereInFrustum(frustum, objPos, cullRadius))
+        continue;
     }
 
     auto it = modelCache.find(inst.type);
@@ -1225,6 +1236,13 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           } else {
             texOffset = glm::vec2(0.0f, uvScroll);
           }
+        }
+        // Lost Tower chrome trees & orbs: U scroll on BlendMesh only
+        // Main 5.2: BlendMeshTexCoordU = -(WorldTime%1000)*0.001f
+        if (m_mapId == 4 && (inst.type == 3 || inst.type == 4 ||
+                             inst.type == 19 || inst.type == 20)) {
+          int wt = (int)(currentTime * 1000.0f) % 1000;
+          texOffset.x = -(float)wt * 0.001f;
         }
         state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
         state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
@@ -1402,6 +1420,61 @@ void ObjectRenderer::ResetDoorStates() {
   m_doorCooldown = 0.5f;
 }
 
+// ── Lost Tower skull tracking (Main 5.2: ZzzEffectFireLeave.cpp:88-113) ──
+
+void ObjectRenderer::UpdateSkulls(const glm::vec3 &heroPos, bool heroMoving,
+                                   float deltaTime) {
+  if (m_mapId != 4) return; // Lost Tower only
+
+  const float TRACK_DIST = 50.0f;
+  const float TRACK_STRENGTH = 0.4f;
+  const float DECAY = 0.6f;
+
+  for (size_t i = 0; i < instances.size(); ++i) {
+    auto &inst = instances[i];
+    if (inst.type != 38) continue;
+
+    auto &state = m_skullStates[i];
+    glm::vec3 skullPos = glm::vec3(inst.modelMatrix[3]);
+
+    float dx = heroPos.x - skullPos.x;
+    float dz = heroPos.z - skullPos.z;
+    float dist = std::sqrt(dx * dx + dz * dz);
+
+    // Activate tracking: player moving AND within range AND skull not already drifting
+    if (heroMoving && dist < TRACK_DIST && glm::length(state.direction) < 0.1f) {
+      // Main 5.2: Vector(-dx*0.4f, -dy*0.4f, 0, Direction)
+      state.direction.x = -dx * TRACK_STRENGTH;
+      state.direction.z = -dz * TRACK_STRENGTH;
+      state.headAngle.x = -dz * 4.0f;  // Pitch (MU Y → GL Z)
+      state.headAngle.y = -dx * 4.0f;  // Yaw (MU X → GL X)
+
+      if (!state.wasTracking) {
+        SoundManager::Play3D(SOUND_BONE2, skullPos.x, skullPos.y, skullPos.z);
+        state.wasTracking = true;
+      }
+    }
+
+    // Decay per frame (Main 5.2: VectorScale(Direction, 0.6, Direction))
+    state.direction *= DECAY;
+    state.headAngle *= DECAY;
+
+    // Apply drift (Main 5.2: VectorAdd(Position, Direction, Position))
+    // Note: deltaTime * 25 converts to ~25fps tick rate
+    inst.modelMatrix[3][0] += state.direction.x * deltaTime * 25.0f;
+    inst.modelMatrix[3][2] += state.direction.z * deltaTime * 25.0f;
+
+    // Rotation update: Main 5.2 adds HeadAngle to Angle each tick
+    // We'd need to track accumulated rotation in state, but for simplicity
+    // we can skip rotation since the drift + sound is the main effect
+
+    // Reset tracking flag when far away
+    if (dist >= TRACK_DIST * 1.5f)
+      state.wasTracking = false;
+  }
+}
+
+
 // ── Devias type 100: rotating lightning sprites (Main 5.2 "northern lights") ──
 
 void ObjectRenderer::RenderLightningSprites(const glm::mat4 &view,
@@ -1453,6 +1526,114 @@ void ObjectRenderer::RenderLightningSprites(const glm::mat4 &view,
   m_spriteShader->setTexture(0, "s_fireTex", m_lightningSpriteTex);
 
   // Main 5.2: pure additive blend (ONE, ONE) — alpha channel irrelevant
+  uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                 | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
+                                         BGFX_STATE_BLEND_ONE);
+  bgfx::setState(state);
+  bgfx::submit(0, m_spriteShader->program);
+}
+
+// ── Lost Tower orb sprites (Main 5.2: ZzzObject.cpp:2928-2960) ──
+
+void ObjectRenderer::RenderOrbSprites(const glm::mat4 &view,
+                                      const glm::mat4 &projection,
+                                      float currentTime) {
+  if (m_mapId != 4 || !m_spriteShader || !TexValid(m_lightningSpriteTex))
+    return;
+
+  // Main 5.2: Rotation = (WorldTime*0.1f) % 360
+  float rotDeg = std::fmod(currentTime * 36.0f, 360.0f);
+  float rotRad = glm::radians(rotDeg);
+
+  // Collect sprite positions from bone-based objects
+  struct OrbSprite {
+    glm::vec3 position;
+    float scale;
+    glm::vec3 color;
+  };
+  std::vector<OrbSprite> sprites;
+
+  for (auto &inst : instances) {
+    // Type 19 (MagicOrb), Type 20 (LightningOrb): sprites at bones 15, 19, 21
+    if (inst.type == 19 || inst.type == 20) {
+      auto it = modelCache.find(inst.type);
+      if (it == modelCache.end() || !it->second.bmdData) continue;
+
+      // Compute bone matrices (bind pose, action 0)
+      auto bones = ComputeBoneMatricesInterpolated(it->second.bmdData.get(), 0, 0.0f);
+
+      // Transform bone positions to world space
+      // Main 5.2: CreateSprite(..., &o->BoneTransform[BoneIndex], ...)
+      glm::mat4 worldMat = inst.modelMatrix;
+
+      for (int boneIdx : {15, 19, 21}) {
+        if (boneIdx >= (int)bones.size()) continue;
+
+        // Extract bone position (column 3 of bone matrix)
+        glm::vec3 boneLocal(bones[boneIdx][3][0], bones[boneIdx][3][1], bones[boneIdx][3][2]);
+        glm::vec3 boneWorld = glm::vec3(worldMat * glm::vec4(boneLocal, 1.0f));
+
+        // Main 5.2: Scale 0.03 for bones 15/19, 0.15 for bone 21
+        float scale = (boneIdx == 21) ? 15.0f : 3.0f; // 0.15 * 100, 0.03 * 100
+
+        // Color: Type 19=MagicOrb (red/orange), Type 20=LightningOrb (blue/cyan)
+        glm::vec3 color = (inst.type == 19)
+          ? glm::vec3(1.0f, 0.5f, 0.2f)   // Orange/red
+          : glm::vec3(0.5f, 0.8f, 1.0f);  // Blue/cyan
+
+        // 2 counter-rotating sprites per bone (Main 5.2: CreateSprite x2)
+        sprites.push_back({boneWorld, scale, color});
+        sprites.push_back({boneWorld, scale, color});
+      }
+    }
+
+    // Type 40 (LightningColumn): 2 sprites at position + 260 Y-offset
+    if (inst.type == 40) {
+      glm::vec3 pos = glm::vec3(inst.modelMatrix[3]);
+      pos.y += 260.0f; // Main 5.2: Vector(0,0,260,p) → our Y
+      sprites.push_back({pos, 250.0f, glm::vec3(1.0f)}); // Large white
+      sprites.push_back({pos, 250.0f, glm::vec3(1.0f)});
+    }
+  }
+
+  if (sprites.empty()) return;
+
+  // Build instance buffer
+  uint32_t count = (uint32_t)sprites.size();
+  const uint16_t stride = 48;
+
+  uint32_t avail = bgfx::getAvailInstanceDataBuffer(count, stride);
+  if (avail == 0) return;
+  count = std::min(count, avail);
+
+  bgfx::InstanceDataBuffer idb;
+  bgfx::allocInstanceDataBuffer(&idb, count, stride);
+
+  uint8_t *data = idb.data;
+  for (size_t i = 0; i < count / 2; ++i) {
+    auto &sprite = sprites[i];
+    for (int s = 0; s < 2 && (i * 2 + s) < count; ++s) {
+      float *d = (float *)data;
+      d[0] = sprite.position.x; d[1] = sprite.position.y; d[2] = sprite.position.z;
+      d[3] = sprite.scale;
+      d[4] = (s == 0) ? rotRad : -rotRad;  // Counter-rotating
+      d[5] = -1.0f;  // frame < 0 = full texture
+      d[6] = 1.0f;   // alpha
+      d[7] = 0.0f;
+      d[8] = sprite.color.x * m_luminosity;
+      d[9] = sprite.color.y * m_luminosity;
+      d[10] = sprite.color.z * m_luminosity;
+      d[11] = 0.0f;
+      data += stride;
+    }
+  }
+
+  bgfx::setVertexBuffer(0, m_spriteQuadVBO);
+  bgfx::setIndexBuffer(m_spriteQuadEBO);
+  bgfx::setInstanceDataBuffer(&idb);
+  m_spriteShader->setTexture(0, "s_fireTex", m_lightningSpriteTex);
+
   uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
                  | BGFX_STATE_DEPTH_TEST_LESS
                  | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
