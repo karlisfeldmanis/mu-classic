@@ -82,49 +82,49 @@ static int g_dragFromShopSlot =
 
 // DK skills (AG cost)
 const SkillDef g_dkSkills[] = {
-    {19, "Falling Slash", 9, 15, "Downward slash attack"},
-    {20, "Lunge", 9, 15, "Forward thrust attack"},
-    {21, "Uppercut", 8, 15, "Upward strike attack"},
-    {22, "Cyclone", 9, 18, "Spinning attack"},
-    {23, "Slash", 10, 20, "Horizontal slash"},
-    {41, "Twisting Slash", 10, 25, "AoE spinning slash"},
-    {42, "Rageful Blow", 20, 60, "Powerful ground strike"},
-    {43, "Death Stab", 12, 70, "Piercing stab attack"},
+    {19, "Falling Slash", 9, 15, "Rapidly strike down the target with an axe or mace to deal damage."},
+    {20, "Lunge", 9, 15, "Rapidly pierce the target with a sharp weapon to deal damage."},
+    {21, "Uppercut", 8, 15, "Hit the target upwards to deal damage."},
+    {22, "Cyclone", 9, 18, "Hit the target in a spinning motion to deal damage."},
+    {23, "Slash", 10, 20, "Slash the target to deal damage."},
+    {41, "Twisting Slash", 10, 25, "Swing the equipped weapon to deal damage to nearby enemies."},
+    {42, "Rageful Blow", 20, 60, "Slam your weapon down to the ground, causing an earthquake that deals damage to nearby enemies."},
+    {43, "Death Stab", 12, 70, "Create a wave of wind that deals damage to the target and enemies in the straight path."},
 };
 // NUM_DK_SKILLS defined in InventoryUI_Internal.hpp
 
 // DW spells (Mana cost) — OpenMU Version075
 const SkillDef g_dwSpells[] = {
-    {17, "Energy Ball", 1, 8, "Basic energy projectile"},
-    {4, "Fire Ball", 3, 22, "Fireball projectile"},
-    {11, "Power Wave", 5, 14, "Ground wave attack"},
-    {1, "Poison", 42, 20, "Poison magic"},
-    {3, "Lightning", 15, 30, "Lightning bolt"},
-    {2, "Meteorite", 12, 40, "Falling meteorite"},
-    {7, "Ice", 38, 35, "Ice magic"},
-    {5, "Flame", 50, 50, "Fire AoE"},
-    {8, "Twister", 60, 55, "Twisting wind AoE"},
-    {6, "Teleport", 30, 0, "Teleport to location"},
-    {9, "Evil Spirit", 90, 80, "Dark spirit AoE"},
-    {12, "Aqua Beam", 140, 90, "Water beam attack"},
-    {10, "Hellfire", 160, 100, "Massive fire AoE"},
-    {13, "Cometfall", 90, 120, "Sky-strike AoE"},
-    {14, "Inferno", 200, 150, "Ring of explosions"},
+    {17, "Energy Ball", 1, 8, "Send out a sphere of condensed energy towards the target, dealing damage."},
+    {4, "Fire Ball", 3, 22, "Hurl a fiery stone towards the target that deals damage."},
+    {11, "Power Wave", 5, 14, "Send out an electrical wave that causes damage to the target."},
+    {1, "Poison", 42, 20, "Deal poison damage to the target. Has a chance to deal additional poison damage over time."},
+    {3, "Lightning", 15, 30, "A streak of lightning which deals damage and has a chance to knockback the target."},
+    {2, "Meteorite", 12, 40, "Call down a meteor from the sky at the target causing damage."},
+    {7, "Ice", 38, 35, "Deal damage with an ice attack which also has a chance to slow the target's movement speed."},
+    {5, "Flame", 50, 50, "Create a pillar of fire on the target that deals damage to the target and nearby enemies."},
+    {8, "Twister", 60, 55, "Send out a Twister towards the target area which deals damage to multiple enemies in its path."},
+    {6, "Teleport", 30, 0, "Become stealth temporarily to move yourself to another location."},
+    {9, "Evil Spirit", 90, 80, "Release the energy of darkness to deal damage to multiple enemies near you."},
+    {12, "Aqua Beam", 140, 90, "Deal water damage to enemies in a straight line of the targeted direction."},
+    {10, "Hellfire", 160, 100, "Light the ground in flames with you as the center, dealing damage to multiple enemies."},
+    {13, "Cometfall", 90, 120, "Call down light from the sky to the selected target and enemies near it to deal damage."},
+    {14, "Inferno", 200, 150, "Embrace yourself in a ring of fire that damages nearby enemies."},
 };
 // NUM_DW_SPELLS defined in InventoryUI_Internal.hpp
 
 // Elf skills (Mana cost) — OpenMU Version075 (0.97d scope)
 const SkillDef g_elfSkills[] = {
-    {26, "Heal", 20, 0, "Heal target player"},
-    {27, "Greater Defense", 30, 0, "Buff target defense"},
-    {28, "Greater Damage", 40, 0, "Buff target damage"},
-    {30, "Summon Goblin", 40, 0, "Summon a Goblin ally"},
-    {31, "Summon Stone Golem", 70, 0, "Summon a Stone Golem"},
-    {32, "Summon Assassin", 110, 0, "Summon an Assassin"},
-    {33, "Summon Elite Yeti", 160, 0, "Summon an Elite Yeti"},
-    {34, "Summon Dark Knight", 200, 0, "Summon a Dark Knight"},
-    {35, "Summon Bali", 250, 0, "Summon the mighty Bali"},
-    {29, "Triple Shot", 0, 0, "Fires three arrows at once"},
+    {26, "Heal", 20, 0, "Heal the target's life."},
+    {27, "Greater Defense", 30, 0, "Temporarily increase the defense of the target."},
+    {28, "Greater Damage", 40, 0, "Temporarily increase the attack and magic power of the target."},
+    {30, "Summon Goblin", 40, 0, "Summon a goblin to fight by your side."},
+    {31, "Summon Stone Golem", 70, 0, "Summon a Stone Golem to fight by your side."},
+    {32, "Summon Assassin", 110, 0, "Summon an Assassin to fight by your side."},
+    {33, "Summon Elite Yeti", 160, 0, "Summon an Elite Yeti to fight by your side."},
+    {34, "Summon Dark Knight", 200, 0, "Summon a Dark Knight to fight by your side."},
+    {35, "Summon Bali", 250, 0, "Summon a Bali to fight by your side."},
+    {29, "Triple Shot", 0, 0, "Shoot a bunch of arrows in a fan shape, dealing damage to multiple enemies."},
 };
 // NUM_ELF_SKILLS defined in InventoryUI_Internal.hpp
 

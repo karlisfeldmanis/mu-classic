@@ -102,50 +102,42 @@ void main()
         sunLit *= mix(0.55, 1.0, shadow);
     }
 
-    // Point lights
+    // Specular setup
+    vec3 viewDir = normalize(u_viewPos.xyz - v_fragpos);
+    float roughness = 0.18;
+    float a2 = roughness * roughness;
+
+    // Point lights (diffuse + specular in single pass)
     vec3 pointLit = vec3_splat(0.0);
+    float pointSpec = 0.0;
     for (int i = 0; i < numLights; ++i) {
         vec3 toLightVec = u_lightPosRange[i].xyz - v_fragpos;
         float dist = length(toLightVec);
         float range = u_lightPosRange[i].w;
         float atten = max(1.0 - dist / range, 0.0);
         atten *= atten; // Quadratic falloff
-        vec3 lDir = normalize(toLightVec);
+        vec3 lDir = toLightVec / max(dist, 0.001); // normalize without redundant length()
         float d = max(abs(dot(norm, lDir)), 0.25);
         pointLit += d * atten * u_lightColorArr[i].xyz;
+        // GGX specular for closest 4 lights only
+        if (i < 4) {
+            vec3 plHalf = normalize(lDir + viewDir);
+            float plNdotH = max(dot(norm, plHalf), 0.0);
+            float plDenom = plNdotH * plNdotH * (a2 - 1.0) + 1.0;
+            float plSpec = a2 / (3.14159 * plDenom * plDenom) * 0.08 * atten;
+            pointSpec = max(pointSpec, plSpec);
+        }
     }
 
-    // Specular + Fresnel for metallic surfaces
-    vec3 viewDir = normalize(u_viewPos.xyz - v_fragpos);
-
-    // GGX/Trowbridge-Reitz specular (sun) — tighter peak + longer tail than Blinn-Phong
-    float roughness = 0.18;
-    float a2 = roughness * roughness;
+    // GGX/Trowbridge-Reitz specular (sun)
     vec3 halfDir = normalize(lightDir + viewDir);
     float NdotH = max(dot(norm, halfDir), 0.0);
     float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
-    float D_GGX = a2 / (3.14159 * denom * denom);
-    float specular = D_GGX * 0.08;
-
-    // Point light specular (top 4 lights)
-    float pointSpec = 0.0;
-    for (int i = 0; i < min(numLights, 4); ++i) {
-        vec3 toLightVec = u_lightPosRange[i].xyz - v_fragpos;
-        float dist = length(toLightVec);
-        float range = u_lightPosRange[i].w;
-        float atten = max(1.0 - dist / range, 0.0);
-        atten *= atten;
-        vec3 plHalf = normalize(normalize(toLightVec) + viewDir);
-        float plNdotH = max(dot(norm, plHalf), 0.0);
-        float plDenom = plNdotH * plNdotH * (a2 - 1.0) + 1.0;
-        float plD = a2 / (3.14159 * plDenom * plDenom);
-        float plSpec = plD * 0.08 * atten;
-        pointSpec = max(pointSpec, plSpec);
-    }
+    float specular = a2 / (3.14159 * denom * denom) * 0.08;
 
     // Fresnel rim — edges of surfaces reflect more (Schlick approximation)
     float NdotV = max(dot(norm, viewDir), 0.0);
-    float fresnel = pow(1.0 - NdotV, 3.0) * 0.25; // subtle rim glow
+    float fresnel = pow(1.0 - NdotV, 3.0) * 0.25;
 
     vec3 specContrib = vec3_splat((specular + pointSpec * 0.3 + fresnel) * tLight.r);
     vec3 lighting = min(sunLit + pointLit + specContrib, vec3_splat(1.6));
