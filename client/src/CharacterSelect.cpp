@@ -612,7 +612,7 @@ static void RenderFaceToFBO() {
   s_modelShader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0));
   s_modelShader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0));
   s_modelShader->setVec4("u_glowColor", glm::vec4(0));
-  s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 0));
+  s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 2)); // w=2.0 enables matcap
   s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
   s_modelShader->setVec4("u_fogParams", glm::vec4(0));
   s_modelShader->setVec4("u_fogColor", glm::vec4(0));
@@ -630,6 +630,9 @@ static void RenderFaceToFBO() {
     else bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
     s_modelShader->setTexture(0, "s_texColor", mb.texture);
+    auto& ct = ChromeGlow::GetTextures();
+    if (TexValid(ct.chrome2))
+      s_modelShader->setTexture(3, "s_matcapTex", ct.chrome2);
     bgfx::setState(state);
     bgfx::submit(FACE_VIEW_ID, s_modelShader->program);
   }
@@ -1910,7 +1913,7 @@ void Render(int windowWidth, int windowHeight) {
         s_modelShader->setVec4("u_lightColor", glm::vec4(lightColor, 0));
         s_modelShader->setVec4("u_terrainLight", glm::vec4(tLight * dim, 0));
         s_modelShader->setVec4("u_glowColor", glm::vec4(glowColor, 0));
-        s_modelShader->setVec4("u_baseTint", glm::vec4(baseTint, 0));
+        s_modelShader->setVec4("u_baseTint", glm::vec4(baseTint, 2.0f)); // w=2.0 enables matcap
         s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
         s_modelShader->setVec4("u_fogParams", glm::vec4(0, 0, 0, 0));
         s_modelShader->setVec4("u_fogColor", glm::vec4(0));
@@ -1949,6 +1952,9 @@ void Render(int windowWidth, int windowHeight) {
         s_modelShader->setTexture(0, "s_texColor", mb.texture);
         if (bgfx::isValid(s_shadowColorTex))
           s_modelShader->setTexture(1, "s_shadowMap", s_shadowColorTex);
+        auto& ct = ChromeGlow::GetTextures();
+        if (TexValid(ct.chrome2))
+          s_modelShader->setTexture(3, "s_matcapTex", ct.chrome2);
         bgfx::setState(state);
         bgfx::submit(0, s_modelShader->program);
       };

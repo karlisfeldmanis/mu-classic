@@ -882,16 +882,15 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
     m_shader->setVec4("u_glowColor", glm::vec4(glowColor, 0.0f));
-    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 2.0f)); // w=2.0 enables matcap
     m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
     m_shader->setVec4("u_fogParams", glm::vec4(fogNear, fogFar, useFog, 0.0f));
     m_shader->setVec4("u_fogColor", glm::vec4(fogColor, 0.0f));
     m_shader->uploadPointLights(plCount, m_pointLights.data());
-    // Shadow map uniforms
-    float shadowEnabled = bgfx::isValid(m_shadowMapTex) ? 1.0f : 0.0f;
-    m_shader->setVec4("u_shadowParams", glm::vec4(shadowEnabled, 0.0f, 0.0f, 0.0f));
-    if (shadowEnabled > 0.5f)
-      m_shader->setMat4("u_lightMtx", m_lightMtx);
+    // Disable shadow map for player character — Main 5.2 uses stencil shadows
+    // for characters, not shadow mapping. Shadow map causes self-shadowing
+    // artifacts (body casts shadows on own sword/shield/armor).
+    m_shader->setVec4("u_shadowParams", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
   };
 
   // BGFX draw helper
@@ -903,6 +902,9 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setTexture(0, "s_texColor", mb.texture);
     if (bgfx::isValid(m_shadowMapTex))
       m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
+    auto& ct = ChromeGlow::GetTextures();
+    if (TexValid(ct.chrome2))
+      m_shader->setTexture(3, "s_matcapTex", ct.chrome2);
     bgfx::setState(state);
     bgfx::submit(0, m_shader->program);
   };

@@ -5,6 +5,7 @@ $input v_texcoord0, v_normal, v_fragpos
 SAMPLER2D(s_texColor, 0);
 SAMPLER2D(s_shadowMap, 1);
 SAMPLER2D(s_lightMap, 2);
+SAMPLER2D(s_matcapTex, 3);
 
 // Packed parameters: x=objectAlpha, y=blendMeshLight, z=chromeMode, w=chromeTime
 uniform vec4 u_params;
@@ -114,7 +115,54 @@ void main()
         pointLit += d * atten * u_lightColorArr[i].xyz;
     }
 
-    vec3 lighting = sunLit + pointLit;
+    // Specular + Fresnel for metallic surfaces
+    vec3 viewDir = normalize(u_viewPos.xyz - v_fragpos);
+
+    // GGX/Trowbridge-Reitz specular (sun) — tighter peak + longer tail than Blinn-Phong
+    float roughness = 0.18;
+    float a2 = roughness * roughness;
+    vec3 halfDir = normalize(lightDir + viewDir);
+    float NdotH = max(dot(norm, halfDir), 0.0);
+    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    float D_GGX = a2 / (3.14159 * denom * denom);
+    float specular = D_GGX * 0.08;
+
+    // Point light specular (top 4 lights)
+    float pointSpec = 0.0;
+    for (int i = 0; i < min(numLights, 4); ++i) {
+        vec3 toLightVec = u_lightPosRange[i].xyz - v_fragpos;
+        float dist = length(toLightVec);
+        float range = u_lightPosRange[i].w;
+        float atten = max(1.0 - dist / range, 0.0);
+        atten *= atten;
+        vec3 plHalf = normalize(normalize(toLightVec) + viewDir);
+        float plNdotH = max(dot(norm, plHalf), 0.0);
+        float plDenom = plNdotH * plNdotH * (a2 - 1.0) + 1.0;
+        float plD = a2 / (3.14159 * plDenom * plDenom);
+        float plSpec = plD * 0.08 * atten;
+        pointSpec = max(pointSpec, plSpec);
+    }
+
+    // Fresnel rim — edges of surfaces reflect more (Schlick approximation)
+    float NdotV = max(dot(norm, viewDir), 0.0);
+    float fresnel = pow(1.0 - NdotV, 3.0) * 0.25; // subtle rim glow
+
+    vec3 specContrib = vec3_splat((specular + pointSpec * 0.3 + fresnel) * tLight.r);
+    vec3 lighting = min(sunLit + pointLit + specContrib, vec3_splat(1.6));
+
+    // Matcap sphere-map reflection + environment gradient
+    float matcapStr = step(1.5, u_baseTint.w); // 2.0=on (characters/monsters/NPCs), 0.0/1.0=off
+    vec3 matcapColor = vec3_splat(0.0);
+    vec3 envGradient = vec3_splat(0.0);
+    if (matcapStr > 0.5) {
+        vec3 viewNorm = normalize(mul(u_view, vec4(norm, 0.0)).xyz);
+        vec2 matcapUV = viewNorm.xy * 0.48 + 0.5;
+        matcapColor = texture2D(s_matcapTex, matcapUV).rgb;
+        // Environment gradient: sky-blue top, warm-brown bottom
+        vec3 skyCol = vec3(0.6, 0.7, 0.9);
+        vec3 gndCol = vec3(0.15, 0.12, 0.1);
+        envGradient = mix(gndCol, skyCol, norm.y * 0.5 + 0.5);
+    }
 
     // Chrome/Metal: replace texture coords with normal-derived UVs
     vec2 finalUV = v_texcoord0;
@@ -164,7 +212,21 @@ void main()
             finalLight = glowC;
         }
     } else {
-        finalLight = lighting * blendMeshLit * luminosity * baseTint;
+        // Colored specular: metals tint reflections with their own color
+        // Derive "metallicness" from texture brightness (bright areas = more metallic)
+        float texBright = dot(texColor.rgb, vec3(0.299, 0.587, 0.114));
+        float metallic = smoothstep(0.3, 0.8, texBright) * 0.3;
+        vec3 specTint = mix(vec3_splat(1.0), texColor.rgb, metallic);
+        vec3 coloredSpec = specContrib * specTint;
+
+        // Matcap + env gradient blend: 70% matcap, 30% gradient
+        vec3 reflContrib = mix(envGradient, matcapColor, 0.7);
+        float matcapMetal = smoothstep(0.25, 0.75, texBright) * 0.15 * matcapStr;
+        vec3 matcapFinal = reflContrib * mix(vec3_splat(1.0), texColor.rgb, metallic * 0.5);
+
+        finalLight = (sunLit + pointLit) * blendMeshLit * luminosity * baseTint
+                   + coloredSpec * luminosity
+                   + matcapFinal * matcapMetal * luminosity;
     }
 
     gl_FragColor = vec4(finalLight, objectAlpha) * texColor;
@@ -196,11 +258,15 @@ void main()
         gl_FragColor.xyz = gl_FragColor.xyz * edgeBlend;
     }
 
-    // Cliff bottom fade: darken to black (matches void)
+    // Cliff/foundation fade: discard fragments below terrain level
+    // Prevents underground geometry (foundations, cliff bases) from blocking water etc.
     float cliffFade = u_params2.z;
     if (cliffFade > 0.5) {
         float cliffTopH = u_params2.w;
-        float fadeFactor = smoothstep(cliffTopH - 500.0, cliffTopH - 200.0, v_fragpos.y);
+        if (v_fragpos.y < cliffTopH - 20.0) {
+            discard;
+        }
+        float fadeFactor = smoothstep(cliffTopH - 20.0, cliffTopH, v_fragpos.y);
         gl_FragColor.rgb *= fadeFactor;
     }
 }

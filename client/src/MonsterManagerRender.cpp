@@ -1,4 +1,5 @@
 #include "MonsterManager.hpp"
+#include "ChromeGlow.hpp"
 #include "TerrainUtils.hpp"
 #include "imgui.h"
 #include <algorithm>
@@ -65,7 +66,7 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
     m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
-    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 2.0f)); // w=2.0 enables matcap
     m_shader->setVec4("u_fogParams", fogParams);
     m_shader->setVec4("u_fogColor", fogColor);
     m_shader->setVec4("u_texCoordOffset", texCoordOff);
@@ -77,6 +78,9 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       m_shader->setMat4("u_lightMtx", m_lightMtx);
       m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
     }
+    auto& ct = ChromeGlow::GetTextures();
+    if (TexValid(ct.chrome2))
+      m_shader->setTexture(3, "s_matcapTex", ct.chrome2);
     bgfx::setState(state);
     bgfx::submit(0, m_shader->program);
   };
