@@ -170,6 +170,7 @@ void HandleInventoryMove(Session &session, const std::vector<uint8_t> &packet,
           if (session.bag[s].primary) {
             session.bag[s].quantity = qty;
             session.bag[s].itemLevel = lvl;
+            session.bag[s].optionFlags = opt;
           }
         }
       }
