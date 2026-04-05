@@ -1,7 +1,9 @@
 #include "ObjectRenderer.hpp"
+#include <algorithm>
 #include "FrustumCulling.hpp"
 #include "SoundManager.hpp"
 #include "TextureLoader.hpp"
+#include "VFXManager.hpp"
 #include <cmath>
 #include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
@@ -32,6 +34,10 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
     return 2; // Carriage01 — lantern glow
   case 105:
     return 3; // Waterspout01 — water UV scroll
+  case 3:
+    return (mapId == 4) ? 1 : -1; // Lost Tower: fire torch glow mesh (re02.tga)
+  case 4:
+    return (mapId == 4) ? 1 : -1; // Lost Tower: fire brazier glow mesh (re02.tga)
   case 41:
     if (mapId == 3) return 0; // Noria: flowing additive mesh 0
     return 1; // Dungeon: DungeonGate02 torch — fire glow mesh
@@ -489,6 +495,13 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
     if (obj.type == 150)
       objPos.y -= 50.0f;
 
+    // Snap Grass05-08 (types 24-27) to terrain height on Lorencia
+    // EncTerrain1.obj has bad Y coords for these grass objects
+    if (m_mapId == 0 && obj.type >= 24 && obj.type <= 27) {
+      float terrH = SampleTerrainHeight(objPos.x, objPos.z);
+      objPos.y = terrH;
+    }
+
     // Build model matrix
     glm::mat4 model = glm::translate(glm::mat4(1.0f), objPos);
     // MU Z-up → OpenGL Y-up coordinate conversion
@@ -507,7 +520,6 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
     model = glm::rotate(model, obj.rotation.x,
                         glm::vec3(1.0f, 0.0f, 0.0f)); // MU X rotation
     model = glm::scale(model, glm::vec3(obj.scale));
-
 
     // Sample terrain lightmap at object's world position
     glm::vec3 worldPos = glm::vec3(model[3]);
@@ -566,6 +578,18 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
       m_interactiveObjects.push_back(io);
     }
   }  // end object loop
+
+  // Grass types 20-21: EncTerrain1.obj has corrupted position/rotation data.
+  // Seed tuner maps so corrections are applied in Render() and visible in F2 UI.
+  if (m_typeOffset.find(20) == m_typeOffset.end()) {
+    m_typeOffset[20] = glm::vec3(33.0f, -107.8f, 0.0f);
+    m_typeScaleMult[20] = 0.61f;
+  }
+  if (m_typeOffset.find(21) == m_typeOffset.end()) {
+    m_typeOffset[21] = glm::vec3(22.6f, -85.2f, 180.9f);
+    m_typeRotOffset[21] = glm::vec3(25.1f, -68.8f, 7.8f);
+    m_typeScaleMult[21] = 0.73f;
+  }
 
   std::cout << "[ObjectRenderer] Loaded " << instances.size()
             << " object instances, " << modelCache.size()
@@ -837,6 +861,11 @@ void ObjectRenderer::LoadObjectsGeneric(
       m_spriteQuadEBO = bgfx::createIndexBuffer(bgfx::copy(qi, sizeof(qi)));
     }
   }
+  // Main 5.2: Chrome01 texture for Lost Tower fire StreamMesh rendering
+  if (m_mapId == 4 && !TexValid(m_chromeTexture)) {
+    std::string dataRoot = objectDir.substr(0, objectDir.rfind('/'));
+    m_chromeTexture = TextureLoader::LoadOZJ(dataRoot + "/Effect/Chrome01.OZJ");
+  }
   std::cout << "[ObjectRenderer] Generic: Loaded " << instances.size()
             << " instances, " << modelCache.size() << " unique models ("
             << fromFallback << " from fallback), skipped " << skipped
@@ -1069,11 +1098,20 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     if (m_mapId == 1 && (inst.type == 39 || inst.type == 40 || inst.type == 51 ||
          inst.type == 52 || inst.type == 60))
       continue;
-    if (m_mapId == 4 && (inst.type == 24 || inst.type == 25)) // Lost Tower: HiddenMesh=-2 objects
+    if (m_mapId == 4 && (inst.type == 24 || inst.type == 25)) {
+      // Main 5.2: HiddenMesh=-2 (hidden mesh), type 24 spawns occasional flame bursts
+      if (inst.type == 24 && m_vfxManager && rand() % 64 == 0) {
+        glm::vec3 pos(inst.modelMatrix[3][0], inst.modelMatrix[3][1],
+                      inst.modelMatrix[3][2]);
+        m_vfxManager->SpawnBurst(ParticleType::SPELL_FLAME, pos, 1);
+      }
       continue;
+    }
     if (m_mapId == 2 && (inst.type == 91 || inst.type == 100))
       continue;
     if (m_mapId == 3 && inst.type == 38) // Noria pose box (HiddenMesh=-2)
+      continue;
+    if (m_mapId == 0 && (inst.type == 20 || inst.type == 21)) // Lorencia grass (bad Y coords)
       continue;
     if (!m_typeFilter.empty()) {
       bool allowed = false;
@@ -1097,6 +1135,12 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     auto alphaIt = typeAlphaMap.find(inst.type);
     if (alphaIt != typeAlphaMap.end()) {
       instAlpha = alphaIt->second;
+      if (instAlpha < 0.01f) continue;
+    }
+    // Dev tuner: per-type base alpha (permanent transparency, e.g. grass foliage)
+    auto baseAlphaIt = m_typeBaseAlpha.find(inst.type);
+    if (baseAlphaIt != m_typeBaseAlpha.end()) {
+      instAlpha *= baseAlphaIt->second;
       if (instAlpha < 0.01f) continue;
     }
 
@@ -1152,7 +1196,31 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       bool isTransparent = mb.hasAlpha || mb.isWindowLight || mb.bright;
       if (pass == 0 && isTransparent) { ++meshIdx; continue; }
       if (pass == 1 && !isTransparent) { ++meshIdx; continue; }
-      bgfx::setTransform(glm::value_ptr(inst.modelMatrix));
+      // Apply dev tuner offsets/scale/rotation if present
+      {
+        glm::mat4 renderMat = inst.modelMatrix;
+        auto offIt = m_typeOffset.find(inst.type);
+        if (offIt != m_typeOffset.end())
+          renderMat[3] += glm::vec4(offIt->second, 0.0f);
+        auto rotIt = m_typeRotOffset.find(inst.type);
+        if (rotIt != m_typeRotOffset.end()) {
+          glm::vec3 p = glm::vec3(renderMat[3]);
+          glm::vec3 r = rotIt->second;
+          glm::mat4 rot = glm::rotate(glm::mat4(1.0f), glm::radians(r.x), glm::vec3(1,0,0));
+          rot = glm::rotate(rot, glm::radians(r.y), glm::vec3(0,1,0));
+          rot = glm::rotate(rot, glm::radians(r.z), glm::vec3(0,0,1));
+          renderMat = glm::translate(glm::mat4(1.0f), p) * rot
+                    * glm::translate(glm::mat4(1.0f), -p) * renderMat;
+        }
+        auto scaleIt = m_typeScaleMult.find(inst.type);
+        if (scaleIt != m_typeScaleMult.end() && scaleIt->second != 1.0f) {
+          glm::vec3 p = glm::vec3(renderMat[3]);
+          renderMat = glm::translate(glm::mat4(1.0f), p)
+                    * glm::scale(glm::mat4(1.0f), glm::vec3(scaleIt->second))
+                    * glm::translate(glm::mat4(1.0f), -p) * renderMat;
+        }
+        bgfx::setTransform(glm::value_ptr(renderMat));
+      }
 
       // Bind vertex/index buffers
       if (mb.isDynamic) {
@@ -1219,8 +1287,9 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           intensity = 0.78f + 0.10f * std::sin(currentTime * 3.8f + phase)
                             + 0.06f * std::sin(currentTime * 9.5f + phase * 2.1f);
         }
-        if (m_mapId == 4 && (inst.type == 19 || inst.type == 20 || inst.type == 23)) {
-          // Lost Tower torches/windows: phase-shifted flicker
+        if (m_mapId == 4 && (inst.type == 3 || inst.type == 4 ||
+                             inst.type == 19 || inst.type == 20 || inst.type == 23)) {
+          // Lost Tower torches/fire/windows: phase-shifted flicker
           float phase = inst.modelMatrix[3][0] * 0.013f;
           intensity = 0.78f + 0.10f * std::sin(currentTime * 3.8f + phase)
                             + 0.06f * std::sin(currentTime * 9.5f + phase * 2.1f);
@@ -1245,7 +1314,10 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           texOffset.x = -(float)wt * 0.001f;
         }
         state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
-        state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+        // Fountain (type 105) keeps depth write so water blocks objects behind it.
+        // Window lights/torches disable depth write so glow is transparent.
+        if (inst.type != 105)
+          state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
         isAdditive = true;
       } else if (mb.bright) {
         state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
@@ -1260,17 +1332,31 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
         if (!mb.hasAlpha && !disableCullForObj) {
           state |= BGFX_STATE_CULL_CW;
         }
-        if (mb.hasAlpha) {
+        if (mb.hasAlpha || instAlpha < 1.0f) {
           state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
                                           BGFX_STATE_BLEND_INV_SRC_ALPHA);
         }
       }
 
       // Set uniforms
-      activeShader->setVec4("u_params", glm::vec4(instAlpha, blendLight, 0.0f, 0.0f));
+      // Main 5.2: Lost Tower fire objects (3,4,19,20) use chrome-mapped StreamMesh
+      // rendering for "hot metal" fire glow instead of plain additive
+      bool useChromeBlend = isAdditive && mb.isWindowLight && m_mapId == 4 &&
+          TexValid(m_chromeTexture) &&
+          (inst.type == 3 || inst.type == 4 || inst.type == 19 || inst.type == 20);
+      float chromeMode = useChromeBlend ? 1.0f : 0.0f;
+      float chromeTime = useChromeBlend ? currentTime : 0.0f;
+      if (useChromeBlend) {
+        // Override texture with chrome environment map, tinted orange
+        activeShader->setTexture(0, "s_texColor", m_chromeTexture);
+        activeShader->setVec4("u_glowColor", glm::vec4(1.0f, 0.2f, 0.1f, 1.0f));
+      }
+      activeShader->setVec4("u_params", glm::vec4(instAlpha, blendLight, chromeMode, chromeTime));
       float cliffFadeFlag = 0.0f;
       float cliffTopH = 0.0f;
-      bool needsCliffFade = (inst.type == 11) || isTentacle;
+      // Type 11: cliff wall objects; type 127: HouseEtc01 (92.8-unit foundation)
+      // Type 105: Waterspout01 (fountain basin extends below terrain)
+      bool needsCliffFade = (inst.type == 11) || (inst.type == 127) || (inst.type == 105) || isTentacle;
       if (needsCliffFade && terrainHeightmap.size() >= 256 * 256) {
         cliffFadeFlag = 1.0f;
         float wx = inst.modelMatrix[3][0];
@@ -1301,7 +1387,8 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       } else {
         activeShader->setVec4("u_terrainLight", glm::vec4(inst.terrainLight, 0.0f));
       }
-      activeShader->setVec4("u_glowColor", glm::vec4(0.0f));
+      if (!useChromeBlend)
+        activeShader->setVec4("u_glowColor", glm::vec4(0.0f));
       activeShader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
       activeShader->setVec4("u_fogParams", glm::vec4(m_fogNear, m_fogFar, useFog, 0.0f));
       activeShader->setVec4("u_fogColor", glm::vec4(m_fogColor, 0.0f));
@@ -1432,7 +1519,7 @@ void ObjectRenderer::UpdateSkulls(const glm::vec3 &heroPos, bool heroMoving,
 
   for (size_t i = 0; i < instances.size(); ++i) {
     auto &inst = instances[i];
-    if (inst.type != 38) continue;
+    if (inst.type != 38 && inst.type != 39) continue;
 
     auto &state = m_skullStates[i];
     glm::vec3 skullPos = glm::vec3(inst.modelMatrix[3]);
@@ -1668,5 +1755,38 @@ void ObjectRenderer::Cleanup() {
   m_spriteShader.reset();
   shader.reset();
   skinnedShader.reset();
+}
+
+ObjectRenderer::TypeDebugInfo ObjectRenderer::GetTypeDebugInfo(int type) const {
+  TypeDebugInfo info;
+  info.filename = GetObjectBMDFilename(type);
+  auto cacheIt = modelCache.find(type);
+  if (cacheIt != modelCache.end()) {
+    info.aabbMin = cacheIt->second.aabbMin;
+    info.aabbMax = cacheIt->second.aabbMax;
+  }
+  for (auto &inst : instances) {
+    if (inst.type == type) {
+      if (info.instanceCount == 0)
+        info.firstInstancePos = glm::vec3(inst.modelMatrix[3]);
+      ++info.instanceCount;
+    }
+  }
+  return info;
+}
+
+std::vector<int> ObjectRenderer::GetLoadedTypes() const {
+  std::vector<int> types;
+  types.reserve(modelCache.size());
+  for (auto &[t, _] : modelCache) {
+    // Only include types that have renderable meshes
+    bool hasGeometry = false;
+    for (auto &mb : _.meshBuffers)
+      if (mb.indexCount > 0) { hasGeometry = true; break; }
+    if (hasGeometry)
+      types.push_back(t);
+  }
+  std::sort(types.begin(), types.end());
+  return types;
 }
 

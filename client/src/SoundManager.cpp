@@ -256,6 +256,7 @@ void Init(const std::string &dataPath) {
   // Non-positional sounds (UI, player actions — always at listener)
   LoadSound(SOUND_WIND01, sndPath + "aWind.wav", 1);
   LoadSound(SOUND_DUNGEON01, sndPath + "aDungeon.wav", 1);
+  LoadSound(SOUND_TOWER01, sndPath + "aTower.wav", 1);
   LoadSound(SOUND_BAT01, sndPath + "aBat.wav", 1, true); // 3D positional
   LoadSound(SOUND_MOUSE01, sndPath + "aMouse.wav", 1, true); // 3D positional
   LoadSound(SOUND_FOREST01, sndPath + "aForest.wav", 1); // Noria forest ambient

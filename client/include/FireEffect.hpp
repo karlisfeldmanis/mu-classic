@@ -35,7 +35,7 @@ public:
   AddSmokeEmitter(const glm::vec3 &worldPos); // Smoke emitter (gray, slower)
   void
   AddWaterSmokeEmitter(const glm::vec3 &worldPos); // Water mist (blue tint)
-  void Update(float deltaTime);
+  void Update(float deltaTime, const glm::vec3 &cameraPos = glm::vec3(0));
   void Render(const glm::mat4 &view, const glm::mat4 &projection);
   void Cleanup();
 
@@ -58,7 +58,11 @@ private:
     float lifetime;
     float maxLifetime;
     glm::vec3 color;
+    float gravity = 0.0f;    // Main 5.2: accelerating upward rise
+    int frameOffset = 0;      // Random 0-3 starting frame (visual variety)
+    int subType = 0;          // Main 5.2: 0=standard fire, 1=tiny spark, 2/3=expanding glow
     bool isWater = false;
+    bool isSmoke = false;
   };
 
   // Per-instance GPU data (must match vertex attribute layout)
@@ -67,8 +71,9 @@ private:
     float scale;
     float rotation;
     float frame;
-    glm::vec3 color;
     float alpha;
+    float radialStrength; // 0=no radial fade (fire), 14=steep (smoke)
+    glm::vec3 color;
   };
 
   std::vector<Emitter> emitters;
@@ -80,10 +85,11 @@ private:
   bgfx::VertexBufferHandle quadVBO = BGFX_INVALID_HANDLE;
   bgfx::IndexBufferHandle quadEBO = BGFX_INVALID_HANDLE;
   // No instanceVBO — BGFX uses transient InstanceDataBuffer per frame
-  void submitBatch(const std::vector<InstanceData> &batch, TexHandle tex);
+  void submitBatch(const std::vector<InstanceData> &batch, TexHandle tex,
+                   bool pureAdditive = false);
 
   static constexpr int MAX_PARTICLES = 4096;
-  static constexpr float PARTICLE_LIFETIME = 1.0f;
+  static constexpr float PARTICLE_LIFETIME = 0.96f; // 24 ticks / 25fps
   static constexpr float SPAWN_RATE = 12.0f; // particles/sec per emitter
 };
 

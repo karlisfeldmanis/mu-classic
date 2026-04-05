@@ -150,6 +150,7 @@ public:
   uint8_t GetActiveSkillId() const { return m_activeSkillId; }
   float GetGlobalCooldown() const { return m_globalAttackCooldown; }
   float GetGlobalCooldownMax() const { return m_globalAttackCooldownMax; }
+  bool IsGCDFromSkill() const { return m_gcdFromSkill; }
   void ClearGlobalCooldown() { m_globalAttackCooldown = 0.0f; }
   float GetTeleportCooldown() const { return m_teleportCooldown; }
   float GetTeleportCooldownMax() const { return TELEPORT_COOLDOWN_TIME; }
@@ -159,6 +160,21 @@ public:
   void SetVFXManager(class VFXManager *vfx) { m_vfxManager = vfx; }
   const std::vector<BoneWorldMatrix> &GetCachedBones() const {
     return m_cachedBones;
+  }
+
+  // Get world-space position of a bone (for spell spawn points etc.)
+  glm::vec3 GetBoneWorldPosition(int boneIdx) const {
+    if (boneIdx < 0 || boneIdx >= (int)m_cachedBones.size())
+      return m_pos + glm::vec3(0, 120, 0); // Fallback: chest height
+    // Extract local bone position from bone matrix column 3
+    const auto &bm = m_cachedBones[boneIdx];
+    glm::vec3 bmd(bm[0][3], bm[1][3], bm[2][3]);
+    // BMD→world: same transform as weapon trail (HeroCharacter.cpp:1078-1081)
+    // rotZ(facing) → rotY(-90) → rotZ(-90): (x,y,z) → (ry, z, rx)
+    float cf = cosf(m_facing), sf = sinf(m_facing);
+    float rx = bmd.x * cf - bmd.y * sf;
+    float ry = bmd.x * sf + bmd.y * cf;
+    return m_pos + glm::vec3(ry, bmd.z, rx);
   }
 
   // Weapon blur trail (Main 5.2: BlurType 1 for DK skills 19-23)
@@ -300,6 +316,28 @@ public:
     else
       colors.push_back(glm::vec3(0.65f, 0.40f, 0.18f));
     ranges.push_back(350.0f);
+    objectTypes.push_back(0);
+  }
+  // Main 5.2 AddTerrainLight: specific weapons emit colored point light
+  void GetWeaponLight(std::vector<glm::vec3> &positions,
+                      std::vector<glm::vec3> &colors,
+                      std::vector<float> &ranges,
+                      std::vector<int> &objectTypes) const {
+    if (!m_weaponBmd || m_inSafeZone) return;
+    uint8_t cat = m_weaponInfo.category, idx = m_weaponInfo.itemIndex;
+    float lum = m_luminosity;
+    glm::vec3 c; float r;
+    // Heliacal Sword (Sword+12): warm orange
+    if (cat == 0 && idx == 12) { c = glm::vec3(lum, lum * 0.8f, lum * 0.5f); r = 300.f; }
+    // Spirit Sword (Sword+19), Staff of Imperial (Staff+10),
+    // Saint Scepter (Mace+13), Divine CB (Bow+18): cooler glow
+    else if ((cat == 0 && idx == 19) || (cat == 5 && idx == 10) ||
+             (cat == 2 && idx == 13) || (cat == 4 && idx == 18))
+      { c = glm::vec3(lum * 0.8f, lum * 0.5f, lum * 0.3f); r = 200.f; }
+    else return;
+    positions.push_back(m_pos + glm::vec3(0, 80, 0));
+    colors.push_back(c);
+    ranges.push_back(r);
     objectTypes.push_back(0);
   }
   void SetLuminosity(float l) { m_luminosity = l; }
@@ -495,6 +533,10 @@ private:
   static constexpr float TELEPORT_COOLDOWN_TIME = 60.0f;
   uint8_t m_activeSkillId = 0;     // Non-zero when using a skill attack
   bool m_gcdFromSkill = false;     // True if GCD was set by a skill (persists after CancelAttack)
+  // Queued action during GCD — separate from active attack state
+  int m_queuedTarget = -1;
+  glm::vec3 m_queuedPos = glm::vec3(0);
+  uint8_t m_queuedSkill = 0;
   float m_slowAnimDuration = 0.0f; // >0 = stretch heal anim to this duration
   HellfirePhase m_hellfirePhase = HellfirePhase::NONE; // Multi-phase Hellfire animation
 
@@ -584,11 +626,16 @@ private:
   std::vector<MeshBuffers> m_weaponMeshBuffers;
   std::vector<ShadowMesh> m_weaponShadowMeshes;
   std::vector<BoneWorldMatrix> m_weaponLocalBones; // Cached static bind-pose
+  float m_weaponAnimFrame = 0.0f;        // Current weapon animation frame
+  bool m_weaponIsAnimated = false;        // True if weapon BMD has >1 keyframes
+  bool m_weaponAnimContinuous = false;    // true = continuous loop (staff), false = attack-synced (bow)
   std::string m_dataPath; // Cached for late weapon loading
 
   // Weapon glow (Main 5.2: ItemLight / BlendMesh system)
-  int m_weaponBlendMesh = -1;  // Mesh index to render additively (-1 = none)
-  int m_shieldBlendMesh = -1;  // Shield glow mesh index (-1 = none)
+  int m_weaponBlendMesh = -1;  // >=0: additive mesh, -1: none, -2: whole-object pulse
+  int m_weaponHiddenMesh = -1; // Mesh index to hide (-1 = none)
+  int m_shieldBlendMesh = -1;  // Shield glow mesh index
+  int m_shieldHiddenMesh = -1; // Shield hidden mesh index
 
   // Shield (attached item model — left hand)
   WeaponEquipInfo m_shieldInfo;

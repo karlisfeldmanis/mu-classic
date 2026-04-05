@@ -43,10 +43,21 @@ static const std::vector<glm::vec3> kDeviasFireplaceOffsets = {
 static const std::vector<glm::vec3> kDeviasWallFireOffsets = {
     glm::vec3(0.0f, 0.0f, 50.0f)};
 
+// Lost Tower torches (Object04/05.bmd — tall torch structures, Z height ~286)
+// Fire at top of torch, smoke slightly above fire
+static const std::vector<glm::vec3> kLostTowerTorchOffsets = {
+    glm::vec3(0.0f, 0.0f, 260.0f)};
+static const std::vector<glm::vec3> kLostTowerBrazierOffsets = {
+    glm::vec3(0.0f, 0.0f, 260.0f)};
+
 const std::vector<glm::vec3> &GetFireOffsets(int objectType, int mapId) {
   switch (objectType) {
   case 30: // Devias fireplace only (Lorencia type 30 = Stone01, no fire)
     return (mapId == 2) ? kDeviasFireplaceOffsets : kNoOffsets;
+  case 3: // Lost Tower fire torch
+    return (mapId == 4) ? kLostTowerTorchOffsets : kNoOffsets;
+  case 4: // Lost Tower fire brazier
+    return (mapId == 4) ? kLostTowerBrazierOffsets : kNoOffsets;
   case 41: // Dungeon torches
     return (mapId == 1) ? kDungeonTorch41Offsets : kNoOffsets;
   case 42:
@@ -78,6 +89,10 @@ static const std::vector<glm::vec3> kSmokeTorchOffsets = {
 
 const std::vector<glm::vec3> &GetSmokeOffsets(int objectType, int mapId) {
   switch (objectType) {
+  case 3: // Lost Tower torch smoke
+    return (mapId == 4) ? kLostTowerTorchOffsets : kNoOffsets;
+  case 4: // Lost Tower brazier smoke
+    return (mapId == 4) ? kLostTowerBrazierOffsets : kNoOffsets;
   case 30: // Devias fireplace smoke (Main 5.2: BITMAP_SMOKE subtype 21 at z+160)
     return (mapId == 2) ? kDeviasFireplaceOffsets : kNoOffsets;
   case 131: // Light02 torch smoke — Lorencia only
@@ -196,7 +211,7 @@ void FireEffect::AddWaterSmokeEmitter(const glm::vec3 &worldPos) {
   emitters.push_back(e);
 }
 
-void FireEffect::Update(float deltaTime) {
+void FireEffect::Update(float deltaTime, const glm::vec3 &cameraPos) {
   if (!TexValid(fireTexture))
     return;
 
@@ -204,19 +219,27 @@ void FireEffect::Update(float deltaTime) {
   if (deltaTime > 0.1f)
     deltaTime = 0.1f;
 
+  // Distance culling: only spawn particles for emitters within range.
+  // Lost Tower has 389 fire objects — without culling, the particle pool
+  // saturates (4096 max) and nearby fires starve.
+  constexpr float EMITTER_CULL_DIST_SQ = 1800.0f * 1800.0f;
+
   // Spawn new particles from emitters
   for (auto &emitter : emitters) {
-    // Main 5.2: smoke = rand()%2 (50% at 25fps = 12.5/sec), water = same rate
-    // Fire: 25/sec base with 50% stochastic rejection = ~12.5 effective (organic flicker)
-    float rate = emitter.water ? 12.5f : (emitter.smoke ? 6.0f : 25.0f);
+    // Skip distant emitters to prevent particle pool saturation
+    glm::vec3 d = emitter.position - cameraPos;
+    if (d.x * d.x + d.y * d.y + d.z * d.z > EMITTER_CULL_DIST_SQ) {
+      emitter.spawnAccum = 0.0f; // Reset so no burst when entering range
+      continue;
+    }
+    // Fire: 30/sec for smooth continuous spawning (no stochastic rejection —
+    // visual variety comes from SubType mix, not spawn flickering).
+    // Smoke: 6/sec, water mist: 12.5/sec
+    float rate = emitter.water ? 12.5f : (emitter.smoke ? 6.0f : 30.0f);
     emitter.spawnAccum += rate * deltaTime;
     while (emitter.spawnAccum >= 1.0f &&
            (int)particles.size() < MAX_PARTICLES) {
       emitter.spawnAccum -= 1.0f;
-
-      // Main 5.2: CreateFire has 50% spawn chance per call (stochastic flicker)
-      if (!emitter.smoke && !emitter.water && rand() % 2 == 0)
-        continue;
 
       Particle p;
       p.position = emitter.position;
@@ -238,7 +261,7 @@ void FireEffect::Update(float deltaTime) {
         p.color = glm::vec3(w, w, w);
       } else if (emitter.smoke) {
         // Smoke: slower upward, larger, longer life
-        p.isWater = false;
+        p.isSmoke = true;
         p.velocity = glm::vec3(RandFloat(-8.0f, 8.0f), RandFloat(20.0f, 45.0f),
                                RandFloat(-8.0f, 8.0f));
         p.scale = RandFloat(80.0f, 140.0f);
@@ -247,18 +270,43 @@ void FireEffect::Update(float deltaTime) {
         float g = RandFloat(0.3f, 0.5f);
         p.color = glm::vec3(g, g, g);
       } else {
-        p.isWater = false;
-        // Fire: warm orange, faster upward
-        p.velocity = glm::vec3(RandFloat(-5.0f, 5.0f), RandFloat(40.0f, 80.0f),
-                               RandFloat(-5.0f, 5.0f));
-        p.scale = RandFloat(60.0f, 100.0f);
+        // Main 5.2: rand()%4 SubType creates a MIX of fire behaviors:
+        //   SubType 0 (25%): standard shrinking fire, accelerating rise
+        //   SubType 1 (25%): tiny sparks (scale 0.10-0.14 in MU units)
+        //   SubType 2,3 (50%): expanding glow fire, velocity dampens
+        p.subType = rand() % 4;
+        p.gravity = 0.0f;
+        p.frameOffset = rand() % 4;
+        float lum = RandFloat(0.9f, 1.5f);
+        p.color = glm::vec3(lum, lum * 0.6f, lum * 0.4f);
         p.maxLifetime = PARTICLE_LIFETIME;
         p.lifetime = PARTICLE_LIFETIME;
-        float lum = RandFloat(0.6f, 1.1f);
-        p.color = glm::vec3(lum, lum * 0.6f, lum * 0.4f);
+
+        if (p.subType == 0) {
+          // Fire particles stay nearly stationary — visual flicker comes from
+          // overlapping sprites at different scales/frames, not from movement.
+          // Position jitter at spawn (±10) provides spatial variation.
+          p.velocity = glm::vec3(0.0f, 0.0f, 0.0f);
+          p.scale = RandFloat(80.0f, 115.0f);
+        } else if (p.subType == 1) {
+          // Tiny sparks: slight upward drift
+          p.velocity = glm::vec3(RandFloat(-2.0f, 2.0f),
+                                 RandFloat(8.0f, 18.0f),
+                                 RandFloat(-2.0f, 2.0f));
+          p.scale = RandFloat(8.0f, 14.0f);
+        } else {
+          // SubType 2,3: expanding glow — stationary, grows in place
+          p.velocity = glm::vec3(0.0f, 0.0f, 0.0f);
+          p.scale = RandFloat(40.0f, 60.0f);
+        }
       }
 
-      p.rotation = RandFloat(0.0f, 6.2832f);
+      // Main 5.2: SubType 0,1,2,3 render with o->Angle[0] (typically ≈ 0).
+      // Minimal ±5° jitter for visual variety while keeping flames upright.
+      if (!emitter.smoke && !emitter.water)
+        p.rotation = RandFloat(-0.09f, 0.09f);
+      else
+        p.rotation = RandFloat(0.0f, 6.2832f);
       particles.push_back(p);
     }
   }
@@ -276,17 +324,32 @@ void FireEffect::Update(float deltaTime) {
     }
 
     p.position += p.velocity * deltaTime;
-    // Slight deceleration of upward movement
-    p.velocity.y *= (1.0f - 1.5f * deltaTime);
-    // Shrink over lifetime
-    p.scale -= 50.0f * deltaTime;
-    if (p.scale < 2.0f)
-      p.scale = 2.0f;
+    if (p.isSmoke || p.isWater) {
+      // Smoke/water: slight deceleration
+      p.velocity.y *= (1.0f - 1.5f * deltaTime);
+      p.scale -= 50.0f * deltaTime;
+    } else {
+      // Fire: continuous per-frame wobble so every frame looks different at 60fps.
+      // Tiny random XZ drift (±3 units/sec) + slow rotation drift.
+      p.position.x += RandFloat(-3.0f, 3.0f) * deltaTime;
+      p.position.z += RandFloat(-3.0f, 3.0f) * deltaTime;
+      p.rotation += RandFloat(-0.5f, 0.5f) * deltaTime;
+
+      if (p.subType <= 1) {
+        // SubType 0: shrinks. SubType 1 (sparks): slight rise + shrinks.
+        p.scale -= 70.0f * deltaTime;
+      } else {
+        // SubType 2,3: expanding glow, grows in place
+        p.scale += 40.0f * deltaTime;
+      }
+    }
+    if (p.scale < 1.0f)
+      p.scale = 1.0f;
   }
 }
 
 void FireEffect::submitBatch(const std::vector<InstanceData> &batch,
-                             TexHandle tex) {
+                             TexHandle tex, bool pureAdditive) {
   uint32_t count = (uint32_t)batch.size();
   const uint16_t stride = 48; // 3 × vec4
 
@@ -305,11 +368,11 @@ void FireEffect::submitBatch(const std::vector<InstanceData> &batch,
     d[1] = batch[i].worldPos.y;
     d[2] = batch[i].worldPos.z;
     d[3] = batch[i].scale;
-    // i_data1: rotation, frame, alpha, pad
+    // i_data1: rotation, frame, alpha, radialStrength
     d[4] = batch[i].rotation;
     d[5] = batch[i].frame;
     d[6] = batch[i].alpha;
-    d[7] = 0.0f;
+    d[7] = batch[i].radialStrength;
     // i_data2: color.rgb, pad
     d[8] = batch[i].color.x;
     d[9] = batch[i].color.y;
@@ -323,11 +386,17 @@ void FireEffect::submitBatch(const std::vector<InstanceData> &batch,
   bgfx::setInstanceDataBuffer(&idb);
   billboardShader->setTexture(0, "s_fireTex", tex);
 
-  // Additive blend, depth test but no depth write, no face culling
+  // Depth test but no depth write, no face culling
   uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
-                 | BGFX_STATE_DEPTH_TEST_LESS
-                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
-                                         BGFX_STATE_BLEND_ONE);
+                 | BGFX_STATE_DEPTH_TEST_LESS;
+  if (pureAdditive) {
+    // Main 5.2: EnableAlphaBlend() = GL_ONE, GL_ONE (pure additive)
+    state |= BGFX_STATE_BLEND_ADD;
+  } else {
+    // Alpha-modulated additive for smoke/water (soft edges via luminance alpha)
+    state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                    BGFX_STATE_BLEND_ONE);
+  }
   bgfx::setState(state);
   bgfx::submit(0, billboardShader->program);
 }
@@ -338,13 +407,14 @@ void FireEffect::Render(const glm::mat4 &view, const glm::mat4 &projection) {
 
   int count = std::min((int)particles.size(), MAX_PARTICLES);
 
-  // Separate into fire and water batches
-  std::vector<InstanceData> fireBatch, waterBatch;
+  // Separate into fire (pure additive), smoke (alpha-additive), water batches
+  std::vector<InstanceData> fireBatch, smokeBatch, waterBatch;
   fireBatch.reserve(count);
 
   for (int i = 0; i < count; ++i) {
     auto &p = particles[i];
     float t = 1.0f - p.lifetime / p.maxLifetime;
+    // Main 5.2: Frame = (23-LifeTime)/6 → 4 frames over lifetime
     int frame = std::min((int)(t * 4.0f), 3);
     float alpha = p.lifetime / p.maxLifetime;
 
@@ -352,23 +422,38 @@ void FireEffect::Render(const glm::mat4 &view, const glm::mat4 &projection) {
     d.worldPos = p.position;
     d.scale = p.scale;
     d.rotation = p.rotation;
-    d.frame = (float)frame;
     d.color = p.color;
     d.alpha = alpha;
 
     if (p.isWater) {
-      d.frame = 0.0f; // water uses full texture
+      d.frame = -1.0f; // full texture (no sprite sheet)
+      d.radialStrength = 10.0f;
       waterBatch.push_back(d);
+    } else if (p.isSmoke) {
+      d.frame = -1.0f; // full texture
+      d.radialStrength = 14.0f; // steep radial fade for soft smoke edges
+      smokeBatch.push_back(d);
     } else {
+      // Fire: sprite sheet frame with strong radial fade to hide billboard edges.
+      // SRC_ALPHA blend + radial fade creates soft circular glows that merge
+      // into a natural flame shape when overlapping.
+      d.frame = (float)((frame + p.frameOffset) % 4);
+      d.radialStrength = 8.0f;  // strong: edges at 8% brightness
+      d.alpha = alpha;           // linear fade over lifetime
       fireBatch.push_back(d);
     }
   }
 
+  // Fire: SRC_ALPHA additive — alpha-modulated so dark pixels/edges vanish
   if (!fireBatch.empty())
-    submitBatch(fireBatch, fireTexture);
+    submitBatch(fireBatch, fireTexture, false);
+
+  // Smoke: alpha-modulated additive (SRC_ALPHA, ONE) for soft edges
+  if (!smokeBatch.empty())
+    submitBatch(smokeBatch, fireTexture, false);
 
   if (!waterBatch.empty() && TexValid(waterTexture))
-    submitBatch(waterBatch, waterTexture);
+    submitBatch(waterBatch, waterTexture, false);
 }
 
 void FireEffect::Cleanup() {

@@ -1,5 +1,4 @@
 #include "MonsterManager.hpp"
-#include "ChromeGlow.hpp"
 #include "TerrainUtils.hpp"
 #include "imgui.h"
 #include <algorithm>
@@ -66,7 +65,7 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
     m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
-    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 2.0f)); // w=2.0 enables matcap
+    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
     m_shader->setVec4("u_fogParams", fogParams);
     m_shader->setVec4("u_fogColor", fogColor);
     m_shader->setVec4("u_texCoordOffset", texCoordOff);
@@ -78,9 +77,6 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       m_shader->setMat4("u_lightMtx", m_lightMtx);
       m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
     }
-    auto& ct = ChromeGlow::GetTextures();
-    if (TexValid(ct.chrome2))
-      m_shader->setTexture(3, "s_matcapTex", ct.chrome2);
     bgfx::setState(state);
     bgfx::submit(0, m_shader->program);
   };
@@ -414,6 +410,25 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         }
       }
 
+      // Lich (type 37): staff orb glow (Main 5.2: RenderLight LIGHTNING+1 + SHINY+2 at bone 63)
+      // Monster27.bmd has no bone 63 — approximate with hand bone 16 + forward offset
+      if (mon.monsterType == 37 && mon.ambientVfxTimer >= 0.04f) {
+        if (16 < (int)bones.size()) {
+          glm::mat4 modelRot = glm::mat4(1.0f);
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+          const auto &bm = bones[16];
+          glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+          glm::vec3 worldPos = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+          glm::vec3 orbPos = worldPos * mon.scale + mon.position;
+          // Blue-white lightning glow
+          m_vfxManager->SpawnBurstColored(ParticleType::SPELL_LIGHTNING, orbPos,
+                                          glm::vec3(0.5f, 0.5f, 1.0f), 1);
+          m_vfxManager->SpawnWeaponSparkle(orbPos, glm::vec3(0.6f, 0.6f, 1.0f));
+        }
+      }
+
       // Death Knight (type 40): fire particle at bone 2 (chest), 50% chance per tick
       // Main 5.2 MoveCharacterVisual: if(rand()%2==0) CreateParticle(BITMAP_FIRE, bone 2)
       if (mon.monsterType == 40 && mon.ambientVfxTimer >= 0.08f) {
@@ -429,6 +444,42 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
           m_vfxManager->SpawnBurst(ParticleType::FIRE, firePos, 1);
         }
         mon.ambientVfxTimer = 0.0f;
+      }
+
+      // Cursed Wizard (type 34): hand bone lightning/spark glow
+      // Main 5.2 RenderLight: LIGHTNING+1 + SHINY+2 at bones 30, 39
+      if (mon.monsterType == 34 && mon.ambientVfxTimer >= 0.04f) {
+        glm::mat4 modelRot = glm::mat4(1.0f);
+        modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+        modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+        modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+        for (int boneIdx : {30, 39}) {
+          if (boneIdx < (int)bones.size()) {
+            const auto &bm = bones[boneIdx];
+            glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+            glm::vec3 worldPos = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+            glm::vec3 pos = worldPos * mon.scale + mon.position;
+            m_vfxManager->SpawnBurstColored(ParticleType::SPELL_LIGHTNING, pos,
+                                            glm::vec3(0.5f, 0.5f, 1.0f), 1);
+            m_vfxManager->SpawnWeaponSparkle(pos, glm::vec3(0.8f, 0.6f, 1.0f));
+          }
+        }
+      }
+
+      // Elite Goblin (type 33): weapon glow at bone 9
+      // Main 5.2 RenderLight: SPARK + SHINY+2 at bone 9
+      if (mon.monsterType == 33 && mon.ambientVfxTimer >= 0.04f) {
+        if (9 < (int)bones.size()) {
+          glm::mat4 modelRot = glm::mat4(1.0f);
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+          const auto &bm = bones[9];
+          glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+          glm::vec3 worldPos = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+          glm::vec3 pos = worldPos * mon.scale + mon.position;
+          m_vfxManager->SpawnWeaponSparkle(pos, glm::vec3(0.8f, 0.6f, 0.3f));
+        }
       }
 
     }
@@ -599,9 +650,22 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         RetransformMeshWithBones(wd.bmd->Meshes[mi], wFinalBones,
                                  wms.meshBuffers[mi]);
         auto &mb = wms.meshBuffers[mi];
-        if (mb.indexCount == 0)
+        if (mb.indexCount == 0 || mb.hidden)
           continue;
-        monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState);
+        // BlendMesh: additive glow mesh (e.g. Death Knight lightning sword)
+        bool isWeaponBlend = (wd.blendMesh >= 0 && mb.bmdTextureId == wd.blendMesh);
+        if (isWeaponBlend) {
+          // Flickering additive glow — Main 5.2 BlendMeshLight
+          float phase = model[3][0] * 0.013f;
+          float blendLight = 0.6f + 0.3f * std::sin(m_worldTime * 4.0f + phase);
+          monDrawMesh(model, mb, renderAlpha, blendLight, tLight * 0.4f, additiveState);
+        } else if (mb.noneBlend) {
+          monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, noneBlendState);
+        } else if (mb.bright) {
+          monDrawMesh(model, mb, renderAlpha, 1.0f, tLight * 0.5f, additiveState);
+        } else {
+          monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, normalState);
+        }
       }
     }
   }

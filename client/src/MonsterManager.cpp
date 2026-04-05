@@ -469,16 +469,15 @@ void MonsterManager::InitModels(const std::string &dataPath) {
       m_models[idx].defense = 27;
       m_models[idx].defenseRate = 27;
       m_models[idx].attackRate = 110;
-      m_models[idx].blendMesh = -1; // No glow — only 1 mesh (ice_m.jpg, normal tex)
+      m_models[idx].blendMesh = 0; // Main 5.2: BlendMesh=0, entire body additive ice
     }
     m_typeToModel[22] = idx;
   }
 
-  // Hommerd (type 23): Monster17.bmd (Main 5.2: Scale=1.15)
+  // Hommerd (type 23): Monster17.bmd (Main 5.2: Scale=1.15, weapons loaded below)
   {
     int idx = loadMonsterModel("Monster17.bmd", "Hommerd", 1.15f, 90.0f, 160.0f);
     if (idx >= 0) {
-      // level comes from server viewport packet
       m_models[idx].defense = 29;
       m_models[idx].defenseRate = 29;
       m_models[idx].attackRate = 120;
@@ -498,15 +497,14 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[24] = idx;
   }
 
-  // Ice Queen (type 25): Monster19.bmd (Main 5.2: Scale=1.1, boss)
+  // Ice Queen (type 25): Monster19.bmd (Main 5.2: Scale=1.1, boss, weapons loaded below)
   {
     int idx = loadMonsterModel("Monster19.bmd", "Ice Queen", 1.1f, 100.0f, 180.0f);
     if (idx >= 0) {
-      // level comes from server viewport packet
       m_models[idx].defense = 90;
       m_models[idx].defenseRate = 90;
       m_models[idx].attackRate = 260;
-      m_models[idx].blendMesh = 2; // Cape mesh (snow_queen02.jpg) — additive blend (black=transparent)
+      m_models[idx].blendMesh = 2; // Cape mesh (snow_queen02.jpg) — additive blend
     }
     m_typeToModel[25] = idx;
   }
@@ -514,11 +512,10 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   // ── Noria monsters (OpenMU Version075) ──
   // Main 5.2 enum+1 = BMD number: GOBLIN=19→Monster20, CHAIN_SCORPION=20→Monster21, etc.
 
-  // Goblin (type 26): Monster20.bmd (Main 5.2: Scale=0.8, weapon=AXE)
+  // Goblin (type 26): Monster20.bmd (Main 5.2: Scale=0.8, weapons loaded below)
   {
     int idx = loadMonsterModel("Monster20.bmd", "Goblin", 0.8f, 70.0f, 100.0f);
     if (idx >= 0) {
-      // level comes from server viewport packet
       m_models[idx].defense = 2;
       m_models[idx].defenseRate = 2;
       m_models[idx].attackRate = 13;
@@ -538,11 +535,10 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[27] = idx;
   }
 
-  // Beetle Monster (type 28): Monster22.bmd (Main 5.2: Scale=0.8, BlendMesh=1)
+  // Beetle Monster (type 28): Monster22.bmd (Main 5.2: Scale=0.8, BlendMesh=1, weapons below)
   {
     int idx = loadMonsterModel("Monster22.bmd", "Beetle Monster", 0.8f, 80.0f, 130.0f);
     if (idx >= 0) {
-      // level comes from server viewport packet
       m_models[idx].defense = 10;
       m_models[idx].defenseRate = 10;
       m_models[idx].attackRate = 44;
@@ -575,11 +571,10 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[30] = idx;
   }
 
-  // Agon (type 31): Monster25.bmd (Main 5.2: Scale=1.3)
+  // Agon (type 31): Monster25.bmd (Main 5.2: Scale=1.3, weapons loaded below)
   {
     int idx = loadMonsterModel("Monster25.bmd", "Agon", 1.3f, 90.0f, 160.0f);
     if (idx >= 0) {
-      // level comes from server viewport packet
       m_models[idx].defense = 16;
       m_models[idx].defenseRate = 16;
       m_models[idx].attackRate = 74;
@@ -599,11 +594,10 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[32] = idx;
   }
 
-  // Elite Goblin (type 33): Monster20.bmd (same as Goblin, Main 5.2: Scale=1.2)
+  // Elite Goblin (type 33): Monster20.bmd (Main 5.2: Scale=1.2, weapons loaded below)
   {
     int idx = loadMonsterModel("Monster20.bmd", "Elite Goblin", 1.2f, 80.0f, 130.0f);
     if (idx >= 0) {
-      // level comes from server viewport packet
       m_models[idx].defense = 8;
       m_models[idx].defenseRate = 8;
       m_models[idx].attackRate = 33;
@@ -751,7 +745,8 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     glm::vec3 noRot(0), noOff(0);
 
     auto loadMonsterWeapon = [&](uint16_t type, const char *bmdFile, int bone,
-                                 glm::vec3 rot, glm::vec3 off) {
+                                 glm::vec3 rot, glm::vec3 off,
+                                 int blendMesh = -1) {
       auto it = m_typeToModel.find(type);
       if (it == m_typeToModel.end() || it->second < 0)
         return;
@@ -766,11 +761,13 @@ void MonsterManager::InitModels(const std::string &dataPath) {
       wd.attachBone = bone;
       wd.rot = rot;
       wd.offset = off;
+      wd.blendMesh = blendMesh;
       wd.cachedLocalBones = ComputeBoneMatrices(wd.bmd);
       m_models[it->second].weaponDefs.push_back(wd);
       m_ownedBmds.push_back(std::move(wpnBmd));
       std::cout << "[Monster] Loaded weapon " << bmdFile << " for type " << type
-                << " (bone " << bone << ")" << std::endl;
+                << " (bone " << bone << ", blendMesh " << blendMesh << ")"
+                << std::endl;
     };
 
     // Bull Fighter (type 0): MODEL_AXE+6 = Axe07.bmd, R-Hand bone 42
@@ -806,7 +803,8 @@ void MonsterManager::InitModels(const std::string &dataPath) {
 
     // Dark Knight (type 10): MODEL_DOUBLE_BLADE = MODEL_SWORD+13 = Sword14.bmd
     // Main 5.2: c->Weapon[0].LinkBone = 26
-    loadMonsterWeapon(10, "Sword14.bmd", 26, noRot, noOff);
+    // BlendMesh=1: mesh 1 (sword015_2.jpg) is glow effect
+    loadMonsterWeapon(10, "Sword14.bmd", 26, noRot, noOff, 1);
 
     // Hell Spider (type 13): MODEL_SERPENT_STAFF = MODEL_STAFF+2 = Staff03.bmd
     // Main 5.2: c->Weapon[0].LinkBone = 29
@@ -820,20 +818,35 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     // Main 5.2: c->Weapon[0].LinkBone = 30
     loadMonsterWeapon(18, "Staff05.bmd", 30, noRot, noOff);
 
-    // Lost Tower monster weapons (Main 5.2 ZzzCharacter.cpp)
-    // Death Gorgon (type 35): MODEL_AXE+8 = Axe09.bmd, dual wield
-    // Monster12.bmd LinkBone: [0]=30, [1]=39
-    loadMonsterWeapon(35, "Axe09.bmd", 30, noRot, noOff);
-    loadMonsterWeapon(35, "Axe09.bmd", 39, noRot, noOff);
-    // Balrog (type 38): MODEL_SPEAR+9 = Spear10.bmd, Level=9
-    // Monster28.bmd LinkBone: [0]=17
-    loadMonsterWeapon(38, "Spear10.bmd", 17, noRot, noOff);
-    // Death Knight (type 40): MODEL_SWORD+14 = Sword15.bmd
-    // Monster30.bmd LinkBone: [0]=30
-    loadMonsterWeapon(40, "Sword15.bmd", 30, noRot, noOff);
-    // Death Cow (type 41): MODEL_MACE+3 = Mace04.bmd
-    // Monster31.bmd LinkBone: [0]=42 (shares with Bull Fighter model)
-    loadMonsterWeapon(41, "Mace04.bmd", 42, noRot, noOff);
+    // Lost Tower weapon loading moved below — models must be registered first
+
+    // ── Devias monster weapons (Main 5.2 ZzzCharacter.cpp) ──
+    // Hommerd (type 23): Axe08 + Shield11
+    // Monster17.bmd: bone 30=knife_gdf (R), bone 39=hand_bofdgne01 (L)
+    loadMonsterWeapon(23, "Axe08.bmd", 30, noRot, noOff);
+    loadMonsterWeapon(23, "Shield11.bmd", 39, noRot, noOff);
+    // Ice Queen (type 25): Staff02 (Angelic Staff)
+    // Monster19.bmd: bone 26=knife_gdf (R)
+    loadMonsterWeapon(25, "Staff02.bmd", 26, noRot, noOff);
+
+    // ── Noria monster weapons (Main 5.2 ZzzCharacter.cpp) ──
+    // Goblin (type 26): Axe01 (Small Axe)
+    // Monster20.bmd: bone 31=knife (R)
+    loadMonsterWeapon(26, "Axe01.bmd", 31, noRot, noOff);
+    // Beetle Monster (type 28): Spear02
+    // Monster22.bmd: bone 24=knife (R)
+    loadMonsterWeapon(28, "Spear02.bmd", 24, noRot, noOff);
+    // Hunter (type 29): Bow07 (fallback — Bow11.bmd missing from assets)
+    // Monster23.bmd: bone 11=L Hand (bow goes in off-hand like Skeleton Archer)
+    loadMonsterWeapon(29, "Bow07.bmd", 11, noRot, noOff);
+    // Agon (type 31): dual Sword09 (Serpent Sword)
+    // Monster25.bmd: bone 39=knife (R), bone 30=shield (L weapon bone)
+    loadMonsterWeapon(31, "Sword09.bmd", 39, noRot, noOff);
+    loadMonsterWeapon(31, "Sword09.bmd", 30, noRot, noOff);
+    // Elite Goblin (type 33): Mace02 (Morning Star) + Shield02 (Horn Shield)
+    // Monster20.bmd: bone 31=knife (R), bone 22=shield (L weapon bone)
+    loadMonsterWeapon(33, "Mace02.bmd", 31, noRot, noOff);
+    loadMonsterWeapon(33, "Shield02.bmd", 22, noRot, noOff);
   }
 
   // Bali (type 150) — Elf summon (MONSTER_MODEL_BALI=32 → Monster33.bmd)
@@ -1002,13 +1015,14 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   }
 
   // Balrog (type 38): Monster28.bmd — Spear10.bmd weapon (bone 17)
-  // Main 5.2: scale=1.6, also shared with type 67 (Metal Balrog)
+  // Main 5.2: scale=1.6, BlendMesh=1 (lava surface UV scroll), also shared with type 67
   {
     int idx = loadMonsterModel("Monster28.bmd", "Balrog", 1.6f, 130.0f, 250.0f);
     if (idx >= 0) {
       m_models[idx].defense = 160;
       m_models[idx].defenseRate = 99;
       m_models[idx].attackRate = 330;
+      m_models[idx].blendMesh = 1; // Mesh 1 (ho9_2.jpg) = lava/fire underbelly
     }
     m_typeToModel[38] = idx;
   }
@@ -1050,6 +1064,61 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[41] = idx;
   }
 
+  // ── Lost Tower monster weapons (must come AFTER model registration) ──
+  // These were previously in the non-skeleton weapons block but failed silently
+  // because m_typeToModel[35..41] wasn't populated yet at that point.
+  {
+    std::string itemPath = dataPath + "/Item/";
+    glm::vec3 noRot(0), noOff(0);
+
+    std::cout << "[Monster] Loading Lost Tower weapons (itemPath=" << itemPath << ")" << std::endl;
+    std::cout << "[Monster] m_typeToModel check: 35=" << (m_typeToModel.count(35) ? std::to_string(m_typeToModel[35]) : "MISSING")
+              << " 40=" << (m_typeToModel.count(40) ? std::to_string(m_typeToModel[40]) : "MISSING") << std::endl;
+
+    auto loadMonsterWeapon = [&](uint16_t type, const char *bmdFile, int bone,
+                                 glm::vec3 rot, glm::vec3 off,
+                                 int blendMesh = -1) {
+      auto it = m_typeToModel.find(type);
+      if (it == m_typeToModel.end() || it->second < 0) {
+        std::cerr << "[Monster] SKIP weapon " << bmdFile << " for type " << type << " (not in map)" << std::endl;
+        return;
+      }
+      auto wpnBmd = BMDParser::Parse(itemPath + bmdFile);
+      if (!wpnBmd) {
+        std::cerr << "[Monster] Failed to load weapon " << bmdFile << std::endl;
+        return;
+      }
+      WeaponDef wd;
+      wd.bmd = wpnBmd.get();
+      wd.texDir = itemPath;
+      wd.attachBone = bone;
+      wd.rot = rot;
+      wd.offset = off;
+      wd.blendMesh = blendMesh;
+      wd.cachedLocalBones = ComputeBoneMatrices(wd.bmd);
+      m_models[it->second].weaponDefs.push_back(wd);
+      m_ownedBmds.push_back(std::move(wpnBmd));
+      std::cout << "[Monster] Loaded weapon " << bmdFile << " for type " << type
+                << " (bone " << bone << ", blendMesh " << blendMesh << ")"
+                << std::endl;
+    };
+
+    // Death Gorgon (type 35): MODEL_AXE+8 = Axe09.bmd, dual wield
+    // Monster12.bmd LinkBone: [0]=30, [1]=39
+    loadMonsterWeapon(35, "Axe09.bmd", 30, noRot, noOff);
+    loadMonsterWeapon(35, "Axe09.bmd", 39, noRot, noOff);
+    // Balrog (type 38): MODEL_SPEAR+9 = Spear10.bmd
+    // Monster28.bmd LinkBone: [0]=17
+    loadMonsterWeapon(38, "Spear10.bmd", 17, noRot, noOff);
+    // Death Knight (type 40): MODEL_SWORD+14 = Sword15.bmd
+    // Monster30.bmd LinkBone: [0]=30
+    // BlendMesh=1: mesh 1 (sword15_2.jpg) is lightning glow, renders additive
+    loadMonsterWeapon(40, "Sword15.bmd", 30, noRot, noOff, 1);
+    // Death Cow (type 41): MODEL_MACE+3 = Mace04.bmd
+    // Monster31.bmd LinkBone: [0]=42 (shares with Bull Fighter model)
+    loadMonsterWeapon(41, "Mace04.bmd", 42, noRot, noOff);
+  }
+
   // Load Debris models (not mapped to server types)
   std::string skillPath = dataPath + "/Skill/";
   m_boneModelIdx =
@@ -1057,9 +1126,25 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   m_stoneModelIdx =
       loadMonsterModel("../Skill/BigStone01.bmd", "Stone Debris", 0.6f, 0, 0);
 
-  // Arrow projectile model (Main 5.2: MODEL_ARROW → Arrow01.bmd)
+  // Arrow projectile models (Main 5.2: per-weapon arrow variants)
   m_arrowModelIdx = loadMonsterModel("../Skill/Arrow01.bmd", "Arrow", 0.8f, 0,
                                      0, 0.0f, skillPath);
+  m_arrowModels[ARROW_DEFAULT] = m_arrowModelIdx;
+  auto loadArrow = [&](ArrowVariant v, const char *bmd, const char *name) {
+    int idx = loadMonsterModel(std::string("../Skill/") + bmd, name, 0.8f, 0,
+                               0, 0.0f, skillPath);
+    m_arrowModels[v] = (idx >= 0) ? idx : m_arrowModelIdx; // fallback to default
+  };
+  loadArrow(ARROW_V,       "ArrowV01.bmd",       "ArrowV");
+  loadArrow(ARROW_NATURE,  "ArrowNature01.bmd",  "ArrowNature");
+  loadArrow(ARROW_STEEL,   "ArrowSteel01.bmd",   "ArrowSteel");
+  loadArrow(ARROW_SAW,     "ArrowSaw01.bmd",     "ArrowSaw");
+  loadArrow(ARROW_LASER,   "ArrowLaser01.bmd",   "ArrowLaser");
+  loadArrow(ARROW_THUNDER, "ArrowThunder01.bmd",  "ArrowThunder");
+  loadArrow(ARROW_WING,    "ArrowWing01.bmd",    "ArrowWing");
+  loadArrow(ARROW_BOMB,    "ArrowBomb01.bmd",    "ArrowBomb");
+  loadArrow(ARROW_DOUBLE,  "ArrowDouble01.bmd",  "ArrowDouble");
+  loadArrow(ARROW_SPARK,   "Arrow_Spark.bmd",    "ArrowSpark");
 
   m_modelsLoaded = true;
   std::cout << "[Monster] Models loaded: " << m_models.size() << " types"
@@ -1344,13 +1429,18 @@ static float facingFromDir(const glm::vec3 &dir) {
 
 // Play idle sound for a monster transitioning to idle (with cooldown + range check)
 void MonsterManager::playIdleSound(MonsterInstance &mon) {
-  constexpr float COOLDOWN = 8.0f; // Min seconds between idle sounds per monster
-  constexpr float MAX_DIST_SQ = 1200.0f * 1200.0f;
+  constexpr float COOLDOWN = 12.0f; // Min seconds between idle sounds per monster
+  constexpr float MAX_DIST_SQ = 800.0f * 800.0f; // Only nearby monsters
+  // Global throttle: max 1 idle sound per 4s to prevent overlapping growls
+  // Lost Tower has many large monsters with long (5-7s) idle sounds
+  static float s_lastGlobalIdleSound = 0.0f;
+  if (m_worldTime - s_lastGlobalIdleSound < 4.0f) return;
   if (m_worldTime - mon.lastIdleSoundTime < COOLDOWN) return;
   float dx = mon.position.x - m_playerPos.x;
   float dz = mon.position.z - m_playerPos.z;
   if (dx * dx + dz * dz > MAX_DIST_SQ) return;
   mon.lastIdleSoundTime = m_worldTime;
+  s_lastGlobalIdleSound = m_worldTime;
   float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
   switch (mon.monsterType) {
   case 0: SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz); break;
@@ -1389,10 +1479,14 @@ void MonsterManager::playIdleSound(MonsterInstance &mon) {
     SoundManager::Play3D(SOUND_MONSTER_GORGON1 + rand() % 2, px, py, pz); break;
   case 36: case 39: // Shadow + Poison Shadow — mShadow idle
     SoundManager::Play3D(SOUND_MONSTER_SHADOW1 + rand() % 2, px, py, pz); break;
-  case 37: case 38: // Devil + Balrog — mBalrog idle
+  case 37: // Devil — Main 5.2 model 26: mYeti1.wav idle
+    SoundManager::Play3D(SOUND_MONSTER_YETI1 + rand() % 2, px, py, pz); break;
+  case 38: // Balrog — Main 5.2 model 27: mBalrog1/2.wav idle
     SoundManager::Play3D(SOUND_MONSTER_BALROG1 + rand() % 2, px, py, pz); break;
-  case 40: case 41: // Death Knight + Death Cow — ogre sounds
-    SoundManager::Play3D(SOUND_MONSTER_OGRE1 + rand() % 2, px, py, pz); break;
+  case 40: // Death Knight — Main 5.2 model 29: mDarkKnight1/2.wav idle
+    SoundManager::Play3D(SOUND_MONSTER_DARKKNIGHT1 + rand() % 2, px, py, pz); break;
+  case 41: // Death Cow — Main 5.2 model 30: mBull1/2.wav idle
+    SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz); break;
   default: break;
   }
 }

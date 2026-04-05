@@ -115,9 +115,27 @@ public:
   // 0x35 chasing=2: Lightning/melee knockback — fast snap to new position
   void ApplyKnockback(int index, float worldX, float worldZ);
 
+  // Per-weapon arrow model variants (Main 5.2: CreateArrow weapon switch)
+  enum ArrowVariant {
+    ARROW_DEFAULT = 0,  // Arrow01.bmd (bows 0,1,3,4,5)
+    ARROW_V,            // ArrowV01.bmd (bow 2: Elven Bow)
+    ARROW_NATURE,       // ArrowNature01.bmd (bow 6: Chaos Nature Bow)
+    ARROW_STEEL,        // ArrowSteel01.bmd (crossbow 8,9)
+    ARROW_SAW,          // ArrowSaw01.bmd (crossbow 10: Arquebus)
+    ARROW_LASER,        // ArrowLaser01.bmd (crossbow 11: Light Crossbow)
+    ARROW_THUNDER,      // ArrowThunder01.bmd (crossbow 12: Serpent CB)
+    ARROW_WING,         // ArrowWing01.bmd (crossbow 13: Bluewing CB)
+    ARROW_BOMB,         // ArrowBomb01.bmd (crossbow 14: Aquagold CB)
+    ARROW_DOUBLE,       // ArrowDouble01.bmd (crossbow 16: Saint CB)
+    ARROW_SPARK,        // Arrow_Spark.bmd (bow 17: Celestial Bow)
+    ARROW_COUNT
+  };
+  static ArrowVariant GetArrowVariant(uint8_t itemIndex);
+
   // Arrow projectile VFX (Main 5.2: CreateArrow)
+  // arrowModel: -1 = default Arrow01, otherwise ArrowVariant index
   void SpawnArrow(const glm::vec3 &from, const glm::vec3 &to,
-                  float speed = 1500.0f);
+                  float speed = 1500.0f, int arrowModel = -1);
 
   // Player position/facing for cosmetic facing during CHASING/ATTACKING states
   void SetPlayerPosition(const glm::vec3 &pos) { m_prevPlayerPos = m_playerPos; m_playerPos = pos; }
@@ -176,6 +194,7 @@ private:
     glm::vec3 rot{0};       // Local rotation (degrees) — Main 5.2 AngleMatrix
     glm::vec3 offset{0}; // Local offset in bone space — Main 5.2 Matrix[i][3]
     std::vector<BoneWorldMatrix> cachedLocalBones; // Static bind-pose bones (computed once)
+    int blendMesh = -1;     // Additive glow mesh index (-1 = none)
   };
 
   struct MonsterModel {
@@ -327,6 +346,8 @@ private:
     float yaw;           // Heading yaw in radians
     float scale;
     float lifetime; // Seconds remaining (30 ticks / 25fps = 1.2s)
+    int modelIdx = -1;   // -1 = default Arrow01, else index into m_arrowModels
+    float trailAccum = 0.0f; // Throttle trail particle spawning to 25fps
   };
 
   std::vector<std::unique_ptr<BMDData>> m_ownedBmds;
@@ -401,7 +422,9 @@ private:
 
   int m_boneModelIdx = -1;
   int m_stoneModelIdx = -1;
-  int m_arrowModelIdx = -1;
+  int m_arrowModelIdx = -1;  // Default Arrow01.bmd
+
+  int m_arrowModels[ARROW_COUNT] = {};  // Model indices into m_models[]
 
   int loadMonsterModel(const std::string &bmdFile, const std::string &name,
                        float scale, float radius, float height,

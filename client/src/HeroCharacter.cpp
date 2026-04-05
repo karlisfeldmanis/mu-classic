@@ -678,6 +678,40 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
   }
 
+  // Weapon animation — bows/crossbows: attack-synced, staves: continuous loop
+  if (m_weaponIsAnimated && m_weaponBmd && !m_weaponBmd->Actions.empty()) {
+    int weaponKeys = m_weaponBmd->Actions[0].NumAnimationKeys;
+    if (m_weaponAnimContinuous) {
+      // Continuous loop (Staff07 lightning etc.) — same pattern as wings
+      float playSpeed = m_weaponBmd->Actions[0].PlaySpeed;
+      if (playSpeed <= 0.0f) playSpeed = 0.25f;
+      float weaponSpeed = playSpeed * 25.0f; // tick-based to per-second
+      m_weaponAnimFrame += weaponSpeed * deltaTime;
+      if (m_weaponAnimFrame >= (float)weaponKeys)
+        m_weaponAnimFrame = std::fmod(m_weaponAnimFrame, (float)weaponKeys);
+    } else {
+      // Attack-synced (bow/crossbow): map attack progress to weapon keyframes
+      if (m_attackState == AttackState::SWINGING) {
+        int charKeys = 1;
+        if (m_action >= 0 && m_action < (int)m_skeleton->Actions.size())
+          charKeys = m_skeleton->Actions[m_action].NumAnimationKeys;
+        float spdMul = currentSpeedMultiplier();
+        float atkAnimSpeed = ANIM_SPEED * spdMul;
+        float animDuration =
+            (charKeys > 1) ? (float)charKeys / atkAnimSpeed : 0.5f;
+        float progress =
+            std::clamp(m_attackAnimTimer / animDuration, 0.0f, 1.0f);
+        m_weaponAnimFrame = progress * (float)(weaponKeys - 1);
+      } else {
+        // Not attacking: smooth return to rest pose (bowstring relaxed)
+        if (m_weaponAnimFrame > 0.01f)
+          m_weaponAnimFrame = std::max(0.0f, m_weaponAnimFrame - 15.0f * deltaTime);
+        else
+          m_weaponAnimFrame = 0.0f;
+      }
+    }
+  }
+
   // Main 5.2: Flash (Aqua Beam) — gathering during wind-up, beam at frame 7.0
   if (m_pendingAquaBeam && m_activeSkillId == 12 && m_vfxManager) {
     // Gathering particles during frames 1.2-3.0 (BITMAP_GATHERING SubType 2)
@@ -882,7 +916,7 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
     m_shader->setVec4("u_glowColor", glm::vec4(glowColor, 0.0f));
-    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 2.0f)); // w=2.0 enables matcap
+    m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
     m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
     m_shader->setVec4("u_fogParams", glm::vec4(fogNear, fogFar, useFog, 0.0f));
     m_shader->setVec4("u_fogColor", glm::vec4(fogColor, 0.0f));
@@ -902,9 +936,6 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setTexture(0, "s_texColor", mb.texture);
     if (bgfx::isValid(m_shadowMapTex))
       m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
-    auto& ct = ChromeGlow::GetTextures();
-    if (TexValid(ct.chrome2))
-      m_shader->setTexture(3, "s_matcapTex", ct.chrome2);
     bgfx::setState(state);
     bgfx::submit(0, m_shader->program);
   };
@@ -1058,8 +1089,15 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
                              (const float(*)[4])weaponOffsetMat.data(),
                              (float(*)[4])parentMat.data());
 
-    // Use cached weapon local bones (static bind-pose, computed once at equip)
-    const auto &wLocalBones = m_weaponLocalBones;
+    // Animated or static weapon local bones
+    std::vector<BoneWorldMatrix> weaponAnimBones;
+    const std::vector<BoneWorldMatrix> *wLocalBonesPtr = &m_weaponLocalBones;
+    if (m_weaponIsAnimated) {
+      weaponAnimBones = ComputeBoneMatricesInterpolated(
+          m_weaponBmd.get(), 0, m_weaponAnimFrame);
+      wLocalBonesPtr = &weaponAnimBones;
+    }
+    const auto &wLocalBones = *wLocalBonesPtr;
     std::vector<BoneWorldMatrix> wFinalBones(wLocalBones.size());
     for (int bi = 0; bi < (int)wLocalBones.size(); ++bi) {
       MuMath::ConcatTransforms((const float(*)[4])parentMat.data(),
@@ -1067,11 +1105,17 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
                                (float(*)[4])wFinalBones[bi].data());
     }
 
-    // Compute weapon blur trail points (Main 5.2: BlurType 1)
+    // Compute weapon blur trail points (Main 5.2: BlurType per weapon category)
     // Weapon-local offsets transformed through parentMat → BMD-local → world
     if (m_weaponTrailActive && !m_inSafeZone) {
-      glm::vec3 tipLocal(0.f, -20.f, 0.f);    // Blade tip (BlurType 1)
-      glm::vec3 baseLocal(0.f, -120.f, 0.f);   // Blade base
+      // Main 5.2: BlurType 3 for spears/scythes (tip=-100), BlurType 1 for rest (tip=-20)
+      // Exception: Spear idx 9 (Bill of Balrog) and idx 10 use BlurType 1
+      float tipY = -20.f; // BlurType 1 default (swords, axes, maces)
+      if (m_weaponInfo.category == 3 &&
+          m_weaponInfo.itemIndex != 9 && m_weaponInfo.itemIndex != 10)
+        tipY = -100.f; // BlurType 3: spears/scythes — wider trail arc
+      glm::vec3 tipLocal(0.f, tipY, 0.f);
+      glm::vec3 baseLocal(0.f, -120.f, 0.f);   // Blade base (same for all types)
       glm::vec3 tipBmd = MuMath::TransformPoint(
           (const float(*)[4])parentMat.data(), tipLocal);
       glm::vec3 baseBmd = MuMath::TransformPoint(
@@ -1109,10 +1153,20 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       if (wlvl >= 9) wDim = 0.9f;
       else if (wlvl >= 7) wDim = 0.8f;
 
-      if (m_weaponBlendMesh >= 0 && mi == m_weaponBlendMesh) {
+      // Skip hidden meshes (Main 5.2: HiddenMesh)
+      if (m_weaponHiddenMesh >= 0 && mb.bmdTextureId == m_weaponHiddenMesh)
+        continue;
+
+      if (m_weaponBlendMesh >= 0 && mb.bmdTextureId == m_weaponBlendMesh) {
+        // Additive glow mesh
         float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
         setHeroUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
         bgfxDrawMesh(mb, stateAdditive);
+      } else if (m_weaponBlendMesh == -2) {
+        // Whole-object oscillating brightness (Main 5.2: BlendMesh=-2)
+        float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+        setHeroUniforms(wDim * pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
+        bgfxDrawMesh(mb, stateAlpha);
       } else {
         setHeroUniforms(wDim, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
         bgfxDrawMesh(mb, stateAlpha);
@@ -1128,7 +1182,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         for (int mi2 = 0; mi2 < (int)m_weaponMeshBuffers.size(); ++mi2) {
           auto &mb2 = m_weaponMeshBuffers[mi2];
           if (mb2.indexCount == 0) continue;
-          if (m_weaponBlendMesh >= 0 && mi2 == m_weaponBlendMesh) continue;
+          if (m_weaponBlendMesh >= 0 && mb2.bmdTextureId == m_weaponBlendMesh) continue;
+          if (m_weaponHiddenMesh >= 0 && mb2.bmdTextureId == m_weaponHiddenMesh) continue;
           setGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
           bgfx::setTransform(glm::value_ptr(model));
           if (mb2.isDynamic) bgfx::setVertexBuffer(0, mb2.dynVbo);
@@ -1141,6 +1196,183 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       }
       // Reset uniforms after weapon glow passes
       setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+    }
+
+    // Main 5.2: Per-weapon bone glow effects (BITMAP_SHINY/BITMAP_LIGHT sprites)
+    // Throttled to 25fps (Main 5.2 tick rate) to avoid particle flood
+    if (m_vfxManager && !m_inSafeZone) {
+      static float sparkTimer = 0.0f;
+      sparkTimer += deltaTime;
+      if (sparkTimer >= 0.04f) {
+        sparkTimer = 0.0f;
+        float t = (float)glfwGetTime();
+        float lum = 0.8f + 0.2f * sinf(t * 2.0f); // Luminosity pulsing
+        float cosF = cosf(m_facing), sinF = sinf(m_facing);
+        auto bmdToWorld = [&](const glm::vec3 &bmd) -> glm::vec3 {
+          float rx = bmd.x * cosF - bmd.y * sinF;
+          float ry = bmd.x * sinF + bmd.y * cosF;
+          return m_pos + glm::vec3(ry, bmd.z, rx);
+        };
+        auto spawnAt = [&](const glm::vec3 &local, const glm::vec3 &color) {
+          glm::vec3 bmd = MuMath::TransformPoint(
+              (const float(*)[4])parentMat.data(), local);
+          m_vfxManager->SpawnWeaponSparkle(bmdToWorld(bmd), color);
+        };
+        uint8_t cat = m_weaponInfo.category;
+        uint8_t idx = m_weaponInfo.itemIndex;
+
+        bool hasCustom = true; // Set false to trigger default glow
+        // ── Swords ──
+        if (cat == 0 && idx == 17) { // Dark Breaker: pulsing flare edges
+          float s = sinf(t * 4.0f) * 0.3f + 0.7f;
+          glm::vec3 c(s * 0.8f, s * 0.6f, s * 1.0f);
+          spawnAt({0, -20, -40}, c); spawnAt({0, -160, -10}, c);
+          spawnAt({0, -10, 28}, c);  spawnAt({0, -145, 18}, c);
+        } else if (cat == 0 && idx == 18) { // Thunder Blade: blue electrical
+          float s = sinf(t * 4.0f) * 0.3f + 0.3f;
+          glm::vec3 c(s * 0.2f, s * 0.2f, s * 1.0f);
+          spawnAt({0, -20, 15}, c); spawnAt({0, -133, 7}, c);
+          spawnAt({0, -80, 10}, c);
+        }
+        // ── Maces / Scepters ──
+        else if (cat == 2 && idx == 4) { // Crystal Morning Star: pulsing red
+          float s = sinf(t * 4.0f) * 0.3f + 0.7f;
+          glm::vec3 c(s * 1.0f, s * 0.2f, s * 0.1f);
+          spawnAt({0, -84, 0}, c);
+          for (int j = 0; j < 5; ++j)
+            spawnAt({0, (float)(-j * 20 - 10), 0}, c);
+        } else if (cat == 2 && idx == 5) { // Crystal Sword: orange shaft trail
+          glm::vec3 c(lum * 1.0f, lum * 0.6f, lum * 0.4f);
+          for (int j = 0; j < 8; ++j)
+            if (rand() % 4 < 3)
+              spawnAt({0, (float)(-j * 20 - 30), 0}, c);
+        } else if (cat == 2 && idx == 6) { // Chaos Dragon Axe: pulsing red sparkle
+          float s = sinf(t * 4.0f) * 0.3f + 0.7f;
+          glm::vec3 c(s * 1.0f, s * 0.2f, s * 0.1f);
+          spawnAt({0, -84, 0}, c);
+          for (int j = 0; j < 5; ++j)
+            spawnAt({0, (float)(-j * 20 - 10), 0}, c);
+        } else if (cat == 2 && idx == 7) { // Battle Scepter: yellow/orange
+          glm::vec3 c(lum * 1.0f, lum * 0.9f, lum * 0.0f);
+          spawnAt({0, 0, 0}, c);
+          float s2 = sinf(t * 2.0f) * 0.5f + 0.5f;
+          spawnAt({0, 0, 0}, glm::vec3(0.5f, 0.5f, 0.5f) * s2);
+        } else if (cat == 2 && idx == 8) { // Master Scepter: blue + rotating
+          float s = sinf(t * 1.0f) + 1.0f;
+          glm::vec3 c(lum * 0.2f, lum * 0.1f, lum * 3.0f);
+          spawnAt({-15, 0, 0}, c); spawnAt({10, 0, 0}, c);
+        } else if (cat == 2 && idx == 9) { // Great Scepter: cyan multi-bone
+          float l2 = sinf(t * 2.0f) * 0.35f + 0.65f;
+          glm::vec3 c(l2 * 0.6f, l2 * 0.8f, l2 * 1.0f);
+          for (int i = 0; i < 4; ++i)
+            spawnAt({-10, (float)(-i * 15), 0}, c);
+        } else if (cat == 2 && idx == 10) { // Lord Scepter: orange/tan dual
+          float l2 = sinf(t * 1.0f) * 0.5f + 0.7f;
+          glm::vec3 c(l2 * 1.0f, l2 * 0.8f, l2 * 0.6f);
+          spawnAt({0, 0, 0}, c);
+          spawnAt({-10, 0, 0}, glm::vec3(0.6f, 0.8f, 1.0f));
+        } else if (cat == 2 && idx == 11) { // Great Lord Scepter: orange 3-point
+          glm::vec3 c(1.0f, 0.6f, 0.3f);
+          spawnAt({0, 0, 0}, c);
+          for (int i = 0; i < 3; ++i)
+            spawnAt({(float)(i * 15 - 10), 0, 0}, c);
+        } else if (cat == 2 && idx == 12) { // Divine Scepter: rotating shiny
+          float l2 = sinf(t * 2.0f) * 0.3f + 0.7f;
+          glm::vec3 c(l2, l2, l2);
+          spawnAt({0, 0, 0}, c);
+        } else if (cat == 2 && idx == 13) { // Saint Scepter: orange/red sparkle
+          glm::vec3 c(lum * 1.0f, lum * 0.3f, lum * 0.1f);
+          if (rand() % 3 == 0)
+            spawnAt({0, 0, 0}, glm::vec3(0.4f, 0.4f, 0.4f));
+          spawnAt({0, 0, 0}, c);
+        }
+        // ── Spears ──
+        else if (cat == 3 && idx == 10) { // Dragon Spear: 8-point blue glow
+          glm::vec3 c(lum * 0.2f, lum * 0.1f, lum * 0.8f);
+          for (int i = 1; i < 9; ++i)
+            spawnAt({0, (float)(-i * 18), 0}, c);
+        }
+        // ── Bows ──
+        else if (cat == 4 && (idx == 4 || idx == 5)) { // Tiger/Silver Bow: orange
+          glm::vec3 c(lum * 1.0f, lum * 0.6f, lum * 0.2f);
+          spawnAt({0, -40, 0}, c); spawnAt({0, -100, 0}, c);
+        } else if (cat == 4 && idx == 6) { // Chaos Nature Bow: green
+          glm::vec3 c(lum * 0.6f, lum * 1.0f, lum * 0.8f);
+          for (int i = 0; i < 3; ++i)
+            spawnAt({0, (float)(-i * 40 - 30), 0}, c);
+        } else if (cat == 4 && idx == 17) { // Celestial Bow: silver-blue on many bones
+          glm::vec3 c(lum * 0.5f, lum * 0.5f, lum * 0.8f);
+          for (int i = 0; i < 6; ++i) // Bones 13-18 approximate
+            spawnAt({0, (float)(-i * 20 - 30), 0}, c);
+          for (int i = 0; i < 4; ++i) // Bones 5-8 approximate
+            spawnAt({0, (float)(-i * 15 + 20), 0}, c);
+        }
+        // ── Crossbows ──
+        else if (cat == 4 && idx == 13) { // Bluewing CB: blue glow
+          glm::vec3 c(lum * 0.3f, lum * 0.3f, lum * 1.0f);
+          spawnAt({0, -40, 0}, c); spawnAt({0, -80, 0}, c);
+        } else if (cat == 4 && idx == 14) { // Aquagold CB: red glow
+          glm::vec3 c(lum * 1.0f, lum * 0.3f, lum * 0.3f);
+          spawnAt({0, -40, 0}, c); spawnAt({0, -80, 0}, c);
+        } else if (cat == 4 && idx == 16) { // Saint CB: blue multi-point
+          glm::vec3 c(lum * 0.3f, lum * 0.5f, lum * 1.0f);
+          for (int i = 0; i < 3; ++i)
+            spawnAt({0, (float)(-i * 30 - 20), 0}, c);
+        }
+        // ── Staves ──
+        else if (cat == 5 && idx == 4) { // Gorgon Staff: cyan tip
+          glm::vec3 c(lum * 0.4f, lum * 0.8f, lum * 0.6f);
+          spawnAt({0, -90, 0}, c);
+        } else if (cat == 5 && idx == 5) { // Legendary Staff: blue tip
+          glm::vec3 c(lum * 0.4f, lum * 0.6f, lum * 1.0f);
+          spawnAt({0, -145, 0}, c);
+        } else if (cat == 5 && idx == 6) { // Staff of Resurrection: flame trail
+          glm::vec3 c1(lum * 1.0f, lum * 0.6f, lum * 0.4f);
+          spawnAt({0, -145, 0}, c1);
+          for (int j = 0; j < 4; ++j)
+            spawnAt({(float)(rand() % 20 - 10), (float)(rand() % 20 - 10 - 90),
+                     (float)(rand() % 20 - 10)}, c1);
+          glm::vec3 c2(lum * 1.0f, lum * 0.2f, lum * 0.1f);
+          for (int j = 0; j < 10; ++j)
+            if (rand() % 4 < 3)
+              spawnAt({0, (float)(-j * 20 + 60), 0}, c2);
+        } else if (cat == 5 && idx == 7) { // Chaos Lightning Staff: cyan bones
+          glm::vec3 c(lum * 0.4f, lum * 0.6f, lum * 1.0f);
+          spawnAt({0, -130, 0}, c);
+          for (int j = 0; j < 5; ++j)
+            spawnAt({0, (float)(-j * 15 - 70), 0}, c);
+        } else if (cat == 5 && idx == 9) { // Dragon Soul Staff: dual blue
+          glm::vec3 c(lum * 0.6f, lum * 0.6f, lum * 2.0f);
+          spawnAt({0, -120, 5}, c); spawnAt({0, 100, 10}, c);
+        } else if (cat == 5 && idx == 10) { // Staff of Imperial: fan sparkle
+          glm::vec3 c(lum * 1.0f, lum * 0.3f, lum * 0.1f);
+          for (int i = 0; i < 10; ++i)
+            if (rand() % 3 == 0)
+              spawnAt({(float)(i * 30 - 180), -40, 0}, c);
+        } else if (cat == 5 && idx == 11) { // Divine Staff: blue multi-bone
+          float l2 = sinf(t * 2.0f) * 0.3f + 0.7f;
+          glm::vec3 c(l2 * 0.3f, l2 * 0.3f, l2 * 1.0f);
+          for (int i = 0; i < 4; ++i)
+            spawnAt({0, (float)(-i * 25 - 60), 0}, c);
+        }
+        // ── Default: BITMAP_LIGHT at weapon tip for all other weapons ──
+        else {
+          hasCustom = false;
+          // Main 5.2 default case: CreateSprite(BITMAP_LIGHT, p, 1.4f)
+          // Level-based light color (lines 9812-9827)
+          glm::vec3 c;
+          uint8_t wlvl = m_weaponInfo.itemLevel;
+          if (wlvl >= 7)
+            c = glm::vec3(lum * 0.5f, lum * 0.4f, lum * 0.3f);
+          else if (wlvl >= 5)
+            c = glm::vec3(lum * 0.3f, lum * 0.3f, lum * 0.5f);
+          else if (wlvl >= 3)
+            c = glm::vec3(lum * 0.5f, lum * 0.3f, lum * 0.3f);
+          else
+            c = glm::vec3(lum * 0.3f, lum * 0.3f, lum * 0.3f);
+          spawnAt({0, -110, 0}, c); // Default weapon tip position
+        }
+      }
     }
 
   }
@@ -1208,8 +1440,18 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
       for (auto &mb : m_shieldMeshBuffers) {
         if (mb.indexCount == 0) continue;
-        setHeroUniforms(sDim, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
-        bgfxDrawMesh(mb, stateAlpha);
+        // Skip hidden meshes
+        if (m_shieldHiddenMesh >= 0 && mb.bmdTextureId == m_shieldHiddenMesh)
+          continue;
+        if (m_shieldBlendMesh >= 0 && mb.bmdTextureId == m_shieldBlendMesh) {
+          // Additive glow mesh
+          float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+          setHeroUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
+          bgfxDrawMesh(mb, stateAdditive);
+        } else {
+          setHeroUniforms(sDim, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
+          bgfxDrawMesh(mb, stateAlpha);
+        }
       }
 
       // ── +7/+9/+11/+13 shield glow passes (ChromeGlow module) ──
@@ -1220,6 +1462,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         for (int gp = 0; gp < n; ++gp) {
           for (auto &mb : m_shieldMeshBuffers) {
             if (mb.indexCount == 0) continue;
+            if (m_shieldBlendMesh >= 0 && mb.bmdTextureId == m_shieldBlendMesh) continue;
+            if (m_shieldHiddenMesh >= 0 && mb.bmdTextureId == m_shieldHiddenMesh) continue;
             setGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
             bgfx::setTransform(glm::value_ptr(model));
             if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
@@ -1239,6 +1483,35 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
         if (mb.indexCount == 0) continue;
         setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f), glm::vec3(1.0f));
         bgfxDrawMesh(mb, stateAlpha);
+      }
+    }
+
+    // Main 5.2: Shield bone glow effects
+    if (m_vfxManager && m_shieldInfo.category == 6 && !m_inSafeZone && !isQuiver) {
+      static float shieldSparkTimer = 0.0f;
+      shieldSparkTimer += deltaTime;
+      if (shieldSparkTimer >= 0.04f) {
+        shieldSparkTimer = 0.0f;
+        float lum = 0.8f + 0.2f * sinf((float)glfwGetTime() * 2.0f);
+        float cosF = cosf(m_facing), sinF = sinf(m_facing);
+        auto shieldToWorld = [&](const glm::vec3 &local) -> glm::vec3 {
+          glm::vec3 bmd = MuMath::TransformPoint(
+              (const float(*)[4])shieldParentMat.data(), local);
+          float rx = bmd.x * cosF - bmd.y * sinF;
+          float ry = bmd.x * sinF + bmd.y * cosF;
+          return m_pos + glm::vec3(ry, bmd.z, rx);
+        };
+        uint8_t sIdx = m_shieldInfo.itemIndex;
+        // Legendary Shield (Shield+14): cyan glow
+        if (sIdx == 14) {
+          glm::vec3 c(lum * 0.4f, lum * 0.6f, lum * 1.5f);
+          m_vfxManager->SpawnWeaponSparkle(shieldToWorld({20, 0, 0}), c);
+        }
+        // Grand Soul Shield (Shield+15): bright blue glow at bone offset
+        else if (sIdx == 15) {
+          glm::vec3 c(lum * 0.6f, lum * 0.6f, lum * 2.0f);
+          m_vfxManager->SpawnWeaponSparkle(shieldToWorld({15, -15, 0}), c);
+        }
       }
     }
   }
@@ -1644,7 +1917,14 @@ void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
       MuMath::ConcatTransforms((const float(*)[4])m_cachedBones[bone].data(),
                                (const float(*)[4])off.data(),
                                (float(*)[4])parentMat.data());
-      const auto &wLocalBones = m_weaponLocalBones;
+      std::vector<BoneWorldMatrix> weaponAnimBones;
+      const std::vector<BoneWorldMatrix> *wLocalBonesPtr = &m_weaponLocalBones;
+      if (m_weaponIsAnimated) {
+        weaponAnimBones = ComputeBoneMatricesInterpolated(
+            m_weaponBmd.get(), 0, m_weaponAnimFrame);
+        wLocalBonesPtr = &weaponAnimBones;
+      }
+      const auto &wLocalBones = *wLocalBonesPtr;
       std::vector<BoneWorldMatrix> wFinalBones(wLocalBones.size());
       for (int bi = 0; bi < (int)wLocalBones.size(); ++bi)
         MuMath::ConcatTransforms((const float(*)[4])parentMat.data(),
@@ -2063,6 +2343,9 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
 
   if (weapon.category == 0xFF) {
     m_weaponBmd.reset();
+    m_weaponIsAnimated = false;
+    m_weaponAnimContinuous = false;
+    m_weaponAnimFrame = 0.0f;
     m_weaponInfo = weapon;
     m_inSafeZone = true;
     SetAction(defaultIdleAction());
@@ -2118,8 +2401,21 @@ void HeroCharacter::EquipWeapon(const WeaponEquipInfo &weapon) {
   m_weaponBmd = std::move(bmd);
   m_weaponLocalBones = ComputeBoneMatrices(m_weaponBmd.get());
 
+  // Detect animated weapons (bows/crossbows: attack-synced, staves: continuous loop)
+  m_weaponAnimFrame = 0.0f;
+  if (!m_weaponBmd->Actions.empty() &&
+      m_weaponBmd->Actions[0].NumAnimationKeys > 1) {
+    m_weaponIsAnimated = true;
+    m_weaponAnimContinuous = (weapon.category != 4); // bows/crossbows sync to attack
+  } else {
+    m_weaponIsAnimated = false;
+    m_weaponAnimContinuous = false;
+  }
+
   // Main 5.2: ItemLight — per-weapon BlendMesh glow assignment
   m_weaponBlendMesh = ItemModelManager::GetItemBlendMesh(
+      weapon.category, weapon.itemIndex);
+  m_weaponHiddenMesh = ItemModelManager::GetItemHiddenMesh(
       weapon.category, weapon.itemIndex);
 
   auto &catRender = GetWeaponCategoryRender(weapon.category);
@@ -2217,6 +2513,11 @@ void HeroCharacter::EquipShield(const WeaponEquipInfo &shield) {
     UploadMeshWithBones(mesh, texPath, shieldBones, m_shieldMeshBuffers,
                         shieldAABB, true);
   }
+
+  m_shieldBlendMesh = ItemModelManager::GetItemBlendMesh(
+      shield.category, shield.itemIndex);
+  m_shieldHiddenMesh = ItemModelManager::GetItemHiddenMesh(
+      shield.category, shield.itemIndex);
 
   std::cout << "[Hero] Shield equipped: " << shield.modelFile << " ("
             << m_shieldMeshBuffers.size() << " GPU meshes)" << std::endl;
@@ -2483,15 +2784,11 @@ void HeroCharacter::AttackMonster(int monsterIndex,
   if (m_sittingOrPosing)
     CancelSitPose();
   if (m_globalAttackCooldown > 0.0f) {
-    // Allow switching to a NEW target even during GCD (e.g. after killing a monster)
-    // Use m_gcdTargetMonster (persists through CancelAttack) to prevent
-    // move-cancel exploit: click ground → CancelAttack → re-click same monster
-    if (monsterIndex != m_gcdTargetMonster) {
-      m_globalAttackCooldown = 0.0f;
-      CancelAttack();
-    } else {
-      return; // Same target, still on cooldown
-    }
+    // GCD active — queue for after cooldown, don't touch active attack state
+    m_queuedTarget = monsterIndex;
+    m_queuedPos = monsterPos;
+    m_queuedSkill = 0;
+    return;
   }
 
   // Already attacking same target — just update position, don't reset cycle
@@ -2530,8 +2827,10 @@ void HeroCharacter::AttackMonster(int monsterIndex,
     // Main 5.2: weapon-type-specific swing sound (ZzzCharacter.cpp:1199-1204)
     if (HasWeapon()) {
       if (m_weaponInfo.category == 4) {
-        // Bow/crossbow: release sound
-        if (m_weaponInfo.itemIndex >= 8) // Crossbows (idx 8+)
+        // Main 5.2: enhanced bows (idx 13,14) use SOUND_MAGIC
+        if (m_weaponInfo.itemIndex == 13 || m_weaponInfo.itemIndex == 14)
+          SoundManager::Play(SOUND_MAGIC);
+        else if (m_weaponInfo.itemIndex >= 8) // Crossbows (idx 8+)
           SoundManager::Play(SOUND_CROSSBOW);
         else
           SoundManager::Play(SOUND_BOW);
@@ -2562,7 +2861,7 @@ void HeroCharacter::AttackMonster(int monsterIndex,
           (m_weaponInfo.category == 3 && m_weaponInfo.itemIndex == 9))    // Spear+9
         trailColor = glm::vec3(1.0f, 0.2f, 0.2f);
       m_weaponTrailActive = true;
-      m_vfxManager->StartWeaponTrail(trailColor, false);
+      m_vfxManager->StartWeaponTrail(trailColor, false, m_weaponInfo.itemLevel);
     }
 
     // Set GCD = full attack cycle (animation + cooldown)
@@ -2591,8 +2890,21 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
     m_globalAttackCooldown -= deltaTime;
     if (m_globalAttackCooldown <= 0.0f) {
       m_globalAttackCooldown = 0.0f;
-      m_gcdFromSkill = false; // GCD expired, reset flag
-      m_gcdTargetMonster = -1; // Allow re-attacking same target now
+      m_gcdFromSkill = false;
+      m_gcdTargetMonster = -1;
+
+      // GCD expired — execute queued action if any
+      if (m_queuedTarget >= 0) {
+        int qt = m_queuedTarget;
+        glm::vec3 qp = m_queuedPos;
+        uint8_t qs = m_queuedSkill;
+        m_queuedTarget = -1;
+        m_queuedSkill = 0;
+        if (qs > 0)
+          SkillAttackMonster(qt, qp, qs);
+        else
+          AttackMonster(qt, qp);
+      }
     }
   }
 
@@ -2637,11 +2949,15 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
         case 3:  SoundManager::Play(SOUND_LIGHTNING_CAST); break; // Lightning (Lich electric sound)
         case 4:  SoundManager::Play(SOUND_METEORITE01); break;  // Fire Ball
         case 5:  SoundManager::Play(SOUND_FLAME); break;        // Flame
+        case 6:  SoundManager::Play(SOUND_HELLFIRE); break;     // Inferno (Main 5.2: hell variant)
         case 7:  SoundManager::Play(SOUND_ICE); break;          // Ice
         case 8:  if (!SoundManager::IsPlaying(SOUND_STORM)) SoundManager::Play(SOUND_STORM); break; // Twister
         case 9:  if (!SoundManager::IsPlaying(SOUND_EVIL)) SoundManager::Play(SOUND_EVIL); break; // Evil Spirit
         case 10: SoundManager::Play(SOUND_HELLFIRE); break;     // Hellfire
+        case 11: SoundManager::Play(SOUND_MAGIC); break;        // Power Wave
         case 12: SoundManager::Play(SOUND_FLASH); break;        // Aqua Beam
+        case 13: SoundManager::Play(SOUND_METEORITE01); break;  // Meteor
+        case 14: SoundManager::Play(SOUND_MAGIC); break;        // Teleport
         case 17: SoundManager::Play(SOUND_METEORITE01); break;  // Energy Ball
         default:
           if (HasWeapon())
@@ -2657,8 +2973,8 @@ void HeroCharacter::UpdateAttack(float deltaTime) {
           switch (m_activeSkillId) {
           case 17: // Energy Ball
           case 4:  // Fire Ball
-            m_vfxManager->SpawnSpellProjectile(m_activeSkillId, m_pos,
-                                               m_attackTargetPos);
+            m_vfxManager->SpawnSpellProjectile(m_activeSkillId,
+                GetBoneWorldPosition(MuMath::BONE_L_HAND), m_attackTargetPos);
             break;
           case 11: { // Power Wave — MODEL_MAGIC2 ground wave
             float pwFacing = std::atan2(m_attackTargetPos.x - m_pos.x,
@@ -2954,11 +3270,17 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
     return;
   if (m_sittingOrPosing)
     CancelSitPose();
-  // Allow spell to interrupt normal melee attacks, but NOT other spells
+  // Skills can interrupt melee GCD (but not other skill GCDs)
   if (m_globalAttackCooldown > 0.0f) {
-    if (m_gcdFromSkill)
-      return; // Block if GCD from a previous skill cast (persists after move-cancel)
-    m_globalAttackCooldown = 0.0f; // Reset melee GCD only
+    if (m_gcdFromSkill) {
+      // Skill GCD active — queue, don't interrupt
+      m_queuedTarget = monsterIndex;
+      m_queuedPos = monsterPos;
+      m_queuedSkill = skillId;
+      return;
+    }
+    // Melee GCD — interrupt it for the skill
+    m_globalAttackCooldown = 0.0f;
     CancelAttack();
   }
 
@@ -3043,7 +3365,8 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
       if (skillId >= 19 && skillId <= 23) {
         if (HasWeapon()) {
           m_weaponTrailActive = true;
-          m_vfxManager->StartWeaponTrail(glm::vec3(1.0f, 1.0f, 1.0f), true);
+          m_vfxManager->StartWeaponTrail(glm::vec3(1.0f, 1.0f, 1.0f), true,
+                                          m_weaponInfo.itemLevel);
         }
       }
       // Twisting Slash: spawn ghost weapon orbit effect
@@ -3054,7 +3377,8 @@ void HeroCharacter::SkillAttackMonster(int monsterIndex,
       switch (skillId) {
       case 17: // Energy Ball: traveling BITMAP_ENERGY projectile
       case 4:  // Fire Ball: traveling MODEL_FIRE projectile
-        m_vfxManager->SpawnSpellProjectile(skillId, m_pos, monsterPos);
+        m_vfxManager->SpawnSpellProjectile(skillId,
+            GetBoneWorldPosition(MuMath::BONE_L_HAND), monsterPos);
         break;
       case 11: { // Power Wave — MODEL_MAGIC2 ground wave toward target
         float pwFacing = std::atan2(monsterPos.x - m_pos.x,

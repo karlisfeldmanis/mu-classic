@@ -74,6 +74,16 @@ void MonsterManager::renderDebris(const glm::mat4 &view,
                         | BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS
                         | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
 
+  // Debris-specific uniforms: no point lights, no shadow map, no UV scroll.
+  // Must set before submit() to avoid inheriting stale values from monster render.
+  glm::vec3 eye = camPos;
+  m_shader->uploadPointLights(0, (PointLight *)nullptr);
+  m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+  m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+  m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+  m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+
   for (const auto &d : m_debris) {
     auto &mdl = m_models[d.modelIdx];
     glm::mat4 model = glm::mat4(1.0f);
@@ -108,7 +118,7 @@ void MonsterManager::renderDebris(const glm::mat4 &view,
 }
 
 void MonsterManager::SpawnArrow(const glm::vec3 &from, const glm::vec3 &to,
-                                float speed) {
+                                float speed, int arrowModel) {
   ArrowProjectile a;
   a.position = from;
   glm::vec3 delta = to - from;
@@ -122,7 +132,26 @@ void MonsterManager::SpawnArrow(const glm::vec3 &from, const glm::vec3 &to,
   a.pitch = asinf(-dir.y); // Negative: pitch up when target is higher
   a.scale = 0.8f;
   a.lifetime = std::min(1.2f, dist / speed + 0.1f);
+  a.modelIdx = arrowModel;
   m_arrows.push_back(a);
+}
+
+// Main 5.2: CreateArrow weapon switch — map weapon itemIndex to arrow variant
+MonsterManager::ArrowVariant
+MonsterManager::GetArrowVariant(uint8_t itemIndex) {
+  switch (itemIndex) {
+  case 2:  return ARROW_V;        // Elven Bow
+  case 6:  return ARROW_NATURE;   // Chaos Nature Bow
+  case 8:  case 9:  return ARROW_STEEL;    // Crossbow, Golden Crossbow
+  case 10: return ARROW_SAW;      // Arquebus
+  case 11: return ARROW_LASER;    // Light Crossbow
+  case 12: return ARROW_THUNDER;  // Serpent Crossbow
+  case 13: return ARROW_WING;     // Bluewing Crossbow
+  case 14: return ARROW_BOMB;     // Aquagold Crossbow
+  case 16: return ARROW_DOUBLE;   // Saint Crossbow
+  case 17: return ARROW_SPARK;    // Celestial Bow
+  default: return ARROW_DEFAULT;  // All other bows
+  }
 }
 
 void MonsterManager::updateArrows(float dt) {
@@ -130,6 +159,11 @@ void MonsterManager::updateArrows(float dt) {
     auto &a = m_arrows[i];
     a.lifetime -= dt;
     if (a.lifetime <= 0.0f) {
+      // Arrow impact VFX — sparks at final position
+      if (m_vfxManager) {
+        m_vfxManager->SpawnBurst(ParticleType::HIT_SPARK, a.position, 5);
+        m_vfxManager->SpawnBurst(ParticleType::FLARE, a.position, 1);
+      }
       m_arrows[i] = m_arrows.back();
       m_arrows.pop_back();
       continue;
@@ -141,6 +175,45 @@ void MonsterManager::updateArrows(float dt) {
     // Apply pitch to direction (subtle arc)
     a.direction.y -= 0.2f * dt;
     a.direction = glm::normalize(a.direction);
+
+    // Main 5.2: Arrow flight trailing particles (throttled to 25fps tick rate)
+    a.trailAccum += dt;
+    if (m_vfxManager && a.trailAccum >= 0.04f) {
+      a.trailAccum = 0.0f;
+      int var = (a.modelIdx >= 0 && a.modelIdx < ARROW_COUNT) ? a.modelIdx : 0;
+      switch (var) {
+      case ARROW_DEFAULT: // Arrow01: BITMAP_FIRE trail (warm orange)
+      case ARROW_STEEL:   // ArrowSteel: same fire trail
+      case ARROW_SAW:     // ArrowSaw: same fire trail
+      case ARROW_LASER:   // ArrowLaser: same fire trail
+        m_vfxManager->SpawnBurstColored(ParticleType::FIRE, a.position,
+            glm::vec3(0.8f, 0.5f, 0.2f), 1);
+        break;
+      case ARROW_NATURE:  // ArrowNature: green flare trail
+        m_vfxManager->SpawnBurstColored(ParticleType::FLARE, a.position,
+            glm::vec3(0.4f, 1.0f, 0.2f), 1);
+        break;
+      case ARROW_THUNDER: // ArrowThunder: blue-white electric sparks
+        m_vfxManager->SpawnBurstColored(ParticleType::SPELL_LIGHTNING, a.position,
+            glm::vec3(0.5f, 0.5f, 1.0f), 1);
+        break;
+      case ARROW_WING:    // ArrowWing: smoke trail
+        m_vfxManager->SpawnBurst(ParticleType::SMOKE, a.position, 1);
+        break;
+      case ARROW_BOMB:    // ArrowBomb: warm glow
+        m_vfxManager->SpawnBurstColored(ParticleType::FIRE, a.position,
+            glm::vec3(1.0f, 0.6f, 0.4f), 1);
+        break;
+      case ARROW_SPARK:   // Arrow_Spark: bright flare
+        m_vfxManager->SpawnBurstColored(ParticleType::FLARE, a.position,
+            glm::vec3(1.0f, 0.8f, 0.5f), 1);
+        break;
+      default: // ArrowV, ArrowDouble: subtle fire trail
+        m_vfxManager->SpawnBurstColored(ParticleType::FIRE, a.position,
+            glm::vec3(0.8f, 0.5f, 0.2f), 1);
+        break;
+      }
+    }
   }
 }
 
@@ -148,10 +221,6 @@ void MonsterManager::renderArrows(const glm::mat4 &view,
                                   const glm::mat4 &projection,
                                   const glm::vec3 &camPos) {
   if (m_arrows.empty() || !m_shader || m_arrowModelIdx < 0)
-    return;
-
-  auto &mdl = m_models[m_arrowModelIdx];
-  if (mdl.meshBuffers.empty())
     return;
 
   glm::vec4 fogParams, fogColor;
@@ -170,7 +239,27 @@ void MonsterManager::renderArrows(const glm::mat4 &view,
                           | BGFX_STATE_DEPTH_TEST_LESS
                           | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
 
+  // Arrow-specific uniforms: no point lights, no shadow map, no UV scroll.
+  // These MUST be set before submit() or the shader inherits stale values
+  // from the last rendered monster (which may have had 50+ point lights,
+  // causing massive GPU overhead per arrow pixel).
+  glm::vec3 eye = camPos;
+  m_shader->uploadPointLights(0, (PointLight *)nullptr);
+  m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+  m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+  m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+  m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+  m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+
   for (const auto &a : m_arrows) {
+    // Select per-arrow model variant (Main 5.2: per-weapon arrow type)
+    int mdlIdx = m_arrowModelIdx; // default
+    if (a.modelIdx >= 0 && a.modelIdx < ARROW_COUNT)
+      mdlIdx = m_arrowModels[a.modelIdx];
+    if (mdlIdx < 0 || mdlIdx >= (int)m_models.size()) continue;
+    auto &mdl = m_models[mdlIdx];
+    if (mdl.meshBuffers.empty()) continue;
+
     glm::mat4 model = glm::translate(glm::mat4(1.0f), a.position);
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
     model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));

@@ -8,7 +8,8 @@
 
 // ── Weapon blur trail (Main 5.2: ZzzEffectBlurSpark.cpp) ────────────────────
 
-void VFXManager::StartWeaponTrail(const glm::vec3 &color, bool isSkill) {
+void VFXManager::StartWeaponTrail(const glm::vec3 &color, bool isSkill,
+                                   uint8_t weaponLevel) {
   m_weaponTrail.active = true;
   m_weaponTrail.fading = false;
   m_weaponTrail.fadeTimer = 0.0f;
@@ -16,6 +17,7 @@ void VFXManager::StartWeaponTrail(const glm::vec3 &color, bool isSkill) {
   m_weaponTrail.shrinkAccum = 0.0f;
   m_weaponTrail.color = color;
   m_weaponTrail.isSkill = isSkill;
+  m_weaponTrail.weaponLevel = weaponLevel;
 }
 
 void VFXManager::StopWeaponTrail() {
@@ -73,7 +75,10 @@ void VFXManager::renderWeaponTrail(const glm::mat4 &view,
   TexHandle blurTex = t.isSkill ? m_motionBlurTexture : m_blurTexture;
   bool hasTexture = TexValid(blurTex);
   m_lineShader->setVec4("u_lineMode", glm::vec4(hasTexture ? 1.0f : 0.0f, 0.0f, 1.0f, 0.0f)); // trailMode=true
-  float baseAlpha = t.fading ? std::max(0.0f, t.fadeTimer / WeaponTrail::MAX_FADE_TIME) : 1.0f;
+  float fadeAlpha = t.fading ? std::max(0.0f, t.fadeTimer / WeaponTrail::MAX_FADE_TIME) : 1.0f;
+  // Main 5.2: level 7+ weapon trails stay fully bright, lower levels dim progressively
+  float levelMul = (t.weaponLevel >= 7) ? 1.0f : 0.6f;
+  float baseAlpha = fadeAlpha * levelMul;
   uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_DEPTH_TEST_LESS
                  | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
   std::vector<RibbonVertex> verts;

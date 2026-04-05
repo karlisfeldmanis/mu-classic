@@ -139,6 +139,8 @@ static void SyncCharStats(const PMSG_CHARSTATS_SEND *stats) {
   *g_state->serverDefense = stats->defense;
   *g_state->serverAttackSpeed = stats->attackSpeed;
   *g_state->serverMagicSpeed = stats->magicSpeed;
+  if (g_state->serverResets)
+    *g_state->serverResets = stats->resets;
   // Pass attack/magic speed to hero for agility-based animation scaling
   if (g_state->hero) {
     g_state->hero->SetAttackSpeed(stats->attackSpeed);
@@ -671,7 +673,7 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
               if (p->damageType == 2 || p->damageType == 3)
                 SoundManager::Play(SOUND_THUNDER01);
               break;
-            case 4:  SoundManager::Play(SOUND_METEORITE01); break;  // Fire Ball
+            case 4:  SoundManager::Play(SOUND_MISSILE_HIT1 + rand() % 4); break;  // Fire Ball — distinct impact (cast sound already played)
             case 5:  SoundManager::Play(SOUND_FLAME); break;        // Flame
             case 7:  SoundManager::Play(SOUND_ICE); break;          // Ice
             case 8:  break;  // Twister — AoE, cast sound already played client-side
@@ -693,9 +695,18 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
               g_state->vfxManager->SpawnBurst(ParticleType::BLOOD, hitPos, 5);
           } else {
             // Main 5.2: Giant (7), Ghost (11), traps (100-102) excluded from blood
-            if (mi.type != 7 && mi.type != 11 && mi.type < 100)
+            if (mi.type != 7 && mi.type != 11 && mi.type < 100) {
               g_state->vfxManager->SpawnBurst(ParticleType::BLOOD, hitPos, 10);
+              // Main 5.2 CreateSpark: metallic sparks on melee hit
+              g_state->vfxManager->SpawnBurst(ParticleType::HIT_SPARK, hitPos, 5);
+            }
           }
+        }
+
+        // Critical/excellent hit extra VFX — bright flare burst
+        if (p->damageType == 2 || p->damageType == 3) {
+          g_state->vfxManager->SpawnBurst(ParticleType::FLARE, hitPos, 3);
+          g_state->vfxManager->SpawnBurst(ParticleType::HIT_SPARK, hitPos, 10);
         }
 
         uint8_t dmgType = 0;
@@ -739,8 +750,11 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         *g_state->serverLevel = g_state->hero->GetLevel();
         *g_state->serverLevelUpPoints = g_state->hero->GetLevelUpPoints();
         *g_state->serverMaxHP = g_state->hero->GetMaxHP();
-        SystemMessageLog::Log(MSG_COMBAT, IM_COL32(180, 120, 255, 255),
-                              "+%u Experience", xp);
+        // Floating XP text above dead monster (type 9 = purple-gold)
+        if (idx >= 0 && g_state->spawnDamageNumber) {
+          auto mi = g_state->monsterManager->GetMonsterInfo(idx);
+          g_state->spawnDamageNumber(mi.position + glm::vec3(0, 100, 0), (int)xp, 9);
+        }
       }
     }
 
@@ -957,8 +971,6 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
           if (g_state->getItemRestingAngle)
             g_state->getItemRestingAngle(gi.defIndex, gi.angle, gi.scale, heightBoost);
           gi.position.y += heightBoost;
-          gi.angle.y += (float)(rand() % 360);
-
           gi.active = true;
           // Jewel drop: distinctive gem sound (Main 5.2: eGem.wav)
           {
@@ -1168,8 +1180,12 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         auto *p = reinterpret_cast<const PMSG_QUEST_REWARD_SEND *>(pkt);
         SoundManager::Play(SOUND_QUEST_ACCEPT);
         SystemMessageLog::Log(MSG_GENERAL, IM_COL32(255, 210, 50, 255),
-                              "Quest complete! +%u Zen, +%u XP",
-                              p->zenReward, p->xpReward);
+                              "Quest complete! +%u Zen", p->zenReward);
+        // Floating XP text above hero for quest rewards
+        if (p->xpReward > 0 && g_state->spawnDamageNumber && g_state->hero)
+          g_state->spawnDamageNumber(
+              g_state->hero->GetPosition() + glm::vec3(0, 140, 0),
+              (int)p->xpReward, 9);
         std::cout << "[Quest] Reward: zen=" << p->zenReward
                   << " xp=" << p->xpReward
                   << " questId=" << (int)p->questId << "\n";

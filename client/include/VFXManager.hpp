@@ -190,7 +190,8 @@ public:
   // Main 5.2: ZzzEffectBlurSpark.cpp — Weapon blur trail for DK melee skills
   // isSkill=true → BlurMapping 2 (motion_blur_r.OZJ, white)
   // isSkill=false → BlurMapping 0 (blur01.OZJ, level-based color)
-  void StartWeaponTrail(const glm::vec3 &color, bool isSkill = false);
+  void StartWeaponTrail(const glm::vec3 &color, bool isSkill = false,
+                        uint8_t weaponLevel = 0);
   void StopWeaponTrail();
   void AddWeaponTrailPoint(const glm::vec3 &tip, const glm::vec3 &base);
 
@@ -356,6 +357,7 @@ private:
     ParticleType trailType; // Particle type for trail
     float yaw = 0.0f;   // Heading toward target (3D model orientation)
     float pitch = 0.0f;  // Vertical angle toward target
+    float animFrame = 0.0f; // Fire01.bmd animation frame
   };
 
   // Main 5.2: MODEL_SKILL_BLAST — falling sky-strike bolt
@@ -644,6 +646,7 @@ private:
     glm::vec3 color{0.8f, 0.8f, 0.8f};
     float shrinkAccum = 0.0f;  // Accumulator for tick-rate point removal
     bool isSkill = false;       // true=BlurMapping 2 (motion_blur_r), false=BlurMapping 0 (blur01)
+    uint8_t weaponLevel = 0;    // Main 5.2: level 7+ trails don't fade progressively
   };
   WeaponTrail m_weaponTrail;
 

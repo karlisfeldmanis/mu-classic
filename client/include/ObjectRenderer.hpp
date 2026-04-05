@@ -12,6 +12,8 @@
 #include <unordered_map>
 #include <vector>
 
+class VFXManager;
+
 class ObjectRenderer {
 public:
   void Init();
@@ -39,9 +41,30 @@ public:
   void SetFogRange(float near_, float far_) { m_fogNear = near_; m_fogFar = far_; }
   void SetTypeFilter(const std::vector<int> &types) { m_typeFilter.assign(types.begin(), types.end()); }
   void SetMapId(int mapId) { m_mapId = mapId; }
+  void SetVFXManager(VFXManager *vfx) { m_vfxManager = vfx; }
 
   int GetInstanceCount() const { return (int)instances.size(); }
   int GetModelCount() const { return (int)modelCache.size(); }
+
+  // Developer tuner: per-type position offset and scale (applied in Render)
+  void SetTypeOffset(int type, const glm::vec3 &off) { m_typeOffset[type] = off; }
+  void SetTypeScaleMult(int type, float s) { m_typeScaleMult[type] = s; }
+  void SetTypeRotOffset(int type, const glm::vec3 &deg) { m_typeRotOffset[type] = deg; }
+  void SetTypeBaseAlpha(int type, float a) { m_typeBaseAlpha[type] = a; }
+  void ClearTypeOverrides(int type) { m_typeOffset.erase(type); m_typeScaleMult.erase(type); m_typeRotOffset.erase(type); m_typeBaseAlpha.erase(type); }
+  glm::vec3 GetTypeOffset(int type) const { auto it = m_typeOffset.find(type); return it != m_typeOffset.end() ? it->second : glm::vec3(0); }
+  glm::vec3 GetTypeRotOffset(int type) const { auto it = m_typeRotOffset.find(type); return it != m_typeRotOffset.end() ? it->second : glm::vec3(0); }
+  float GetTypeScaleMult(int type) const { auto it = m_typeScaleMult.find(type); return it != m_typeScaleMult.end() ? it->second : 1.0f; }
+  float GetTypeBaseAlpha(int type) const { auto it = m_typeBaseAlpha.find(type); return it != m_typeBaseAlpha.end() ? it->second : 1.0f; }
+
+  struct TypeDebugInfo {
+    int instanceCount = 0;
+    glm::vec3 aabbMin{0}, aabbMax{0};
+    glm::vec3 firstInstancePos{0};
+    std::string filename;
+  };
+  TypeDebugInfo GetTypeDebugInfo(int type) const;
+  std::vector<int> GetLoadedTypes() const;
 
   // Interactive objects (sittable chairs, pose boxes) — Main 5.2 OPERATE system
   enum class InteractType { SIT, POSE };
@@ -148,6 +171,10 @@ private:
   const MapData *terrainMapping = nullptr; // For grass-on-tile filtering
   std::vector<float> terrainHeightmap;     // For cliff fade height lookup
   std::unordered_map<int, float> typeAlphaMap; // Per-type alpha for roof hiding
+  std::unordered_map<int, glm::vec3> m_typeOffset;    // Dev tuner: per-type XYZ offset
+  std::unordered_map<int, float> m_typeScaleMult;     // Dev tuner: per-type scale mult
+  std::unordered_map<int, glm::vec3> m_typeRotOffset;  // Dev tuner: per-type XYZ rotation (degrees)
+  std::unordered_map<int, float> m_typeBaseAlpha;       // Dev tuner: per-type base alpha (transparency)
   float m_luminosity = 1.0f;
   bool m_fogEnabled = true;
   glm::vec3 m_fogColor = glm::vec3(0.117f, 0.078f, 0.039f);
@@ -155,6 +182,7 @@ private:
   float m_fogFar = 3500.0f;
   std::vector<int> m_typeFilter; // If non-empty, only render these types
   int m_mapId = 0; // 0=Lorencia, 1=Dungeon
+  VFXManager *m_vfxManager = nullptr;
   std::vector<InteractiveObject> m_interactiveObjects;
   TexHandle m_lightmapTex = kInvalidTex; // Terrain lightmap GPU texture for per-pixel lighting
   TexHandle m_chromeTexture = kInvalidTex;

@@ -31,15 +31,49 @@ void ItemModelManager::SetFramebufferSize(int w, int h) {
 }
 // Main 5.2: ItemLight — returns BlendMesh index for weapons with glow
 int ItemModelManager::GetItemBlendMesh(int category, int itemIndex) {
-  if (category == 3 && itemIndex == 0) return 1; // Light Spear: mesh 1 glows
-  // Main 5.2 ItemObjectAttribute (ZzzObject.cpp:5286-5435):
-  // Swords with BlendMesh=1 (blade glow)
-  if (category == 0 && (itemIndex == 5 || itemIndex == 10 ||
-                        itemIndex == 13 || itemIndex == 14))
-    return 1;
-  // Main 5.2: Wing05/06 have BlendMesh=-1 (no additive overlay mesh).
-  // They use standard RENDER_TEXTURE with oscillating BlendMeshLight.
-  return -1; // No glow
+  // Main 5.2 ItemObjectAttribute (ZzzObject.cpp:5286-5435)
+  // Returns: >=0 = additive mesh index, -1 = none, -2 = whole-object pulse
+  switch (category) {
+  case 0: // Swords
+    if (itemIndex == 5 || itemIndex == 10 || itemIndex == 13 || itemIndex == 14)
+      return 1;
+    break;
+  case 2: // Maces
+    if (itemIndex == 4 || itemIndex == 6) return 1;
+    if (itemIndex == 5) return 0;
+    break;
+  case 3: // Spears
+    if (itemIndex == 0) return 1;
+    break;
+  case 4: // Bows — Main 5.2: BlendMesh=-2 (whole-object oscillating brightness)
+    if (itemIndex == 6 || itemIndex == 13 || itemIndex == 14 || itemIndex == 16)
+      return -2;
+    break;
+  case 5: // Staffs
+    if (itemIndex == 0 || itemIndex == 5 || itemIndex == 11) return 2;
+    if (itemIndex == 7 || itemIndex == 9) return 1;
+    if (itemIndex == 6 || itemIndex == 8) return -2; // Whole-object pulse
+    break;
+  case 6: // Shields
+    if (itemIndex == 11 || itemIndex == 12 || itemIndex == 13 || itemIndex == 14)
+      return 1;
+    break;
+  case 12: // Wings — Main 5.2: only Wing+0 and Wing+3 have BlendMesh=0
+    if (itemIndex == 0 || itemIndex == 3) return 0;
+    break;
+  case 13: // Helpers
+    if (itemIndex == 0) return 1; // Guardian Angel
+    break;
+  }
+  return -1;
+}
+
+// Main 5.2: HiddenMesh — hide meshes with matching Texture index
+int ItemModelManager::GetItemHiddenMesh(int category, int itemIndex) {
+  if (category == 2 && itemIndex == 7) return 2;  // Battle Scepter
+  if (category == 3 && itemIndex == 10) return 1;  // Dragon Spear
+  if (category == 6 && itemIndex == 16) return 2;  // Elemental Shield
+  return -1; // No hidden mesh
 }
 
 // Per-category display poses from Main 5.2 RenderObjectScreen()
@@ -247,10 +281,12 @@ LoadedItemModel *ItemModelManager::Get(const std::string &filename) {
   if (it != s_cache.end())
     return &it->second;
 
-  // Load new — try Item/ first, then Player/ (armor models live there)
+  // Load item model from BMD
+  // Search Item/ first, then Player/ (armor models live there)
   LoadedItemModel model;
   std::string foundDir = "Item";
   const char *searchDirs[] = {"Item", "Player"};
+
   for (const char *dir : searchDirs) {
     std::string path = s_dataPath + "/" + dir + "/" + filename;
     model.bmd = BMDParser::Parse(path);
@@ -334,7 +370,8 @@ LoadedItemModel *ItemModelManager::Get(const std::string &filename) {
 
 void ItemModelManager::RenderItemUI(const std::string &modelFile,
                                     int16_t defIndex, int x, int y, int w,
-                                    int h, bool hovered, uint8_t itemLevel) {
+                                    int h, bool hovered, uint8_t itemLevel,
+                                    bool overlay) {
   LoadedItemModel *model = Get(modelFile);
   if (!model || !model->bmd)
     return;
@@ -347,9 +384,11 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
   bgfx::ViewId viewId = ITEM_UI_VIEW_BASE + s_itemViewCounter++;
   if (viewId >= 200) return; // Safety: don't overlap with overlay views
 
-  // Setup BGFX view: viewport to item rect, clear only depth
+  // Setup BGFX view: viewport to item rect
+  // Overlay mode: no clear at all (accessory slots render on top of other items)
   bgfx::setViewRect(viewId, uint16_t(x), uint16_t(y), uint16_t(w), uint16_t(h));
-  bgfx::setViewClear(viewId, BGFX_CLEAR_DEPTH, 0, 1.0f, 0);
+  if (!overlay)
+    bgfx::setViewClear(viewId, BGFX_CLEAR_DEPTH, 0, 1.0f, 0);
   bgfx::setViewMode(viewId, bgfx::ViewMode::Sequential);
 
   // Auto-fit camera/model based on bone-transformed AABB
@@ -409,7 +448,17 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
     glm::vec3 rSize = rMax - rMin;
     float fitDim = std::max(rSize.x / aspect, rSize.y);
     if (fitDim < 1.0f) fitDim = 1.0f;
-    float scale = 1.8f / fitDim;
+    // Scale to fit within slot with padding — per-category tuning
+    float fillFactor = 1.55f;
+    if (category >= 7 && category <= 11) fillFactor = 1.35f; // body parts
+    else if (category == 6)              fillFactor = 1.40f; // shields
+    else if (category == 13)             fillFactor = 1.40f; // rings/pendants/accessories
+    else if (category == 14)             fillFactor = 1.45f; // potions/jewels
+    else if (category == 12)             fillFactor = 1.45f; // orbs/wings
+    // Only reduce for equipment accessory slots (pendant/ring), not bag grid
+    float minSlotDim = (float)std::min(w, h);
+    if (minSlotDim < 35.0f) fillFactor *= 0.85f; // tiny equip accessory slots only
+    float scale = fillFactor / fitDim;
     mod = glm::scale(glm::mat4(1.0f), glm::vec3(scale)) * mod;
   }
 
@@ -428,6 +477,9 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
   int blendMeshIdx = (category >= 0 && itemIndex >= 0)
                          ? GetItemBlendMesh(category, itemIndex)
                          : -1;
+  int hiddenMeshIdx = (category >= 0 && itemIndex >= 0)
+                          ? GetItemHiddenMesh(category, itemIndex)
+                          : -1;
 
   // +3/+5 tint and +7+ dim (Main 5.2 ZzzObject.cpp:10183-10227)
   float tNow = (float)glfwGetTime();
@@ -461,6 +513,11 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
         continue;
     }
 
+    // Skip hidden meshes (Main 5.2: HiddenMesh)
+    if (hiddenMeshIdx >= 0 && mi < (int)model->bmd->Meshes.size() &&
+        model->bmd->Meshes[mi].Texture == hiddenMeshIdx)
+      continue;
+
     bgfx::setTransform(glm::value_ptr(mod));
     bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
@@ -479,6 +536,11 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
       blendLight = sinf(tNow * 4.0f) * 0.3f + 0.7f;
       state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
       state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+    } else if (blendMeshIdx == -2) {
+      // Whole-object oscillating brightness (Main 5.2: BlendMesh=-2)
+      blendLight = sinf(tNow * 4.0f) * 0.3f + 0.7f;
+      state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
+                                       BGFX_STATE_BLEND_INV_SRC_ALPHA);
     } else if (mb.bright) {
       state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
       state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
@@ -512,54 +574,36 @@ void ItemModelManager::RenderItemUI(const std::string &modelFile,
       blendLight = 1.0f;
   }
 
-  // Chrome glow passes for +7/+9/+11/+13
+  // Chrome glow passes for +7/+9/+11/+13 (centralized via ChromeGlow module)
   if (itemLevel >= 7 && TexValid(ChromeGlow::GetTextures().chrome1) && category >= 0) {
-    ChromeGlow::GlowPass passes[3];
-    int n = ChromeGlow::GetGlowPasses(itemLevel, category, itemIndex, passes);
-    if (n > 0) {
-      for (int gp = 0; gp < n; ++gp) {
-        for (int mi = 0; mi < (int)model->meshes.size(); ++mi) {
-          const auto &mb = model->meshes[mi];
-          if (mb.hidden || mb.indexCount == 0) continue;
-          if (!TexValid(mb.texture)) continue;
+    ChromeGlow::GlowRenderParams gp{};
+    gp.modelMat = &mod;
+    gp.enhanceLevel = itemLevel;
+    gp.category = category;
+    gp.itemIndex = itemIndex;
+    gp.viewId = viewId;
+    gp.time = tNow;
+    gp.skipBlendMesh = blendMeshIdx;
+    gp.colorScale = 1.0f;
+    gp.viewPos = glm::vec3(0.0f, 0.0f, 50.0f);
+    gp.luminosity = 1.0f;
 
-          if (isBodyPart && mi < (int)model->bmd->Meshes.size()) {
-            std::string texLower = model->bmd->Meshes[mi].TextureName;
-            std::transform(texLower.begin(), texLower.end(), texLower.begin(), ::tolower);
-            if (texLower.find("skin_") != std::string::npos || texLower.find("hide") != std::string::npos) continue;
-            if (category != 7 && texLower.find("head_") != std::string::npos) continue;
-          }
-          if (blendMeshIdx >= 0 && mi < (int)model->bmd->Meshes.size() &&
-              model->bmd->Meshes[mi].Texture == blendMeshIdx) continue;
-
-          bgfx::setTransform(glm::value_ptr(mod));
-          bgfx::setVertexBuffer(0, mb.vbo);
-          bgfx::setIndexBuffer(mb.ebo);
-          shader->setTexture(0, "s_texColor", passes[gp].texture);
-
-          shader->setVec4("u_params", glm::vec4(1.0f, 1.0f,
-                          (float)passes[gp].chromeMode, tNow));
-          shader->setVec4("u_params2", glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
-          shader->setVec4("u_glowColor", glm::vec4(passes[gp].color, 0.0f));
-          shader->setVec4("u_lightPos", glm::vec4(0.0f, 50.0f, 50.0f, 0.0f));
-          shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
-          shader->setVec4("u_viewPos", glm::vec4(0.0f, 0.0f, 50.0f, 0.0f));
-          shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
-          shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
-          shader->setVec4("u_fogParams", glm::vec4(0.0f));
-          shader->setVec4("u_fogColor", glm::vec4(0.0f));
-          shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
-          shader->setVec4("u_shadowParams", glm::vec4(0.0f));
-
-          uint64_t glowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
-                             | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_MSAA
-                             | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
-                                                      BGFX_STATE_BLEND_ONE);
-          bgfx::setState(glowState);
-          bgfx::submit(viewId, shader->program);
-        }
+    // Filter: skip skin/body meshes for body part items
+    // Build a filtered mesh list (exclude skin textures for body parts)
+    std::vector<MeshBuffers> glowMeshes;
+    for (int mi = 0; mi < (int)model->meshes.size(); ++mi) {
+      const auto &mb = model->meshes[mi];
+      if (mb.hidden || mb.indexCount == 0) continue;
+      if (!TexValid(mb.texture)) continue;
+      if (isBodyPart && mi < (int)model->bmd->Meshes.size()) {
+        std::string texLower = model->bmd->Meshes[mi].TextureName;
+        std::transform(texLower.begin(), texLower.end(), texLower.begin(), ::tolower);
+        if (texLower.find("skin_") != std::string::npos || texLower.find("hide") != std::string::npos) continue;
+        if (category != 7 && texLower.find("head_") != std::string::npos) continue;
       }
+      glowMeshes.push_back(mb);
     }
+    ChromeGlow::RenderGlowMeshes(shader, glowMeshes, gp);
   }
 }
 
@@ -599,19 +643,22 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
   int category = (defIndex >= 0) ? (defIndex / 32) : -1;
   int itemIndex = (defIndex >= 0) ? (defIndex % 32) : -1;
   int blendMeshIdx = (category >= 0) ? GetItemBlendMesh(category, itemIndex) : -1;
+  int hiddenMeshIdx = (category >= 0) ? GetItemHiddenMesh(category, itemIndex) : -1;
 
   // Ground items: self-lit, no directional/terrain/point light reaction
-  // Override lighting uniforms so items appear uniformly bright
   shader->setVec4("u_terrainLight", glm::vec4(0.85f, 0.85f, 0.85f, 0.0f));
   shader->setVec4("u_lightCount", glm::vec4(0.0f));
   shader->setVec4("u_params2", glm::vec4(1.0f, 0.01f, 0.0f, 0.0f));
   shader->setVec4("u_shadowParams", glm::vec4(0.0f));
 
+  float tNow = (float)glfwGetTime();
   for (int mi = 0; mi < (int)model->meshes.size(); ++mi) {
     const auto &mb = model->meshes[mi];
-    if (mb.hidden || mb.indexCount == 0)
-      continue;
-    if (!TexValid(mb.texture))
+    if (mb.hidden || mb.indexCount == 0) continue;
+    if (!TexValid(mb.texture)) continue;
+    // Skip hidden meshes (Main 5.2: HiddenMesh)
+    if (hiddenMeshIdx >= 0 && mi < (int)model->bmd->Meshes.size() &&
+        model->bmd->Meshes[mi].Texture == hiddenMeshIdx)
       continue;
 
     bgfx::setTransform(glm::value_ptr(mod));
@@ -628,9 +675,13 @@ void ItemModelManager::RenderItemWorld(const std::string &filename,
                    | BGFX_STATE_MSAA;
 
     if (isGlowMesh) {
-      blendLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+      blendLight = sinf(tNow * 4.0f) * 0.3f + 0.7f;
       state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
       state &= ~(uint64_t)BGFX_STATE_WRITE_Z;
+    } else if (blendMeshIdx == -2) {
+      // Whole-object oscillating brightness (Main 5.2: BlendMesh=-2)
+      blendLight = sinf(tNow * 4.0f) * 0.3f + 0.7f;
+      state |= BGFX_STATE_CULL_CW;
     } else if (mb.bright) {
       state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_ONE);
     } else if (mb.hasAlpha) {

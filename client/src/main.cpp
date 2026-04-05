@@ -505,7 +505,7 @@ static const MapConfig MAP_CONFIGS[] = {
         false,
         false,
         false, // sky, grass, doors, leaves, wind
-        SOUND_DUNGEON01,
+        SOUND_TOWER01, // Main 5.2: aTower.wav (distinct tower ambience)
         "Music/lost_tower_a.mp3",
         nullptr,
         false, // useNamedObjects (Object5/ numbered)
@@ -593,6 +593,7 @@ static int g_serverStr = 28, g_serverDex = 20, g_serverVit = 25,
 static int g_serverLevelUpPoints = 0;
 static int64_t g_serverXP = 0;
 static int g_serverDefense = 0, g_serverAttackSpeed = 0, g_serverMagicSpeed = 0;
+static int g_serverResets = 0;
 static int g_heroCharacterId = 0;
 static char g_characterName[32] = "RealPlayer";
 
@@ -876,7 +877,10 @@ static ClientEquipSlot g_equipSlots[12] = {};
 static ImFont *g_fontDefault = nullptr;
 static ImFont *g_fontBold = nullptr;
 static ImFont *g_fontRegion = nullptr;
-static float g_fontPreScale = 1.0f; // Font pre-scale for crisp fullscreen rendering
+static ImFont *g_fontLabel = nullptr;     // Work Sans Regular: tooltip body/labels (13px)
+static ImFont *g_fontLabelBold = nullptr; // Work Sans SemiBold: tooltip bold values (13px)
+static ImFont *g_fontHeadline = nullptr;  // Newsreader Bold Italic: item names
+static float g_fontPreScale = 1.0f;
 
 static UICoords g_hudCoords; // File-scope for mouse callback access
 
@@ -973,6 +977,9 @@ static void RenderLoadingFrame(float progress, const char *status) {
   glfwGetFramebufferSize(g_window, &fbW, &fbH);
   glfwGetWindowSize(g_window, &winW, &winH);
   if (fbW <= 0 || fbH <= 0) return;
+
+  // Match main render loop scaling so preloader text/bar sizes are consistent
+  ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
 
   bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000005FF, 1.0f, 0);
   bgfx::setViewRect(0, 0, 0, uint16_t(fbW), uint16_t(fbH));
@@ -1465,7 +1472,10 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
   case 35:
     return (mapId == 3) ? &noriaLightLargeProps : nullptr;
   // Lost Tower (mapId=4) torch/fire objects
-  // Main 5.2: type 19 = fire torch (red), type 20 = lightning pillar (blue)
+  // Main 5.2: types 3,4 = fire torches/braziers, 19 = magic orb, 20 = lightning pillar
+  case 3:
+  case 4:
+    return (mapId == 4) ? &dungeonTorchProps : nullptr;
   case 19:
     return (mapId == 4) ? &dungeonTorchProps : nullptr;
   case 20:
@@ -1561,7 +1571,7 @@ int main(int argc, char **argv) {
   glfwGetFramebufferSize(window, &initW, &initH);
   bgfxInit.resolution.width = initW;
   bgfxInit.resolution.height = initH;
-  bgfxInit.resolution.reset = BGFX_RESET_VSYNC | BGFX_RESET_MSAA_X4;
+  bgfxInit.resolution.reset = BGFX_RESET_VSYNC | BGFX_RESET_MSAA_X16;
   if (!bgfx::init(bgfxInit)) {
     std::cerr << "Failed to initialize BGFX" << std::endl;
     glfwDestroyWindow(window);
@@ -1667,12 +1677,40 @@ int main(int argc, char **argv) {
       g_fontRegion =
           io.Fonts->AddFontFromFileTTF(fontBodyBold, 28.0f * fs, &cfg);
     }
+    // Tooltip fonts (HTML design: Newsreader headline, Work Sans labels)
+    const char *fontNewsreader = "../fonts/Newsreader-BoldItalic.ttf";
+    const char *fontWorkSans = "../fonts/WorkSans-Regular.ttf";
+    const char *fontWorkSansSB = "../fonts/WorkSans-SemiBold.ttf";
+    const char *fontInter = "../fonts/Inter-Regular.ttf";
+
+    // Headline: Newsreader Bold Italic (item names in tooltips)
+    if (tryFont(fontNewsreader))
+      g_fontHeadline = io.Fonts->AddFontFromFileTTF(fontNewsreader, 18.0f * fs, &cfg);
+
+    // Label: Work Sans Regular (tooltip body text, 13px)
+    if (tryFont(fontWorkSans))
+      g_fontLabel = io.Fonts->AddFontFromFileTTF(fontWorkSans, 13.0f * fs, &cfg);
+
+    // Label Bold: Work Sans SemiBold (tooltip bold values — DPS, footer, class)
+    if (tryFont(fontWorkSansSB))
+      g_fontLabelBold = io.Fonts->AddFontFromFileTTF(fontWorkSansSB, 13.0f * fs, &cfg);
+
+    // Body: prefer Inter over Verdana if available
+    if (tryFont(fontInter) && !g_fontDefault)
+      g_fontDefault = io.Fonts->AddFontFromFileTTF(fontInter, 14.0f * fs, &cfg);
+
     if (!g_fontDefault)
       g_fontDefault = io.Fonts->AddFontDefault(&cfg);
     if (!g_fontBold)
       g_fontBold = g_fontDefault;
     if (!g_fontRegion)
       g_fontRegion = g_fontBold;
+    if (!g_fontHeadline)
+      g_fontHeadline = g_fontBold;
+    if (!g_fontLabel)
+      g_fontLabel = g_fontDefault;
+    if (!g_fontLabelBold)
+      g_fontLabelBold = g_fontLabel;
 
     io.Fonts->Build();
   }
@@ -1700,7 +1738,7 @@ int main(int argc, char **argv) {
         BGFX_TEXTURE_RT | BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP);
     g_shadowMap.depthTex = bgfx::createTexture2D(
         SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, false, 1,
-        bgfx::TextureFormat::D16, BGFX_TEXTURE_RT_WRITE_ONLY);
+        bgfx::TextureFormat::D32F, BGFX_TEXTURE_RT_WRITE_ONLY);
     bgfx::TextureHandle atts[] = { g_shadowMap.colorTex, g_shadowMap.depthTex };
     g_shadowMap.fb = bgfx::createFrameBuffer(2, atts, false);
     g_shadowMap.depthShader = Shader::Load("vs_depth.bin", "fs_depth.bin");
@@ -1774,6 +1812,9 @@ int main(int argc, char **argv) {
     ctx.serverEne = &g_serverEne;
     ctx.serverLevelUpPoints = &g_serverLevelUpPoints;
     ctx.serverDefense = &g_serverDefense;
+    ctx.serverResets = &g_serverResets;
+    ctx.questCatalog = &g_questCatalog;
+    ctx.activeQuests = &g_activeQuests;
     ctx.serverAttackSpeed = &g_serverAttackSpeed;
     ctx.serverMagicSpeed = &g_serverMagicSpeed;
     ctx.serverHP = &g_serverHP;
@@ -1798,6 +1839,9 @@ int main(int argc, char **argv) {
     ctx.fontDefault = g_fontDefault;
     ctx.fontBold = g_fontBold;
     ctx.fontRegion = g_fontRegion;
+    ctx.fontHeadline = g_fontHeadline;
+    ctx.fontLabel = g_fontLabel;
+    ctx.fontLabelBold = g_fontLabelBold;
     InventoryUI::Init(ctx);
   }
 
@@ -2063,9 +2107,11 @@ int main(int argc, char **argv) {
       int curFbW, curFbH;
       glfwGetFramebufferSize(window, &curFbW, &curFbH);
       if (curFbW != s_lastFbW || curFbH != s_lastFbH) {
+        printf("[Resize] Framebuffer changed: %dx%d -> %dx%d\n",
+               s_lastFbW, s_lastFbH, curFbW, curFbH);
         s_lastFbW = curFbW;
         s_lastFbH = curFbH;
-        bgfx::reset(curFbW, curFbH, BGFX_RESET_VSYNC | BGFX_RESET_MSAA_X4);
+        bgfx::reset(curFbW, curFbH, BGFX_RESET_VSYNC | BGFX_RESET_MSAA_X16);
       }
     }
 
@@ -2578,7 +2624,37 @@ int main(int argc, char **argv) {
                   src = boneWorld + g_hero.GetPosition();
                 }
                 glm::vec3 dst = mi.position + glm::vec3(0, mi.height * 0.5f, 0);
-                g_monsterManager.SpawnArrow(src, dst, 2000.0f);
+
+                // Main 5.2: per-weapon arrow model variant
+                uint8_t wIdx = g_equipSlots[0].itemIndex;
+                int arrowVar = MonsterManager::GetArrowVariant(wIdx);
+
+                // Main 5.2 CreateArrows: +skill bows/crossbows fire spread
+                bool hasSkill = (g_equipSlots[0].optionFlags & 0x80) != 0;
+                if (hasSkill) {
+                  // Rotate dst around src in XZ plane by yaw offset
+                  auto spawnSpread = [&](float angleDeg) {
+                    float rad = glm::radians(angleDeg);
+                    glm::vec3 d = dst - src;
+                    float rx = d.x * cosf(rad) - d.z * sinf(rad);
+                    float rz = d.x * sinf(rad) + d.z * cosf(rad);
+                    g_monsterManager.SpawnArrow(src, src + glm::vec3(rx, d.y, rz), 2000.0f, arrowVar);
+                  };
+                  // Main 5.2: special crossbows (idx 18,19) = 4 arrows ±5°/±15��
+                  // All others = 3 arrows: center, ±15°
+                  if (wIdx == 18 || wIdx == 19) {
+                    spawnSpread(5.0f);
+                    spawnSpread(15.0f);
+                    spawnSpread(-5.0f);
+                    spawnSpread(-15.0f);
+                  } else {
+                    spawnSpread(0.0f);
+                    spawnSpread(15.0f);
+                    spawnSpread(-15.0f);
+                  }
+                } else {
+                  g_monsterManager.SpawnArrow(src, dst, 2000.0f, arrowVar);
+                }
               }
               } // end ammo check else
             }
@@ -2814,8 +2890,7 @@ int main(int argc, char **argv) {
       }
     }
 
-    // Hero respawn: after death timer expires, respawn in same-map safe zone
-    // Dungeon (map 1) has no safe zone → warp to Lorencia
+    // Hero respawn: uses the same warp system as M-key teleport
     if (g_hero.ReadyToRespawn()) {
       // Clear debuffs on respawn
       if (g_clientState) {
@@ -2826,77 +2901,40 @@ int main(int argc, char **argv) {
         g_clientState->frozen = false;
         g_clientState->frozenRemaining = 0.0f;
         g_hero.SetFrozen(false);
-        // Clear buffs too (they shouldn't persist through death)
         for (int b = 0; b < 2; b++) {
           g_clientState->activeBuffs[b].active = false;
           g_clientState->activeBuffs[b].remaining = 0.0f;
         }
       }
-      // Per-map respawn points (grid coordinates)
+      // Per-map respawn points
       int respawnMapId = g_currentMapId;
       int respawnGX = 137, respawnGZ = 126; // Lorencia default
-      if (g_currentMapId == 1) {
-        // Dungeon: no safe zone, warp back to Lorencia
-        respawnMapId = 0;
-        respawnGX = 137; respawnGZ = 126;
-      } else if (g_currentMapId == 2) {
-        // Devias: respawn in Devias town center (near Guild Master)
-        respawnGX = 215; respawnGZ = 47;
-      } else if (g_currentMapId == 3) {
-        // Noria: respawn near Elf Lala (town center)
-        respawnGX = 174; respawnGZ = 110;
-      } else if (g_currentMapId == 4) {
-        // Lost Tower: respawn in Lost Tower 1 safe zone
-        respawnGX = 208; respawnGZ = 75;
-      }
+      if (g_currentMapId == 1) { respawnMapId = 0; respawnGX = 137; respawnGZ = 126; }
+      else if (g_currentMapId == 2) { respawnGX = 215; respawnGZ = 47; }
+      else if (g_currentMapId == 3) { respawnGX = 174; respawnGZ = 110; }
+      else if (g_currentMapId == 4) { respawnGX = 208; respawnGZ = 75; }
 
-      glm::vec3 spawnPos((float)respawnGZ * 100.0f, 0.0f,
-                         (float)respawnGX * 100.0f);
-
-      if (respawnMapId != g_currentMapId) {
-        // Different map: warp + start fade overlay
-        g_server.SendWarpCommand(respawnMapId, respawnGX, respawnGZ);
-        g_mapTransitionActive = true;
-        g_mapTransitionPhase = 0;
-        g_mapTransitionAlpha =
-            0.8f; // Start mostly black (death screen is dark)
-        g_mapTransitionFrames = 0;
-        g_mapTransMapId = respawnMapId;
-        g_mapTransSpawnX = respawnGX;
-        g_mapTransSpawnY = respawnGZ;
-      } else {
-        // Same map: find walkable tile near respawn point
-        const int S = TerrainParser::TERRAIN_SIZE;
-        for (int radius = 0; radius < 30; radius++) {
-          bool found = false;
-          for (int dy = -radius; dy <= radius && !found; dy++) {
-            for (int dx = -radius; dx <= radius && !found; dx++) {
-              if (radius > 0 && std::abs(dx) != radius &&
-                  std::abs(dy) != radius)
-                continue;
-              int cx = respawnGX + dx, cz = respawnGZ + dy;
-              if (cx < 1 || cz < 1 || cx >= S - 1 || cz >= S - 1)
-                continue;
-              uint8_t attr = g_terrainDataPtr->mapping.attributes[cz * S + cx];
-              if ((attr & 0x04) == 0 && (attr & 0x08) == 0) {
-                spawnPos =
-                    glm::vec3((float)cz * 100.0f, 0.0f, (float)cx * 100.0f);
-                found = true;
-              }
-            }
-          }
-          if (found)
-            break;
-        }
-      }
-
+      // Mark hero alive immediately (prevents ReadyToRespawn re-entry)
+      glm::vec3 spawnPos((float)respawnGZ * 100.0f, 0.0f, (float)respawnGX * 100.0f);
       g_hero.Respawn(spawnPos);
-      g_hero.SnapToTerrain();
-      g_camera.SetPosition(g_hero.GetPosition());
-      g_serverHP = g_serverMaxHP; // Reset HUD HP
-      g_serverMP = g_serverMaxMP; // Reset AG/Mana on respawn
+      g_serverHP = g_serverMaxHP;
+      g_serverMP = g_serverMaxMP;
 
-      // Notify server that player is alive (clears session.dead)
+      // Dismount before respawn
+      if (g_hero.IsMounted()) g_hero.UnequipMount();
+
+      // Use unified warp path (same as M-key teleport)
+      SoundManager::StopAll();
+      g_server.SendWarpCommand(respawnMapId, respawnGX, respawnGZ);
+      g_mapTransitionActive = true;
+      g_mapTransitionPhase = 0;
+      g_mapTransitionAlpha = 0.8f; // Start mostly black (death screen)
+      g_mapTransitionFrames = 0;
+      g_mapTransMapId = respawnMapId;
+      g_mapTransSpawnX = respawnGX;
+      g_mapTransSpawnY = respawnGZ;
+
+      // Notify server player is alive (clears session.dead)
       g_server.SendCharSave(
           (uint16_t)g_heroCharacterId, (uint16_t)g_serverLevel,
           (uint16_t)g_serverStr, (uint16_t)g_serverDex, (uint16_t)g_serverVit,
@@ -3150,6 +3188,8 @@ int main(int argc, char **argv) {
                                           lightObjTypes);
       // Pet companion glow light
       g_hero.GetPetLight(lightPos, lightCol, lightRange, lightObjTypes);
+      // Main 5.2: enhanced weapons emit terrain point light
+      g_hero.GetWeaponLight(lightPos, lightCol, lightRange, lightObjTypes);
       // Update terrain (CPU lightmap) and object renderer (shader uniforms)
       g_terrain.SetPointLights(lightPos, lightCol, lightRange, lightObjTypes);
       g_objectRenderer.SetPointLights(lightPos, lightCol, lightRange);
@@ -3191,7 +3231,7 @@ int main(int argc, char **argv) {
     }
 
     // Update effects (VFX rendered after characters for correct layering)
-    g_fireEffect.Update(deltaTime);
+    g_fireEffect.Update(deltaTime, g_hero.GetPosition());
     g_vfxManager.UpdateLevelUpCenter(g_hero.GetPosition());
 
     // Dungeon trap VFX now handled by MonsterManager::TriggerAttackAnimation
@@ -3381,7 +3421,8 @@ int main(int argc, char **argv) {
     ImGui_BackendNewFrame();
 
     ImGui_ImplGlfw_NewFrame();
-    ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
+    if (winH > 0)
+      ImGui::GetIO().FontGlobalScale = (float)winH / 768.0f / g_fontPreScale;
     ImGui::NewFrame();
 
     // Suppress ImGui's default fallback window
@@ -3536,14 +3577,7 @@ int main(int argc, char **argv) {
           g_groundItems, MAX_GROUND_ITEMS, deltaTime, view, projection,
           [](float x, float z) -> float { return g_terrain.GetHeight(x, z); });
 
-      // Main 5.2: ground item sparkle particles every ~1.92s
-      {
-        std::vector<glm::vec3> sparklePos;
-        GroundItemRenderer::UpdateSparkleTimers(g_groundItems, MAX_GROUND_ITEMS,
-                                                deltaTime, sparklePos);
-        for (const auto &p : sparklePos)
-          g_vfxManager.SpawnBurst(ParticleType::FLARE, p, 1);
-      }
+      // Ground item sparkle disabled — cleaner look
 
       // ── Ground item labels + tooltips ──
       GroundItemRenderer::RenderLabels(
@@ -4953,6 +4987,11 @@ int main(int argc, char **argv) {
       ImGui::PopStyleColor(2);
     }
 
+
+
+    ImGui_BackendSetViewId(IMGUI_VIEW_MAIN);
+    bgfx::setViewRect(IMGUI_VIEW_MAIN, 0, 0, uint16_t(fbW), uint16_t(fbH));
+    bgfx::touch(IMGUI_VIEW_MAIN);
     ImGui::Render();
     ImGui_BackendRenderDrawData(ImGui::GetDrawData());
 
@@ -4971,7 +5010,8 @@ int main(int argc, char **argv) {
         int pw = (int)(job.w * scaleX);
         int ph = (int)(job.h * scaleY);
         ItemModelManager::RenderItemUI(job.modelFile, job.defIndex, px, py, pw,
-                                       ph, job.hovered, job.itemLevel);
+                                       ph, job.hovered, job.itemLevel,
+                                       job.overlay);
       }
     }
 
@@ -4983,6 +5023,8 @@ int main(int argc, char **argv) {
         InventoryUI::HasActiveNotification() ||
         InventoryUI::HasActiveRegionName()) {
       ImGui_BackendSetViewId(IMGUI_VIEW_OVERLAY);
+      bgfx::setViewRect(IMGUI_VIEW_OVERLAY, 0, 0, uint16_t(fbW), uint16_t(fbH));
+      bgfx::touch(IMGUI_VIEW_OVERLAY);
       ImGui_BackendNewFrame();
       ImGui_ImplGlfw_NewFrame();
       ImGui::NewFrame();
@@ -5063,7 +5105,7 @@ int main(int argc, char **argv) {
             InventoryUI::IsPointInPanel(vx, vy, InventoryUI::GetShopPanelX()))
           over = true;
         if (g_showMapWindow && InventoryUI::IsPointInPanel(
-                                    vx, vy, InventoryUI::GetCharInfoPanelX()))
+                                    vx, vy, InventoryUI::GetMapPanelX()))
           over = true;
         // Skill window — virtual coords
         if (g_showSkillWindow) {
@@ -5104,6 +5146,13 @@ int main(int argc, char **argv) {
           float ccx = mmH + 20.0f, ccy = ds.y * 0.5f;
           if (sx >= ccx - mmH && sx <= ccx + mmH &&
               sy >= ccy - mmH && sy <= ccy + mmH)
+            over = true;
+        }
+        // Bottom HUD bar — prevent hover/clicks through health orbs and quickbar
+        {
+          ImVec2 ds = ImGui::GetIO().DisplaySize;
+          float hudH = 100.0f; // approximate HUD bar height at bottom
+          if (sy >= ds.y - hudH)
             over = true;
         }
       }
@@ -5460,6 +5509,7 @@ static void ApplyMapAtmosphere(const MapConfig &cfg) {
 
   // Set map ID on all subsystems
   g_objectRenderer.SetMapId(cfg.mapId);
+  g_objectRenderer.SetVFXManager(&g_vfxManager);
   g_boidManager.SetMapId(cfg.mapId);
   g_monsterManager.SetMapId(cfg.mapId);
   g_npcManager.SetMapId(cfg.mapId);
@@ -5630,9 +5680,7 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
       glm::mat3 rot;
       for (int c = 0; c < 3; c++)
         rot[c] = glm::normalize(glm::vec3(inst.modelMatrix[c]));
-      // Lost Tower FlamePillar (type 24) uses tall flames, others use regular height
-      bool tallFlames = (inst.type == 24 && mapId == 4);
-      g_fireEffect.AddEmitter(worldPos + rot * off, tallFlames);
+      g_fireEffect.AddEmitter(worldPos + rot * off);
     }
   }
   for (auto &inst : g_objectRenderer.GetInstances()) {
@@ -5668,13 +5716,14 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
     g_pointLights.push_back(light);
 
     // Register fire emitters (BlendMesh glow replaced by VFX particles)
+    // Main 5.2: Only types with CreateFire() calls get fire particles.
+    // Type 150 (candle) only does AddTerrainLight, no CreateFire.
+    // Lost Tower type 19 uses rotating magic sprite, not fire.
     bool isFire = (inst.type == 50 || inst.type == 51 || inst.type == 52 ||
-                   inst.type == 150 ||
                    (mapId == 1 && (inst.type == 41 || inst.type == 42)) ||
-                   (mapId == 4 && inst.type == 19));
+                   (mapId == 4 && (inst.type == 3 || inst.type == 4)));
     if (isFire) {
-      float intensity = (inst.type == 150) ? 0.3f :   // candle
-                        (inst.type == 52)  ? 1.2f :   // bonfire
+      float intensity = (inst.type == 52)  ? 1.2f :   // bonfire
                         0.7f;                          // torch
       g_vfxManager.AddAmbientFire(
           worldPos + glm::vec3(0.0f, props->heightOffset, 0.0f), intensity);

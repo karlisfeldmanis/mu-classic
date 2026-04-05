@@ -858,24 +858,22 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       break;
     }
     case ParticleType::MONSTER_SHINY: {
-      // Shadow aura: large blurry violet glow per bone.
-      // Longer lifetime (0.15s) with lower alpha creates smooth overlap across
-      // multiple 0.04s spawn cycles (~3-4 sprites per bone at any time).
+      // Shadow aura: foggy violet mist per bone.
+      // Large scale + long lifetime + Gaussian radial falloff (shader) = soft fog cloud.
       p.velocity = glm::vec3(0.0f);
-      p.scale = 80.0f;
-      p.maxLifetime = 0.15f;
+      p.scale = 100.0f;
+      p.maxLifetime = 0.25f;
       p.color = glm::vec3(0.55f, 0.45f, 0.75f);
-      p.alpha = 0.35f; // Lower alpha — overlapping sprites accumulate to full glow
+      p.alpha = 0.25f;
       break;
     }
     case ParticleType::MONSTER_MAGIC: {
-      // Poison Shadow aura: same large blurry approach as Shadow but green.
-      // Scale 70 (matching Shadow's enveloping coverage), longer lifetime for smooth blend.
+      // Poison Shadow aura: foggy green mist per bone.
       p.velocity = glm::vec3(0.0f);
-      p.scale = 70.0f;
-      p.maxLifetime = 0.15f;
+      p.scale = 90.0f;
+      p.maxLifetime = 0.25f;
       p.color = glm::vec3(0.2f, 0.7f, 0.1f);
-      p.alpha = 0.35f;
+      p.alpha = 0.25f;
       break;
     }
     }
@@ -936,9 +934,7 @@ void VFXManager::SpawnSkillCast(uint8_t skillId, const glm::vec3 &heroPos,
     SpawnBurst(ParticleType::SPELL_ENERGY, castPos, 12);
     SpawnBurst(ParticleType::FLARE, castPos, 2);
     break;
-  case 4: // Fire Ball
-    SpawnBurst(ParticleType::SPELL_FIRE, castPos, 15);
-    SpawnBurst(ParticleType::FLARE, castPos, 2);
+  case 4: // Fire Ball — Main 5.2: no caster-side particles, only projectile + sound
     break;
   case 1: // Poison — Main 5.2: no caster-side VFX, cloud spawns at target
     break;
@@ -1067,10 +1063,11 @@ void VFXManager::SpawnSkillImpact(uint8_t skillId,
 void VFXManager::SpawnSpellProjectile(uint8_t skillId, const glm::vec3 &start,
                                       const glm::vec3 &target) {
   SpellProjectile proj;
-  // Same chest-height offset for both start and target → level flight on flat terrain
-  static constexpr float CHEST_HEIGHT = 80.0f;
-  proj.position = start + glm::vec3(0, CHEST_HEIGHT, 0);
-  proj.target = target + glm::vec3(0, CHEST_HEIGHT, 0);
+  // Start position comes from bone world pos (already at hand height)
+  // Target gets chest-height offset since target pos is at feet
+  static constexpr float TARGET_HEIGHT = 120.0f;
+  proj.position = start;
+  proj.target = target + glm::vec3(0, TARGET_HEIGHT, 0);
 
   // Purely horizontal direction — Main 5.2: Direction {0,-50,0} rotated by yaw only
   glm::vec3 delta = proj.target - proj.position;
@@ -1311,8 +1308,18 @@ void VFXManager::updateSpellProjectiles(float dt) {
       p.alpha = std::min(luminosity, 1.0f);
     }
 
-    // Trail particles — behavior depends on whether we have a 3D model core
+    // Animate Fire01.bmd (Main 5.2: Velocity=0.3 = 0.3 keys/tick = 7.5 keys/sec)
     bool has3DModel = (p.skillId == 4 && !m_fireMeshes.empty() && m_modelShader);
+    if (has3DModel && m_fireBmd && !m_fireBmd->Actions.empty()) {
+      p.animFrame += 7.5f * dt;
+      int numKeys = m_fireBmd->Actions[0].NumAnimationKeys;
+      if (numKeys > 1 && p.animFrame >= (float)numKeys)
+        p.animFrame = std::fmod(p.animFrame, (float)numKeys);
+      // Re-skin fire model with animated bones
+      auto bones = ComputeBoneMatricesInterpolated(m_fireBmd.get(), 0, p.animFrame);
+      for (int mi = 0; mi < (int)m_fireMeshes.size() && mi < (int)m_fireBmd->Meshes.size(); ++mi)
+        RetransformMeshWithBones(m_fireBmd->Meshes[mi], bones, m_fireMeshes[mi]);
+    }
     glm::vec3 projVel = p.direction * p.speed;
     // For 3D model: backward drift so particles trail behind the fire ball
     glm::vec3 trailDrift = has3DModel ? -p.direction * (p.speed * 0.15f)
@@ -1330,7 +1337,11 @@ void VFXManager::updateSpellProjectiles(float dt) {
           Particle trail;
           trail.type = ParticleType::SPELL_FIRE;
           trail.position = p.position;
-          trail.velocity = glm::vec3(0.0f, 0.0f, 0.0f);
+          // Main 5.2: Velocity=(0,-(rand%16+32)*0.1,0) — slight backward drift
+          // In Y-up: backward along projectile direction + slight random spread
+          float driftSpeed = (float)(rand() % 16 + 32) * 0.1f * 25.0f; // per-tick → per-sec
+          trail.velocity = -p.direction * driftSpeed
+                         + glm::vec3((float)(rand()%20-10), 0.0f, (float)(rand()%20-10));
           // Main 5.2: Scale = parentScale * (rand%64+128)*0.01 = 1.28-1.92x
           float scaleMul = (float)(rand() % 64 + 128) * 0.01f;
           trail.scale = 30.0f * scaleMul;
@@ -1896,9 +1907,11 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
       // i_data0: worldPos.xyz, scale
       inst.data[0] = p.position.x; inst.data[1] = p.position.y;
       inst.data[2] = p.position.z; inst.data[3] = p.scale;
-      // i_data1: rotation, frame, alpha, 0
+      // i_data1: rotation, frame, alpha, radialFalloffStrength
+      float radialFalloff = (type == ParticleType::MONSTER_SHINY ||
+                             type == ParticleType::MONSTER_MAGIC) ? 12.0f : 0.0f;
       inst.data[4] = p.rotation; inst.data[5] = p.frame;
-      inst.data[6] = p.alpha; inst.data[7] = 0.0f;
+      inst.data[6] = p.alpha; inst.data[7] = radialFalloff;
       // i_data2: color.xyz, 0
       inst.data[8] = p.color.x; inst.data[9] = p.color.y;
       inst.data[10] = p.color.z; inst.data[11] = 0.0f;
