@@ -182,7 +182,7 @@ public:
     m_pointLights = lights;
   }
   void SetLuminosity(float l) { m_luminosity = l; }
-  void SetMapId(int mapId) { m_mapId = mapId; }
+  void SetMapId(int mapId) { m_mapId = mapId; m_mapLoadTime = m_worldTime; }
   void SetVFXManager(VFXManager *vfx) { m_vfxManager = vfx; }
 
 private:
@@ -377,6 +377,7 @@ private:
   static constexpr int MAX_POINT_LIGHTS = 64;
   float m_luminosity = 1.0f;
   int m_mapId = 0; // 0=Lorencia, 1=Dungeon
+  float m_mapLoadTime = 0.0f; // Suppress idle sounds after map change
   float m_worldTime = 0.0f; // Accumulated time for UV scroll effects
 
   std::unordered_map<uint16_t, int> m_typeToModel;

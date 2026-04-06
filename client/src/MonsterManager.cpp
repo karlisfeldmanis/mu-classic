@@ -1431,6 +1431,9 @@ static float facingFromDir(const glm::vec3 &dir) {
 void MonsterManager::playIdleSound(MonsterInstance &mon) {
   constexpr float COOLDOWN = 12.0f; // Min seconds between idle sounds per monster
   constexpr float MAX_DIST_SQ = 800.0f * 800.0f; // Only nearby monsters
+  // Suppress idle sounds for 5s after map load to prevent burst of growls
+  // when all monsters simultaneously transition to IDLE on initial sync
+  if (m_worldTime - m_mapLoadTime < 5.0f) return;
   // Global throttle: max 1 idle sound per 4s to prevent overlapping growls
   // Lost Tower has many large monsters with long (5-7s) idle sounds
   static float s_lastGlobalIdleSound = 0.0f;
