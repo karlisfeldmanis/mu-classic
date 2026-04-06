@@ -338,6 +338,8 @@ struct PMSG_CHARSTATS_SEND {
   int8_t skillBar[10];
   int16_t potionBar[4];
   int8_t rmcSkillId;
+  uint16_t resets;
+  uint8_t role;
 };
 
 // C->S: Character Save (0x26)

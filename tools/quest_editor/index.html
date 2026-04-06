@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MU Quest Editor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+</head>
+<body>
+  <div id="app">
+    <!-- Top bar -->
+    <header id="topbar">
+      <div class="topbar-left">
+        <strong>MU Quest Editor</strong>
+        <span id="status-badge" class="status"></span>
+      </div>
+      <div class="topbar-right">
+        <input type="file" id="db-file-input" accept=".db,.sqlite,.sqlite3" hidden>
+        <button id="save-btn" class="btn btn-primary" disabled>Save to Server</button>
+      </div>
+    </header>
+
+    <div id="layout">
+      <!-- Sidebar -->
+      <aside id="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-title">Locations</div>
+          <div id="nav-list"></div>
+        </div>
+      </aside>
+
+      <!-- Main content -->
+      <main id="main">
+        <div id="empty-state">
+          <p>Loading database...</p>
+        </div>
+        <div id="content" class="hidden"></div>
+      </main>
+
+      <!-- Detail panel -->
+      <aside id="detail-panel" class="hidden">
+        <div class="panel-header">
+          <strong id="dp-title">Quest Details</strong>
+          <button id="dp-close" class="btn-close">&times;</button>
+        </div>
+        <div class="panel-body">
+          <div class="field">
+            <label>Quest Name</label>
+            <input type="text" id="dp-name">
+          </div>
+          <div class="field">
+            <label>Location</label>
+            <input type="text" id="dp-location">
+          </div>
+          <div class="field">
+            <label>Lore Text</label>
+            <textarea id="dp-lore" rows="5"></textarea>
+          </div>
+          <div class="field">
+            <label>Kill Targets</label>
+            <div id="dp-targets"></div>
+            <button id="dp-add-target" class="btn btn-sm">+ Add Target</button>
+          </div>
+          <div class="panel-actions">
+            <button id="dp-apply" class="btn btn-primary">Apply</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Item picker modal -->
+    <div id="item-modal" class="modal-overlay hidden">
+      <div class="modal-box">
+        <div class="modal-top">
+          <strong>Select Item</strong>
+          <button class="btn-close modal-close">&times;</button>
+        </div>
+        <div class="modal-toolbar">
+          <input type="text" id="item-search" placeholder="Search items..." class="input-full">
+          <div class="filter-row">
+            <button class="fbtn active" data-cat="all">All</button>
+            <button class="fbtn" data-cat="0">Swords</button>
+            <button class="fbtn" data-cat="1">Axes</button>
+            <button class="fbtn" data-cat="2">Maces</button>
+            <button class="fbtn" data-cat="3">Spears</button>
+            <button class="fbtn" data-cat="4">Bows</button>
+            <button class="fbtn" data-cat="5">Staffs</button>
+            <button class="fbtn" data-cat="6">Shields</button>
+            <button class="fbtn" data-cat="7">Helms</button>
+            <button class="fbtn" data-cat="8">Armor</button>
+            <button class="fbtn" data-cat="9">Pants</button>
+            <button class="fbtn" data-cat="10">Gloves</button>
+            <button class="fbtn" data-cat="11">Boots</button>
+            <button class="fbtn" data-cat="12">Wings</button>
+            <button class="fbtn" data-cat="14">Consumables</button>
+          </div>
+        </div>
+        <div id="item-list" class="modal-list"></div>
+        <div class="modal-bottom">
+          <label>Level: +<input type="number" id="item-level-input" min="0" max="15" value="0" class="input-sm"></label>
+          <button id="item-clear-btn" class="btn btn-danger">Clear Slot</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

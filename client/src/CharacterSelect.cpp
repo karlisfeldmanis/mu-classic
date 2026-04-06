@@ -612,7 +612,7 @@ static void RenderFaceToFBO() {
   s_modelShader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0));
   s_modelShader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0));
   s_modelShader->setVec4("u_glowColor", glm::vec4(0));
-  s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 2)); // w=2.0 enables matcap
+  s_modelShader->setVec4("u_baseTint", glm::vec4(1, 1, 1, 0));
   s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
   s_modelShader->setVec4("u_fogParams", glm::vec4(0));
   s_modelShader->setVec4("u_fogColor", glm::vec4(0));
@@ -630,9 +630,6 @@ static void RenderFaceToFBO() {
     else bgfx::setVertexBuffer(0, mb.vbo);
     bgfx::setIndexBuffer(mb.ebo);
     s_modelShader->setTexture(0, "s_texColor", mb.texture);
-    auto& ct = ChromeGlow::GetTextures();
-    if (TexValid(ct.chrome2))
-      s_modelShader->setTexture(3, "s_matcapTex", ct.chrome2);
     bgfx::setState(state);
     bgfx::submit(FACE_VIEW_ID, s_modelShader->program);
   }
@@ -1913,7 +1910,7 @@ void Render(int windowWidth, int windowHeight) {
         s_modelShader->setVec4("u_lightColor", glm::vec4(lightColor, 0));
         s_modelShader->setVec4("u_terrainLight", glm::vec4(tLight * dim, 0));
         s_modelShader->setVec4("u_glowColor", glm::vec4(glowColor, 0));
-        s_modelShader->setVec4("u_baseTint", glm::vec4(baseTint, 2.0f)); // w=2.0 enables matcap
+        s_modelShader->setVec4("u_baseTint", glm::vec4(baseTint, 0));
         s_modelShader->setVec4("u_texCoordOffset", glm::vec4(0));
         s_modelShader->setVec4("u_fogParams", glm::vec4(0, 0, 0, 0));
         s_modelShader->setVec4("u_fogColor", glm::vec4(0));
@@ -1952,9 +1949,6 @@ void Render(int windowWidth, int windowHeight) {
         s_modelShader->setTexture(0, "s_texColor", mb.texture);
         if (bgfx::isValid(s_shadowColorTex))
           s_modelShader->setTexture(1, "s_shadowMap", s_shadowColorTex);
-        auto& ct = ChromeGlow::GetTextures();
-        if (TexValid(ct.chrome2))
-          s_modelShader->setTexture(3, "s_matcapTex", ct.chrome2);
         bgfx::setState(state);
         bgfx::submit(0, s_modelShader->program);
       };
@@ -1997,18 +1991,20 @@ void Render(int windowWidth, int windowHeight) {
         if (wlvl >= 9) wDim = 0.9f;
         else if (wlvl >= 7) wDim = 0.8f;
         int blendIdx = s_slotRender[i].weaponBlendMesh;
-        int mi = 0;
         for (auto &mb : s_slotRender[i].weaponMeshes) {
-          if (mb.indexCount == 0) { mi++; continue; }
-          if (blendIdx >= 0 && mi == blendIdx) {
+          if (mb.indexCount == 0) continue;
+          if (blendIdx >= 0 && mb.bmdTextureId == blendIdx) {
             float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
             setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
             bgfxDraw(mb, stAdd);
+          } else if (blendIdx == -2) {
+            float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
+            setCSUniforms(wDim * pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
+            bgfxDraw(mb, stAlpha);
           } else {
             setCSUniforms(wDim, 0.0f, 0.0f, glm::vec3(0.0f), wTint);
             bgfxDraw(mb, stAlpha);
           }
-          mi++;
         }
       }
 
@@ -2024,10 +2020,9 @@ void Render(int windowWidth, int windowHeight) {
         if (slvl >= 9) sDim = 0.9f;
         else if (slvl >= 7) sDim = 0.8f;
         int blendIdx = s_slotRender[i].shieldBlendMesh;
-        int mi = 0;
         for (auto &mb : s_slotRender[i].shieldMeshes) {
-          if (mb.indexCount == 0) { mi++; continue; }
-          if (blendIdx >= 0 && mi == blendIdx) {
+          if (mb.indexCount == 0) continue;
+          if (blendIdx >= 0 && mb.bmdTextureId == blendIdx) {
             float pulseLight = sinf((float)glfwGetTime() * 4.0f) * 0.3f + 0.7f;
             setCSUniforms(pulseLight, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
             bgfxDraw(mb, stAdd);
@@ -2035,7 +2030,6 @@ void Render(int windowWidth, int windowHeight) {
             setCSUniforms(sDim, 0.0f, 0.0f, glm::vec3(0.0f), sTint);
             bgfxDraw(mb, stAlpha);
           }
-          mi++;
         }
       }
 
@@ -2048,7 +2042,7 @@ void Render(int windowWidth, int windowHeight) {
         }
       }
 
-      // ChromeGlow (+7/+9/+11/+13 item glow — shadow-free)
+      // ChromeGlow (+7/+9/+11/+13 item glow — shadow-free, centralized)
       {
         bool anyGlow = false;
         for (int p = 0; p < PART_COUNT; p++) {
@@ -2059,77 +2053,62 @@ void Render(int windowWidth, int windowHeight) {
 
         if (anyGlow && TexValid(ChromeGlow::GetTextures().chrome1)) {
           float t = (float)glfwGetTime();
+          glm::vec3 csViewPos(0.0f, 0.0f, 100.0f); // char select camera
 
           // Armor body parts glow
           for (int p = 0; p < PART_COUNT; p++) {
             uint8_t lvl = s_slots[i].equip[2 + p].itemLevel;
             if (lvl < 7) continue;
-            ChromeGlow::GlowPass passes[3];
-            int n = ChromeGlow::GetGlowPasses(lvl, 7 + p,
-                                               s_slots[i].equip[2 + p].itemIndex, passes);
-            for (int gp = 0; gp < n; ++gp) {
-              setCSGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
-              for (auto &mb : s_slotRender[i].meshes[p]) {
-                if (mb.indexCount == 0 || mb.hidden) continue;
-                s_modelShader->setTexture(0, "s_texColor", passes[gp].texture);
-                bgfx::setTransform(glm::value_ptr(model));
-                if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
-                else bgfx::setVertexBuffer(0, mb.vbo);
-                bgfx::setIndexBuffer(mb.ebo);
-                bgfx::setState(stAdd);
-                bgfx::submit(0, s_modelShader->program);
-              }
-            }
+            ChromeGlow::GlowRenderParams gp{};
+            gp.modelMat = &model;
+            gp.enhanceLevel = lvl;
+            gp.category = 7 + p;
+            gp.itemIndex = s_slots[i].equip[2 + p].itemIndex;
+            gp.viewId = 0;
+            gp.time = t;
+            gp.skipBlendMesh = -1;
+            gp.colorScale = 1.0f;
+            gp.viewPos = csViewPos;
+            gp.luminosity = 1.0f;
+            ChromeGlow::RenderGlowMeshes(s_modelShader.get(), s_slotRender[i].meshes[p], gp);
           }
 
           // Weapon glow
           uint8_t wlv = s_slots[i].equip[0].itemLevel;
           if (wlv >= 7) {
             ChromeGlow::GlowPass passes[3];
-            int n = ChromeGlow::GetGlowPasses(wlv, s_slots[i].equip[0].category,
+            int nPasses = ChromeGlow::GetGlowPasses(wlv, s_slots[i].equip[0].category,
                                                s_slots[i].equip[0].itemIndex, passes);
-            int wBlend = s_slotRender[i].weaponBlendMesh;
-            for (int gp = 0; gp < n; ++gp) {
-              float wScale = 0.7f / (float)n;
-              setCSGlowUniforms((float)passes[gp].chromeMode, t,
-                                passes[gp].color * wScale);
-              int wmi = 0;
-              for (auto &mb : s_slotRender[i].weaponMeshes) {
-                if (mb.indexCount == 0 || (wBlend >= 0 && wmi == wBlend)) { wmi++; continue; }
-                s_modelShader->setTexture(0, "s_texColor", passes[gp].texture);
-                bgfx::setTransform(glm::value_ptr(model));
-                if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
-                else bgfx::setVertexBuffer(0, mb.vbo);
-                bgfx::setIndexBuffer(mb.ebo);
-                bgfx::setState(stAdd);
-                bgfx::submit(0, s_modelShader->program);
-                wmi++;
-              }
-            }
+            float wScale = (nPasses > 0) ? 0.7f / (float)nPasses : 0.7f;
+            ChromeGlow::GlowRenderParams gp{};
+            gp.modelMat = &model;
+            gp.enhanceLevel = wlv;
+            gp.category = s_slots[i].equip[0].category;
+            gp.itemIndex = s_slots[i].equip[0].itemIndex;
+            gp.viewId = 0;
+            gp.time = t;
+            gp.skipBlendMesh = s_slotRender[i].weaponBlendMesh;
+            gp.colorScale = wScale;
+            gp.viewPos = csViewPos;
+            gp.luminosity = 1.0f;
+            ChromeGlow::RenderGlowMeshes(s_modelShader.get(), s_slotRender[i].weaponMeshes, gp);
           }
 
           // Shield glow
           uint8_t slv = s_slots[i].equip[1].itemLevel;
           if (slv >= 7) {
-            ChromeGlow::GlowPass passes[3];
-            int n = ChromeGlow::GetGlowPasses(slv, 6,
-                                               s_slots[i].equip[1].itemIndex, passes);
-            int sBlend = s_slotRender[i].shieldBlendMesh;
-            for (int gp = 0; gp < n; ++gp) {
-              setCSGlowUniforms((float)passes[gp].chromeMode, t, passes[gp].color);
-              int smi = 0;
-              for (auto &mb : s_slotRender[i].shieldMeshes) {
-                if (mb.indexCount == 0 || (sBlend >= 0 && smi == sBlend)) { smi++; continue; }
-                s_modelShader->setTexture(0, "s_texColor", passes[gp].texture);
-                bgfx::setTransform(glm::value_ptr(model));
-                if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
-                else bgfx::setVertexBuffer(0, mb.vbo);
-                bgfx::setIndexBuffer(mb.ebo);
-                bgfx::setState(stAdd);
-                bgfx::submit(0, s_modelShader->program);
-                smi++;
-              }
-            }
+            ChromeGlow::GlowRenderParams gp{};
+            gp.modelMat = &model;
+            gp.enhanceLevel = slv;
+            gp.category = 6;
+            gp.itemIndex = s_slots[i].equip[1].itemIndex;
+            gp.viewId = 0;
+            gp.time = t;
+            gp.skipBlendMesh = s_slotRender[i].shieldBlendMesh;
+            gp.colorScale = 1.0f;
+            gp.viewPos = csViewPos;
+            gp.luminosity = 1.0f;
+            ChromeGlow::RenderGlowMeshes(s_modelShader.get(), s_slotRender[i].shieldMeshes, gp);
           }
         }
       }

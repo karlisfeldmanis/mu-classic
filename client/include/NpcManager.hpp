@@ -99,10 +99,13 @@ private:
     BMDData *skeleton;             // Non-owning, points into m_ownedBmds
     std::vector<BMDData *> parts;  // Non-owning body part BMDs
     BMDData *weaponBmd = nullptr;  // Non-owning weapon model (guards only)
+    BMDData *wingBmd = nullptr;    // Non-owning wing model
+    int wingBlendMesh = -1;        // BlendMesh index for additive rendering
     int weaponAttachBone = -1;     // -1 = no weapon, 33 = R hand, 42 = L hand
     int defaultAction = 0;        // Starting action (6 = spear idle for guards)
     int rootBone = -1;            // Root bone index for LockPositions
     std::vector<BoneWorldMatrix> cachedWeaponBones; // Static weapon bind-pose (computed once)
+    std::vector<BoneWorldMatrix> cachedWingBones;   // Static wing bind-pose
   };
 
   // Per-NPC instance
@@ -146,6 +149,10 @@ private:
     // Weapon (guards only — attached to hand bone)
     std::vector<MeshBuffers> weaponMeshBuffers;
     std::vector<ShadowMesh> weaponShadowMeshes;
+
+    // Wings (attached to bone 47)
+    std::vector<MeshBuffers> wingMeshBuffers;
+    float wingAnimFrame = 0.0f;
   };
 
   std::vector<std::unique_ptr<BMDData>> m_ownedBmds; // Owns all loaded BMDs

@@ -119,7 +119,7 @@ target_link_libraries(CharViewer PRIVATE
 )
 
 if(APPLE)
-    set(APPLE_FRAMEWORKS "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework QuartzCore" "-framework Metal" "-framework MetalKit")
+    set(APPLE_FRAMEWORKS "-framework Cocoa" "-framework IOKit" "-framework CoreVideo" "-framework QuartzCore" "-framework Metal" "-framework MetalKit" "-framework ImageIO" "-framework CoreGraphics")
     target_link_libraries(MuRemaster PRIVATE ${APPLE_FRAMEWORKS})
     target_link_libraries(ModelViewer PRIVATE ${APPLE_FRAMEWORKS})
     target_link_libraries(CharViewer PRIVATE ${APPLE_FRAMEWORKS})

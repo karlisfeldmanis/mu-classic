@@ -20,7 +20,9 @@
 #include <unistd.h>
 
 static volatile bool g_sigint = false;
+static volatile bool g_reloadQuests = false;
 static void sigHandler(int) { g_sigint = true; }
+static void reloadHandler(int) { g_reloadQuests = true; }
 
 bool Server::Start(uint16_t port) {
   // Open database
@@ -89,7 +91,8 @@ bool Server::Start(uint16_t port) {
 
 void Server::Run() {
   signal(SIGINT, sigHandler);
-  signal(SIGPIPE, SIG_IGN); // Ignore broken pipe
+  signal(SIGPIPE, SIG_IGN);    // Ignore broken pipe
+  signal(SIGUSR1, reloadHandler); // Quest editor reload signal
 
   srand(static_cast<unsigned int>(time(NULL)));
 
@@ -103,6 +106,20 @@ void Server::Run() {
     auto now = std::chrono::steady_clock::now();
     float dt = std::chrono::duration<float>(now - lastTick).count();
     lastTick = now;
+
+    // Hot-reload quests from DB (triggered by SIGUSR1 from quest editor)
+    if (g_reloadQuests) {
+      g_reloadQuests = false;
+      m_db.Reopen(); // Re-read DB file after editor replacement
+      QuestHandler::Init(m_db);
+      // Re-send quest catalog to all connected clients
+      for (auto &s : m_sessions) {
+        if (s && s->IsAlive() && s->characterId > 0)
+          QuestHandler::SendQuestCatalog(*s);
+      }
+      printf("[Server] Quests reloaded and broadcast to %d clients\n",
+             (int)m_sessions.size());
+    }
 
     // Game tick: update monster states, drop aging, wander AI, guard patrol
     std::vector<GameWorld::MonsterMoveUpdate> wanderMoves;
@@ -251,7 +268,7 @@ void Server::Run() {
     {
       std::vector<GameWorld::PlayerTarget> targets;
       for (auto &s : m_sessions) {
-        if (!s->IsAlive() || !s->inWorld)
+        if (!s->IsAlive() || !s->inWorld || s->mapLoading)
           continue;
         GameWorld::PlayerTarget pt;
         pt.fd = s->GetFd();
@@ -1195,6 +1212,9 @@ void Server::TransitionMap(Session &session, uint8_t newMapId,
 
   // Refresh combat stats (pet bonuses, defense) after map transition
   CharacterHandler::RefreshCombatStats(session, m_db, session.characterId);
+
+  // Mark player as loading — monsters will ignore until client signals ready
+  session.mapLoading = true;
 
   // Send map change packet to client
   PMSG_MAP_CHANGE_SEND pkt{};

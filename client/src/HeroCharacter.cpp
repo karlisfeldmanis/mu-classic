@@ -1022,10 +1022,20 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
     if (anyGlow && TexValid(ChromeGlow::GetTextures().chrome1)) {
       float t = (float)glfwGetTime();
+      static float glowLogTimer = 0.0f;
+      glowLogTimer += deltaTime;
       for (int p = 0; p < PART_COUNT; ++p) {
         if (m_partLevels[p] < 7) continue;
         ChromeGlow::GlowPass passes[3];
         int n = ChromeGlow::GetGlowPasses(m_partLevels[p], 7 + p, m_partItemIndices[p], passes);
+        if (glowLogTimer >= 5.0f) {
+          std::cout << "[Glow] part=" << p << " cat=" << (7+p) << " idx=" << (int)m_partItemIndices[p]
+                    << " lvl=" << (int)m_partLevels[p] << " passes=" << n;
+          for (int g = 0; g < n; ++g)
+            std::cout << " c" << g << "=(" << passes[g].color.r << "," << passes[g].color.g << "," << passes[g].color.b
+                      << " mode=" << passes[g].chromeMode << ")";
+          std::cout << std::endl;
+        }
         for (int gp = 0; gp < n; ++gp) {
           for (auto &mb : m_parts[p].meshBuffers) {
             if (mb.indexCount == 0 || mb.hidden) continue;
@@ -1040,6 +1050,7 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
           }
         }
       }
+      if (glowLogTimer >= 5.0f) glowLogTimer = 0.0f;
     }
     // Reset uniforms after glow passes to prevent leaking into subsequent renderers
     setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));

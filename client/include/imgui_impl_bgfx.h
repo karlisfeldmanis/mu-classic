@@ -25,4 +25,7 @@ void ImGui_ImplBgfx_RenderDrawData(ImDrawData *drawData);
 // Change the BGFX view ID for subsequent render passes.
 void ImGui_ImplBgfx_SetViewId(bgfx::ViewId viewId);
 
+// Invalidate font texture (call after bgfx::reset to force recreation).
+void ImGui_ImplBgfx_InvalidateFontsTexture();
+
 #endif // IMGUI_IMPL_BGFX_H

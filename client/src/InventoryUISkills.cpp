@@ -63,9 +63,8 @@ static void RenderBar(ImDrawList *dl, float x, float y, float w, float h,
 }
 
 // Helper: render a skill icon into a rect
-static void RenderSkillIcon(ImDrawList *dl, int8_t skillId, float sx, float sy,
-                            float sz,
-                            ImU32 tint = IM_COL32(255, 255, 255, 255)) {
+void RenderSkillIcon(ImDrawList *dl, int8_t skillId, float sx, float sy,
+                     float sz, ImU32 tint) {
   if (skillId >= 0 && TexValid(g_texSkillIcons)) {
     int ic = skillId % SKILL_ICON_COLS;
     int ir = skillId / SKILL_ICON_COLS;
@@ -103,7 +102,7 @@ void RenderSkillDragCursor(ImDrawList *dl) {
 
   uint8_t skillId = (uint8_t)(-g_dragDefIndex);
   ImVec2 mp = ImGui::GetIO().MousePos;
-  float dw = 40.0f, dh = 56.0f; // 20:28 ratio scaled up
+  float dw = 64.0f, dh = 64.0f; // drag icon display size
   ImVec2 iMin(mp.x - dw * 0.5f, mp.y - dh * 0.5f);
   ImVec2 iMax(iMin.x + dw, iMin.y + dh);
 
@@ -159,14 +158,17 @@ void RenderRmcSlot(ImDrawList *dl, float screenX, float screenY, float size) {
     return;
   int8_t skillId = *s_ctx->rmcSkillId;
 
-  // Check if player can afford the resource cost (AG for DK, Mana for DW)
+  // Check if player can afford + skill GCD check (not melee GCD)
   int cost = (skillId > 0) ? GetSkillResourceCost(skillId) : 0;
   bool isDK = s_ctx->hero && s_ctx->hero->GetClass() == 16;
   int currentResource = isDK ? (s_ctx->serverAG ? *s_ctx->serverAG : 0)
                              : (s_ctx->serverMP ? *s_ctx->serverMP : 0);
   bool canAfford = currentResource >= cost;
-  ImU32 tint =
-      canAfford ? IM_COL32(255, 255, 255, 255) : IM_COL32(100, 100, 100, 180);
+  bool skillGCD = s_ctx->hero && s_ctx->hero->GetGlobalCooldown() > 0.0f
+                  && s_ctx->hero->IsGCDFromSkill();
+  bool usable = canAfford && !skillGCD;
+  ImU32 tint = usable ? IM_COL32(255, 255, 255, 255)
+                      : IM_COL32(120, 120, 120, 160);
 
   ImVec2 p0(screenX, screenY);
   ImVec2 p1(screenX + size, screenY + size);
@@ -191,7 +193,18 @@ void RenderRmcSlot(ImDrawList *dl, float screenX, float screenY, float size) {
   }
 
   if (skillId > 0 && !canAfford)
-    dl->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 120), 3.0f);
+    dl->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 100), 3.0f);
+
+  // GCD sweep overlay only for skill cooldowns
+  if (skillId > 0 && skillGCD) {
+    float gcd = s_ctx->hero->GetGlobalCooldown();
+    float gcdMax = s_ctx->hero->GetGlobalCooldownMax();
+    if (gcdMax > 0.0f) {
+      float fillH = size * (gcd / gcdMax);
+      dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + fillH),
+                        IM_COL32(10, 10, 10, 160), 3.0f);
+    }
+  }
 
   // "RMC" label
   dl->AddText(ImVec2(screenX + 2, screenY + 1), IM_COL32(255, 255, 255, 180),
@@ -549,21 +562,26 @@ void RenderQuickbar(ImDrawList *dl, const UICoords &c) {
     int curRes = isDKClass ? (s_ctx->serverAG ? *s_ctx->serverAG : 0)
                            : (s_ctx->serverMP ? *s_ctx->serverMP : 0);
     bool canAfford = curRes >= skillCost;
-    ImU32 tint =
-        canAfford ? IM_COL32(255, 255, 255, 255) : IM_COL32(100, 100, 100, 180);
-    RenderSkillIcon(dl, sid, sx, sy, sz, tint);
-    if (sid > 0 && !canAfford)
-      dl->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 120), 3.0f);
+    // Only show disabled during skill GCD (not melee autoattack GCD)
+    bool skillGCD = s_ctx->hero && s_ctx->hero->GetGlobalCooldown() > 0.0f
+                    && s_ctx->hero->IsGCDFromSkill();
+    bool usable = canAfford && !skillGCD;
 
-    // GCD overlay
-    if (sid > 0 && s_ctx->hero) {
+    ImU32 tint = usable ? IM_COL32(255, 255, 255, 255)
+                        : IM_COL32(120, 120, 120, 160);
+    RenderSkillIcon(dl, sid, sx, sy, sz, tint);
+
+    if (sid > 0 && !canAfford)
+      dl->AddRectFilled(p0, p1, IM_COL32(0, 0, 0, 100), 3.0f);
+
+    // GCD sweep overlay only for skill cooldowns
+    if (sid > 0 && skillGCD) {
       float gcd = s_ctx->hero->GetGlobalCooldown();
       float gcdMax = s_ctx->hero->GetGlobalCooldownMax();
-      if (gcd > 0.0f && gcdMax > 0.0f) {
-        float gcdFrac = gcd / gcdMax;
-        float fillH = sz * gcdFrac;
+      if (gcdMax > 0.0f) {
+        float fillH = sz * (gcd / gcdMax);
         dl->AddRectFilled(p0, ImVec2(p1.x, p0.y + fillH),
-                          IM_COL32(10, 10, 10, 180), 3.0f);
+                          IM_COL32(10, 10, 10, 160), 3.0f);
       }
     }
 

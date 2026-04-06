@@ -17,17 +17,19 @@ static int CalculateStaffRise(int magicPower, int itemLevel) {
   return base + levelBonus;
 }
 
-// ─── WoW-style quality colors ──────────────────────────────────────────────
-static const ImU32 TT_WHITE      = IM_COL32(255, 255, 255, 255);
-static const ImU32 TT_GRAY       = IM_COL32(160, 160, 160, 255);
-static const ImU32 TT_GREEN      = IM_COL32(30, 255, 30, 255);
-static const ImU32 TT_RED        = IM_COL32(255, 50, 50, 255);
-static const ImU32 TT_GOLD       = IM_COL32(255, 215, 0, 255);
-static const ImU32 TT_BLUE       = IM_COL32(100, 180, 255, 255);
-static const ImU32 TT_PURPLE     = IM_COL32(180, 100, 255, 255);
-static const ImU32 TT_ORANGE     = IM_COL32(255, 128, 0, 255);
-static const ImU32 TT_LIGHT_BLUE = IM_COL32(150, 200, 255, 255);
-static const ImU32 TT_DIM_GREEN  = IM_COL32(180, 220, 180, 255);
+// ─── Tooltip color palette (matched to HTML design) ───────────────────────
+static const ImU32 TT_WHITE      = IM_COL32(229, 226, 225, 255); // #e5e2e1 on-surface
+static const ImU32 TT_GRAY       = IM_COL32(140, 135, 130, 255); // on-surface-variant (muted)
+static const ImU32 TT_GREEN      = IM_COL32(74, 222, 128, 255);  // standard green (effects, met reqs)
+static const ImU32 TT_RED        = IM_COL32(255, 100, 100, 255); // standard red (unmet reqs, wrong class)
+static const ImU32 TT_BRIGHT_GREEN = IM_COL32(50, 255, 100, 255); // bright green (compare: better)
+static const ImU32 TT_BRIGHT_RED   = IM_COL32(255, 60, 60, 255);  // bright red (compare: worse)
+static const ImU32 TT_GOLD       = IM_COL32(233, 195, 73, 255);  // #e9c349 secondary (gold)
+static const ImU32 TT_BLUE       = IM_COL32(96, 165, 250, 255);  // #60a5fa option bonuses
+static const ImU32 TT_PURPLE     = IM_COL32(216, 180, 254, 255); // #d8b4fe purple quality
+static const ImU32 TT_ORANGE     = IM_COL32(251, 146, 60, 255);  // #fb923c orange quality
+static const ImU32 TT_LIGHT_BLUE = IM_COL32(147, 197, 253, 255); // #93c5fd skill info
+static const ImU32 TT_DIM_GREEN  = IM_COL32(74, 222, 128, 255);  // standard green for met reqs
 
 static ImU32 GetQualityColor(int itemLevel, uint8_t optionFlags = 0) {
   if (itemLevel >= 9)  return TT_ORANGE;
@@ -320,11 +322,25 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     th += lineH;
   }
 
+  // Check if requirements are not met — adds warning line at bottom
+  {
+    bool meetsReqs = true;
+    if (def->levelReq > 0 && *s_ctx->serverLevel < (int)def->levelReq) meetsReqs = false;
+    if (def->reqStr > 0 && *s_ctx->serverStr < (int)def->reqStr) meetsReqs = false;
+    if (def->reqDex > 0 && *s_ctx->serverDex < (int)def->reqDex) meetsReqs = false;
+    if (def->reqVit > 0 && *s_ctx->serverVit < (int)def->reqVit) meetsReqs = false;
+    if (def->reqEne > 0 && *s_ctx->serverEne < (int)def->reqEne) meetsReqs = false;
+    if (!meetsReqs) {
+      th += sepH;
+      th += lineH;
+    }
+  }
+
   th += 8; // bottom pad
 
   // ─── Build lines ────────────────────────────────────────────────────────
 
-  float tooltipW = 240.0f;
+  float tooltipW = 350.0f; // Fixed width for all tooltips
   BeginPendingTooltip(tooltipW, th);
 
   ImU32 qualityColor = GetQualityColor(itemLevel, optionFlags);
@@ -336,9 +352,9 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     snprintf(nameBuf, sizeof(nameBuf), "%s +%d", def->name.c_str(), itemLevel);
   else
     snprintf(nameBuf, sizeof(nameBuf), "%s", def->name.c_str());
-  AddPendingTooltipLine(qualityColor, nameBuf, 1); // centered
+  AddPendingTooltipLine(qualityColor, nameBuf, 1 | 32); // centered + headline (Newsreader)
 
-  // Slot + Type (split left|right)
+  // Quality label + Type (split left|right) — D4-style subheader
   if (hasSlotLine) {
     const char *slotText = GetSlotText(def);
     const char *typeText = GetTypeText(def->category);
@@ -352,11 +368,11 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     else
       slotBuf[0] = '\0';
     if (slotBuf[0])
-      AddPendingTooltipLine(TT_WHITE, slotBuf, 8); // split left|right
+      AddPendingTooltipLine(TT_GRAY, slotBuf, 8); // split left|right, dimmer
   }
 
   if (accessorySlot)
-    AddPendingTooltipLine(TT_WHITE, accessorySlot);
+    AddPendingTooltipLine(TT_GRAY, accessorySlot);
 
   AddTooltipSeparator();
 
@@ -366,14 +382,14 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     int dMin = def->dmgMin + levelDmgBonus;
     int dMax = def->dmgMax + levelDmgBonus;
     char buf[64];
+    // Split: label left (gray), value right (white bold)
     if (levelDmgBonus > 0)
-      snprintf(buf, sizeof(buf), "%d - %d Damage  (+%d)", dMin, dMax, levelDmgBonus);
+      snprintf(buf, sizeof(buf), "Attack Damage|%d ~ %d  (+%d)", dMin, dMax, levelDmgBonus);
     else
-      snprintf(buf, sizeof(buf), "%d - %d Damage", dMin, dMax);
-    AddPendingTooltipLine(TT_WHITE, buf);
+      snprintf(buf, sizeof(buf), "Attack Damage|%d ~ %d", dMin, dMax);
+    AddPendingTooltipLine(TT_WHITE, buf, 8); // split L|R
 
     if (equippedCID) {
-      // Skip damage comparison between physical and magic weapons
       bool newIsMagic = (def->category == 5 && def->magicPower > 0);
       bool eqIsMagic = (equippedCID->category == 5 && equippedCID->magicPower > 0);
       if (newIsMagic == eqIsMagic) {
@@ -383,36 +399,32 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
         int diff = avgNew - avgOld;
         char cmpBuf[48];
         if (diff > 0) {
-          snprintf(cmpBuf, sizeof(cmpBuf), "  (+%d vs equipped)", diff);
-          AddPendingTooltipLine(TT_GREEN, cmpBuf);
+          snprintf(cmpBuf, sizeof(cmpBuf), "|+%d vs equipped", diff);
+          AddPendingTooltipLine(TT_BRIGHT_GREEN, cmpBuf, 8);
         } else if (diff < 0) {
-          snprintf(cmpBuf, sizeof(cmpBuf), "  (%d vs equipped)", diff);
-          AddPendingTooltipLine(TT_RED, cmpBuf);
-        } else {
-          AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
+          snprintf(cmpBuf, sizeof(cmpBuf), "|%d vs equipped", diff);
+          AddPendingTooltipLine(TT_BRIGHT_RED, cmpBuf, 8);
         }
       }
     }
   }
 
   if (def->category <= 5 && def->attackSpeed > 0) {
-    char buf[32];
-    snprintf(buf, sizeof(buf), "Speed %d", def->attackSpeed);
-    AddPendingTooltipLine(TT_WHITE, buf);
+    char buf[48];
+    snprintf(buf, sizeof(buf), "Attack Speed|%d", def->attackSpeed);
+    AddPendingTooltipLine(TT_GRAY, buf, 8); // split L|R, gray
   }
 
-  // DPS = average damage * attacks per second
-  // Attack speed multiplier: 1.0 + weaponSpeed * 0.015 (from HeroCharacter)
-  // Base cooldown: 0.6s → attacks/sec = (1 + speed*0.015) / 0.6
+  // DPS: bold gold, split format
   if (def->category <= 5 && (def->dmgMin > 0 || def->dmgMax > 0) && def->attackSpeed > 0) {
     int dpsDmgMin = def->dmgMin + levelDmgBonus;
     int dpsDmgMax = def->dmgMax + levelDmgBonus;
     float avgDmg = (float)(dpsDmgMin + dpsDmgMax) / 2.0f;
     float aps = (1.0f + def->attackSpeed * 0.015f) / 0.6f;
     float dps = avgDmg * aps;
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%.1f DPS", dps);
-    AddPendingTooltipLine(TT_GOLD, buf);
+    char buf[48];
+    snprintf(buf, sizeof(buf), "DPS|%.0f", dps);
+    AddPendingTooltipLine(TT_GOLD, buf, 8 | 16); // split + bold
   }
 
   if (staffRise > 0) {
@@ -427,10 +439,10 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
       char cmpBuf[48];
       if (diff > 0) {
         snprintf(cmpBuf, sizeof(cmpBuf), "  (+%d%% vs equipped)", diff);
-        AddPendingTooltipLine(TT_GREEN, cmpBuf);
+        AddPendingTooltipLine(TT_BRIGHT_GREEN, cmpBuf);
       } else if (diff < 0) {
         snprintf(cmpBuf, sizeof(cmpBuf), "  (%d%% vs equipped)", diff);
-        AddPendingTooltipLine(TT_RED, cmpBuf);
+        AddPendingTooltipLine(TT_BRIGHT_RED, cmpBuf);
       } else {
         AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
       }
@@ -442,25 +454,23 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     int totalDef = def->defense + levelDefBonus;
     char buf[64];
     if (levelDefBonus > 0)
-      snprintf(buf, sizeof(buf), "%d Defense  (+%d)", totalDef, levelDefBonus);
+      snprintf(buf, sizeof(buf), "Defense|%d  (+%d)", totalDef, levelDefBonus);
     else
-      snprintf(buf, sizeof(buf), "%d Defense", totalDef);
-    AddPendingTooltipLine(TT_WHITE, buf);
+      snprintf(buf, sizeof(buf), "Defense|%d", totalDef);
+    AddPendingTooltipLine(TT_WHITE, buf, 8); // split L|R
 
     if (equippedCID) {
       int eqDefBonus = (equippedCID->category >= 7 && equippedCID->category <= 11)
-          ? kEnhanceTable[std::min(equippedLevel, 15)]  // Armor: enhancement table
-          : std::min(equippedLevel, 15);                 // Shield: +1/level
+          ? kEnhanceTable[std::min(equippedLevel, 15)]
+          : std::min(equippedLevel, 15);
       int diff = totalDef - ((int)equippedCID->defense + eqDefBonus);
       char cmpBuf[48];
       if (diff > 0) {
-        snprintf(cmpBuf, sizeof(cmpBuf), "  (+%d vs equipped)", diff);
-        AddPendingTooltipLine(TT_GREEN, cmpBuf);
+        snprintf(cmpBuf, sizeof(cmpBuf), "|+%d vs equipped", diff);
+        AddPendingTooltipLine(TT_BRIGHT_GREEN, cmpBuf, 8);
       } else if (diff < 0) {
-        snprintf(cmpBuf, sizeof(cmpBuf), "  (%d vs equipped)", diff);
-        AddPendingTooltipLine(TT_RED, cmpBuf);
-      } else {
-        AddPendingTooltipLine(TT_GRAY, "  (same as equipped)");
+        snprintf(cmpBuf, sizeof(cmpBuf), "|%d vs equipped", diff);
+        AddPendingTooltipLine(TT_BRIGHT_RED, cmpBuf, 8);
       }
     }
   }
@@ -471,20 +481,20 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     if (hasStats) AddTooltipSeparator();
     if (optionFlags & 0x80) {
       if (def->category == 4)
-        AddPendingTooltipLine(TT_BLUE, "+Skill (Multi-Shot)");
+        AddPendingTooltipLine(TT_BLUE, "Skill (Multi-Shot)");
       else
-        AddPendingTooltipLine(TT_BLUE, "+Skill");
+        AddPendingTooltipLine(TT_BLUE, "Skill");
     }
     if (optionFlags & 0x40) {
-      AddPendingTooltipLine(TT_BLUE, "+Luck (+5% Critical Rate)");
+      AddPendingTooltipLine(TT_BLUE, "Luck (+5% Critical Rate)");
     }
     int addLevel = optionFlags & 0x07;
     if (addLevel > 0) {
       char buf[48];
       if (def->category <= 5)
-        snprintf(buf, sizeof(buf), "+%d Additional Damage", addLevel * 4);
+        snprintf(buf, sizeof(buf), "Increased Damage +%d", addLevel * 4);
       else
-        snprintf(buf, sizeof(buf), "+%d Additional Defense", addLevel * 4);
+        snprintf(buf, sizeof(buf), "Increased Defense +%d", addLevel * 4);
       AddPendingTooltipLine(TT_BLUE, buf);
     }
   }
@@ -495,17 +505,17 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     if (hasStats || hasOptions) AddTooltipSeparator();
     if (potionHeal > 0) {
       char buf[48];
-      snprintf(buf, sizeof(buf), "Use: Restores %d Health", potionHeal);
+      snprintf(buf, sizeof(buf), "+ Restores %d Health", potionHeal);
       AddPendingTooltipLine(TT_GREEN, buf);
     }
     if (potionMana > 0) {
       char buf[48];
-      snprintf(buf, sizeof(buf), "Use: Restores %d Mana", potionMana);
+      snprintf(buf, sizeof(buf), "+ Restores %d Mana", potionMana);
       AddPendingTooltipLine(TT_GREEN, buf);
     }
     if (potionEffect) {
       char buf[64];
-      snprintf(buf, sizeof(buf), "Use: %s", potionEffect);
+      snprintf(buf, sizeof(buf), "+ %s", potionEffect);
       AddPendingTooltipLine(TT_GREEN, buf);
     }
   }
@@ -514,17 +524,17 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     if (hasStats && !(potionHeal > 0 || potionMana > 0 || potionEffect))
       AddTooltipSeparator();
     char buf[64];
-    snprintf(buf, sizeof(buf), "Equip: %s", accessoryEffect);
+    snprintf(buf, sizeof(buf), "+ %s", accessoryEffect);
     AddPendingTooltipLine(TT_GREEN, buf);
   }
   if (accessoryEffect2) {
     char buf[64];
-    snprintf(buf, sizeof(buf), "Equip: %s", accessoryEffect2);
+    snprintf(buf, sizeof(buf), "+ %s", accessoryEffect2);
     AddPendingTooltipLine(TT_GREEN, buf);
   }
   if (accessoryEffect3) {
     char buf[64];
-    snprintf(buf, sizeof(buf), "Equip: %s", accessoryEffect3);
+    snprintf(buf, sizeof(buf), "+ %s", accessoryEffect3);
     AddPendingTooltipLine(TT_GREEN, buf);
   }
   if (isMount) {
@@ -564,10 +574,11 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
   if (hasReqs || hasClassReqs) {
     AddTooltipSeparator();
 
+    // Split format: "Level Required|80" — label gray left, value green/red right
     auto addReq = [&](const char *label, int current, int req) {
       char rBuf[48];
-      snprintf(rBuf, sizeof(rBuf), "Requires %s %d", label, req);
-      AddPendingTooltipLine((current >= req) ? TT_DIM_GREEN : TT_RED, rBuf);
+      snprintf(rBuf, sizeof(rBuf), "%s Required|%d", label, req);
+      AddPendingTooltipLine((current >= req) ? TT_WHITE : TT_BRIGHT_RED, rBuf, 8);
     };
 
     if (def->levelReq > 0) addReq("Level", *s_ctx->serverLevel, def->levelReq);
@@ -581,9 +592,17 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
       bool canUse = (def->classFlags & myFlag) != 0;
       const char *classNames[] = {"Dark Wizard", "Dark Knight", "Fairy Elf",
                                   "Magic Gladiator"};
+      // Build class list string
+      std::string classList;
       for (int i = 0; i < 4; i++) {
-        if (def->classFlags & (1 << i))
-          AddPendingTooltipLine(canUse ? TT_DIM_GREEN : TT_RED, classNames[i]);
+        if (def->classFlags & (1 << i)) {
+          if (!classList.empty()) classList += ", ";
+          classList += classNames[i];
+        }
+      }
+      if (!classList.empty()) {
+        std::string classBuf = "Class: " + classList;
+        AddPendingTooltipLine(canUse ? TT_WHITE : TT_BRIGHT_RED, classBuf, 16); // bold
       }
     }
   }
@@ -591,14 +610,13 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
   // ─── Price ──────────────────────────────────────────────────────────────
 
   if (shopBuyPrice > 0) {
-    // Shop item: show buy price (already includes stack multiplier from server)
     AddTooltipSeparator();
     std::string bStr = std::to_string(shopBuyPrice);
     int bn = (int)bStr.length() - 3;
     while (bn > 0) { bStr.insert(bn, ","); bn -= 3; }
     char buf[64];
-    snprintf(buf, sizeof(buf), "Buy Price: %s Zen", bStr.c_str());
-    AddPendingTooltipLine(TT_GOLD, buf);
+    snprintf(buf, sizeof(buf), "Zen Value|%s", bStr.c_str());
+    AddPendingTooltipLine(TT_GOLD, buf, 8 | 4 | 16); // split + footer bg + bold
   } else if (def->buyPrice > 0) {
     // Inventory item: show sell price (accounts for stack size)
     AddTooltipSeparator();
@@ -610,14 +628,75 @@ void AddPendingItemTooltip(int16_t defIndex, int itemLevel,
     int n = (int)sStr.length() - 3;
     while (n > 0) { sStr.insert(n, ","); n -= 3; }
     char buf[64];
-    snprintf(buf, sizeof(buf), "Sell Price: %s Zen", sStr.c_str());
-    AddPendingTooltipLine(TT_GOLD, buf);
+    snprintf(buf, sizeof(buf), "Zen Value|%s", sStr.c_str());
+    AddPendingTooltipLine(TT_GOLD, buf, 8 | 4 | 16); // split + footer bg + bold
+  }
+
+  // Red warning at the very bottom if character doesn't meet requirements
+  {
+    bool meetsReqs = true;
+    if (def->levelReq > 0 && *s_ctx->serverLevel < (int)def->levelReq) meetsReqs = false;
+    if (def->reqStr > 0 && *s_ctx->serverStr < (int)def->reqStr) meetsReqs = false;
+    if (def->reqDex > 0 && *s_ctx->serverDex < (int)def->reqDex) meetsReqs = false;
+    if (def->reqVit > 0 && *s_ctx->serverVit < (int)def->reqVit) meetsReqs = false;
+    if (def->reqEne > 0 && *s_ctx->serverEne < (int)def->reqEne) meetsReqs = false;
+    if (!meetsReqs) {
+      AddTooltipSeparator();
+      AddPendingTooltipLine(TT_BRIGHT_RED, "Requirements not met", 0);
+    }
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WoW-style tooltip renderer
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Word-wrap text to fit within maxW pixels. Returns number of lines.
+static int CalcWrappedLines(const char *text, float maxW) {
+  if (!text || !text[0]) return 1;
+  float w = ImGui::CalcTextSize(text).x;
+  if (w <= maxW) return 1;
+  // Rough estimate: ceil(textWidth / maxWidth)
+  int lines = (int)(w / maxW) + 1;
+  return lines > 1 ? lines : 1;
+}
+
+// Draw word-wrapped text, returns Y advance
+static float DrawWrappedText(ImDrawList *dl, ImVec2 pos, ImU32 color,
+                             const char *text, float maxW, float lineH) {
+  float textW = ImGui::CalcTextSize(text).x;
+  if (textW <= maxW || maxW < 20.0f) {
+    DrawShadowText(dl, pos, color, text);
+    return lineH;
+  }
+  // Simple word wrap
+  std::string str(text);
+  float curY = 0.0f;
+  size_t start = 0;
+  while (start < str.size()) {
+    // Find how many chars fit on this line
+    size_t bestBreak = str.size();
+    for (size_t i = start + 1; i <= str.size(); i++) {
+      std::string sub = str.substr(start, i - start);
+      if (ImGui::CalcTextSize(sub.c_str()).x > maxW) {
+        // Back up to last space
+        size_t spacePos = str.rfind(' ', i - 1);
+        if (spacePos != std::string::npos && spacePos > start)
+          bestBreak = spacePos;
+        else
+          bestBreak = i - 1; // force break mid-word
+        break;
+      }
+    }
+    std::string line = str.substr(start, bestBreak - start);
+    DrawShadowText(dl, ImVec2(pos.x, pos.y + curY), color, line.c_str());
+    curY += lineH;
+    start = bestBreak;
+    // Skip space at break point
+    if (start < str.size() && str[start] == ' ') start++;
+  }
+  return curY;
+}
 
 void FlushPendingTooltip() {
   if (!g_pendingTooltip.active)
@@ -628,21 +707,32 @@ void FlushPendingTooltip() {
 
   // Measure actual height and width from lines (scaled for fullscreen)
   float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
-  float lineH = 18.0f * uiScale;
-  float sepH = 10.0f * uiScale;
-  float padX = 10.0f * uiScale;
-  float th = 12.0f * uiScale;
+  float lineH = 16.0f * uiScale;   // tighter line spacing
+  float sepH = 10.0f * uiScale;    // compact separator
+  float padX = 12.0f * uiScale;    // side padding
+  float th = 12.0f * uiScale;      // top padding
 
-  // Push font early so CalcTextSize uses the correct font metrics
-  if (s_ctx->fontDefault)
-    ImGui::PushFont(s_ctx->fontDefault);
+  // Push tooltip body font (Work Sans 13px) — HTML font-label
+  ImFont *ttBody = s_ctx->fontLabel ? s_ctx->fontLabel : s_ctx->fontDefault;
+  ImFont *ttHeadline = s_ctx->fontBold ? s_ctx->fontBold : ttBody; // Cinzel (same as damage numbers)
+  ImFont *ttBold = s_ctx->fontLabelBold ? s_ctx->fontLabelBold : ttBody; // Work Sans SemiBold
+  if (ttBody)
+    ImGui::PushFont(ttBody);
 
+  float fixedW = 350.0f; // Consistent width for all tooltips
   float maxTextW = 0.0f;
   for (auto &line : g_pendingTooltip.lines) {
+    // Font selection: 32=headline (Newsreader), 16=bold (Cinzel), default=label (Work Sans)
+    bool useHeadline = (line.flags & 32) && ttHeadline != ttBody;
+    bool useBold = !useHeadline && (line.flags & 16) && ttBold != ttBody;
+    if (useHeadline) { ImGui::PopFont(); ImGui::PushFont(ttHeadline); }
+    else if (useBold) { ImGui::PopFont(); ImGui::PushFont(ttBold); }
+
     if (line.flags & 2) {
       th += sepH;
     } else {
-      th += lineH;
+      float lh = (useHeadline || useBold) ? ImGui::GetFontSize() + 4.0f * uiScale : lineH;
+      th += lh;
       // Measure text width to auto-size tooltip
       const char *measureText = line.text.c_str();
       // For split lines, measure both halves with gap
@@ -654,18 +744,24 @@ void FlushPendingTooltip() {
           float splitW = ImGui::CalcTextSize(left.c_str()).x +
                          ImGui::CalcTextSize(right.c_str()).x + padX;
           if (splitW > maxTextW) maxTextW = splitW;
+          if (useHeadline || useBold) { ImGui::PopFont(); ImGui::PushFont(ttBody); }
           continue;
         }
       }
       float textW = ImGui::CalcTextSize(measureText).x;
       if (textW > maxTextW) maxTextW = textW;
+      // Account for word-wrap: add extra lines if text exceeds fixed width
+      float wrapMaxW = fixedW - padX * 2.0f;
+      int wrapLines = CalcWrappedLines(measureText, wrapMaxW);
+      if (wrapLines > 1) th += lh * (wrapLines - 1);
     }
+
+    if (useHeadline || useBold) { ImGui::PopFont(); ImGui::PushFont(ttBody); }
   }
   th += 8.0f * uiScale;
 
-  // Expand tooltip width to fit longest line (with padding on both sides)
-  float minW = maxTextW + padX * 2.0f;
-  if (minW > tw) tw = minW;
+  // Fixed tooltip width
+  tw = fixedW;
 
   // Position near cursor, clamp to screen
   ImVec2 mp = ImGui::GetIO().MousePos;
@@ -680,66 +776,106 @@ void FlushPendingTooltip() {
 
   ImVec2 br(tPos.x + tw, tPos.y + th);
 
-  // Background: warm dark gradient
-  dl->AddRectFilledMultiColor(
-      tPos, br,
-      IM_COL32(15, 12, 8, 245),
-      IM_COL32(15, 12, 8, 245),
-      IM_COL32(8, 6, 4, 250),
-      IM_COL32(8, 6, 4, 250));
+  // Background: semi-transparent dark
+  dl->AddRectFilled(tPos, br, IM_COL32(10, 10, 10, 210));
 
-  // Thin dark border
-  dl->AddRect(tPos, br, IM_COL32(40, 35, 25, 200), 0.0f, 0, 1.0f);
+  // Subtle white border
+  dl->AddRect(tPos, br, IM_COL32(255, 255, 255, 25), 0.0f, 0, 1.0f);
 
-  // Quality-colored top edge accent
+  // Drop shadow (2-layer for depth, like shadow-2xl)
+  dl->AddRect(ImVec2(tPos.x + 2, tPos.y + 2), ImVec2(br.x + 2, br.y + 2),
+              IM_COL32(0, 0, 0, 80), 0.0f, 0, 1.0f);
+
+  // Quality-colored top border (3px) + inset glow
   ImU32 qCol = g_pendingTooltip.borderColor;
   uint8_t qr = (qCol >> 0) & 0xFF;
   uint8_t qg = (qCol >> 8) & 0xFF;
   uint8_t qb = (qCol >> 16) & 0xFF;
-  ImU32 qDim = IM_COL32(qr * 3 / 4, qg * 3 / 4, qb * 3 / 4, 160);
-  dl->AddLine(ImVec2(tPos.x + 1, tPos.y), ImVec2(br.x - 1, tPos.y), qDim,
-              2.0f);
+  // Solid 3px top border
+  dl->AddRectFilled(ImVec2(tPos.x, tPos.y), ImVec2(br.x, tPos.y + 3.0f),
+                    IM_COL32(qr, qg, qb, 220));
+  // Inset glow: box-shadow inset 0 20px 20px -20px rgba(color, 0.3)
+  dl->AddRectFilledMultiColor(
+      ImVec2(tPos.x + 1, tPos.y + 3),
+      ImVec2(br.x - 1, tPos.y + 24.0f * uiScale),
+      IM_COL32(qr, qg, qb, 76), IM_COL32(qr, qg, qb, 76),  // 0.3 * 255 ≈ 76
+      IM_COL32(qr, qg, qb, 0), IM_COL32(qr, qg, qb, 0));
 
-  // Render lines (font already pushed above for measurement)
-  float curY = tPos.y + 8.0f * uiScale;
+  float padTop = 10.0f * uiScale;
+  float curY = tPos.y + padTop;
 
   for (auto &line : g_pendingTooltip.lines) {
+    // Font selection: 32=headline (Newsreader), 16=bold (Cinzel), default=label (Work Sans)
+    bool useHeadline = (line.flags & 32) && ttHeadline != ttBody;
+    bool useBold = !useHeadline && (line.flags & 16) && ttBold != ttBody;
+    if (useHeadline) { ImGui::PopFont(); ImGui::PushFont(ttHeadline); }
+    else if (useBold) { ImGui::PopFont(); ImGui::PushFont(ttBold); }
+    float lh = (useHeadline || useBold) ? ImGui::GetFontSize() + 4.0f * uiScale : lineH;
+
+    // Footer background (flag 4): surface-container-low #1c1b1b (HTML)
+    if (line.flags & 4) {
+      float footerPad = 8.0f * uiScale; // p-4 padding
+      // Fill from current position to bottom of tooltip
+      dl->AddRectFilled(
+          ImVec2(tPos.x + 1, curY - footerPad),
+          ImVec2(br.x - 1, br.y - 1),
+          IM_COL32(20, 20, 20, 200));
+      // Subtle top border: border-t border-outline-variant/10
+      dl->AddLine(ImVec2(tPos.x + 1, curY - footerPad),
+                  ImVec2(br.x - 1, curY - footerPad),
+                  IM_COL32(90, 64, 60, 25), 1.0f);
+    }
+
     if (line.flags & 2) {
-      // Separator
-      float sy = curY + 4.0f * uiScale;
-      dl->AddLine(ImVec2(tPos.x + 6, sy), ImVec2(br.x - 6, sy),
-                  IM_COL32(60, 55, 40, 120), 1.0f);
+      // Separator: h-[1px] bg-outline-variant/20 mx-4 (HTML)
+      float sy = curY + 5.0f * uiScale;
+      dl->AddLine(ImVec2(tPos.x + padX, sy), ImVec2(br.x - padX, sy),
+                  IM_COL32(90, 64, 60, 50), 1.0f); // outline-variant/20
       curY += sepH;
     } else if (line.flags & 8) {
       // Split line: "Left|Right"
+      // Left label: Work Sans Regular, gray (on-surface-variant)
+      // Right value: Work Sans SemiBold, line color (HTML font-bold on values)
       size_t sep = line.text.find('|');
       if (sep != std::string::npos) {
         std::string left = line.text.substr(0, sep);
         std::string right = line.text.substr(sep + 1);
-        DrawShadowText(dl, ImVec2(tPos.x + padX, curY), line.color,
-                       left.c_str());
+        if (!left.empty())
+          DrawShadowText(dl, ImVec2(tPos.x + padX, curY), TT_GRAY,
+                         left.c_str());
         if (!right.empty()) {
+          // Switch to SemiBold for value (HTML: values are font-bold)
+          bool switchedForValue = (ttBold != ttBody) && !useHeadline && !useBold;
+          if (switchedForValue) { ImGui::PopFont(); ImGui::PushFont(ttBold); }
           ImVec2 rSize = ImGui::CalcTextSize(right.c_str());
           DrawShadowText(dl, ImVec2(br.x - padX - rSize.x, curY), line.color,
                          right.c_str());
+          if (switchedForValue) { ImGui::PopFont(); ImGui::PushFont(ttBody); }
         }
       }
-      curY += lineH;
+      curY += lh;
     } else if (line.flags & 1) {
       // Centered
       ImVec2 textSize = ImGui::CalcTextSize(line.text.c_str());
       float cx = tPos.x + (tw - textSize.x) * 0.5f;
       DrawShadowText(dl, ImVec2(cx, curY), line.color, line.text.c_str());
-      curY += lineH;
+      curY += lh;
     } else {
-      // Normal left-aligned with shadow
-      DrawShadowText(dl, ImVec2(tPos.x + padX, curY), line.color,
-                     line.text.c_str());
-      curY += lineH;
+      // Normal left-aligned with word wrap
+      float wrapMaxW = tw - padX * 2.0f;
+      float adv = DrawWrappedText(dl, ImVec2(tPos.x + padX, curY), line.color,
+                                  line.text.c_str(), wrapMaxW, lh);
+      curY += adv;
+    }
+
+    // Restore to tooltip body font (Work Sans)
+    if (useHeadline || useBold) {
+      ImGui::PopFont();
+      ImGui::PushFont(ttBody);
     }
   }
 
-  if (s_ctx->fontDefault)
+  if (ttBody)
     ImGui::PopFont();
 }
 

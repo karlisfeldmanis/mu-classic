@@ -1,5 +1,7 @@
 #include "RayPicker.hpp"
 #include "Camera.hpp"
+#include "ItemDatabase.hpp"
+#include "ItemModelManager.hpp"
 #include "MonsterManager.hpp"
 #include "NpcManager.hpp"
 #include "ObjectRenderer.hpp"
@@ -188,7 +190,8 @@ int PickMonster(GLFWwindow *window, double mouseX, double mouseY) {
 
   glm::mat4 proj = s_cam->GetProjectionMatrix((float)winW, (float)winH);
   glm::mat4 view = s_cam->GetViewMatrix();
-  glm::mat4 invVP = glm::inverse(proj * view);
+  glm::mat4 vp = proj * view;
+  glm::mat4 invVP = glm::inverse(vp);
 
   glm::vec4 nearPt = invVP * glm::vec4(ndcX, ndcY, -1.0f, 1.0f);
   glm::vec4 farPt = invVP * glm::vec4(ndcX, ndcY, 1.0f, 1.0f);
@@ -198,8 +201,12 @@ int PickMonster(GLFWwindow *window, double mouseX, double mouseY) {
   glm::vec3 rayO = glm::vec3(nearPt);
   glm::vec3 rayD = glm::normalize(glm::vec3(farPt) - rayO);
 
-  int bestIdx = -1;
-  float bestT = 1e9f;
+  // Two-pass picker: collect all ray hits, then pick by screen-space
+  // distance to cursor. This makes it much easier to select specific
+  // monsters in dense packs — the one visually closest to cursor wins.
+  struct Hit { int idx; float t; };
+  Hit hits[64];
+  int hitCount = 0;
 
   for (int i = 0; i < s_monsters->GetMonsterCount(); ++i) {
     MonsterInfo info = s_monsters->GetMonsterInfo(i);
@@ -225,34 +232,96 @@ int PickMonster(GLFWwindow *window, double mouseX, double mouseY) {
     float t0 = (-b - sqrtDisc) / (2.0f * a);
     float t1 = (-b + sqrtDisc) / (2.0f * a);
 
+    float bestHitT = 1e9f;
     // Check cylinder walls
     for (float t : {t0, t1}) {
       if (t < 0)
         continue;
       float hitY = rayO.y + rayD.y * t;
-      if (hitY >= yMin && hitY <= yMax && t < bestT) {
-        bestT = t;
-        bestIdx = i;
-      }
+      if (hitY >= yMin && hitY <= yMax && t < bestHitT)
+        bestHitT = t;
     }
 
     // Check Top Cap (Disk at yMax)
     if (rayD.y != 0.0f) {
       float tCap = (yMax - rayO.y) / rayD.y;
-      if (tCap > 0 && tCap < bestT) {
+      if (tCap > 0 && tCap < bestHitT) {
         glm::vec3 pCap = rayO + rayD * tCap;
         float distSq = (pCap.x - info.position.x) *
                             (pCap.x - info.position.x) +
                         (pCap.z - info.position.z) *
                             (pCap.z - info.position.z);
-        if (distSq <= r * r) {
-          bestT = tCap;
-          bestIdx = i;
-        }
+        if (distSq <= r * r)
+          bestHitT = tCap;
       }
     }
+
+    if (bestHitT < 1e8f && hitCount < 64)
+      hits[hitCount++] = {i, bestHitT};
   }
+
+  if (hitCount == 0)
+    return -1;
+  if (hitCount == 1)
+    return hits[0].idx;
+
+  // Multiple hits: pick the monster whose screen-space center is closest
+  // to the cursor. This gives intuitive "click what you see" behavior.
+  int bestIdx = -1;
+  float bestScreenDist = 1e9f;
+
+  for (int h = 0; h < hitCount; ++h) {
+    MonsterInfo info = s_monsters->GetMonsterInfo(hits[h].idx);
+    // Project monster center (at mid-height) to screen
+    glm::vec3 center = info.position + glm::vec3(0, info.height * 0.5f, 0);
+    glm::vec4 clip = vp * glm::vec4(center, 1.0f);
+    if (clip.w <= 0.001f)
+      continue;
+    float sx = (clip.x / clip.w * 0.5f + 0.5f) * winW;
+    float sy = (1.0f - (clip.y / clip.w * 0.5f + 0.5f)) * winH;
+    float dx = sx - (float)mouseX;
+    float dy = sy - (float)mouseY;
+    float screenDist = dx * dx + dy * dy;
+
+    if (screenDist < bestScreenDist) {
+      bestScreenDist = screenDist;
+      bestIdx = hits[h].idx;
+    }
+  }
+
   return bestIdx;
+}
+
+// Ray-OBB intersection: test ray against an oriented bounding box defined by
+// a world-space transform matrix applied to a local AABB [bMin, bMax].
+// Returns hit distance t, or -1.0 on miss.
+static float RayOBBIntersect(const glm::vec3 &rayO, const glm::vec3 &rayD,
+                             const glm::mat4 &worldMat,
+                             const glm::vec3 &bMin, const glm::vec3 &bMax) {
+  // Transform ray into OBB local space
+  glm::mat4 inv = glm::inverse(worldMat);
+  glm::vec3 localO = glm::vec3(inv * glm::vec4(rayO, 1.0f));
+  glm::vec3 localD = glm::vec3(inv * glm::vec4(rayD, 0.0f));
+
+  // Standard ray-AABB slab test in local space
+  float tmin = -1e9f, tmax = 1e9f;
+  for (int axis = 0; axis < 3; ++axis) {
+    if (fabsf(localD[axis]) < 1e-8f) {
+      // Ray parallel to slab — miss if origin outside
+      if (localO[axis] < bMin[axis] || localO[axis] > bMax[axis])
+        return -1.0f;
+    } else {
+      float invD = 1.0f / localD[axis];
+      float t0 = (bMin[axis] - localO[axis]) * invD;
+      float t1 = (bMax[axis] - localO[axis]) * invD;
+      if (t0 > t1) std::swap(t0, t1);
+      tmin = std::max(tmin, t0);
+      tmax = std::min(tmax, t1);
+      if (tmin > tmax)
+        return -1.0f;
+    }
+  }
+  return tmin > 0 ? tmin : (tmax > 0 ? tmax : -1.0f);
 }
 
 int PickGroundItem(GLFWwindow *window, double mouseX, double mouseY) {
@@ -281,21 +350,53 @@ int PickGroundItem(GLFWwindow *window, double mouseX, double mouseY) {
     if (!s_groundItems[i].active)
       continue;
 
-    float r = 50.0f; // Click radius around item
-    glm::vec3 pos = s_groundItems[i].position;
+    const auto &gi = s_groundItems[i];
 
-    // Ray-sphere intersection (approximate for item)
-    glm::vec3 oc = rayO - pos;
-    float b = glm::dot(oc, rayD);
-    float c = glm::dot(oc, oc) - r * r;
-    float h = b * b - c;
-    if (h < 0.0f)
-      continue; // No hit
+    // Try AABB-based picking using the item's actual model bounds
+    const char *modelName = ItemDatabase::GetDropModelName(gi.defIndex);
+    LoadedItemModel *model = modelName ? ItemModelManager::Get(modelName) : nullptr;
 
-    float t = -b - sqrtf(h);
-    if (t > 0 && t < bestT) {
-      bestT = t;
-      bestIdx = i;
+    if (model && model->bmd) {
+      // Build world transform matching RenderItemWorld (ItemModelManager.cpp)
+      glm::vec3 tCenter = (model->transformedMin + model->transformedMax) * 0.5f;
+      glm::mat4 mod = glm::translate(glm::mat4(1.0f), gi.position);
+      // BMD-to-world coordinate basis
+      mod = glm::rotate(mod, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+      mod = glm::rotate(mod, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+      // Item rotation (ZYX order matching AngleMatrix)
+      if (gi.angle.z != 0)
+        mod = glm::rotate(mod, glm::radians(gi.angle.z), glm::vec3(0, 0, 1));
+      if (gi.angle.y != 0)
+        mod = glm::rotate(mod, glm::radians(gi.angle.y), glm::vec3(0, 1, 0));
+      if (gi.angle.x != 0)
+        mod = glm::rotate(mod, glm::radians(gi.angle.x), glm::vec3(1, 0, 0));
+      mod = glm::scale(mod, glm::vec3(gi.scale));
+      mod = glm::translate(mod, -tCenter);
+
+      // Expand AABB slightly for easier clicking (20% padding)
+      glm::vec3 pad = (model->transformedMax - model->transformedMin) * 0.1f;
+      glm::vec3 bMin = model->transformedMin - pad;
+      glm::vec3 bMax = model->transformedMax + pad;
+
+      float t = RayOBBIntersect(rayO, rayD, mod, bMin, bMax);
+      if (t > 0 && t < bestT) {
+        bestT = t;
+        bestIdx = i;
+      }
+    } else {
+      // Fallback: sphere test for items without loaded model (zen piles etc.)
+      float r = 50.0f;
+      glm::vec3 oc = rayO - gi.position;
+      float b = glm::dot(oc, rayD);
+      float c = glm::dot(oc, oc) - r * r;
+      float h = b * b - c;
+      if (h < 0.0f)
+        continue;
+      float t = -b - sqrtf(h);
+      if (t > 0 && t < bestT) {
+        bestT = t;
+        bestIdx = i;
+      }
     }
   }
   return bestIdx;

@@ -102,18 +102,76 @@ static const std::string EFFECT_PATH = "Data/Effect";
 static const int WIN_WIDTH = 1280;
 static const int WIN_HEIGHT = 720;
 
-// Map definitions for the object browser
-struct MapDef {
-  const char *label;    // Display name
-  const char *objDir;   // Object directory
+// Whitelist of files actually used in our game (not all Main 5.2 assets)
+#include <unordered_set>
+static const std::unordered_set<std::string> GAME_MONSTERS = {
+  "Monster01.bmd","Monster02.bmd","Monster03.bmd","Monster04.bmd","Monster05.bmd",
+  "Monster06.bmd","Monster07.bmd","Monster08.bmd","Monster09.bmd","Monster10.bmd",
+  "Monster11.bmd","Monster12.bmd","Monster13.bmd","Monster14.bmd","Monster15.bmd",
+  "Monster16.bmd","Monster17.bmd","Monster18.bmd","Monster19.bmd","Monster20.bmd",
+  "Monster21.bmd","Monster22.bmd","Monster23.bmd","Monster24.bmd","Monster25.bmd",
+  "Monster26.bmd","Monster27.bmd","Monster28.bmd","Monster29.bmd","Monster30.bmd",
+  "Monster31.bmd","Monster33.bmd",
 };
-static const MapDef MAP_DEFS[] = {
-    {"Lorencia", "Data/Object1/"},
-    {"Dungeon",  "Data/Object2/"},
-    {"Devias",   "Data/Object3/"},
-    {"Noria",    "Data/Object4/"},
+static const std::unordered_set<std::string> GAME_SKILLS = {
+  "Arrow01.bmd","BigStone01.bmd","Blast01.bmd","Bone01.bmd","Fire01.bmd",
+  "Ice01.bmd","Ice02.bmd","Inferno01.bmd","Laser01.bmd","Magic02.bmd",
+  "Poison01.bmd","Storm01.bmd","Stone01.bmd","Stone02.bmd",
+  "Rider01.bmd","Rider02.bmd",
+  "EarthQuake01.bmd","EarthQuake02.bmd","EarthQuake03.bmd","EarthQuake04.bmd",
+  "EarthQuake05.bmd","EarthQuake06.bmd","EarthQuake07.bmd","EarthQuake08.bmd",
 };
-static const int NUM_MAPS = sizeof(MAP_DEFS) / sizeof(MAP_DEFS[0]);
+static const std::unordered_set<std::string> GAME_NPCS = {
+  "Smith01.bmd","Wizard01.bmd","Storage01.bmd","Man01.bmd","Girl01.bmd",
+  "Female01.bmd","ElfWizard01.bmd","ElfMerchant01.bmd","MixNpc01.bmd",
+};
+
+// Item filter: only show items with known game prefixes
+static bool isGameItem(const std::string &fname) {
+  static const char *prefixes[] = {
+    "Sword","Axe","Mace","Spear","Staff","Bow","CrossBow","Shield",
+    "Helm","Armor","Pant","Glove","Boot","Wing","Potion","Jewel","Gem",
+    "Ring","Helper","Gold","Scroll","Arrows","Beer","Drink",
+    "Covenant","SummonBook","SpiritBill","Saint","MagicBox","SpecialPotion",
+    "Necklace","Suho","Devil0","Event","Book",
+  };
+  for (const char *p : prefixes)
+    if (fname.compare(0, strlen(p), p) == 0) return true;
+  return false;
+}
+
+// Category + sub-category definitions for the model browser
+struct SubDef { const char *label; const char *dir; };
+struct CatDef {
+  const char *label;
+  const SubDef *subs;
+  int numSubs;
+};
+
+static const SubDef OBJECT_SUBS[] = {
+    {"Lorencia", "Data/Object1/"}, {"Dungeon", "Data/Object2/"},
+    {"Devias",   "Data/Object3/"}, {"Noria",   "Data/Object4/"},
+    {"Lost Tower","Data/Object5/"},
+};
+static const SubDef MONSTER_SUBS[] = {{"All Monsters", "Data/Monster/"}};
+static const SubDef ITEM_SUBS[]    = {{"All Items", "Data/Item/"}};
+static const SubDef PLAYER_SUBS[]  = {{"Player Models", "Data/Player/"}};
+static const SubDef SKILL_SUBS[]   = {{"Skill Effects", "Data/Skill/"}};
+static const SubDef NPC_SUBS[]     = {{"NPC Models", "Data/NPC/"}};
+
+static const CatDef CATEGORIES[] = {
+    {"Objects",  OBJECT_SUBS,  5},
+    {"Monsters", MONSTER_SUBS, 1},
+    {"Items",    ITEM_SUBS,    1},
+    {"Player",   PLAYER_SUBS,  1},
+    {"Skills",   SKILL_SUBS,   1},
+    {"NPCs",     NPC_SUBS,     1},
+};
+static const int NUM_CATS = sizeof(CATEGORIES) / sizeof(CATEGORIES[0]);
+
+// Legacy compat
+static const SubDef *MAP_DEFS = OBJECT_SUBS;
+static const int NUM_MAPS = 5;
 
 class ObjectBrowser {
 public:
@@ -172,9 +230,11 @@ public:
 private:
   GLFWwindow *window = nullptr;
 
-  // Map selection
-  int currentMapIdx = 0;
-  std::string dataPath = MAP_DEFS[0].objDir;
+  // Category + sub-category selection
+  int currentCatIdx = 0;
+  int currentSubIdx = 0;
+  int currentMapIdx = 0; // legacy alias for sub-index when cat==Objects
+  std::string dataPath = CATEGORIES[0].subs[0].dir;
 
   // File list
   std::vector<std::string> bmdFiles;
@@ -237,7 +297,7 @@ private:
     // BGFX manages its own graphics context — tell GLFW not to create one
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-    window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "MU Object Browser",
+    window = glfwCreateWindow(WIN_WIDTH, WIN_HEIGHT, "MU Model Viewer",
                               nullptr, nullptr);
     if (!window)
       return false;
@@ -299,20 +359,34 @@ private:
   void ScanDirectory() {
     bmdFiles.clear();
     if (!fs::exists(dataPath)) {
-      std::cerr << "[ObjectBrowser] Directory not found: " << dataPath << std::endl;
+      std::cerr << "[ModelViewer] Directory not found: " << dataPath << std::endl;
       return;
     }
+
+    // Pick whitelist based on category (nullptr = show all)
+    const std::unordered_set<std::string> *whitelist = nullptr;
+    if (currentCatIdx == 1) whitelist = &GAME_MONSTERS;
+    else if (currentCatIdx == 4) whitelist = &GAME_SKILLS;
+    else if (currentCatIdx == 5) whitelist = &GAME_NPCS;
+    // Items (cat 2) and Player (cat 3): use DB-driven list loaded at startup
+    // Objects (cat 0): show all (map-specific dirs are already curated)
+
     for (auto &entry : fs::directory_iterator(dataPath)) {
       if (entry.is_regular_file()) {
         std::string ext = entry.path().extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
         if (ext == ".bmd") {
-          bmdFiles.push_back(entry.path().filename().string());
+          std::string fname = entry.path().filename().string();
+          if (whitelist && whitelist->find(fname) == whitelist->end())
+            continue; // Not in game — skip
+          if (currentCatIdx == 2 && !isGameItem(fname))
+            continue; // Item not used in game — skip
+          bmdFiles.push_back(fname);
         }
       }
     }
     std::sort(bmdFiles.begin(), bmdFiles.end());
-    std::cout << "[ObjectBrowser] Found " << bmdFiles.size() << " BMD files in "
+    std::cout << "[ModelViewer] Found " << bmdFiles.size() << " BMD files in "
               << dataPath << std::endl;
   }
 
@@ -334,7 +408,7 @@ private:
     if (!currentBMD) {
       std::cerr << "[ObjectBrowser] Failed to parse: " << bmdFiles[index]
                 << std::endl;
-      std::string title = "MU Object Browser - FAILED: " + bmdFiles[index];
+      std::string title = "MU Model Viewer - FAILED: " + bmdFiles[index];
       glfwSetWindowTitle(window, title.c_str());
       return;
     }
@@ -385,27 +459,32 @@ private:
       }
     }
 
-    std::string title = "MU Object Browser - " + bmdFiles[index] + " (" +
+    std::string title = "MU Model Viewer - " + bmdFiles[index] + " (" +
                         std::to_string(index + 1) + "/" +
                         std::to_string(bmdFiles.size()) + ")";
     glfwSetWindowTitle(window, title.c_str());
   }
 
-  void SwitchMap(int mapIdx) {
+  void SwitchSource(int catIdx, int subIdx) {
     UnloadObject();
     fireEffect.ClearEmitters();
-    currentMapIdx = mapIdx;
-    dataPath = MAP_DEFS[mapIdx].objDir;
+    currentCatIdx = catIdx;
+    currentSubIdx = subIdx;
+    currentMapIdx = (catIdx == 0) ? subIdx : 0;
+    dataPath = CATEGORIES[catIdx].subs[subIdx].dir;
     filterBuf[0] = '\0';
     ScanDirectory();
     if (!bmdFiles.empty()) {
       LoadObject(0);
     } else {
-      std::string title = std::string("MU Object Browser - ") +
-                          MAP_DEFS[mapIdx].label + " (empty)";
+      std::string title = std::string("MU Model Viewer - ") +
+                          CATEGORIES[catIdx].label + " (empty)";
       glfwSetWindowTitle(window, title.c_str());
     }
   }
+
+  // Legacy wrapper
+  void SwitchMap(int mapIdx) { SwitchSource(0, mapIdx); }
 
   void AutoFrame() {
     glm::vec3 c = currentAABB.center();
@@ -621,22 +700,31 @@ private:
 
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImVec2(250, (float)winH));
-    ImGui::Begin("Objects", nullptr,
+    ImGui::Begin("Browser", nullptr,
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoCollapse);
 
-    // Map selector
-    if (ImGui::BeginCombo("Map", MAP_DEFS[currentMapIdx].label)) {
-      for (int i = 0; i < NUM_MAPS; ++i) {
-        bool selected = (i == currentMapIdx);
-        if (ImGui::Selectable(MAP_DEFS[i].label, selected)) {
-          if (i != currentMapIdx)
-            SwitchMap(i);
+    // Category selector
+    if (ImGui::BeginCombo("Category", CATEGORIES[currentCatIdx].label)) {
+      for (int i = 0; i < NUM_CATS; ++i) {
+        if (ImGui::Selectable(CATEGORIES[i].label, i == currentCatIdx)) {
+          if (i != currentCatIdx) SwitchSource(i, 0);
         }
-        if (selected)
-          ImGui::SetItemDefaultFocus();
       }
       ImGui::EndCombo();
+    }
+
+    // Sub-category selector (only show if > 1 sub)
+    const auto &cat = CATEGORIES[currentCatIdx];
+    if (cat.numSubs > 1) {
+      if (ImGui::BeginCombo("Sub", cat.subs[currentSubIdx].label)) {
+        for (int i = 0; i < cat.numSubs; ++i) {
+          if (ImGui::Selectable(cat.subs[i].label, i == currentSubIdx)) {
+            if (i != currentSubIdx) SwitchSource(currentCatIdx, i);
+          }
+        }
+        ImGui::EndCombo();
+      }
     }
 
     ImGui::InputText("Filter", filterBuf, sizeof(filterBuf));

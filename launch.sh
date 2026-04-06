@@ -82,6 +82,20 @@ if ! lsof -i :$PORT -sTCP:LISTEN >/dev/null 2>&1; then
     exit 1
 fi
 
+# ── Start Quest Reward Editor (web UI) ──
+EDITOR_DIR="$ROOT/tools/quest_editor"
+EDITOR_PORT=8090
+DB_PATH="$SERVER_DIR/mu_server.db"
+if [ -f "$EDITOR_DIR/server.py" ]; then
+    echo -e "${YELLOW}[Launch] Starting Quest Reward Editor on port $EDITOR_PORT...${NC}"
+    MU_DB_PATH="$DB_PATH" EDITOR_PORT=$EDITOR_PORT python3 "$EDITOR_DIR/server.py" > /dev/null 2>&1 &
+    EDITOR_PID=$!
+    echo -e "${GREEN}[Launch] Quest Editor: http://localhost:$EDITOR_PORT (PID $EDITOR_PID)${NC}"
+else
+    EDITOR_PID=""
+    echo -e "${YELLOW}[Launch] Quest editor not found, skipping${NC}"
+fi
+
 # ── Start client (from its build directory) ──
 echo -e "${YELLOW}[Launch] Starting client...${NC}"
 cd "$CLIENT_DIR"
@@ -91,15 +105,18 @@ echo -e "${GREEN}[Launch] Client PID: $CLIENT_PID${NC}"
 echo -e "${GREEN}[Launch] All systems go!${NC}"
 echo -e "${GREEN}  Server: PID $SERVER_PID (log: server/server_log.txt)${NC}"
 echo -e "${GREEN}  Client: PID $CLIENT_PID (log: client/client_log.txt)${NC}"
+if [ -n "$EDITOR_PID" ]; then
+    echo -e "${GREEN}  Editor: http://localhost:$EDITOR_PORT (PID $EDITOR_PID)${NC}"
+fi
 echo ""
-echo -e "${YELLOW}Press Ctrl+C to stop both processes${NC}"
+echo -e "${YELLOW}Press Ctrl+C to stop all processes${NC}"
 
 # ── Wait and cleanup on exit ──
-trap "echo -e '${YELLOW}\n[Launch] Shutting down...${NC}'; kill $SERVER_PID $CLIENT_PID 2>/dev/null; exit 0" INT TERM
+trap "echo -e '${YELLOW}\n[Launch] Shutting down...${NC}'; kill $SERVER_PID $CLIENT_PID $EDITOR_PID 2>/dev/null; exit 0" INT TERM
 
-# Wait for client to exit, then stop server
+# Wait for client to exit, then stop server + editor
 wait $CLIENT_PID 2>/dev/null
 echo -e "${YELLOW}[Launch] Client exited, stopping server...${NC}"
-kill $SERVER_PID 2>/dev/null
+kill $SERVER_PID $EDITOR_PID 2>/dev/null
 wait $SERVER_PID 2>/dev/null
 echo -e "${GREEN}[Launch] Done.${NC}"

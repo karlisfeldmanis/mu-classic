@@ -284,7 +284,7 @@ void Terrain::Load(const TerrainData &data, int worldID,
       float td = terrainDist[i];
       // Find nearest terrain cell's lightmap brightness
       int cy = i / S, cx = i % S;
-      float nearBright = 0.50f; // Higher void floor = less harsh black
+      float nearBright = 0.004f; // Essentially invisible void floor
       bool foundTerr = false;
       for (int r = 1; r <= 6; ++r) {
         for (int dy = -r; dy <= r; ++dy) {
@@ -305,10 +305,9 @@ void Terrain::Load(const TerrainData &data, int worldID,
         if (foundTerr) break;
       }
 
-      // XZ distance fade: bright near terrain, dimming deeper in void
-      float t = std::min(td / 6.0f, 1.0f);
-      float ss = t * t * (3.0f - 2.0f * t);
-      float brightness = nearBright * (1.0f - ss * 0.6f);
+      // XZ distance fade: dim near terrain edge, very dark deeper in void
+      float t = std::min(td / 1.5f, 1.0f); // Immediate fade (1.5 cells to black)
+      float brightness = nearBright * (1.0f - t); // Linear to black
 
       for (int c = 0; c < 3; c++)
         m_baselineLightRGBA[i * 4 + c] = brightness;
@@ -572,11 +571,13 @@ void Terrain::setupMesh(const std::vector<float> &heightmap,
       // Terrain quads at void edges intentionally extend one cell into void to
       // fill gaps behind world objects (tentacles, cliff walls).
       // Skip void cells on outdoor maps (Lorencia, Devias, Noria) where voids are
-      // deep pits. Indoor maps (Dungeon=1, Lost Tower=4) have void cells at the SAME
+      // deep pits. Indoor maps (Dungeon, Lost Tower) have void cells at the SAME
       // height as walkable terrain — they are non-walkable floor, not holes.
+      // Note: worldID = mapId+1 (Dungeon=2, Lost Tower=5)
+      bool indoorVoid = (worldID == 2 || worldID == 5);
       if (hasAttrs && (rawAttributes[i00] & 0x08) &&
           !(hasBridgeMask && bridgeMask[i00]) &&
-          worldID != 1 && worldID != 4)
+          !indoorVoid)
         continue;
       int current = z * size + x;
       int next = current + size;

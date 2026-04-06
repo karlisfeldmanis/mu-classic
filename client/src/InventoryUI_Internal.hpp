@@ -19,12 +19,12 @@ inline constexpr float CHARINFO_PANEL_W = 360.0f; // wider two-column char info 
 inline float PanelW()      { return BASE_PANEL_W * g_uiPanelScale; }
 inline float PanelH()      { return BASE_PANEL_H * g_uiPanelScale; }
 inline float CharInfoPanelW() { return CHARINFO_PANEL_W * g_uiPanelScale; }
-inline float PanelXRight() { return 1270.0f - PanelW(); }
+inline float PanelXRight() { return 1540.0f - PanelW(); }
 
-inline constexpr int SKILL_ICON_COLS = 25;
-inline constexpr float SKILL_ICON_W = 40.0f;
-inline constexpr float SKILL_ICON_H = 56.0f;
-inline constexpr float SKILL_TEX_SIZE = 1024.0f;
+inline constexpr int SKILL_ICON_COLS = 8;
+inline constexpr float SKILL_ICON_W = 64.0f;
+inline constexpr float SKILL_ICON_H = 64.0f;
+inline constexpr float SKILL_TEX_SIZE = 512.0f;
 
 inline constexpr int NUM_DK_SKILLS = 8;
 inline constexpr int NUM_DW_SPELLS = 15;
@@ -43,7 +43,7 @@ struct SkillDef {
 struct PendingTooltipLine {
   ImU32 color;
   std::string text;
-  uint8_t flags = 0; // 1=center, 2=separator, 4=small gap after
+  uint8_t flags = 0; // 1=center, 2=sep, 4=footer bg, 8=split L|R, 16=bold, 32=headline
 };
 
 struct PendingTooltip {
@@ -72,6 +72,10 @@ extern int g_dragFromSlot;
 extern int g_dragFromEquipSlot;
 extern int g_dragFromSkillSlot;
 extern int g_dragFromPotionSlot;
+
+// Skill icon renderer (defined in InventoryUISkills.cpp)
+void RenderSkillIcon(ImDrawList *dl, int8_t skillId, float sx, float sy,
+                     float sz, ImU32 tint = IM_COL32(255, 255, 255, 255));
 extern bool g_dragFromRmcSlot;
 extern std::vector<DeferredCooldown> g_deferredCooldowns;
 

@@ -32,15 +32,18 @@ public:
   static LoadedItemModel *Get(const std::string &filename);
   static void RenderItemUI(const std::string &modelFile, int16_t defIndex,
                            int x, int y, int w, int h, bool hovered = false,
-                           uint8_t itemLevel = 0);
+                           uint8_t itemLevel = 0, bool overlay = false);
   static void RenderItemWorld(const std::string &filename, const glm::vec3 &pos,
                               const glm::mat4 &view, const glm::mat4 &proj,
                               float scale = 1.0f,
                               glm::vec3 rotation = glm::vec3(0),
                               int16_t defIndex = -1);
 
-  // Main 5.2: ItemLight — returns BlendMesh index for weapons with glow (-1 = none)
+  // Main 5.2: ItemLight — returns BlendMesh index for weapons with glow
+  // Returns: >=0 = additive mesh index, -1 = none, -2 = whole-object pulse
   static int GetItemBlendMesh(int category, int itemIndex);
+  // Main 5.2: HiddenMesh — mesh index to hide (-1 = none)
+  static int GetItemHiddenMesh(int category, int itemIndex);
   // Shadow projection for ground items (same technique as monsters/NPCs)
   static void RenderItemWorldShadow(const std::string &filename,
                                     const glm::vec3 &pos,

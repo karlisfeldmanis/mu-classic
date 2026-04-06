@@ -1128,7 +1128,7 @@ void BoidManager::updateLeaves(float dt, const glm::vec3 &heroPos) {
       // On ground: snap to terrain, fade out
       leaf.position.y = terrainH;
       leaf.onGround = true;
-      leaf.alpha -= 1.2f * dt; // ~0.8s to fade out
+      leaf.alpha -= 0.3f * dt; // ~3s to fade out on ground
       if (leaf.alpha <= 0.0f)
         leaf.live = false;
     } else {
@@ -1631,10 +1631,10 @@ void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj,
   verts.clear();
   indices.clear();
 
-  // Base quad offsets (3x3 in XZ plane)
+  // Base quad offsets (2x2 in XZ plane — small delicate leaves)
   static const glm::vec3 qOff[4] = {
-    {-3.0f, 0.0f, -3.0f}, { 3.0f, 0.0f, -3.0f},
-    { 3.0f, 0.0f,  3.0f}, {-3.0f, 0.0f,  3.0f}
+    {-2.0f, 0.0f, -2.0f}, { 2.0f, 0.0f, -2.0f},
+    { 2.0f, 0.0f,  2.0f}, {-2.0f, 0.0f,  2.0f}
   };
   static const float qUV[4][2] = {{0,0},{1,0},{1,1},{0,1}};
 
@@ -1654,8 +1654,8 @@ void BoidManager::RenderLeaves(const glm::mat4 &view, const glm::mat4 &proj,
     rot = glm::rotate(rot, glm::radians(leaf.angle.x), glm::vec3(1, 0, 0));
     rot = glm::rotate(rot, glm::radians(leaf.angle.z), glm::vec3(0, 0, 1));
 
-    uint8_t a = (uint8_t)(std::min(leaf.alpha * camFade, 1.0f) * 255.0f);
-    uint32_t col = (uint32_t)a << 24 | 0x00FFFFFF; // ABGR
+    uint8_t a = (uint8_t)(std::min(leaf.alpha * camFade * 0.45f, 1.0f) * 255.0f);
+    uint32_t col = (uint32_t)a << 24 | 0x00FFFFFF; // ABGR white, 45% opacity
 
     uint16_t base = (uint16_t)verts.size();
     for (int v = 0; v < 4; ++v) {

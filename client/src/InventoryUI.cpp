@@ -24,20 +24,25 @@ const InventoryUIContext *s_ctx = &s_ctxStore;
 // Potion cooldown constant
 static constexpr float POTION_COOLDOWN_TIME = 15.0f;
 
-// Equipment layout rects (virtual coords)
+// Equipment layout — matching original MU Online reference
+// 3 main columns (40px wide) + accessory slots tucked in gaps
+//   Row 0 (y=32):  [Pet 40x40]      [Helm 40x40]      [Wings 40x40]
+//   Row 1 (y=76):  [Weapon 40x62] [Pend 30x30] [Armor 40x62]   [Shield 40x62]
+//   Row 2 (y=142): [Gloves 40x40] [Ring1 30x30] [Pants 40x40] [Ring2 30x30] [Boots 40x40]
+// Pendant and rings LAST so they render on top of adjacent slots (z-order)
 static const EquipSlotRect g_equipLayoutRects[] = {
-    {8, 15, 44, 46, 46},    // Pet
-    {2, 75, 44, 46, 46},    // Helm
-    {7, 120, 44, 61, 46},   // Wings
-    {0, 15, 87, 46, 66},    // R.Hand
-    {3, 75, 87, 46, 66},    // Armor
-    {1, 135, 87, 46, 66},   // L.Hand
-    {9, 54, 87, 28, 28},    // Pendant
-    {10, 54, 150, 28, 28},  // Ring 1
-    {11, 114, 150, 28, 28}, // Ring 2
-    {5, 15, 150, 46, 46},   // Gloves
-    {4, 75, 150, 46, 46},   // Pants
-    {6, 135, 150, 46, 46}   // Boots
+    {8,  15, 32, 40, 40},   // Pet
+    {2,  75, 32, 40, 40},   // Helm
+    {7, 135, 32, 40, 40},   // Wings
+    {0,  15, 76, 40, 62},   // R.Hand (weapon)
+    {3,  75, 76, 40, 62},   // Armor
+    {1, 135, 76, 40, 62},   // L.Hand (shield)
+    {5,  15, 142, 40, 40},  // Gloves
+    {4,  75, 142, 40, 40},  // Pants
+    {6, 135, 142, 40, 40},  // Boots
+    {9,  50, 80, 30, 30},   // Pendant (drawn on top)
+    {10, 50, 146, 30, 30},  // Ring 1  (drawn on top)
+    {11,110, 146, 30, 30},  // Ring 2  (drawn on top)
 };
 
 // Slot background textures
@@ -213,17 +218,22 @@ void AddTooltipSeparator() { g_pendingTooltip.lines.push_back({0, "---", 2}); }
 
 void DrawStyledPanel(ImDrawList *dl, float x0, float y0, float x1, float y1,
                      float rounding) {
+  // PoE-style panel: dark gradient background with double gold border
   dl->AddRectFilledMultiColor(ImVec2(x0, y0), ImVec2(x1, y1),
-                              IM_COL32(8, 8, 18, 245),   // top-left
-                              IM_COL32(8, 8, 18, 245),   // top-right
-                              IM_COL32(18, 18, 32, 240), // bottom-right
-                              IM_COL32(18, 18, 32, 240)  // bottom-left
-  );
-  dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1), IM_COL32(5, 5, 10, 255), rounding,
-              0, 2.0f);
+                              IM_COL32(26, 22, 18, 248),  // poe-brown top
+                              IM_COL32(26, 22, 18, 248),
+                              IM_COL32(10, 10, 8, 252),   // poe-dark bottom
+                              IM_COL32(10, 10, 8, 252));
+  // Outer border (dark)
+  dl->AddRect(ImVec2(x0 - 1, y0 - 1), ImVec2(x1 + 1, y1 + 1),
+              IM_COL32(29, 58, 46, 50), 0, 0, 1.0f); // emerald ghost
+  // Main border (gold)
+  dl->AddRect(ImVec2(x0, y0), ImVec2(x1, y1),
+              IM_COL32(163, 141, 109, 80), 0, 0, 1.5f);
+  // Inner border (subtle gold)
   dl->AddRect(ImVec2(x0 + 2, y0 + 2), ImVec2(x1 - 2, y1 - 2),
-              IM_COL32(80, 70, 45, 140),
-              rounding > 2 ? rounding - 1 : rounding);
+              IM_COL32(163, 141, 109, 30), 0, 0, 1.0f);
+  // No corner ornaments — clean minimal frame
 }
 
 void DrawStyledSlot(ImDrawList *dl, ImVec2 p0, ImVec2 p1, bool hovered,
@@ -433,25 +443,28 @@ namespace {
 // Close button with hover highlight — used by all panels
 static void DrawCloseButton(ImDrawList *dl, const UICoords &c, float px,
                             float py) {
-  float bx = BASE_PANEL_W - 24;
-  float by = 6;
-  float bw = 16, bh = 14;
-  ImVec2 bMin(c.ToScreenX(px + bx * g_uiPanelScale),
-              c.ToScreenY(py + by * g_uiPanelScale));
-  ImVec2 bMax(c.ToScreenX(px + (bx + bw) * g_uiPanelScale),
-              c.ToScreenY(py + (by + bh) * g_uiPanelScale));
+  // Solid red circle close button, inside top-right corner
+  float pw = PanelW();
+  // Use virtual-space positioning, then convert to screen
+  float btnVX = px + pw - 14 * g_uiPanelScale;
+  float btnVY = py + 10 * g_uiPanelScale;
+  float cx = c.ToScreenX(btnVX);
+  float cy = c.ToScreenY(btnVY);
+  // Radius in screen pixels — compute from virtual cell size
+  float radius = (c.ToScreenX(px + 10 * g_uiPanelScale) - c.ToScreenX(px)) * 0.7f;
+
   ImVec2 mp = ImGui::GetIO().MousePos;
-  bool hovered =
-      mp.x >= bMin.x && mp.x < bMax.x && mp.y >= bMin.y && mp.y < bMax.y;
-  ImU32 bgCol =
-      hovered ? IM_COL32(200, 40, 40, 255) : IM_COL32(100, 20, 20, 200);
-  dl->AddRectFilled(bMin, bMax, bgCol, 2.0f);
-  if (hovered)
-    dl->AddRect(bMin, bMax, IM_COL32(255, 100, 100, 255), 2.0f);
-  ImVec2 xSize = ImGui::CalcTextSize("X");
-  ImVec2 xPos(bMin.x + (bMax.x - bMin.x) * 0.5f - xSize.x * 0.5f,
-              bMin.y + (bMax.y - bMin.y) * 0.5f - xSize.y * 0.5f);
-  dl->AddText(xPos, IM_COL32(255, 255, 255, 255), "X");
+  float dx = mp.x - cx, dy = mp.y - cy;
+  bool hovered = (dx * dx + dy * dy) <= (radius + 3) * (radius + 3);
+
+  dl->AddCircleFilled(ImVec2(cx, cy), radius,
+      hovered ? IM_COL32(200, 45, 40, 255) : IM_COL32(140, 30, 25, 255));
+  dl->AddCircle(ImVec2(cx, cy), radius,
+      hovered ? IM_COL32(255, 130, 110, 255) : IM_COL32(180, 70, 55, 200), 0, 1.5f);
+  float xs = radius * 0.38f;
+  ImU32 xCol = IM_COL32(255, 255, 255, hovered ? 255 : 220);
+  dl->AddLine(ImVec2(cx - xs, cy - xs), ImVec2(cx + xs, cy + xs), xCol, 1.5f);
+  dl->AddLine(ImVec2(cx + xs, cy - xs), ImVec2(cx - xs, cy + xs), xCol, 1.5f);
 }
 
 // Helper: draw textured quad at virtual coords (handles scaling + OZT V-flip)
@@ -730,13 +743,6 @@ void ConsumeQuickSlotItem(int slotIndex) {
     return;
   }
 
-  // Cooldown check
-  if (*s_ctx->potionCooldown > 0.0f) {
-    std::cout << "[QuickSlot] Cooldown active (" << *s_ctx->potionCooldown
-              << "s remaining)" << std::endl;
-    return;
-  }
-
   // Search for the first instance of this item in inventory
   int foundSlot = -1;
   for (int i = 0; i < INVENTORY_SLOTS; i++) {
@@ -765,6 +771,11 @@ void ConsumeQuickSlotItem(int slotIndex) {
         *s_ctx->mountToggling = true;
         *s_ctx->mountToggleTimer = s_ctx->mountToggleTime;
       }
+      return;
+    }
+
+    // Potion cooldown check (only for actual potions, not mounts)
+    if (def.category == 14 && *s_ctx->potionCooldown > 0.0f) {
       return;
     }
 
@@ -1073,10 +1084,10 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   char buf[256];
 
   float W = CHARINFO_PANEL_W; // wider panel for two-column layout
-  float margin = 10;
-  float rowH = 22;      // slightly taller rows for readability
-  float rowGap = 2;     // gap between rows
-  float sectionGap = 8; // gap before section headers
+  float margin = 12;
+  float rowH = 20;      // compact rows to fit all stats
+  float rowGap = 3;     // tight gaps
+  float sectionGap = 8; // breathing room before section headers
   float colGap = 10;    // gap between left and right columns
 
   // ─── Class identification ──────────────────────────────────────────
@@ -1095,15 +1106,16 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   else if (isELF) { classColor = IM_COL32(100, 210, 120, 255); className = "Elf"; }
   else            { classColor = IM_COL32(190, 120, 255, 255); className = "Magic Gladiator"; }
 
-  // Color palette
-  const ImU32 colSection = IM_COL32(200, 170, 60, 220);
-  const ImU32 colLabel   = IM_COL32(160, 160, 180, 255);
-  const ImU32 colValue   = IM_COL32(255, 255, 255, 255);
-  const ImU32 colGreen   = IM_COL32(100, 255, 100, 255);
-  const ImU32 colSepLine = IM_COL32(100, 85, 50, 140);
-  const ImU32 colRowA    = IM_COL32(20, 20, 35, 180);
-  const ImU32 colRowB    = IM_COL32(28, 28, 45, 180);
-  const ImU32 colBuff    = IM_COL32(255, 220, 100, 255);
+  // PoE-inspired color palette
+  const ImU32 colSection = IM_COL32(163, 141, 109, 240); // poe-gold #a38d6d
+  const ImU32 colLabel   = IM_COL32(196, 164, 124, 180); // poe-accent #c4a47c muted
+  const ImU32 colValue   = IM_COL32(240, 240, 240, 255); // poe-white
+  const ImU32 colGreen   = IM_COL32(80, 220, 120, 255);  // emerald
+  const ImU32 colSepLine = IM_COL32(163, 141, 109, 60);  // gold separator
+  const ImU32 colRowA    = IM_COL32(10, 10, 8, 160);     // poe-dark
+  const ImU32 colRowB    = IM_COL32(16, 14, 12, 160);    // poe-dark alt
+  const ImU32 colBuff    = IM_COL32(196, 164, 124, 255); // poe-accent
+  const ImU32 colRowBorder = IM_COL32(74, 74, 74, 80);   // poe-iron
 
   // Pet & buff state
   bool hasPet = s_ctx->hero && s_ctx->hero->IsPetActive();
@@ -1139,7 +1151,7 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   float leftH = 50 + 16 + (hasPoints ? 28 : 8) + 4 * (rowH + rowGap + (hasPoints ? 4 : 0));
 
   // Right column: section header(20) + combat rows + defense rows + resistances + buffs
-  int rightRowCount = 5 + (showMagicSpeed ? 1 : 0); // offense rows
+  int rightRowCount = 7 + (showMagicSpeed ? 1 : 0); // HP + AG + offense(5) rows
   rightRowCount += 2; // defense rows
   if (hasResist) rightRowCount += resistCount;
   int buffCount = (hasDefBuff ? 1 : 0) + (hasDmgBuff ? 1 : 0) + (hasPet ? 1 : 0);
@@ -1149,94 +1161,128 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
 
   float bodyH = std::max(leftH, rightH);
   float headerH = 50; // name + level + accent line
-  float totalH = headerH + bodyH + 12; // + bottom padding
+  float dynamicH = headerH + bodyH + 12;
+  // Match inventory panel height so both panels align
+  float totalH = std::max(dynamicH, (float)BASE_PANEL_H);
   float ph = totalH * g_uiPanelScale;
 
   DrawStyledPanel(dl, c.ToScreenX(px), c.ToScreenY(py), c.ToScreenX(px + pw),
                   c.ToScreenY(py + ph));
 
-  // Close button — adjusted for wider panel
+  // Close button — solid red circle, inside top-right corner
   {
-    float bx = W - 24;
-    float by = 6;
-    float bw = 16, bh = 14;
-    ImVec2 bMin(c.ToScreenX(px + bx * g_uiPanelScale),
-                c.ToScreenY(py + by * g_uiPanelScale));
-    ImVec2 bMax(c.ToScreenX(px + (bx + bw) * g_uiPanelScale),
-                c.ToScreenY(py + (by + bh) * g_uiPanelScale));
+    float btnVX = px + pw - 14 * g_uiPanelScale;
+    float btnVY = py + 10 * g_uiPanelScale;
+    float cx = c.ToScreenX(btnVX);
+    float cy = c.ToScreenY(btnVY);
+    float radius = (c.ToScreenX(px + 10 * g_uiPanelScale) - c.ToScreenX(px)) * 0.7f;
     ImVec2 mp = ImGui::GetIO().MousePos;
-    bool hovered = mp.x >= bMin.x && mp.x < bMax.x && mp.y >= bMin.y && mp.y < bMax.y;
-    ImU32 bgCol = hovered ? IM_COL32(200, 40, 40, 255) : IM_COL32(100, 20, 20, 200);
-    dl->AddRectFilled(bMin, bMax, bgCol, 2.0f);
-    if (hovered) dl->AddRect(bMin, bMax, IM_COL32(255, 100, 100, 255), 2.0f);
-    ImVec2 xSize = ImGui::CalcTextSize("X");
-    ImVec2 xPos(bMin.x + (bMax.x - bMin.x) * 0.5f - xSize.x * 0.5f,
-                bMin.y + (bMax.y - bMin.y) * 0.5f - xSize.y * 0.5f);
-    dl->AddText(xPos, IM_COL32(255, 255, 255, 255), "X");
+    float ddx = mp.x - cx, ddy = mp.y - cy;
+    bool hovered = (ddx * ddx + ddy * ddy) <= (radius + 3) * (radius + 3);
+    // Solid circle (fully opaque)
+    dl->AddCircleFilled(ImVec2(cx, cy), radius,
+        hovered ? IM_COL32(200, 45, 40, 255) : IM_COL32(140, 30, 25, 255));
+    dl->AddCircle(ImVec2(cx, cy), radius,
+        hovered ? IM_COL32(255, 130, 110, 255) : IM_COL32(180, 70, 55, 200), 0, 1.5f);
+    // X cross
+    float xs = radius * 0.38f;
+    ImU32 xCol = IM_COL32(255, 255, 255, hovered ? 255 : 220);
+    dl->AddLine(ImVec2(cx - xs, cy - xs), ImVec2(cx + xs, cy + xs), xCol, 1.5f);
+    dl->AddLine(ImVec2(cx + xs, cy - xs), ImVec2(cx - xs, cy + xs), xCol, 1.5f);
   }
 
-  // ─── Header: class-colored name + level (full width) ───────────────
-  DrawPanelTextCentered(dl, c, px, py, 0, 8, W, s_ctx->characterName,
-                        classColor, s_ctx->fontBold);
-
-  snprintf(buf, sizeof(buf), "Level %d  %s", *s_ctx->serverLevel, className);
-  DrawPanelTextCentered(dl, c, px, py, 0, 28, W, buf, colLabel);
-
-  // Class color accent line (full width)
+  // ─── Header band: darker background strip ──────────────────────────
   {
-    float lx0 = c.ToScreenX(px + (margin + 10) * g_uiPanelScale);
-    float lx1 = c.ToScreenX(px + (W - margin - 10) * g_uiPanelScale);
-    float ly  = c.ToScreenY(py + 43 * g_uiPanelScale);
-    uint8_t cr = (classColor >> 0) & 0xFF;
-    uint8_t cg = (classColor >> 8) & 0xFF;
-    uint8_t cb = (classColor >> 16) & 0xFF;
-    dl->AddLine(ImVec2(lx0, ly), ImVec2(lx1, ly), IM_COL32(cr, cg, cb, 100), 1.5f);
+    float hx0 = c.ToScreenX(px + 2);
+    float hy0 = c.ToScreenY(py + 2);
+    float hx1 = c.ToScreenX(px + pw - 2);
+    float hy1 = c.ToScreenY(py + headerH * g_uiPanelScale);
+    dl->AddRectFilledMultiColor(ImVec2(hx0, hy0), ImVec2(hx1, hy1),
+        IM_COL32(27, 30, 26, 130), IM_COL32(27, 30, 26, 130),  // murky top
+        IM_COL32(10, 10, 8, 60), IM_COL32(10, 10, 8, 60));     // fade to panel
+    // Bottom border of header
+    dl->AddLine(ImVec2(hx0, hy1), ImVec2(hx1, hy1),
+                IM_COL32(163, 141, 109, 50), 1.0f);
   }
 
-  // ─── Vertical divider between columns ──────────────────────────────
+  // Header: name | separator | level + class — vertically centered in header band
+  {
+    float hMid = headerH * 0.5f; // vertical center of header
+
+    // Character name (left side, vertically centered)
+    DrawPanelText(dl, c, px, py, margin + 6, hMid - 7, s_ctx->characterName,
+                  colValue, s_ctx->fontBold);
+
+    // Vertical separator
+    ImVec2 nameSz = ImGui::CalcTextSize(s_ctx->characterName);
+    float sepX = c.ToScreenX(px + (margin + 8) * g_uiPanelScale + nameSz.x + 16);
+    float sepY0 = c.ToScreenY(py + (hMid - 14) * g_uiPanelScale);
+    float sepY1 = c.ToScreenY(py + (hMid + 14) * g_uiPanelScale);
+    dl->AddLine(ImVec2(sepX, sepY0), ImVec2(sepX, sepY1),
+                IM_COL32(74, 74, 74, 100), 1.0f);
+
+    // Level + class + resets (right of separator)
+    snprintf(buf, sizeof(buf), "Level %d  %s  (R:%d)", *s_ctx->serverLevel, className, *s_ctx->serverResets);
+    dl->AddText(ImVec2(sepX + 14, c.ToScreenY(py + (hMid - 7) * g_uiPanelScale)),
+                colLabel, buf);
+  }
+
+  // ─── Vertical divider between columns (subtle gold) ─────────────────
   {
     float divX = c.ToScreenX(px + (margin + leftColW + colGap * 0.5f) * g_uiPanelScale);
     float divY0 = c.ToScreenY(py + headerH * g_uiPanelScale);
     float divY1 = c.ToScreenY(py + (totalH - 10) * g_uiPanelScale);
-    dl->AddLine(ImVec2(divX, divY0), ImVec2(divX, divY1), colSepLine, 1.0f);
+    dl->AddLine(ImVec2(divX, divY0), ImVec2(divX, divY1),
+                IM_COL32(163, 141, 109, 30), 1.0f);
   }
 
-  // ─── Section header helper (column-aware) ──────────────────────────
+  // ─── PoE-style section header: ── TITLE ── (centered line-through) ──
   auto drawSectionHeaderCol = [&](float relY, float colStartX, float colWidth, const char *text) {
-    float sx0 = c.ToScreenX(px + colStartX * g_uiPanelScale);
-    float sx1 = c.ToScreenX(px + (colStartX + colWidth) * g_uiPanelScale);
-    float sy  = c.ToScreenY(py + (relY + 6) * g_uiPanelScale);
+    float sx0 = c.ToScreenX(px + (colStartX + 4) * g_uiPanelScale);
+    float sx1 = c.ToScreenX(px + (colStartX + colWidth - 4) * g_uiPanelScale);
+    float sy  = c.ToScreenY(py + (relY + 7) * g_uiPanelScale);
     ImVec2 tsz = ImGui::CalcTextSize(text);
-    float tw = tsz.x + 12;
+    float tw = tsz.x + 16;
     float cx0 = (sx0 + sx1 - tw) * 0.5f;
     float cx1 = cx0 + tw;
-    dl->AddLine(ImVec2(sx0, sy), ImVec2(cx0 - 4, sy), colSepLine);
-    dl->AddLine(ImVec2(cx1 + 4, sy), ImVec2(sx1, sy), colSepLine);
-    // Center text in column
-    ImVec2 sz = ImGui::CalcTextSize(text);
-    float tx = (sx0 + sx1) * 0.5f - sz.x * 0.5f;
+    // Gradient lines from edge to text
+    dl->AddLine(ImVec2(sx0, sy), ImVec2(cx0 - 4, sy),
+                IM_COL32(163, 141, 109, 100), 1.0f);
+    dl->AddLine(ImVec2(cx1 + 4, sy), ImVec2(sx1, sy),
+                IM_COL32(163, 141, 109, 100), 1.0f);
+    // Text centered
+    float tx = (sx0 + sx1) * 0.5f - tsz.x * 0.5f;
     float ty = c.ToScreenY(py + relY * g_uiPanelScale);
-    dl->AddText(ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 180), text);
+    dl->AddText(ImVec2(tx + 1, ty + 1), IM_COL32(0, 0, 0, 200), text);
     dl->AddText(ImVec2(tx, ty), colSection, text);
   };
 
-  // ─── Stat row helper (within a column) ─────────────────────────────
+  // ─── Combat stat row: label left, value right, subtle bottom separator ─
   int rowIdx = 0;
   auto drawColStatRow = [&](float relY, float colStartX, float colWidth,
                             const char *label, const char *value,
-                            ImU32 valColor = IM_COL32(255, 255, 255, 255)) {
+                            ImU32 valColor = IM_COL32(240, 240, 240, 255)) {
     float rx0 = c.ToScreenX(px + colStartX * g_uiPanelScale);
     float ry0 = c.ToScreenY(py + relY * g_uiPanelScale);
     float rx1 = c.ToScreenX(px + (colStartX + colWidth) * g_uiPanelScale);
     float ry1 = c.ToScreenY(py + (relY + rowH) * g_uiPanelScale);
-    dl->AddRectFilled(ImVec2(rx0, ry0), ImVec2(rx1, ry1),
-                      (rowIdx & 1) ? colRowB : colRowA, 2.0f);
-    DrawPanelText(dl, c, px, py, colStartX + 6, relY + 3, label, colLabel);
-    // Right-align value
+    // Hover highlight
+    ImVec2 mp = ImGui::GetIO().MousePos;
+    bool hovered = mp.x >= rx0 && mp.x < rx1 && mp.y >= ry0 && mp.y < ry1;
+    if (hovered)
+      dl->AddRectFilled(ImVec2(rx0, ry0), ImVec2(rx1, ry1),
+                        IM_COL32(29, 58, 46, 30)); // emerald hover
+    // Bottom separator line
+    dl->AddLine(ImVec2(rx0, ry1), ImVec2(rx1, ry1),
+                IM_COL32(163, 141, 109, 20));
+    // Label (muted gold, left) — vertically centered in row
+    float textOffY = (rowH - 14) * 0.5f; // 14 ≈ text height
+    DrawPanelText(dl, c, px, py, colStartX + 6, relY + textOffY, label, colLabel);
+    // Value (white, right-aligned) — vertically centered
     ImVec2 vsz = ImGui::CalcTextSize(value);
     float vx = rx1 - vsz.x - 6 * g_uiPanelScale;
-    float vy = c.ToScreenY(py + (relY + 3) * g_uiPanelScale);
-    dl->AddText(ImVec2(vx + 1, vy + 1), IM_COL32(0, 0, 0, 180), value);
+    float vy = c.ToScreenY(py + (relY + textOffY) * g_uiPanelScale);
+    dl->AddText(ImVec2(vx + 1, vy + 1), IM_COL32(0, 0, 0, 200), value);
     dl->AddText(ImVec2(vx, vy), valColor, value);
     rowIdx++;
   };
@@ -1244,7 +1290,7 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   // ═══════════════════════════════════════════════════════════════════
   //  LEFT COLUMN — Primary Attributes + Stat Allocation
   // ═══════════════════════════════════════════════════════════════════
-  float leftY = headerH;
+  float leftY = headerH + 6; // padding below header band
 
   // XP progress bar (within left column)
   {
@@ -1304,59 +1350,88 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
     int si = statOrder[i];
     float ry = leftY + i * (statRowH + rowGap);
 
-    // Row background
+    // PoE-style stat row: dark bg + iron border
     float rx0 = c.ToScreenX(px + leftColX * g_uiPanelScale);
     float ry0 = c.ToScreenY(py + ry * g_uiPanelScale);
     float rx1 = c.ToScreenX(px + (leftColX + leftColW) * g_uiPanelScale);
     float ry1 = c.ToScreenY(py + (ry + statRowH) * g_uiPanelScale);
     dl->AddRectFilled(ImVec2(rx0, ry0), ImVec2(rx1, ry1),
-                      (i & 1) ? colRowB : colRowA, 2.0f);
+                      IM_COL32(10, 10, 8, 160));
+    dl->AddRect(ImVec2(rx0, ry0), ImVec2(rx1, ry1), colRowBorder);
 
-    // Stat label
-    DrawPanelText(dl, c, px, py, leftColX + 6, ry + 3, statLabels[si], colLabel);
+    // Stat label (gold, uppercase style) — vertically centered
+    float statTextOff = (statRowH - 14) * 0.5f;
+    DrawPanelText(dl, c, px, py, leftColX + 8, ry + statTextOff, statLabels[si], colSection);
 
-    // Stat value — right-aligned (with room for + button)
-    float valueRightPad = hasPoints ? 24 : 6; // reserve space for + button
+    // Stat value — right-aligned (with room for + button), vertically centered
+    float valueRightPad = hasPoints ? 24 : 6;
     snprintf(buf, sizeof(buf), "%d", statValues[si]);
     ImVec2 vsz = ImGui::CalcTextSize(buf);
     float vx = rx1 - vsz.x - valueRightPad * g_uiPanelScale;
-    float vy = c.ToScreenY(py + (ry + 3) * g_uiPanelScale);
+    float vy = c.ToScreenY(py + (ry + statTextOff) * g_uiPanelScale);
     dl->AddText(ImVec2(vx + 1, vy + 1), IM_COL32(0, 0, 0, 180), buf);
     dl->AddText(ImVec2(vx, vy), colValue, buf);
 
-    // + button (when points available)
+    // + button: perfect square, dark red gradient (PoE style)
     if (hasPoints) {
-      float btnW = 18 * g_uiPanelScale;
-      float btnH = (statRowH - 4) * g_uiPanelScale;
-      float btnX = rx1 - btnW - 3 * g_uiPanelScale;
-      float btnY = ry0 + (ry1 - ry0 - btnH) * 0.5f;
-      ImVec2 bp0(btnX, btnY), bp1(btnX + btnW, btnY + btnH);
+      float btnSz = 16 * g_uiPanelScale; // square button
+      float btnX = rx1 - btnSz - 4 * g_uiPanelScale;
+      float btnY = ry0 + (ry1 - ry0 - btnSz) * 0.5f;
+      ImVec2 bp0(btnX, btnY), bp1(btnX + btnSz, btnY + btnSz);
       ImVec2 mouseP = ImGui::GetIO().MousePos;
       bool hov = mouseP.x >= bp0.x && mouseP.x < bp1.x &&
                  mouseP.y >= bp0.y && mouseP.y < bp1.y;
-      // Green button with hover glow
-      dl->AddRectFilled(bp0, bp1,
-          hov ? IM_COL32(70, 190, 70, 255) : IM_COL32(45, 120, 45, 230), 3.0f);
+      // Dark red gradient background
+      dl->AddRectFilledMultiColor(bp0, bp1,
+          hov ? IM_COL32(160, 30, 25, 255) : IM_COL32(128, 0, 0, 255),
+          hov ? IM_COL32(160, 30, 25, 255) : IM_COL32(128, 0, 0, 255),
+          hov ? IM_COL32(100, 15, 12, 255) : IM_COL32(64, 0, 0, 255),
+          hov ? IM_COL32(100, 15, 12, 255) : IM_COL32(64, 0, 0, 255));
+      // Copper border
       dl->AddRect(bp0, bp1,
-          hov ? IM_COL32(130, 255, 130, 200) : IM_COL32(40, 100, 40, 160), 3.0f);
-      // "+" text centered in button
-      ImVec2 ps = ImGui::CalcTextSize("+");
-      float ptx = btnX + (btnW - ps.x) * 0.5f;
-      float pty = btnY + (btnH - ps.y) * 0.5f;
-      dl->AddText(ImVec2(ptx + 1, pty + 1), IM_COL32(0, 0, 0, 200), "+");
-      dl->AddText(ImVec2(ptx, pty), colValue, "+");
+          hov ? IM_COL32(200, 120, 80, 220) : IM_COL32(132, 94, 67, 200), 0, 0, 1.0f);
+      // "+" cross lines (centered, clean)
+      float cs = btnSz * 0.25f;
+      float ccx = btnX + btnSz * 0.5f, ccy = btnY + btnSz * 0.5f;
+      ImU32 pCol = hov ? IM_COL32(255, 255, 255, 255) : IM_COL32(220, 200, 180, 220);
+      dl->AddLine(ImVec2(ccx - cs, ccy), ImVec2(ccx + cs, ccy), pCol, 1.5f);
+      dl->AddLine(ImVec2(ccx, ccy - cs), ImVec2(ccx, ccy + cs), pCol, 1.5f);
     }
   }
 
   // ═══════════════════════════════════════════════════════════════════
   //  RIGHT COLUMN — Combat Stats, Resistances, Buffs
   // ═══════════════════════════════════════════════════════════════════
-  float rightY = headerH;
+  float rightY = headerH + 6; // padding below header band
   rowIdx = 0;
 
   // ─── Combat Stats ──────────────────────────────────────────────────
   drawSectionHeaderCol(rightY, rightColX, rightColW, "Combat");
-  rightY += 20;
+  rightY += 18; // space after section header
+
+  // ─── Offense Stats ──────────────────────────────────────────────────
+
+  // HP
+  snprintf(buf, sizeof(buf), "%d / %d", *s_ctx->serverHP, *s_ctx->serverMaxHP);
+  drawColStatRow(rightY, rightColX, rightColW, "HP", buf);
+  rightY += rowH + rowGap;
+
+  // MP / AG
+  {
+    const char *mpLabel = isDK ? "AG" : "Mana";
+    snprintf(buf, sizeof(buf), "%d / %d", *s_ctx->serverMP, *s_ctx->serverMaxMP);
+    drawColStatRow(rightY, rightColX, rightColW, mpLabel, buf);
+    rightY += rowH + rowGap;
+  }
+
+  // Thin separator
+  {
+    float sx0 = c.ToScreenX(px + (rightColX + 6) * g_uiPanelScale);
+    float sx1 = c.ToScreenX(px + (rightColX + rightColW - 6) * g_uiPanelScale);
+    float sy  = c.ToScreenY(py + (rightY + 2) * g_uiPanelScale);
+    dl->AddLine(ImVec2(sx0, sy), ImVec2(sx1, sy), colSepLine);
+  }
+  rightY += 5;
 
   // Damage / Wizardry
   int dMin = s_ctx->hero->GetDamageMin();
@@ -1391,14 +1466,14 @@ void RenderCharInfoPanel(ImDrawList *dl, const UICoords &c) {
   drawColStatRow(rightY, rightColX, rightColW, "Excellent", "1%", colGreen);
   rightY += rowH + rowGap;
 
-  // ─── Defense (thin separator) ──────────────────────────────────────
+  // ─── Defense section (thin separator) ──────────────────────────────
   {
     float sx0 = c.ToScreenX(px + (rightColX + 6) * g_uiPanelScale);
     float sx1 = c.ToScreenX(px + (rightColX + rightColW - 6) * g_uiPanelScale);
     float sy  = c.ToScreenY(py + (rightY + 2) * g_uiPanelScale);
     dl->AddLine(ImVec2(sx0, sy), ImVec2(sx1, sy), colSepLine);
   }
-  rightY += 8;
+  rightY += 5;
 
   // Defense
   int totalDef = s_ctx->hero->GetDefense();
@@ -1478,28 +1553,30 @@ struct MapEntry {
   uint8_t mapId;
   const char *name;
   const char *recLevel;
-  uint8_t spawnX, spawnY; // Grid coords for warp
+  uint8_t spawnX, spawnY;
+  bool hasQuests;
+  uint16_t guardTypes[4]; // NPC types that give quests on this map (0=none)
 };
 
 static const MapEntry s_maps[] = {
-    {0, "Lorencia",    "Lv 1+",  137, 126},
-    {1, "Dungeon 1",   "Lv 15+", 108, 247},
-    {1, "Dungeon 2",   "Lv 25+", 232, 126},
-    {1, "Dungeon 3",   "Lv 40+",   3,  84},
-    {2, "Devias",      "Lv 20+", 210,  40},
-    {3, "Noria",       "Lv 30+", 174, 110},
-    {4, "Lost Tower 1", "Lv 40+", 208,  75},
-    {4, "Lost Tower 2", "Lv 43+", 238, 234},
-    {4, "Lost Tower 3", "Lv 46+",  90, 170},
-    {4, "Lost Tower 4", "Lv 50+",  92,  90},
-    {4, "Lost Tower 5", "Lv 53+", 125,  56},
-    {4, "Lost Tower 6", "Lv 57+",  48,  56},
-    {4, "Lost Tower 7", "Lv 60+",  12,  88},
+    {0, "Lorencia",     "Lv 1+",  137, 126, true,  {245,246,247,248}},
+    {1, "Dungeon 1",    "Lv 15+", 108, 247, false, {0,0,0,0}},
+    {1, "Dungeon 2",    "Lv 25+", 232, 126, false, {0,0,0,0}},
+    {1, "Dungeon 3",    "Lv 40+",   3,  84, false, {0,0,0,0}},
+    {2, "Devias",       "Lv 20+", 210,  40, true,  {310,311,312,0}},
+    {3, "Noria",        "Lv 30+", 174, 110, true,  {256,0,0,0}},
+    {4, "Lost Tower 1", "Lv 40+", 208,  75, true,  {313,0,0,0}},
+    {4, "Lost Tower 2", "Lv 43+", 238, 234, false, {0,0,0,0}},
+    {4, "Lost Tower 3", "Lv 46+",  90, 170, false, {0,0,0,0}},
+    {4, "Lost Tower 4", "Lv 50+",  92,  90, false, {0,0,0,0}},
+    {4, "Lost Tower 5", "Lv 53+", 125,  56, false, {0,0,0,0}},
+    {4, "Lost Tower 6", "Lv 57+",  48,  56, false, {0,0,0,0}},
+    {4, "Lost Tower 7", "Lv 60+",  12,  88, false, {0,0,0,0}},
 };
 static constexpr int MAP_COUNT = 13;
 
-static float GetMapPanelX() {
-  return GetCharInfoPanelX();
+float GetMapPanelX() {
+  return -260.0f; // Far left side of screen (past virtual 0 into left margin)
 }
 
 void RenderMapPanel(ImDrawList *dl, const UICoords &c) {
@@ -1558,17 +1635,54 @@ void RenderMapPanel(ImDrawList *dl, const UICoords &c) {
       dl->AddRectFilled(ImVec2(rx0, ry0), ImVec2(rx1, ry1), colRowHov, 2.0f);
     }
 
-    // Current map marker (small dot) — shows which map you're on
-    if (isSameMap) {
-      float dotR = 3.0f * g_uiPanelScale;
-      float dotX = c.ToScreenX(px + (margin + 3) * g_uiPanelScale);
-      float dotY = (ry0 + ry1) * 0.5f;
-      dl->AddCircleFilled(ImVec2(dotX, dotY), dotR, colCurrent);
+    // No current map marker — clean look
+
+    // Quest marker: ? (ready to turn in) or ! (available quests)
+    if (m.hasQuests) {
+      // Check if any active quest for this map's guards is ready to turn in
+      bool hasReadyQuest = false;
+      if (s_ctx->questCatalog && s_ctx->activeQuests) {
+        auto *catalog = (std::vector<ClientGameState::QuestCatalogEntry>*)s_ctx->questCatalog;
+        auto *actives = (std::vector<ClientGameState::ActiveQuestClient>*)s_ctx->activeQuests;
+        for (auto &aq : *actives) {
+          // Find catalog entry for this active quest
+          for (auto &ce : *catalog) {
+            if (ce.questId != aq.questId) continue;
+            // Check if this quest belongs to a guard on this map
+            bool onThisMap = false;
+            for (int g = 0; g < 4 && m.guardTypes[g]; g++)
+              if (ce.guardType == m.guardTypes[g]) { onThisMap = true; break; }
+            if (!onThisMap) break;
+            // Check if all kill targets are met
+            bool allMet = true;
+            for (int t = 0; t < ce.targetCount; t++)
+              if (aq.killCount[t] < ce.targets[t].killsReq) { allMet = false; break; }
+            if (allMet) hasReadyQuest = true;
+            break;
+          }
+          if (hasReadyQuest) break;
+        }
+      }
+
+      float qX = c.ToScreenX(px + (margin + 3) * g_uiPanelScale);
+      float qY = (ry0 + ry1) * 0.5f;
+      ImVec2 qSz;
+      if (hasReadyQuest) {
+        // Yellow "?" — quest ready to turn in
+        qSz = ImGui::CalcTextSize("?");
+        dl->AddText(ImVec2(qX - qSz.x * 0.5f, qY - qSz.y * 0.5f),
+                    IM_COL32(255, 220, 50, 255), "?");
+      } else {
+        // Yellow "!" — quests available
+        qSz = ImGui::CalcTextSize("!");
+        dl->AddText(ImVec2(qX - qSz.x * 0.5f, qY - qSz.y * 0.5f),
+                    IM_COL32(255, 210, 50, 200), "!");
+      }
     }
 
     // Map name
-    float nameX = margin + (isSameMap ? 10 : 6);
-    ImU32 nameCol = hov ? colHover : (isSameMap ? colCurrent : colName);
+    float nameX = margin + (isSameMap || m.hasQuests ? 10 : 6);
+    ImU32 nameCol = hov ? colHover : colName;
     DrawPanelText(dl, c, px, py, nameX, ry + 3, m.name, nameCol);
 
     // Recommended level (right-aligned)
@@ -1594,9 +1708,6 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
   // Colors
   const ImU32 colTitle = IM_COL32(255, 210, 80, 255);
   const ImU32 colHeader = IM_COL32(200, 180, 120, 255);
-  const ImU32 colSlotBg =
-      IM_COL32(0, 0, 0, 60); // subtle background, grid visible
-  const ImU32 colSlotBr = IM_COL32(80, 75, 60, 255);
   const ImU32 colGold = IM_COL32(255, 215, 0, 255);
   const ImU32 colValue = IM_COL32(255, 255, 255, 255);
   const ImU32 colDragHi = IM_COL32(255, 255, 0, 100);
@@ -1624,16 +1735,30 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
     bool hoverSlot =
         mp.x >= sMin.x && mp.x < sMax.x && mp.y >= sMin.y && mp.y < sMax.y;
 
-    // Always draw slot background fill and silhouette (visible behind 3D items)
-    dl->AddRectFilled(sMin, sMax, colSlotBg, 3.0f);
-    if (TexValid(g_slotBackgrounds[ep.slot])) {
-      dl->AddImage((ImTextureID)TexImID(g_slotBackgrounds[ep.slot]), sMin,
-                   sMax, ImVec2(0, 0), ImVec2(1, 1),
-                   IM_COL32(255, 255, 255, 200));
+    // Accessory slots (pendant=9, ring1=10, ring2=11): transparent background
+    bool isAccessory = (ep.slot == 9 || ep.slot == 10 || ep.slot == 11);
+    if (!isAccessory) {
+      // Normal equipment slot: dark gradient, minimal bevel
+      dl->AddRectFilledMultiColor(sMin, sMax,
+          IM_COL32(14, 12, 20, 200), IM_COL32(14, 12, 20, 200),
+          IM_COL32(22, 20, 28, 200), IM_COL32(22, 20, 28, 200));
+      if (TexValid(g_slotBackgrounds[ep.slot])) {
+        dl->AddImage((ImTextureID)TexImID(g_slotBackgrounds[ep.slot]), sMin,
+                     sMax, ImVec2(0, 0), ImVec2(1, 1),
+                     IM_COL32(255, 255, 255, 140));
+      }
+      // Very subtle border
+      dl->AddRect(sMin, sMax, IM_COL32(40, 36, 28, 100), 1.0f);
+    } else {
+      // Accessory slot: just the silhouette icon, no background/border
+      if (TexValid(g_slotBackgrounds[ep.slot])) {
+        dl->AddImage((ImTextureID)TexImID(g_slotBackgrounds[ep.slot]), sMin,
+                     sMax, ImVec2(0, 0), ImVec2(1, 1),
+                     IM_COL32(255, 255, 255, 90));
+      }
     }
-
-    dl->AddRect(sMin, sMax, hoverSlot && g_isDragging ? colDragHi : colSlotBr,
-                3.0f);
+    if (hoverSlot && g_isDragging)
+      dl->AddRect(sMin, sMax, colDragHi, 3.0f);
 
     bool isBeingDragged = (g_isDragging && g_dragFromEquipSlot == ep.slot);
 
@@ -1647,7 +1772,8 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
         g_renderQueue.push_back({modelName, defIdx, (int)sMin.x,
                                  slotY, (int)(sMax.x - sMin.x),
                                  (int)(sMax.y - sMin.y), hoverSlot,
-                                 s_ctx->equipSlots[ep.slot].itemLevel});
+                                 s_ctx->equipSlots[ep.slot].itemLevel,
+                                 isAccessory});
       }
       if (hoverSlot) {
         AddPendingItemTooltip(ItemDatabase::GetDefIndexFromCategory(
@@ -1671,28 +1797,49 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
         ov.color = IM_COL32(255, 210, 80, 255);
         g_deferredOverlays.push_back(ov);
       }
+
+      // Requirements check moved to tooltip (InventoryUITooltip.cpp)
     }
   }
 
   // Bag Grid
-  DrawPanelText(dl, c, px, py, 15, 198, "Bag", colHeader);
-  float gridRX = 15.0f, gridRY = 208.0f;
+  // "Bag" label removed for cleaner look
+  float gridRX = 15.0f, gridRY = 200.0f;
   float cellW = 20.0f, cellH = 20.0f;
-  float gap = 0.0f;
+  float gap = 0.0f; // No gaps — light stroke lines provide separation
 
-  for (int row = 0; row < 8; row++) {
-    for (int col = 0; col < 8; col++) {
-      float rX = gridRX + col * (cellW + gap);
-      float rY = gridRY + row * (cellH + gap);
-      float vX = px + rX * g_uiPanelScale;
-      float vY = py + rY * g_uiPanelScale;
-      float sW = cellW * g_uiPanelScale;
-      float sH = cellH * g_uiPanelScale;
+  {
+    // Grid background panel (dark recessed area behind all cells)
+    float gx0 = px + (gridRX - 1.0f) * g_uiPanelScale;
+    float gy0 = py + (gridRY - 1.0f) * g_uiPanelScale;
+    float gx1 = px + (gridRX + 8 * cellW + 1.0f) * g_uiPanelScale;
+    float gy1 = py + (gridRY + 8 * cellH + 1.0f) * g_uiPanelScale;
+    // Solid dark fill
+    dl->AddRectFilled(ImVec2(c.ToScreenX(gx0), c.ToScreenY(gy0)),
+                      ImVec2(c.ToScreenX(gx1), c.ToScreenY(gy1)),
+                      IM_COL32(12, 10, 18, 240), 2.0f);
+    // Outer border
+    dl->AddRect(ImVec2(c.ToScreenX(gx0), c.ToScreenY(gy0)),
+                ImVec2(c.ToScreenX(gx1), c.ToScreenY(gy1)),
+                IM_COL32(50, 45, 32, 180), 2.0f);
+  }
 
-      ImVec2 sMin(c.ToScreenX(vX), c.ToScreenY(vY));
-      ImVec2 sMax(c.ToScreenX(vX + sW), c.ToScreenY(vY + sH));
-      dl->AddRectFilled(sMin, sMax, colSlotBg, 1.0f);
-      dl->AddRect(sMin, sMax, colSlotBr, 1.0f);
+  // Draw grid lines (light stroke separators)
+  {
+    float gx0s = c.ToScreenX(px + gridRX * g_uiPanelScale);
+    float gy0s = c.ToScreenY(py + gridRY * g_uiPanelScale);
+    float gx1s = c.ToScreenX(px + (gridRX + 8 * cellW) * g_uiPanelScale);
+    float gy1s = c.ToScreenY(py + (gridRY + 8 * cellH) * g_uiPanelScale);
+    ImU32 lineCol = IM_COL32(60, 55, 42, 80);
+    // Horizontal lines
+    for (int row = 1; row < 8; row++) {
+      float y = c.ToScreenY(py + (gridRY + row * cellH) * g_uiPanelScale);
+      dl->AddLine(ImVec2(gx0s, y), ImVec2(gx1s, y), lineCol);
+    }
+    // Vertical lines
+    for (int col = 1; col < 8; col++) {
+      float x = c.ToScreenX(px + (gridRX + col * cellW) * g_uiPanelScale);
+      dl->AddLine(ImVec2(x, gy0s), ImVec2(x, gy1s), lineCol);
     }
   }
 
@@ -1723,14 +1870,15 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
           float rY = gridRY + row * (cellH + gap);
           float vX = px + rX * g_uiPanelScale;
           float vY = py + rY * g_uiPanelScale;
+          float iW = (def.width * cellW + (def.width - 1) * gap) * g_uiPanelScale;
+          float iH = (def.height * cellH + (def.height - 1) * gap) * g_uiPanelScale;
           ImVec2 iMin(c.ToScreenX(vX), c.ToScreenY(vY));
-          ImVec2 iMax(c.ToScreenX(vX + def.width * cellW * g_uiPanelScale),
-                      c.ToScreenY(vY + def.height * cellH * g_uiPanelScale));
+          ImVec2 iMax(c.ToScreenX(vX + iW), c.ToScreenY(vY + iH));
           bool hoverItem = mp.x >= iMin.x && mp.x < iMax.x && mp.y >= iMin.y &&
                            mp.y < iMax.y;
 
           if (hoverItem)
-            dl->AddRectFilled(iMin, iMax, IM_COL32(255, 255, 255, 30), 2.0f);
+            dl->AddRectFilled(iMin, iMax, IM_COL32(200, 180, 100, 22), 2.0f);
 
           const char *model = def.modelFile.empty()
                                   ? ItemDatabase::GetDropModelName(
@@ -1773,18 +1921,18 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
       int ih = dit->second.height;
       float gridVX = px + gridRX * g_uiPanelScale;
       float gridVY = py + gridRY * g_uiPanelScale;
-      float gridVW = 8 * cellW * g_uiPanelScale;
-      float gridVH = 8 * cellH * g_uiPanelScale;
+      float gridVW = (8 * (cellW + gap)) * g_uiPanelScale;
+      float gridVH = (8 * (cellH + gap)) * g_uiPanelScale;
 
       // Check if mouse is over the bag grid
       if (mp.x >= c.ToScreenX(gridVX) && mp.x < c.ToScreenX(gridVX + gridVW) &&
           mp.y >= c.ToScreenY(gridVY) && mp.y < c.ToScreenY(gridVY + gridVH)) {
-        // Compute which cell the mouse is over
+        // Compute which cell the mouse is over (accounting for gap)
         float localX = (mp.x - c.ToScreenX(gridVX)) /
-                       (c.ToScreenX(gridVX + cellW * g_uiPanelScale) -
+                       (c.ToScreenX(gridVX + (cellW + gap) * g_uiPanelScale) -
                         c.ToScreenX(gridVX));
         float localY = (mp.y - c.ToScreenY(gridVY)) /
-                       (c.ToScreenY(gridVY + cellH * g_uiPanelScale) -
+                       (c.ToScreenY(gridVY + (cellH + gap) * g_uiPanelScale) -
                         c.ToScreenY(gridVY));
         int hCol = (int)localX;
         int hRow = (int)localY;
@@ -1830,16 +1978,18 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
     auto it = g_itemDefs.find(g_dragDefIndex);
     if (it != g_itemDefs.end()) {
       const auto &def = it->second;
-      float dw = def.width * 32.0f;
-      float dh = def.height * 32.0f;
+      // Scale drag icon same as inventory cells
+      float cellPx = cellW * g_uiPanelScale;
+      float scX = c.ToScreenX(cellPx) - c.ToScreenX(0);
+      float dw = def.width * scX;
+      float dh = def.height * scX;
       ImVec2 iMin(mp.x - dw * 0.5f, mp.y - dh * 0.5f);
       ImVec2 iMax(iMin.x + dw, iMin.y + dh);
 
       dl->AddRectFilled(iMin, iMax, IM_COL32(30, 30, 50, 180), 3.0f);
       // Queue 3D render for dragged item
-      int dragY = (int)iMin.y;
       g_renderQueue.push_back({def.modelFile, g_dragDefIndex, (int)iMin.x,
-                               dragY, (int)dw, (int)dh, false,
+                               (int)iMin.y, (int)dw, (int)dh, false,
                                g_dragItemLevel});
 
       if (g_dragItemLevel > 0)
@@ -1848,6 +1998,18 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
         snprintf(buf, sizeof(buf), "%s", def.name.c_str());
       dl->AddText(ImVec2(iMin.x, iMax.y + 2), colGold, buf);
     }
+  }
+  // Skill drag icon (defIndex is negative = skill ID)
+  if (g_isDragging && g_dragDefIndex < 0) {
+    int8_t skillId = (int8_t)(-g_dragDefIndex);
+    float cellPx = cellW * g_uiPanelScale;
+    float scX = c.ToScreenX(cellPx) - c.ToScreenX(0);
+    float sz = scX;
+    float sx = mp.x - sz * 0.5f;
+    float sy = mp.y - sz * 0.5f;
+    dl->AddRectFilled(ImVec2(sx, sy), ImVec2(sx + sz, sy + sz),
+                      IM_COL32(30, 30, 50, 180), 3.0f);
+    RenderSkillIcon(dl, skillId, sx, sy, sz);
   }
 
   // Tooltip on hover (bag items)
@@ -1863,13 +2025,14 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
         dw = it->second.width;
         dh = it->second.height;
       }
-      float rX = gridRX + col * cellW;
-      float rY = gridRY + row * cellH;
+      float rX = gridRX + col * (cellW + gap);
+      float rY = gridRY + row * (cellH + gap);
       float vX = px + rX * g_uiPanelScale;
       float vY = py + rY * g_uiPanelScale;
+      float iW = (dw * cellW + (dw - 1) * gap) * g_uiPanelScale;
+      float iH = (dh * cellH + (dh - 1) * gap) * g_uiPanelScale;
       ImVec2 iMin(c.ToScreenX(vX), c.ToScreenY(vY));
-      ImVec2 iMax(c.ToScreenX(vX + dw * cellW * g_uiPanelScale),
-                  c.ToScreenY(vY + dh * cellH * g_uiPanelScale));
+      ImVec2 iMax(c.ToScreenX(vX + iW), c.ToScreenY(vY + iH));
 
       if (mp.x >= iMin.x && mp.x < iMax.x && mp.y >= iMin.y && mp.y < iMax.y &&
           !g_isDragging) {
@@ -1895,7 +2058,10 @@ void RenderInventoryPanel(ImDrawList *dl, const UICoords &c) {
       n -= 3;
     }
     snprintf(zenBuf, sizeof(zenBuf), "%s Zen", s.c_str());
-    DrawPanelTextRight(dl, c, px, py, 10, 405, 160, zenBuf, colGold);
+    // Smaller font for zen display
+    if (s_ctx->fontLabel) ImGui::PushFont(s_ctx->fontLabel);
+    DrawPanelTextCentered(dl, c, px, py, 5, 406, BASE_PANEL_W - 10, zenBuf, colGold);
+    if (s_ctx->fontLabel) ImGui::PopFont();
   }
 }
 
@@ -1934,23 +2100,32 @@ void RenderShopPanel(ImDrawList *dl, const UICoords &c) {
   float gridRX = 15.0f, gridRY = 35.0f;
   float cellW = 20.0f, cellH = 20.0f;
 
-  const ImU32 colSlotBg = IM_COL32(0, 0, 0, 60);
-  const ImU32 colSlotBr = IM_COL32(80, 75, 60, 255);
-
-  // Draw empty grid cells
-  for (int row = 0; row < s_shopGridRows; row++) {
-    for (int col = 0; col < SHOP_GRID_COLS; col++) {
-      float rX = gridRX + col * cellW;
-      float rY = gridRY + row * cellH;
-      float vX = px + rX * g_uiPanelScale;
-      float vY = py + rY * g_uiPanelScale;
-      float sW = cellW * g_uiPanelScale;
-      float sH = cellH * g_uiPanelScale;
-
-      ImVec2 sMin(c.ToScreenX(vX), c.ToScreenY(vY));
-      ImVec2 sMax(c.ToScreenX(vX + sW), c.ToScreenY(vY + sH));
-      dl->AddRectFilled(sMin, sMax, colSlotBg, 1.0f);
-      dl->AddRect(sMin, sMax, colSlotBr, 1.0f);
+  // Draw shop grid background + light stroke lines
+  float shopGap = 0.0f;
+  {
+    float gx0 = px + (gridRX - 1.0f) * g_uiPanelScale;
+    float gy0 = py + (gridRY - 1.0f) * g_uiPanelScale;
+    float gx1 = px + (gridRX + SHOP_GRID_COLS * cellW + 1.0f) * g_uiPanelScale;
+    float gy1 = py + (gridRY + s_shopGridRows * cellH + 1.0f) * g_uiPanelScale;
+    dl->AddRectFilled(ImVec2(c.ToScreenX(gx0), c.ToScreenY(gy0)),
+                      ImVec2(c.ToScreenX(gx1), c.ToScreenY(gy1)),
+                      IM_COL32(12, 10, 18, 240), 2.0f);
+    dl->AddRect(ImVec2(c.ToScreenX(gx0), c.ToScreenY(gy0)),
+                ImVec2(c.ToScreenX(gx1), c.ToScreenY(gy1)),
+                IM_COL32(50, 45, 32, 180), 2.0f);
+    // Grid lines
+    float gx0s = c.ToScreenX(px + gridRX * g_uiPanelScale);
+    float gy0s = c.ToScreenY(py + gridRY * g_uiPanelScale);
+    float gx1s = c.ToScreenX(px + (gridRX + SHOP_GRID_COLS * cellW) * g_uiPanelScale);
+    float gy1s = c.ToScreenY(py + (gridRY + s_shopGridRows * cellH) * g_uiPanelScale);
+    ImU32 lineCol = IM_COL32(60, 55, 42, 80);
+    for (int row = 1; row < s_shopGridRows; row++) {
+      float y = c.ToScreenY(py + (gridRY + row * cellH) * g_uiPanelScale);
+      dl->AddLine(ImVec2(gx0s, y), ImVec2(gx1s, y), lineCol);
+    }
+    for (int col = 1; col < SHOP_GRID_COLS; col++) {
+      float x = c.ToScreenX(px + (gridRX + col * cellW) * g_uiPanelScale);
+      dl->AddLine(ImVec2(x, gy0s), ImVec2(x, gy1s), lineCol);
     }
   }
 
@@ -1984,16 +2159,17 @@ void RenderShopPanel(ImDrawList *dl, const UICoords &c) {
       float rY = gridRY + row * cellH;
       float vX = px + rX * g_uiPanelScale;
       float vY = py + rY * g_uiPanelScale;
+      float siW = def.width * cellW * g_uiPanelScale;
+      float siH = def.height * cellH * g_uiPanelScale;
       ImVec2 iMin(c.ToScreenX(vX), c.ToScreenY(vY));
-      ImVec2 iMax(c.ToScreenX(vX + def.width * cellW * g_uiPanelScale),
-                  c.ToScreenY(vY + def.height * cellH * g_uiPanelScale));
+      ImVec2 iMax(c.ToScreenX(vX + siW), c.ToScreenY(vY + siH));
 
       bool hoverItem =
           mp.x >= iMin.x && mp.x < iMax.x && mp.y >= iMin.y && mp.y < iMax.y;
 
       if (!isBeingDragged) {
         if (hoverItem)
-          dl->AddRectFilled(iMin, iMax, IM_COL32(255, 255, 255, 30), 2.0f);
+          dl->AddRectFilled(iMin, iMax, IM_COL32(200, 180, 100, 22), 2.0f);
 
         const char *model =
             def.modelFile.empty()
@@ -2151,29 +2327,25 @@ bool HandlePanelClick(float vx, float vy) {
       return true;
     }
 
-    // Stat "+" buttons — must match RenderCharInfoPanel left column layout:
-    // Left column starts at margin=10, width = (360 - 20 - 10) * 0.48 ≈ 158.4
-    // headerH=50, XP bar(16), then points banner(24) or gap(4), then 4 stat rows
-    constexpr float kMargin = 10.0f;
+    // Stat "+" buttons — MUST match RenderCharInfoPanel layout exactly
+    constexpr float kMargin = 12.0f;
     constexpr float kColGap = 10.0f;
     constexpr float kW = CHARINFO_PANEL_W;
     constexpr float kLeftColW = (kW - kMargin * 2 - kColGap) * 0.48f;
     constexpr float kLeftColX = kMargin;
-    constexpr float kRowH = 22.0f;
-    constexpr float kRowGap = 2.0f;
-    constexpr float kBtnW = 18.0f;
-    // statOrder: {0=STR, 1=AGI, 2=VIT, 3=ENE}
+    constexpr float kRowH = 20.0f;
+    constexpr float kRowGap = 3.0f;
+    constexpr float kBtnSz = 16.0f;
     if (*s_ctx->serverLevelUpPoints > 0) {
       float statRowH = kRowH + 4; // taller when points available
-      // Points banner is 18+6=24, headerH=50, XP=16 → stat start Y = 50+16+24 = 90
-      float statStartY = 50.0f + 16.0f + 24.0f;
+      // headerH(50) + padding(6) + XP bar(16) + banner(18+6=24) = 96
+      float statStartY = 50.0f + 6.0f + 16.0f + 24.0f;
       for (int i = 0; i < 4; i++) {
         float ry = statStartY + i * (statRowH + kRowGap);
-        float btnX = kLeftColX + kLeftColW - kBtnW - 3;
-        float btnY = ry + 2; // centered-ish vertically
-        float btnH = statRowH - 4;
-        if (relX >= btnX && relX < btnX + kBtnW &&
-            relY >= btnY && relY < btnY + btnH) {
+        float btnX = kLeftColX + kLeftColW - kBtnSz - 4;
+        float btnY = ry + (statRowH - kBtnSz) * 0.5f;
+        if (relX >= btnX && relX < btnX + kBtnSz &&
+            relY >= btnY && relY < btnY + kBtnSz) {
           s_ctx->server->SendStatAlloc(static_cast<uint8_t>(i));
           SoundManager::Play(SOUND_CLICK01);
           return true;
@@ -2220,7 +2392,7 @@ bool HandlePanelClick(float vx, float vy) {
     }
 
     // Bag grid: start drag (or handle upgrade mode click)
-    float gridRX = 15.0f, gridRY = 208.0f;
+    float gridRX = 15.0f, gridRY = 200.0f;
     float cellW = 20.0f, cellH = 20.0f, gap = 0.0f;
 
     for (int row = 0; row < 8; row++) {
@@ -2994,7 +3166,7 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
     }
 
     // 3. Check drop on Bag grid
-    float gridRX = 15.0f, gridRY = 208.0f;
+    float gridRX = 15.0f, gridRY = 200.0f;
     float cellW = 20.0f, cellH = 20.0f;
 
     if (relX >= gridRX && relX < gridRX + 8 * cellW && relY >= gridRY &&
@@ -3151,12 +3323,37 @@ void HandlePanelMouseUp(GLFWwindow *window, float vx, float vy) {
       }
     }
 
-    // 4. Dragging FROM Inventory TO Shop (Sell via drag-and-drop)
-    if (g_dragFromSlot >= 0 && *s_ctx->shopOpen &&
-        IsPointInPanel(vx, vy, GetShopPanelX()) && *s_ctx->syncDone) {
-      s_ctx->server->SendShopSell(g_dragFromSlot);
-      std::cout << "[Shop] Sold item via drag from slot " << g_dragFromSlot
-                << std::endl;
+    // 4. Dragging FROM Inventory/Equipment TO Shop (Sell via drag-and-drop)
+    if (*s_ctx->shopOpen && IsPointInPanel(vx, vy, GetShopPanelX()) && *s_ctx->syncDone) {
+      if (g_dragFromSlot >= 0) {
+        s_ctx->server->SendShopSell(g_dragFromSlot);
+        std::cout << "[Shop] Sold item via drag from bag slot " << g_dragFromSlot
+                  << std::endl;
+      } else if (g_dragFromEquipSlot >= 0) {
+        // Sell directly from equipment: encode as 64 + equipSlot
+        s_ctx->server->SendShopSell(64 + g_dragFromEquipSlot);
+
+        // Clear local equipment slot state
+        int eqSlot = g_dragFromEquipSlot;
+        s_ctx->equipSlots[eqSlot].equipped = false;
+        s_ctx->equipSlots[eqSlot].category = 0xFF;
+
+        // Update hero visuals
+        WeaponEquipInfo emptyInfo;
+        if (eqSlot == 0)
+          s_ctx->hero->EquipWeapon(emptyInfo);
+        if (eqSlot == 1)
+          s_ctx->hero->EquipShield(emptyInfo);
+        if (eqSlot == 8)
+          s_ctx->hero->UnequipPet();
+        if (eqSlot >= 2 && eqSlot <= 6)
+          s_ctx->hero->EquipBodyPart(eqSlot - 2, "");
+
+        SoundManager::Play(SOUND_GET_ITEM01);
+        RecalcEquipmentStats();
+        std::cout << "[Shop] Sold item via drag from equip slot "
+                  << eqSlot << std::endl;
+      }
       g_dragFromSlot = -1;
       g_dragFromEquipSlot = -1;
       g_dragFromShopSlot = -1;
@@ -3235,30 +3432,25 @@ void LoadSlotBackgrounds(const std::string &dataPath) {
   g_texInventoryBg =
       UITexture::Load(dataPath + "/Interface/mu_inventory_bg.png");
 
-  g_slotBackgrounds[0] = TextureLoader::Resolve(dataPath + "/Interface",
-                                                "newui_item_weapon(R).OZT");
-  g_slotBackgrounds[1] = TextureLoader::Resolve(dataPath + "/Interface",
-                                                "newui_item_weapon(L).OZT");
-  g_slotBackgrounds[2] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_cap.OZT");
-  g_slotBackgrounds[3] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_upper.OZT");
-  g_slotBackgrounds[4] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_lower.OZT");
-  g_slotBackgrounds[5] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_gloves.OZT");
-  g_slotBackgrounds[6] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_boots.OZT");
-  g_slotBackgrounds[7] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_wing.OZT");
-  g_slotBackgrounds[8] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_fairy.OZT");
-  g_slotBackgrounds[9] = TextureLoader::Resolve(dataPath + "/Interface",
-                                                "newui_item_necklace.OZT");
-  g_slotBackgrounds[10] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_ring.OZT");
-  g_slotBackgrounds[11] =
-      TextureLoader::Resolve(dataPath + "/Interface", "newui_item_ring.OZT");
+  // Load clean minimal PNG slot silhouettes (replaces legacy OZT files)
+  const char *slotPngFiles[] = {
+      "newui_item_weapon_r.png",  // 0: R.Hand
+      "newui_item_weapon_l.png",  // 1: L.Hand
+      "newui_item_cap.png",       // 2: Helm
+      "newui_item_upper.png",     // 3: Armor
+      "newui_item_lower.png",     // 4: Pants
+      "newui_item_gloves.png",    // 5: Gloves
+      "newui_item_boots.png",     // 6: Boots
+      "newui_item_wing.png",      // 7: Wings
+      "newui_item_fairy.png",     // 8: Pet/Fairy
+      "newui_item_necklace.png",  // 9: Pendant
+      "newui_item_ring.png",      // 10: Ring 1
+      "newui_item_ring.png",      // 11: Ring 2
+  };
+  for (int i = 0; i < 12; i++) {
+    auto tex = UITexture::Load(dataPath + "/Interface/" + slotPngFiles[i]);
+    g_slotBackgrounds[i] = tex.id;
+  }
 
   // Skill icon sprite sheet (25 icons per row, 20x28px each on 512x512)
   g_texSkillIcons = TextureLoader::LoadOZJ(dataPath + "/Interface/Skill.OZJ");
@@ -3295,10 +3487,10 @@ void UpdatePanelScale(int /*windowHeight*/) {
   g_uiPanelScale = 1.5f; // constant — UICoords handles resolution scaling
 }
 
-float GetCharInfoPanelX() { return 1270.0f - CharInfoPanelW(); }
+float GetCharInfoPanelX() { return 1540.0f - CharInfoPanelW(); }
 
 float GetInventoryPanelX() {
-  return *s_ctx->showCharInfo ? GetCharInfoPanelX() - PanelW() - 5.0f : PanelXRight();
+  return *s_ctx->showCharInfo ? GetCharInfoPanelX() - PanelW() - 3.0f : PanelXRight();
 }
 
 float GetShopPanelX() { return GetInventoryPanelX() - PanelW() - 5.0f; }

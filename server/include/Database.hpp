@@ -62,6 +62,8 @@ struct CharacterData {
   uint8_t buffDmgType = 0;    // 0=inactive, 2=damage
   float buffDmgRemaining = 0;
   int buffDmgValue = 0;
+  uint16_t resets = 0;        // Reset counter
+  uint8_t role = 0;           // 0=player, 1=gm, 2=admin, 3=bot
 };
 
 // Equipment slot constants (matching original MU inventory layout)
@@ -258,9 +260,13 @@ public:
                        const std::string &message);
   std::vector<ChatLogEntry> GetChatHistory(int characterId, int limit = 200);
 
+  // Reopen DB connection (after external file replacement)
+  void Reopen();
+
 private:
   void CreateTables();
   sqlite3 *m_db = nullptr;
+  std::string m_dbPath;
 };
 
 #endif // MU_DATABASE_HPP

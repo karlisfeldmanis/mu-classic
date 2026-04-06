@@ -56,6 +56,7 @@ void main()
     // Local UV (0-1 within cell) for radial fade — unaffected by sprite sheet
     v_localuv = vec2(u, v);
 
-    v_color0 = vec4(iColor, 1.0);
+    float iRadialStr = i_data1.w;  // 0=no radial fade (fire), >0=fade strength (smoke)
+    v_color0 = vec4(iColor, iRadialStr);
     v_alpha = iAlpha;
 }

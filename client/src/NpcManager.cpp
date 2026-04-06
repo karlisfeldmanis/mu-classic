@@ -36,7 +36,8 @@ static const std::unordered_map<uint16_t, std::string> s_npcNames = {
     {242, "Elf Lala"},
     {243, "Eo the Craftsman"},
     {238, "Chaos Goblin"},
-    {256, "Sentinel Arwen"}};
+    {256, "Sentinel Arwen"},
+    {313, "Tower Warden Veros"}};
 
 glm::vec3 NpcManager::sampleTerrainLightAt(const glm::vec3 &worldPos) const {
   return TerrainUtils::SampleLightAt(m_terrainLightmap, worldPos);
@@ -190,6 +191,22 @@ void NpcManager::addNpc(int modelIdx, int gridX, int gridY, int dir,
     }
   }
 
+  // Upload wing meshes
+  if (mdl.wingBmd) {
+    std::string wingTexDir = m_dataPath + "/Item/";
+    if (mdl.cachedWingBones.empty())
+      mdl.cachedWingBones = ComputeBoneMatrices(mdl.wingBmd);
+    AABB wAabb{};
+    for (int mi = 0; mi < (int)mdl.wingBmd->Meshes.size(); ++mi) {
+      auto &mesh = mdl.wingBmd->Meshes[mi];
+      bool bright = (mdl.wingBlendMesh >= 0 && mesh.Texture == mdl.wingBlendMesh);
+      UploadMeshWithBones(mesh, wingTexDir, mdl.cachedWingBones,
+                          npc.wingMeshBuffers, wAabb, true);
+      if (!npc.wingMeshBuffers.empty())
+        npc.wingMeshBuffers.back().bright = bright;
+    }
+  }
+
   // Create shadow mesh buffers
   for (auto &bp : npc.bodyParts) {
     for (auto &mb : bp.meshBuffers) {
@@ -337,6 +354,20 @@ void NpcManager::InitModels(const std::string &dataPath) {
   }
   if (poleaxeIdx >= 0) {
     m_typeToModel[312] = poleaxeIdx;  // Warden Hale (quest guard)
+  }
+
+  // ── Lost Tower: Tower Warden Veros (Plate armor set, no weapon/wings) ──
+  {
+    int verosIdx =
+        loadModel(playerPath, "player.bmd",
+                  {"HelmMale10.bmd", "ArmorMale10.bmd", "PantMale10.bmd",
+                   "GloveMale10.bmd", "BootMale10.bmd"},
+                  "TowerWardenVeros");
+    if (verosIdx >= 0) {
+      m_models[verosIdx].weaponAttachBone = 33; // Mark as guard for Player/ texture dir
+      m_models[verosIdx].defaultAction = 1;     // PLAYER_STOP_MALE
+      m_typeToModel[313] = verosIdx;
+    }
   }
 
   m_modelsLoaded = true;
@@ -668,7 +699,7 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     // Luminosity for Lorencia is a constant 0.8f (ZzzCharacter.cpp:5500)
     bool isBlacksmith = (npc.npcType == 251);
     bool isGuardNpc = (npc.npcType >= 245 && npc.npcType <= 249) ||
-                      (npc.npcType >= 310 && npc.npcType <= 312);
+                      (npc.npcType >= 310 && npc.npcType <= 313);
     float blendMeshLight = 1.0f;
     if (isBlacksmith) blendMeshLight = 0.8f;
     if (isGuardNpc) blendMeshLight = 0.8f;
@@ -683,21 +714,36 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
       m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
       m_shader->setVec4("u_glowColor", glm::vec4(glowColor, 0.0f));
-      m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 2.0f)); // w=2.0 enables matcap
+      m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
       m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
       m_shader->setVec4("u_fogParams", glm::vec4(fogNear, fogFar, useFog, 0.0f));
       m_shader->setVec4("u_fogColor", glm::vec4(fogColor, 0.0f));
       m_shader->uploadPointLights(plCount, m_pointLights.data());
-      // Shadow map
+      // Shadow map (only for non-glow passes)
       float shadowEnabled = bgfx::isValid(m_shadowMapTex) ? 1.0f : 0.0f;
       m_shader->setVec4("u_shadowParams", glm::vec4(shadowEnabled, 0.0f, 0.0f, 0.0f));
       if (shadowEnabled > 0.5f) {
         m_shader->setMat4("u_lightMtx", m_lightMtx);
         m_shader->setTexture(1, "s_shadowMap", m_shadowMapTex);
       }
-      auto& ct = ChromeGlow::GetTextures();
-      if (TexValid(ct.chrome2))
-        m_shader->setTexture(3, "s_matcapTex", ct.chrome2);
+    };
+
+    // Glow-specific uniforms: force terrainLight=white, bml=1.0 (like HeroCharacter)
+    auto setGlowUniforms = [&](float chromeMode, float chromeTime,
+                               const glm::vec3 &glowColor) {
+      m_shader->setVec4("u_params", glm::vec4(1.0f, 1.0f, chromeMode, chromeTime));
+      m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+      m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
+      m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
+      m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_glowColor", glm::vec4(glowColor, 0.0f));
+      m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+      m_shader->setVec4("u_fogParams", glm::vec4(fogNear, fogFar, useFog, 0.0f));
+      m_shader->setVec4("u_fogColor", glm::vec4(fogColor, 0.0f));
+      m_shader->uploadPointLights(plCount, m_pointLights.data());
+      m_shader->setVec4("u_shadowParams", glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
     };
 
     // Draw all body part meshes
@@ -732,31 +778,24 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     // ── +7 armor enhancement glow for guards (ChromeGlow module) ──
     bool isGuardType = (npc.npcType >= 245 && npc.npcType <= 249) ||
                        npc.npcType == 256 ||
-                       (npc.npcType >= 310 && npc.npcType <= 312);
+                       (npc.npcType >= 310 && npc.npcType <= 313);
     if (isGuardType && TexValid(ChromeGlow::GetTextures().chrome1)) {
-      static constexpr int GUARD_ARMOR_LEVEL = 7;
-      // Plate guards use index 9 (muted blue), Elf guard uses index 5 (white)
+      int guardArmorLevel = (npc.npcType == 313) ? 9 : 7;
       int guardItemIdx = (npc.npcType == 256) ? 5 : 9;
       float t = (float)glfwGetTime();
-      uint64_t glowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
-                         | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
       for (int p = 0; p < (int)npc.bodyParts.size(); ++p) {
-        auto &bp = npc.bodyParts[p];
-        ChromeGlow::GlowPass passes[3];
-        int n = ChromeGlow::GetGlowPasses(GUARD_ARMOR_LEVEL, 7 + p, guardItemIdx, passes);
-        for (int gp = 0; gp < n; ++gp) {
-          for (auto &mb : bp.meshBuffers) {
-            if (mb.indexCount == 0 || mb.hidden) continue;
-            bgfx::setTransform(glm::value_ptr(model));
-            if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
-            else bgfx::setVertexBuffer(0, mb.vbo);
-            bgfx::setIndexBuffer(mb.ebo);
-            m_shader->setTexture(0, "s_texColor", passes[gp].texture);
-            setNpcUniforms(blendMeshLight, (float)passes[gp].chromeMode, t, passes[gp].color);
-            bgfx::setState(glowState);
-            bgfx::submit(0, m_shader->program);
-          }
-        }
+        ChromeGlow::GlowRenderParams gp{};
+        gp.modelMat = &model;
+        gp.enhanceLevel = guardArmorLevel;
+        gp.category = 7 + p;
+        gp.itemIndex = guardItemIdx;
+        gp.viewId = 0;
+        gp.time = t;
+        gp.skipBlendMesh = -1;
+        gp.colorScale = 1.0f;
+        gp.viewPos = eye;
+        gp.luminosity = m_luminosity;
+        ChromeGlow::RenderGlowMeshes(m_shader.get(), npc.bodyParts[p].meshBuffers, gp);
       }
       // Reset uniforms after guard glow passes
       setNpcUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
@@ -792,6 +831,91 @@ void NpcManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
                                  npc.weaponMeshBuffers[mi]);
       }
       for (auto &mb : npc.weaponMeshBuffers) {
+        if (mb.indexCount == 0 || mb.hidden) continue;
+        bgfx::setTransform(glm::value_ptr(model));
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        m_shader->setTexture(0, "s_texColor", mb.texture);
+        setNpcUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+        uint64_t wState;
+        if (mb.bright) {
+          wState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                 | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_BLEND_ADD;
+        } else {
+          wState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
+                 | BGFX_STATE_DEPTH_TEST_LESS
+                 | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+        }
+        bgfx::setState(wState);
+        bgfx::submit(0, m_shader->program);
+      }
+
+      // +9 weapon glow for Tower Warden Veros (centralized)
+      if (npc.npcType == 313 && TexValid(ChromeGlow::GetTextures().chrome1)) {
+        ChromeGlow::GlowRenderParams gp{};
+        gp.modelMat = &model;
+        gp.enhanceLevel = 9;
+        gp.category = 0;
+        gp.itemIndex = 17;
+        gp.viewId = 0;
+        gp.time = (float)glfwGetTime();
+        gp.skipBlendMesh = -1;
+        gp.colorScale = 1.0f;
+        gp.viewPos = eye;
+        gp.luminosity = m_luminosity;
+        ChromeGlow::RenderGlowMeshes(m_shader.get(), npc.weaponMeshBuffers, gp);
+        setNpcUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
+      }
+    }
+
+    // ── Wing rendering (Main 5.2 RenderCharacterBackItem — bone 47) ──
+    static constexpr int WING_BONE = 47;
+    if (mdl.wingBmd && !npc.wingMeshBuffers.empty() &&
+        WING_BONE < (int)bones.size()) {
+      // Animate wing
+      if (!mdl.wingBmd->Actions.empty() &&
+          mdl.wingBmd->Actions[0].NumAnimationKeys > 1) {
+        float wingSpeed = 0.25f * 25.0f; // Main 5.2 PlaySpeed 0.25f idle
+        npc.wingAnimFrame += wingSpeed * deltaTime;
+        int wingKeys = mdl.wingBmd->Actions[0].NumAnimationKeys;
+        if (npc.wingAnimFrame >= (float)wingKeys)
+          npc.wingAnimFrame = std::fmod(npc.wingAnimFrame, (float)wingKeys);
+      }
+
+      // Standalone wing: rigid attachment to bone 47
+      BoneWorldMatrix wingOffsetMat =
+          MuMath::BuildWeaponOffsetMatrix(glm::vec3(0, 0, 0),
+                                          MuMath::WING_BACK_OFFSET);
+      BoneWorldMatrix wingParentMat;
+      MuMath::ConcatTransforms((const float(*)[4])bones[WING_BONE].data(),
+                               (const float(*)[4])wingOffsetMat.data(),
+                               (float(*)[4])wingParentMat.data());
+
+      // Use animated wing bones if available
+      std::vector<BoneWorldMatrix> wingAnimBones;
+      const std::vector<BoneWorldMatrix> *wLocalPtr = &mdl.cachedWingBones;
+      if (!mdl.wingBmd->Actions.empty() &&
+          mdl.wingBmd->Actions[0].NumAnimationKeys > 1) {
+        wingAnimBones = ComputeBoneMatricesInterpolated(mdl.wingBmd, 0,
+                                                        npc.wingAnimFrame);
+        wLocalPtr = &wingAnimBones;
+      }
+      const auto &wLocalBones = *wLocalPtr;
+      std::vector<BoneWorldMatrix> wFinalBones(wLocalBones.size());
+      for (int bi = 0; bi < (int)wLocalBones.size(); ++bi) {
+        MuMath::ConcatTransforms((const float(*)[4])wingParentMat.data(),
+                                 (const float(*)[4])wLocalBones[bi].data(),
+                                 (float(*)[4])wFinalBones[bi].data());
+      }
+
+      // Re-skin and render wing meshes
+      for (int mi = 0; mi < (int)npc.wingMeshBuffers.size() &&
+                       mi < (int)mdl.wingBmd->Meshes.size(); ++mi) {
+        RetransformMeshWithBones(mdl.wingBmd->Meshes[mi], wFinalBones,
+                                 npc.wingMeshBuffers[mi]);
+      }
+      for (auto &mb : npc.wingMeshBuffers) {
         if (mb.indexCount == 0 || mb.hidden) continue;
         bgfx::setTransform(glm::value_ptr(model));
         if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);

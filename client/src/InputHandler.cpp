@@ -9,6 +9,7 @@
 #include "MonsterManager.hpp"
 #include "NpcManager.hpp"
 #include "ObjectRenderer.hpp"
+#include "GroundItemRenderer.hpp"
 #include "RayPicker.hpp"
 #include "ServerConnection.hpp"
 #include "TextureLoader.hpp"
@@ -155,10 +156,15 @@ static void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
     return;
 
   // Update NPC, Monster, and Ground Item hover state on cursor move
-  // Block hover picking only when cursor is actually over a UI panel
+  // Block hover picking when cursor is over a UI panel
   bool mouseOverUI = ImGui::GetIO().WantCaptureMouse ||
       (s_ctx->mouseOverUIPanel && *s_ctx->mouseOverUIPanel);
-  if (!mouseOverUI) {
+  if (mouseOverUI) {
+    // Clear all hover states so cursor icons don't linger behind panels
+    *s_ctx->hoveredNpc = -1;
+    *s_ctx->hoveredMonster = -1;
+    *s_ctx->hoveredGroundItem = -1;
+  } else {
     *s_ctx->hoveredNpc = RayPicker::PickNpc(window, xpos, ypos);
     // Also check NPC label hover (only after game is fully initialized)
     if (*s_ctx->hoveredNpc < 0 && s_gameReady) {
@@ -172,8 +178,17 @@ static void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
           (float)xpos, (float)ypos, view, proj, winW, winH, camPos);
     }
     if (*s_ctx->hoveredNpc < 0) {
-      // Ground items have higher pick priority than monsters so loot is easy
-      *s_ctx->hoveredGroundItem = RayPicker::PickGroundItem(window, xpos, ypos);
+      // Ground items: label pick first, then ray pick
+      int winW, winH;
+      glfwGetWindowSize(window, &winW, &winH);
+      glm::mat4 hv = s_ctx->camera->GetViewMatrix();
+      glm::mat4 hp = s_ctx->camera->GetProjectionMatrix((float)winW, (float)winH);
+      glm::vec3 hcp = s_ctx->camera->GetPosition();
+      *s_ctx->hoveredGroundItem = GroundItemRenderer::PickLabel(
+          s_ctx->groundItems, s_ctx->maxGroundItems,
+          (float)xpos, (float)ypos, ImGui::GetFont(), hv, hp, winW, winH, hcp);
+      if (*s_ctx->hoveredGroundItem < 0)
+        *s_ctx->hoveredGroundItem = RayPicker::PickGroundItem(window, xpos, ypos);
       if (*s_ctx->hoveredGroundItem < 0) {
         *s_ctx->hoveredMonster = RayPicker::PickMonster(window, xpos, ypos);
       } else {
@@ -183,10 +198,6 @@ static void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
       *s_ctx->hoveredMonster = -1;
       *s_ctx->hoveredGroundItem = -1;
     }
-  } else {
-    *s_ctx->hoveredNpc = -1;
-    *s_ctx->hoveredMonster = -1;
-    *s_ctx->hoveredGroundItem = -1;
   }
 
   // Update cursor based on hover state (Main 5.2: CursorId switching)
@@ -279,7 +290,7 @@ static void HandlePickupClick(GLFWwindow *window, double mx, double my) {
 static bool IsGuardNpc(uint16_t npcType) {
   return (npcType >= 245 && npcType <= 249) ||
          npcType == 256 ||
-         (npcType >= 310 && npcType <= 312);
+         (npcType >= 310 && npcType <= 313);
 }
 
 static void OpenNpcDialog(int npcIdx, const NpcInfo &info) {
@@ -420,8 +431,23 @@ static void mouse_button_callback(GLFWwindow *window, int button, int action,
           *s_ctx->selectedNpc = -1;
         }
         s_pendingNpcIdx = -1;
-        // Re-pick at click time for reliable priority (NPC > Item > Monster)
-        int itemHit = RayPicker::PickGroundItem(window, mx, my);
+        // Re-pick at click time: label click > ray pick > monster
+        // Check ground item labels first (2D screen-space hit test)
+        int itemHit = -1;
+        {
+          int winW, winH;
+          glfwGetWindowSize(window, &winW, &winH);
+          glm::mat4 v = s_ctx->camera->GetViewMatrix();
+          glm::mat4 p = s_ctx->camera->GetProjectionMatrix((float)winW, (float)winH);
+          glm::vec3 cp = s_ctx->camera->GetPosition();
+          ImFont *font = ImGui::GetFont();
+          itemHit = GroundItemRenderer::PickLabel(
+              s_ctx->groundItems, s_ctx->maxGroundItems,
+              (float)mx, (float)my, font, v, p, winW, winH, cp);
+        }
+        // Fallback to ray pick if label not hit
+        if (itemHit < 0)
+          itemHit = RayPicker::PickGroundItem(window, mx, my);
         int monHit =
             (itemHit < 0) ? RayPicker::PickMonster(window, mx, my) : -1;
         // Update hover state to match click picks

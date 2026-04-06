@@ -51,10 +51,11 @@ void UpdateAndRender(FloatingDamage *pool, int poolSize, float deltaTime,
       continue;
     }
 
-    // Main 5.2: scale decay — 5.0 per tick, minimum 15.0
+    // Scale decay — crits/excellent stay larger (min 22 vs normal 15)
     d.scale -= 5.0f * ticks;
-    if (d.scale < 15.0f)
-      d.scale = 15.0f;
+    float minScale = (d.type == 2 || d.type == 3) ? 22.0f : 15.0f;
+    if (d.scale < minScale)
+      d.scale = minScale;
 
     // Current position
     glm::vec3 pos = d.worldPos + glm::vec3(0, d.yOffset, 0);
@@ -147,64 +148,75 @@ void GetItemRestingAngle(int defIndex, glm::vec3 &angle, float &scale,
     index = defIndex % 32;
   }
 
-  // Main 5.2 ItemAngle() exact values (ZzzObject.cpp:5437-5686)
-  // Angle[0]=X(pitch), Angle[1]=Y(yaw), Angle[2]=Z(roll)
+  // Weapon angles: lay flat on ground with blade visible (not buried)
+  // heightBoost lifts the model above terrain so it doesn't clip
   if (category >= 0 && category <= 1) { // Swords, Axes
-    angle = glm::vec3(60.0f, 0.0f, -45.0f);
-    if (category == 0 && index == 19) scale = 0.7f; // Divine Sword
+    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+    heightBoost = 30.0f;
+    if (category == 0 && index == 19) scale = 0.7f;
   } else if (category == 2) { // Maces
     angle = glm::vec3(0.0f, 270.0f, -45.0f);
+    heightBoost = 30.0f;
   } else if (category == 3) { // Spears
-    angle = glm::vec3(60.0f, 0.0f, -45.0f);
-    scale = 0.7f; // Main 5.2: MODEL_SPEAR range = 0.7
+    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+    scale = 0.7f;
+    heightBoost = 30.0f;
   } else if (category == 4) { // Bows/Crossbows
-    if ((index >= 8 && index < 17) || (index >= 18 && index < 20)) {
-      angle = glm::vec3(90.0f, 0.0f, -45.0f); // Crossbows: flat
-    } else if (index >= 20 && index <= 22) {
-      angle = glm::vec3(0.0f, 0.0f, -45.0f);
-    } else {
-      angle = glm::vec3(60.0f, 0.0f, -45.0f);
-    }
+    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+    heightBoost = 25.0f;
   } else if (category == 5) { // Staffs
     angle = glm::vec3(0.0f, 270.0f, -45.0f);
-    scale = 0.7f; // Main 5.2: MODEL_STAFF range = 0.7
-  } else if (category == 6) { // Shields
+    scale = 0.7f;
+    heightBoost = 30.0f;
+  } else if (category == 6) { // Shields — flat on ground, tilted
     angle = glm::vec3(0.0f, 270.0f, 225.0f);
-    // Main 5.2: shields use base height +30. Raise model so it doesn't
-    // clip into terrain (AABB centering puts half the model underground).
     heightBoost = 15.0f;
-  } else if (category == 7) { // Helms
-    // Default angle (0, 0, -45)
-    heightBoost = 8.0f;
-  } else if (category >= 8 && category <= 11) { // Armor/Pants/Gloves/Boots
-    angle = glm::vec3(270.0f, 0.0f, -45.0f);
+  } else if (category == 7) { // Helms — standing upright
+    angle = glm::vec3(0.0f, 0.0f, 0.0f);
     heightBoost = 10.0f;
-  } else if (category == 12) { // Wings/Misc — Orbs in 0.97d
-    // Orbs are small spherical items
-    angle = glm::vec3(0.0f, 0.0f, -45.0f);
+  } else if (category >= 8 && category <= 9) { // Armor/Pants — lying flat
+    angle = glm::vec3(270.0f, 0.0f, -45.0f);
+    heightBoost = 15.0f;
+  } else if (category == 10) { // Gloves — lying flat
+    angle = glm::vec3(270.0f, 0.0f, -45.0f);
+    heightBoost = 25.0f;
+  } else if (category == 11) { // Boots — standing upright
+    angle = glm::vec3(0.0f, 0.0f, 0.0f);
+    heightBoost = 10.0f;
+  } else if (category == 12) { // Wings/Misc — Orbs standing upright
+    angle = glm::vec3(0.0f, 0.0f, 0.0f);
     scale = 0.6f;
+    heightBoost = 10.0f;
   } else if (category == 13) { // Accessories — Rings, Pendants
-    // Small items: rings lie flat, pendants dangle
-    if (index < 10) { // Rings
+    if (index < 10) { // Rings — flat
       angle = glm::vec3(90.0f, 0.0f, -45.0f);
       scale = 0.5f;
-    } else { // Pendants
-      angle = glm::vec3(0.0f, 0.0f, -45.0f);
+    } else { // Pendants — standing
+      angle = glm::vec3(0.0f, 0.0f, 0.0f);
       scale = 0.5f;
+      heightBoost = 8.0f;
     }
   } else if (category == 14) { // Potions, Jewels, Ale
     if (index <= 8) {
-      // Potions/Ale: upright bottles, default angle
-      // angle stays (0, 0, -45)
+      // Potions/Ale: standing upright
+      angle = glm::vec3(0.0f, 0.0f, 0.0f);
+      scale = 0.7f;
+      heightBoost = 10.0f;
     } else if (index == 13 || index == 14 || index == 16 || index == 22) {
-      // Jewels (Bless, Soul, Life, Creation): small gems
-      angle = glm::vec3(0.0f, 0.0f, -45.0f);
-      scale = 0.6f;
+      // Jewels: standing upright
+      angle = glm::vec3(0.0f, 0.0f, 0.0f);
+      scale = 0.8f;
+      heightBoost = 15.0f;
+    } else {
+      // Other consumables: standing
+      angle = glm::vec3(0.0f, 0.0f, 0.0f);
+      scale = 0.8f;
+      heightBoost = 10.0f;
     }
-  } else if (category == 15) { // Scrolls/Skill items
-    // Main 5.2 ETC: Angle=(270, 0, -45) — show front face of scroll/book
-    angle = glm::vec3(270.0f, 0.0f, -45.0f);
-    scale = 0.8f;
+  } else if (category == 15) { // Scrolls/Skill items — standing upright
+    angle = glm::vec3(0.0f, 0.0f, 0.0f);
+    scale = 0.9f;
+    heightBoost = 15.0f;
   }
 }
 
@@ -219,15 +231,10 @@ void UpdatePhysics(GroundItem &gi, float terrainHeight) {
   }
 
   // Apply gravity
-  gi.position.y += gi.gravity * 0.5f; // Integrate velocity (using Y as UP)
-  gi.gravity -= 1.0f;                 // Gravity accel
+  gi.position.y += gi.gravity * 0.5f;
+  gi.gravity -= 1.0f;
 
-  // Main 5.2: tumble rotation while falling
-  // Shields (cat 6): yaw spin. Weapons (cat 0-5): pitch spin.
-  float tumbleRate = std::abs(gi.gravity) * 2.0f;
-  gi.angle.x += tumbleRate; // Pitch tumble for weapons
-  if (gi.angle.x > 360.0f)
-    gi.angle.x -= 360.0f;
+  // Items keep their resting angle at all times (no tumble during fall)
 
   // Floor check (bounce)
   if (gi.position.y <= terrainHeight + 0.5f) {
@@ -247,34 +254,57 @@ void UpdatePhysics(GroundItem &gi, float terrainHeight) {
   }
 }
 
+// Main 5.2 RandomTable — deterministic pile layout (same values every frame)
+static const int s_randomTable[100] = {
+    73, 17, 94, 22, 56, 81, 39, 67, 10, 48,
+    85, 31,  5, 62, 90, 14, 77, 43, 28, 59,
+    96,  8, 53, 36, 71, 19, 88, 45,  2, 64,
+    50, 83, 27, 12, 70, 41, 97, 33, 58, 79,
+    15, 92, 24, 66,  7, 54, 38, 87, 46, 75,
+    20, 61, 99,  3, 49, 82, 34, 69, 11, 57,
+    80, 26, 44, 93, 16, 72, 37, 55, 86,  1,
+    63, 47, 29, 91, 68, 13, 78, 42, 98, 23,
+    52, 35, 84,  9, 74, 60, 30, 40, 18, 95,
+    65,  6, 51, 76, 21, 89, 32, 58, 25, 46
+};
+
 void RenderZenPile(int quantity, glm::vec3 pos, glm::vec3 angle, float scale,
                    const glm::mat4 &view, const glm::mat4 &proj) {
-  // Procedural pile based on quantity
+  // Main 5.2 coin count formula: sqrt(zen) / 2, clamped [3, 80]
   int coinCount = (int)sqrtf((float)quantity) / 2;
   if (coinCount < 3)
     coinCount = 3;
-  if (coinCount > 20)
-    coinCount = 20;
+  if (coinCount > 80)
+    coinCount = 80;
 
-  // Seed rand with quantity to keep pile consistent per frame
-  srand(quantity + (int)pos.x);
+  // Derive a stable item index from position (consistent across frames)
+  int itemIdx = (int)(pos.x * 7.0f + pos.z * 13.0f) & 0x7FFFFFFF;
 
-  for (int i = 0; i < coinCount; ++i) {
+  // Render first coin at pile center
+  ItemModelManager::RenderItemWorld("Gold01.bmd", pos, view, proj, scale,
+                                    angle, -1);
+
+  // Main 5.2 radial distribution: each coin placed at random angle + distance
+  for (int j = 1; j < coinCount; ++j) {
+    // Deterministic random angle (0-359 degrees around Y axis)
+    float randAngle = (float)(s_randomTable[(itemIdx * 20 + j) % 100] % 360);
+    float angleRad = glm::radians(randAngle);
+
+    // Deterministic random distance from center (0 to coinCount+19 units)
+    float dist = (float)(s_randomTable[(itemIdx + j) % 100] % (coinCount + 20));
+
+    // Convert polar to XZ offset
     glm::vec3 offset;
-    offset.x = (rand() % 40) - 20.0f;
-    offset.z = (rand() % 40) - 20.0f;
-    offset.y = 0;
+    offset.x = cosf(angleRad) * dist;
+    offset.z = sinf(angleRad) * dist;
+    offset.y = 0.0f;
 
-    float rotY = (float)(rand() % 360);
-
-    // Simple stacking effect check
-    if (i > 5)
-      offset.y += 2.0f;
-    if (i > 10)
-      offset.y += 4.0f;
+    // Per-coin rotation for visual variety
+    glm::vec3 coinAngle = angle;
+    coinAngle.y = randAngle;
 
     ItemModelManager::RenderItemWorld("Gold01.bmd", pos + offset, view, proj,
-                                      scale);
+                                      scale, coinAngle, -1);
   }
 }
 
@@ -409,6 +439,50 @@ void RenderLabels(GroundItem *items, int maxItems, ImDrawList *dl, ImFont *font,
                                          gi.optionFlags);
     }
   }
+}
+
+int PickLabel(GroundItem *items, int maxItems, float mouseX, float mouseY,
+              ImFont *font, const glm::mat4 &view, const glm::mat4 &proj,
+              int winW, int winH, const glm::vec3 &camPos) {
+  glm::mat4 vp = proj * view;
+  float uiScale = ImGui::GetIO().DisplaySize.y / 768.0f;
+
+  for (int i = 0; i < maxItems; ++i) {
+    auto &gi = items[i];
+    if (!gi.active)
+      continue;
+
+    glm::vec3 labelPos = gi.position + glm::vec3(0, 50.0f, 0);
+    glm::vec4 clip = vp * glm::vec4(labelPos, 1.0f);
+    if (clip.w <= 0.0f)
+      continue;
+    float sx = ((clip.x / clip.w) * 0.5f + 0.5f) * winW;
+    float sy = ((1.0f - (clip.y / clip.w)) * 0.5f) * winH;
+
+    float dist = glm::length(gi.position - camPos);
+    if (dist > 1500.0f)
+      continue;
+
+    const char *name = ItemDatabase::GetDropName(gi.defIndex);
+    char label[128];
+    if (gi.defIndex == -1)
+      snprintf(label, sizeof(label), "%d Zen", gi.quantity);
+    else if (gi.itemLevel > 0)
+      snprintf(label, sizeof(label), "%s +%d", name, gi.itemLevel);
+    else
+      snprintf(label, sizeof(label), "%s", name);
+
+    float labelFs = 14.0f * uiScale;
+    ImVec2 ts = font->CalcTextSizeA(labelFs, FLT_MAX, 0, label);
+    float padX = 6.0f * uiScale, padY = 4.0f * uiScale;
+    float tx = sx - ts.x * 0.5f, ty = sy - ts.y * 0.5f;
+
+    if (mouseX >= tx - padX && mouseX <= tx + ts.x + padX &&
+        mouseY >= ty - padY && mouseY <= ty + ts.y + padY) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 void RenderShadows(GroundItem *items, int maxItems, const glm::mat4 &view,

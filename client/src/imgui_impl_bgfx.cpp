@@ -46,8 +46,7 @@ bool ImGui_ImplBgfx_Init(bgfx::ViewId viewId, const char *shaderDir) {
   s_bd->viewId = viewId;
 
   io.BackendRendererName = "imgui_impl_bgfx";
-  // NOTE: Not using RendererHasVtxOffset — simpler path where ImGui
-  // pre-applies vertex offsets to indices.
+  io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
 
   // Load shaders
   std::string dir = shaderDir;
@@ -105,30 +104,60 @@ void ImGui_ImplBgfx_Shutdown() {
   s_bd = nullptr;
 }
 
-static void ImGui_ImplBgfx_CreateFontsTexture() {
-  ImGuiIO &io = ImGui::GetIO();
-  unsigned char *pixels;
-  int width, height;
-  io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+// Create or update a bgfx texture from ImTextureData
+static void ImGui_ImplBgfx_CreateOrUpdateTexture(ImTextureData *tex) {
+  // Destroy old handle if updating
+  bgfx::TextureHandle old = {(uint16_t)(uintptr_t)tex->TexID};
+  if (tex->TexID != ImTextureID_Invalid && bgfx::isValid(old))
+    bgfx::destroy(old);
 
-  s_bd->fontTexture = bgfx::createTexture2D(
-      (uint16_t)width, (uint16_t)height, false, 1,
+  bgfx::TextureHandle th = bgfx::createTexture2D(
+      (uint16_t)tex->Width, (uint16_t)tex->Height, false, 1,
       bgfx::TextureFormat::RGBA8, 0,
-      bgfx::copy(pixels, width * height * 4));
+      bgfx::copy(tex->Pixels, tex->Width * tex->Height * 4));
 
-  io.Fonts->SetTexID((ImTextureID)(uintptr_t)s_bd->fontTexture.idx);
+  tex->SetTexID((ImTextureID)(uintptr_t)th.idx);
+  tex->Status = ImTextureStatus_OK;
+
+  // Track main font texture handle
+  if (tex == ImGui::GetIO().Fonts->TexData)
+    s_bd->fontTexture = th;
+}
+
+static void ImGui_ImplBgfx_DestroyTexture(ImTextureData *tex) {
+  if (tex->TexID != ImTextureID_Invalid) {
+    bgfx::TextureHandle th = {(uint16_t)(uintptr_t)tex->TexID};
+    if (bgfx::isValid(th))
+      bgfx::destroy(th);
+    tex->TexID = ImTextureID_Invalid;
+  }
+  tex->Status = ImTextureStatus_Destroyed;
 }
 
 void ImGui_ImplBgfx_NewFrame() {
   if (!s_bd)
     return;
-  if (!bgfx::isValid(s_bd->fontTexture))
-    ImGui_ImplBgfx_CreateFontsTexture();
+
+  // Process texture lifecycle events (ImGui 1.92+)
+  ImGuiPlatformIO &pio = ImGui::GetPlatformIO();
+  for (ImTextureData *tex : pio.Textures) {
+    if (tex->Status == ImTextureStatus_WantCreate ||
+        tex->Status == ImTextureStatus_WantUpdates) {
+      ImGui_ImplBgfx_CreateOrUpdateTexture(tex);
+    } else if (tex->Status == ImTextureStatus_WantDestroy) {
+      ImGui_ImplBgfx_DestroyTexture(tex);
+    }
+  }
 }
 
 void ImGui_ImplBgfx_SetViewId(bgfx::ViewId viewId) {
   if (s_bd)
     s_bd->viewId = viewId;
+}
+
+void ImGui_ImplBgfx_InvalidateFontsTexture() {
+  // No-op: bgfx::reset() does not destroy regular textures, only render targets.
+  // Font texture survives reset and does not need recreation.
 }
 
 void ImGui_ImplBgfx_RenderDrawData(ImDrawData *drawData) {

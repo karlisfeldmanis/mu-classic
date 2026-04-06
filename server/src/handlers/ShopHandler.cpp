@@ -351,43 +351,70 @@ void HandleShopSell(Session &session, const std::vector<uint8_t> &packet,
   res.result = 0;
   res.bagSlot = recv->bagSlot;
 
-  if (session.shopNpcType == -1 || recv->bagSlot >= 64 ||
-      !session.bag[recv->bagSlot].primary) {
+  if (session.shopNpcType == -1) {
     session.Send(&res, sizeof(res));
     return;
   }
 
-  auto &item = session.bag[recv->bagSlot];
-  auto def = db.GetItemDefinition(item.category, item.itemIndex);
+  // Determine source: 0-63 = bag slot, 64+ = equipment slot
+  bool fromEquip = (recv->bagSlot >= 64);
+  uint8_t slot = fromEquip ? (recv->bagSlot - 64) : recv->bagSlot;
 
-  if (def.category != item.category || def.itemIndex != item.itemIndex) {
+  uint8_t itemCat, itemIdx;
+  uint8_t itemLevel = 0;
+  uint32_t qty = 1;
+
+  if (fromEquip) {
+    if (slot >= Session::NUM_EQUIP_SLOTS || session.equipment[slot].category == 0xFF) {
+      session.Send(&res, sizeof(res));
+      return;
+    }
+    itemCat = session.equipment[slot].category;
+    itemIdx = session.equipment[slot].itemIndex;
+    itemLevel = session.equipment[slot].itemLevel;
+  } else {
+    if (slot >= 64 || !session.bag[slot].primary) {
+      session.Send(&res, sizeof(res));
+      return;
+    }
+    itemCat = session.bag[slot].category;
+    itemIdx = session.bag[slot].itemIndex;
+    itemLevel = session.bag[slot].itemLevel;
+    qty = (session.bag[slot].quantity > 1) ? session.bag[slot].quantity : 1;
+  }
+
+  auto def = db.GetItemDefinition(itemCat, itemIdx);
+  if (def.category != itemCat || def.itemIndex != itemIdx) {
     session.Send(&res, sizeof(res));
     return;
   }
 
   // Sell price accounts for stack quantity (potions/ammo sold as stacks)
-  uint32_t qty = (item.quantity > 1) ? item.quantity : 1;
   uint32_t sellPrice = (def.buyPrice * qty) / 3;
   if (sellPrice == 0) {
-    // Fallback: items with no/low buy price get minimum sell price
     sellPrice = std::max(1u, (uint32_t)(def.level * 100));
     if (sellPrice == 0)
-      sellPrice = 10; // Absolute minimum so all items are sellable
+      sellPrice = 10;
   }
 
   session.zen += sellPrice;
   db.UpdateCharacterMoney(session.characterId, session.zen);
 
-  for (int y = 0; y < def.height; ++y) {
-    for (int x = 0; x < def.width; ++x) {
-      int s = recv->bagSlot + y * 8 + x;
-      session.bag[s].occupied = false;
-      session.bag[s].primary = false;
-      session.bag[s].defIndex = -2;
+  if (fromEquip) {
+    // Clear equipment slot
+    session.equipment[slot] = {};
+    db.UpdateEquipment(session.characterId, slot, 0xFF, 0, 0, 0, 0);
+  } else {
+    for (int y = 0; y < def.height; ++y) {
+      for (int x = 0; x < def.width; ++x) {
+        int s = slot + y * 8 + x;
+        session.bag[s].occupied = false;
+        session.bag[s].primary = false;
+        session.bag[s].defIndex = -2;
+      }
     }
+    db.DeleteCharacterInventoryItem(session.characterId, slot);
   }
-
-  db.DeleteCharacterInventoryItem(session.characterId, recv->bagSlot);
 
   res.result = 1;
   res.zenGained = sellPrice;

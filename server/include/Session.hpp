@@ -35,6 +35,7 @@ public:
   uint8_t charClass = 0;
   bool inWorld = false;
   bool inCharSelect = true;
+  bool mapLoading = false; // True during map transition — monsters ignore this player
 
   // Cached combat stats (populated on char select / equip change)
   uint16_t strength = 0;
@@ -165,6 +166,9 @@ public:
   };
   std::vector<ActiveQuest> activeQuests; // Accepted, not yet completed
   uint64_t completedQuestMask = 0;      // Bitmask: bit N = quest N done (0-33)
+
+  uint16_t resets = 0;   // Reset counter (persisted)
+  uint8_t role = 0;      // 0=player, 1=gm, 2=admin, 3=bot
 
 private:
   int m_fd;

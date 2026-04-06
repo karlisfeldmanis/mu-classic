@@ -313,6 +313,8 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
   session.level = c.level;
   session.levelUpPoints = c.levelUpPoints;
   session.experience = c.experience;
+  session.resets = c.resets;
+  session.role = c.role;
   session.worldX = c.posY * 100.0f;
   session.worldZ = c.posX * 100.0f;
   session.mapId = c.mapId;

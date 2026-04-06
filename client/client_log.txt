@@ -1,11 +1,183 @@
-[GL] Debug output not available — using manual checks
-[GL] Renderer: Apple M1 Pro
-[GL] Version: 4.1 Metal - 90.5
+[BGFX] Initialized with Metal backend (1366x768)
+[ImGui_BGFX] Init OK — view=30, program=10
+[Sky] Initialized with 36 segments, radius 3200 (BGFX)
+[PostProcess] Initialized successfully
+[ShadowMap] Initialized 4096x4096 depth FBO
+[FireEffect] Loaded fire texture: Data/Effect/Fire01.OZJ
+[FireEffect] Loaded smoke texture: Data/Effect/smoke01.OZJ
+[BMDParser] Data/Skill/Fire01.bmd Version: 0xa File size: 9095
+[BMDParser] Meshes: 2 Bones: 6 Actions: 1
+ [Mesh 0] Verts: 26 Norms: 26 Tex: 43 Tris: 48 Texture: fire02.jpg
+ [Mesh 1] Verts: 25 Norms: 25 Tex: 28 Tris: 40 Texture: fire01.jpg
+[BMDParser] AABB: Min(-26.0647,-26.1505,-62.4406) Max(26.1981,26.1123,103.236)
+[VFX] Fire01.bmd loaded: 2 meshes
+[BMDParser] Data/Skill/Blast01.bmd Version: 0xa File size: 1026
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 16 Norms: 4 Tex: 4 Tris: 8 Texture: ring2.jpg
+[BMDParser] AABB: Min(-67.2917,-78.8649,-62.9426) Max(67.2917,386.659,71.641)
+[VFX] Blast01.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/Poison01.bmd Version: 0xa File size: 40360
+[BMDParser] Meshes: 2 Bones: 39 Actions: 1
+ [Mesh 0] Verts: 75 Norms: 75 Tex: 31 Tris: 132 Texture: wall01.jpg
+ [Mesh 1] Verts: 147 Norms: 147 Tex: 28 Tris: 252 Texture: wall02.jpg
+[BMDParser] AABB: Min(-23.9098,-23.953,4.03674) Max(24.0024,23.9593,51.8795)
+[VFX] Poison01.bmd loaded: 2 meshes
+[BMDParser] Data/Skill/Ice01.bmd Version: 0xa File size: 29966
+[BMDParser] Meshes: 1 Bones: 13 Actions: 1
+ [Mesh 0] Verts: 192 Norms: 376 Tex: 72 Tris: 256 Texture: ice.jpg
+[BMDParser] AABB: Min(-121.292,-272.5,0.421875) Max(118.401,11.0812,242.409)
+[VFX] Ice01.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/Ice02.bmd Version: 0xa File size: 786
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 5 Norms: 6 Tex: 7 Tris: 6 Texture: ice.jpg
+[BMDParser] AABB: Min(-52.1942,-5.3259,210.335) Max(-11.8065,3.8025,238.687)
+[VFX] Ice02.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/Storm01.bmd Version: 0xa File size: 38660
+[BMDParser] Meshes: 1 Bones: 7 Actions: 1
+ [Mesh 0] Verts: 216 Norms: 216 Tex: 117 Tris: 384 Texture: typhoon.jpg
+[BMDParser] AABB: Min(-289.723,-288.642,-133.942) Max(287.171,288.252,13.561)
+[VFX] Storm01.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/Magic02.bmd Version: 0xa File size: 1954
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 16 Norms: 24 Tex: 6 Tris: 16 Texture: magic_g.jpg
+[BMDParser] AABB: Min(-45.4943,-107.562,-0.4785) Max(45.4942,210.955,244.223)
+[VFX] Magic02.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/Circle01.bmd Version: 0xa File size: 854
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 9 Norms: 1 Tex: 4 Tris: 8 Texture: magic_a01.jpg
+[BMDParser] AABB: Min(-200,-599.964,29.5411) Max(599.993,200,29.5411)
+[VFX] Circle01.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/Circle02.bmd Version: 0xa File size: 10114
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 112 Norms: 96 Tex: 14 Tris: 96 Texture: magic_a02.jpg
+[BMDParser] AABB: Min(-321.038,-467.18,-1.14441e-05) Max(325.695,178.676,414.436)
+[VFX] Circle02.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/Inferno01.bmd Version: 0xa File size: 59488
+[BMDParser] Meshes: 2 Bones: 9 Actions: 1
+ [Mesh 0] Verts: 648 Norms: 534 Tex: 12 Tris: 540 Texture: ring3.jpg
+ [Mesh 1] Verts: 9 Norms: 1 Tex: 9 Tris: 8 Texture: ring4.jpg
+[BMDParser] AABB: Min(-400,-399.964,57.8379) Max(399.993,400,363.713)
+[VFX] Inferno01.bmd loaded: 2 meshes
+[BMDParser] Data/Skill/Laser01.bmd Version: 0xa File size: 7078
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 51 Norms: 51 Tex: 29 Tris: 76 Texture: dragon02.jpg
+[BMDParser] AABB: Min(67.9482,-48.9978,-25.3303) Max(116.201,71.4811,41.4475)
+[VFX] Laser01.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/EarthQuake01.bmd Version: 0xa File size: 390
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: fury.jpg
+[BMDParser] AABB: Min(-56.2291,-33.3325,0) Max(56.2292,33.3325,0)
+[VFX] EarthQuake01.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/EarthQuake02.bmd Version: 0xa File size: 1938
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 20 Norms: 20 Tex: 6 Tris: 16 Texture: magic_a02.jpg
+[BMDParser] AABB: Min(-104.98,-9.79745,-18.6237) Max(-8.71591,65.1989,26.9748)
+[VFX] EarthQuake02.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/EarthQuake03.bmd Version: 0xa File size: 390
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: fury.tga
+[BMDParser] AABB: Min(-56.2291,-33.3325,0) Max(56.2292,33.3325,0)
+[VFX] EarthQuake03.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/EarthQuake04.bmd Version: 0xa File size: 390
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: test_2.jpg
+[BMDParser] AABB: Min(-86.1053,-49.5758,0) Max(86.1052,49.5757,0)
+[VFX] EarthQuake04.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/EarthQuake05.bmd Version: 0xa File size: 1922
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 24 Norms: 16 Tex: 6 Tris: 16 Texture: magic_a02.jpg
+[BMDParser] AABB: Min(-138.463,-12.1514,-37.2176) Max(-19.4599,169.534,26.3019)
+[VFX] EarthQuake05.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/EarthQuake07.bmd Version: 0xa File size: 390
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: test_2.jpg
+[BMDParser] AABB: Min(-59.7953,-16.9594,4.70001e-05) Max(59.7953,16.9594,4.70001e-05)
+[VFX] EarthQuake07.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/EarthQuake08.bmd Version: 0xa File size: 1938
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 20 Norms: 20 Tex: 6 Tris: 16 Texture: magic_a02.jpg
+[BMDParser] AABB: Min(-96.1551,-9.79745,-11.9336) Max(-8.71595,48.2878,13.1651)
+[VFX] EarthQuake08.bmd loaded: 1 meshes
+[BMDParser] Data/Skill/GroundStone.bmd Version: 0xc File size: 7050
+[BMDParser] Meshes: 2 Bones: 3 Actions: 1
+ [Mesh 0] Verts: 33 Norms: 31 Tex: 29 Tris: 52 Texture: DhorSS.jpg
+ [Mesh 1] Verts: 16 Norms: 16 Tex: 18 Tris: 16 Texture: DhorSS_R.jpg
+[BMDParser] AABB: Min(-30.0029,-33.8489,-37.5563) Max(31.9936,34.1837,92.1759)
+[VFX] GroundStone.bmd loaded: 2 meshes
+[BMDParser] Data/Skill/GroundStone2.bmd Version: 0xc File size: 10066
+[BMDParser] Meshes: 2 Bones: 3 Actions: 1
+ [Mesh 0] Verts: 47 Norms: 45 Tex: 43 Tris: 76 Texture: DhorSS.jpg
+ [Mesh 1] Verts: 24 Norms: 24 Tex: 26 Tris: 24 Texture: DhorSS_R.jpg
+[BMDParser] AABB: Min(-76.0801,-56.1657,-78.6448) Max(73.7958,55.6928,133.304)
+[VFX] GroundStone2.bmd loaded: 2 meshes
+[VFX] BGFX buffers initialized
+[BMDParser] Data/Object1/Bird01.bmd Version: 0xa File size: 13242
+[BMDParser] Meshes: 1 Bones: 20 Actions: 2
+ [Mesh 0] Verts: 53 Norms: 52 Tex: 58 Tris: 98 Texture: bird.tga
+[BMDParser] AABB: Min(-8.1753,-8.02579,-12.2475) Max(8.6063,15.621,24.0904)
+[Boid] Loaded Bird01.bmd (20 bones, 1 meshes)
+[BMDParser] Data/Object2/Bat01.bmd Version: 0xa File size: 4937
+[BMDParser] Meshes: 2 Bones: 8 Actions: 1
+ [Mesh 0] Verts: 14 Norms: 14 Tex: 11 Tris: 24 Texture: bat01.jpg
+ [Mesh 1] Verts: 18 Norms: 18 Tex: 11 Tris: 14 Texture: bat02.tga
+[BMDParser] AABB: Min(-18.4105,-9.94585,-19.2679) Max(18.6078,19.3496,12.6325)
+[Boid] Loaded Bat01.bmd (8 bones, 2 meshes)
+[BMDParser] Data/Object1/Fish01.bmd Version: 0xa File size: 12349
+[BMDParser] Meshes: 1 Bones: 29 Actions: 2
+ [Mesh 0] Verts: 40 Norms: 40 Tex: 40 Tris: 68 Texture: fish.tga
+[BMDParser] AABB: Min(-5.57075,-11.5289,-15.897) Max(5.86542,15.5935,22.8599)
+[Boid] Loaded Fish01.bmd (29 bones, 1 meshes)
+[BMDParser] Data/Object2/Rat01.bmd Version: 0xa File size: 4249
+[BMDParser] Meshes: 1 Bones: 6 Actions: 1
+ [Mesh 0] Verts: 22 Norms: 22 Tex: 17 Tris: 36 Texture: mouse.jpg
+[BMDParser] AABB: Min(-7.71982,-14.5251,-3.59808) Max(8.28498,52.9708,10.5296)
+[Boid] Loaded Rat01.bmd (6 bones, 1 meshes)
+[BMDParser] Data/Object1/Butterfly01.bmd Version: 0xa File size: 3408
+[BMDParser] Meshes: 1 Bones: 7 Actions: 1
+ [Mesh 0] Verts: 20 Norms: 17 Tex: 15 Tris: 28 Texture: Butterfly.tga
+[BMDParser] AABB: Min(-0.87895,-11.1976,-0.765478) Max(0.629728,11.3614,15.2484)
+[Boid] Loaded Butterfly01.bmd (7 bones, 1 meshes)
+[Boid] Leaf texture loaded (BGFX batched)
+[Boid] Ambient creature system initialized
+[BMDParser] Data/Player/player.bmd Version: 0xc File size: 3324834
+[BMDParser] Meshes: 0 Bones: 60 Actions: 284
+[Hero] Player.bmd: 60 bones, 284 actions
+[BMDParser] Data/Player/HelmClass02.bmd Version: 0xa File size: 14031
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 81 Norms: 81 Tex: 86 Tris: 119 Texture: skin_wizard_01.jpg
+[BMDParser] AABB: Min(1.16392,-10.8234,-9.09398) Max(29.921,15.5096,10.1582)
+[Hero] Loaded HelmClass02.bmd
+[BMDParser] Data/Player/ArmorClass02.bmd Version: 0xa File size: 13763
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 70 Norms: 70 Tex: 94 Tris: 120 Texture: skin_wizard_01.jpg
+[BMDParser] AABB: Min(-5.60129,-12.184,-18.9354) Max(37.8176,13.149,18.8416)
+[Hero] Loaded ArmorClass02.bmd
+[BMDParser] Data/Player/PantClass02.bmd Version: 0xa File size: 12231
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 61 Norms: 61 Tex: 87 Tris: 102 Texture: skin_wizard_01.jpg
+[BMDParser] AABB: Min(-12.959,-13.7508,-31.6643) Max(52.6129,14.1431,16.3143)
+[Hero] Loaded PantClass02.bmd
+[BMDParser] Data/Player/GloveClass02.bmd Version: 0xa File size: 14179
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 72 Norms: 72 Tex: 57 Tris: 130 Texture: skin_wizard_01.jpg
+[BMDParser] AABB: Min(-2.57268,-7.11589,-8.49436) Max(37.8176,6.25319,8.40174)
+[Hero] Loaded GloveClass02.bmd
+[BMDParser] Data/Player/BootClass02.bmd Version: 0xa File size: 13803
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 70 Norms: 70 Tex: 51 Tris: 126 Texture: skin_wizard_01.jpg
+[BMDParser] AABB: Min(-1.64947,-17.8525,-9.48136) Max(44.2343,21.3852,9.54922)
+[Hero] Loaded BootClass02.bmd
+[Hero] Root bone 0: walk stride=-242.878 MU-Y over 7 keys, LockPositions=1
+[Hero] DK Level 1 — HP=110 Dmg=4-7 Def=6 AtkRate=42 NextXP=63
+[Hero] Character initialized (DK Naked)
+[Hero] Loaded stats from server: Lv1 STR=28 DEX=20 VIT=25 ENE=10 HP=110/110 MP=20/20 AG=50/50 XP=0 pts=0
+[ChromeGlow] Textures loaded: chrome1=1 chrome2=1 shiny=1
 [TerrainParser] Loaded mapping: map_number=1, 196610 bytes
 [TerrainParser] Loaded attributes (WORD format): 131076 bytes
 [TerrainParser] Object file: version=0 map=1 count=2870
 [TerrainParser] Loaded 2870 objects
 [TerrainParser] Applied directional sun lighting (sunDir=0.57735,-0.57735,0.57735)
+[Bridge] Patched 1008 cells, bridgeZone=325
 [Terrain] WARNING: Terrain uses tile index 255 which has no tile name (max=13)
 [Terrain] Loaded tile 0: TileGrass01 (256x256)
 [Terrain] Loaded tile 1: TileGrass02 (128x128)
@@ -16,7 +188,8 @@
 [Terrain] Loaded tile 6: TileWood01 (128x128)
 [Terrain] Loaded tile 7: TileRock01 (256x256)
 [Terrain] Loaded tile 8: TileRock02 (128x128)
-Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
+[Terrain] voidDist texture: 0 void cells, bridgeProtect=10
+[LoadWorld] Map 1 (Lorencia): 65536 height samples, 2870 objects
 [BMDParser] Data/Object1/Stone01.bmd Version: 0xa File size: 16124
 [BMDParser] Meshes: 2 Bones: 1 Actions: 1
  [Mesh 0] Verts: 87 Norms: 82 Tex: 87 Tris: 140 Texture: ston01.jpg
@@ -590,178 +763,53 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
  [Mesh 2] Verts: 12 Norms: 4 Tex: 6 Tris: 8 Texture: tile_wood02.jpg
  [Mesh 3] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: bridge_shadow01.tga
 [BMDParser] AABB: Min(-163.611,-166.271,-0.276103) Max(164.106,75.0783,399.828)
-[ObjectRenderer] Loaded 2831 object instances, 109 unique models, 110 interactive objects, skipped 39
-[ObjectRenderer] Loaded 2870 object instances, 109 unique models
+[ObjectRenderer] Loaded 2870 object instances, 109 unique models, 110 interactive objects, skipped 0
 [GrassRenderer] Loaded TileGrass01
 [GrassRenderer] Loaded TileGrass02
 [GrassRenderer] Loaded TileGrass03
-[GrassRenderer] Generated 42116 grass billboards (168464 vertices)
-[Sky] Initialized with 36 segments, radius 3200
-[PostProcess] Initialized (bloom + vignette + color grading)
-[FireEffect] Loaded fire texture: Data/Effect/Fire01.OZJ
-[FireEffect] Loaded smoke texture: Data/Effect/smoke01.OZJ
-[BMDParser] Data/Skill/Fire01.bmd Version: 0xa File size: 9095
-[BMDParser] Meshes: 2 Bones: 6 Actions: 1
- [Mesh 0] Verts: 26 Norms: 26 Tex: 43 Tris: 48 Texture: fire02.jpg
- [Mesh 1] Verts: 25 Norms: 25 Tex: 28 Tris: 40 Texture: fire01.jpg
-[BMDParser] AABB: Min(-26.0647,-26.1505,-62.4406) Max(26.1981,26.1123,103.236)
-[VFX] Fire01.bmd loaded: 2 meshes
-[BMDParser] Data/Skill/Blast01.bmd Version: 0xa File size: 1026
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 16 Norms: 4 Tex: 4 Tris: 8 Texture: ring2.jpg
-[BMDParser] AABB: Min(-67.2917,-78.8649,-62.9426) Max(67.2917,386.659,71.641)
-[VFX] Blast01.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/Poison01.bmd Version: 0xa File size: 40360
-[BMDParser] Meshes: 2 Bones: 39 Actions: 1
- [Mesh 0] Verts: 75 Norms: 75 Tex: 31 Tris: 132 Texture: wall01.jpg
- [Mesh 1] Verts: 147 Norms: 147 Tex: 28 Tris: 252 Texture: wall02.jpg
-[BMDParser] AABB: Min(-23.9098,-23.953,4.03674) Max(24.0024,23.9593,51.8795)
-[VFX] Poison01.bmd loaded: 2 meshes
-[BMDParser] Data/Skill/Ice01.bmd Version: 0xa File size: 29966
-[BMDParser] Meshes: 1 Bones: 13 Actions: 1
- [Mesh 0] Verts: 192 Norms: 376 Tex: 72 Tris: 256 Texture: ice.jpg
-[BMDParser] AABB: Min(-121.292,-272.5,0.421875) Max(118.401,11.0812,242.409)
-[VFX] Ice01.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/Ice02.bmd Version: 0xa File size: 786
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 5 Norms: 6 Tex: 7 Tris: 6 Texture: ice.jpg
-[BMDParser] AABB: Min(-52.1942,-5.3259,210.335) Max(-11.8065,3.8025,238.687)
-[VFX] Ice02.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/Storm01.bmd Version: 0xa File size: 38660
-[BMDParser] Meshes: 1 Bones: 7 Actions: 1
- [Mesh 0] Verts: 216 Norms: 216 Tex: 117 Tris: 384 Texture: typhoon.jpg
-[BMDParser] AABB: Min(-289.723,-288.642,-133.942) Max(287.171,288.252,13.561)
-[VFX] Storm01.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/Circle01.bmd Version: 0xa File size: 854
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 9 Norms: 1 Tex: 4 Tris: 8 Texture: magic_a01.jpg
-[BMDParser] AABB: Min(-200,-599.964,29.5411) Max(599.993,200,29.5411)
-[VFX] Circle01.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/Circle02.bmd Version: 0xa File size: 10114
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 112 Norms: 96 Tex: 14 Tris: 96 Texture: magic_a02.jpg
-[BMDParser] AABB: Min(-321.038,-467.18,-1.14441e-05) Max(325.695,178.676,414.436)
-[VFX] Circle02.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/Inferno01.bmd Version: 0xa File size: 59488
-[BMDParser] Meshes: 2 Bones: 9 Actions: 1
- [Mesh 0] Verts: 648 Norms: 534 Tex: 12 Tris: 540 Texture: ring3.jpg
- [Mesh 1] Verts: 9 Norms: 1 Tex: 9 Tris: 8 Texture: ring4.jpg
-[BMDParser] AABB: Min(-400,-399.964,57.8379) Max(399.993,400,363.713)
-[VFX] Inferno01.bmd loaded: 2 meshes
-[BMDParser] Data/Skill/Laser01.bmd Version: 0xa File size: 7078
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 51 Norms: 51 Tex: 29 Tris: 76 Texture: dragon02.jpg
-[BMDParser] AABB: Min(67.9482,-48.9978,-25.3303) Max(116.201,71.4811,41.4475)
-[VFX] Laser01.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/EarthQuake01.bmd Version: 0xa File size: 390
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: fury.jpg
-[BMDParser] AABB: Min(-56.2291,-33.3325,0) Max(56.2292,33.3325,0)
-[VFX] EarthQuake01.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/EarthQuake02.bmd Version: 0xa File size: 1938
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 20 Tex: 6 Tris: 16 Texture: magic_a02.jpg
-[BMDParser] AABB: Min(-104.98,-9.79745,-18.6237) Max(-8.71591,65.1989,26.9748)
-[VFX] EarthQuake02.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/EarthQuake03.bmd Version: 0xa File size: 390
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: fury.tga
-[BMDParser] AABB: Min(-56.2291,-33.3325,0) Max(56.2292,33.3325,0)
-[VFX] EarthQuake03.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/EarthQuake04.bmd Version: 0xa File size: 390
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: test_2.jpg
-[BMDParser] AABB: Min(-86.1053,-49.5758,0) Max(86.1052,49.5757,0)
-[VFX] EarthQuake04.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/EarthQuake05.bmd Version: 0xa File size: 1922
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 24 Norms: 16 Tex: 6 Tris: 16 Texture: magic_a02.jpg
-[BMDParser] AABB: Min(-138.463,-12.1514,-37.2176) Max(-19.4599,169.534,26.3019)
-[VFX] EarthQuake05.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/EarthQuake07.bmd Version: 0xa File size: 390
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: test_2.jpg
-[BMDParser] AABB: Min(-59.7953,-16.9594,4.70001e-05) Max(59.7953,16.9594,4.70001e-05)
-[VFX] EarthQuake07.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/EarthQuake08.bmd Version: 0xa File size: 1938
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 20 Tex: 6 Tris: 16 Texture: magic_a02.jpg
-[BMDParser] AABB: Min(-96.1551,-9.79745,-11.9336) Max(-8.71595,48.2878,13.1651)
-[VFX] EarthQuake08.bmd loaded: 1 meshes
-[BMDParser] Data/Skill/GroundStone.bmd Version: 0xc File size: 7050
-[BMDParser] Meshes: 2 Bones: 3 Actions: 1
- [Mesh 0] Verts: 33 Norms: 31 Tex: 29 Tris: 52 Texture: DhorSS.jpg
- [Mesh 1] Verts: 16 Norms: 16 Tex: 18 Tris: 16 Texture: DhorSS_R.jpg
-[BMDParser] AABB: Min(-30.0029,-33.8489,-37.5563) Max(31.9936,34.1837,92.1759)
-[VFX] GroundStone.bmd loaded: 2 meshes
-[BMDParser] Data/Skill/GroundStone2.bmd Version: 0xc File size: 10066
-[BMDParser] Meshes: 2 Bones: 3 Actions: 1
- [Mesh 0] Verts: 47 Norms: 45 Tex: 43 Tris: 76 Texture: DhorSS.jpg
- [Mesh 1] Verts: 24 Norms: 24 Tex: 26 Tris: 24 Texture: DhorSS_R.jpg
-[BMDParser] AABB: Min(-76.0801,-56.1657,-78.6448) Max(73.7958,55.6928,133.304)
-[VFX] GroundStone2.bmd loaded: 2 meshes
-[BMDParser] Data/Object1/Bird01.bmd Version: 0xa File size: 13242
-[BMDParser] Meshes: 1 Bones: 20 Actions: 2
- [Mesh 0] Verts: 53 Norms: 52 Tex: 58 Tris: 98 Texture: bird.tga
-[BMDParser] AABB: Min(-8.1753,-8.02579,-12.2475) Max(8.6063,15.621,24.0904)
-[Boid] Loaded Bird01.bmd (20 bones, 1 meshes)
-[BMDParser] Data/Object2/Bat01.bmd Version: 0xa File size: 4937
-[BMDParser] Meshes: 2 Bones: 8 Actions: 1
- [Mesh 0] Verts: 14 Norms: 14 Tex: 11 Tris: 24 Texture: bat01.jpg
- [Mesh 1] Verts: 18 Norms: 18 Tex: 11 Tris: 14 Texture: bat02.tga
-[BMDParser] AABB: Min(-18.4105,-9.94585,-19.2679) Max(18.6078,19.3496,12.6325)
-[Boid] Loaded Bat01.bmd (8 bones, 2 meshes)
-[BMDParser] Data/Object1/Fish01.bmd Version: 0xa File size: 12349
-[BMDParser] Meshes: 1 Bones: 29 Actions: 2
- [Mesh 0] Verts: 40 Norms: 40 Tex: 40 Tris: 68 Texture: fish.tga
-[BMDParser] AABB: Min(-5.57075,-11.5289,-15.897) Max(5.86542,15.5935,22.8599)
-[Boid] Loaded Fish01.bmd (29 bones, 1 meshes)
-[Boid] Leaf texture loaded
-[Boid] Ambient creature system initialized
-[FireEffect] Registered 114 fire+smoke emitters
-[Lights] Collected 118 point lights from world objects
-[BMDParser] Data/Player/player.bmd Version: 0xc File size: 3324834
-[BMDParser] Meshes: 0 Bones: 60 Actions: 284
-[Hero] Player.bmd: 60 bones, 284 actions
-[BMDParser] Data/Player/HelmClass02.bmd Version: 0xa File size: 14031
-[BMDParser] Meshes: 1 Bones: 56 Actions: 1
- [Mesh 0] Verts: 81 Norms: 81 Tex: 86 Tris: 119 Texture: skin_wizard_01.jpg
-[BMDParser] AABB: Min(1.16392,-10.8234,-9.09398) Max(29.921,15.5096,10.1582)
-[Hero] Loaded HelmClass02.bmd
-[BMDParser] Data/Player/ArmorClass02.bmd Version: 0xa File size: 13763
-[BMDParser] Meshes: 1 Bones: 56 Actions: 1
- [Mesh 0] Verts: 70 Norms: 70 Tex: 94 Tris: 120 Texture: skin_wizard_01.jpg
-[BMDParser] AABB: Min(-5.60129,-12.184,-18.9354) Max(37.8176,13.149,18.8416)
-[Hero] Loaded ArmorClass02.bmd
-[BMDParser] Data/Player/PantClass02.bmd Version: 0xa File size: 12231
-[BMDParser] Meshes: 1 Bones: 56 Actions: 1
- [Mesh 0] Verts: 61 Norms: 61 Tex: 87 Tris: 102 Texture: skin_wizard_01.jpg
-[BMDParser] AABB: Min(-12.959,-13.7508,-31.6643) Max(52.6129,14.1431,16.3143)
-[Hero] Loaded PantClass02.bmd
-[BMDParser] Data/Player/GloveClass02.bmd Version: 0xa File size: 14179
-[BMDParser] Meshes: 1 Bones: 56 Actions: 1
- [Mesh 0] Verts: 72 Norms: 72 Tex: 57 Tris: 130 Texture: skin_wizard_01.jpg
-[BMDParser] AABB: Min(-2.57268,-7.11589,-8.49436) Max(37.8176,6.25319,8.40174)
-[Hero] Loaded GloveClass02.bmd
-[BMDParser] Data/Player/BootClass02.bmd Version: 0xa File size: 13803
-[BMDParser] Meshes: 1 Bones: 56 Actions: 1
- [Mesh 0] Verts: 70 Norms: 70 Tex: 51 Tris: 126 Texture: skin_wizard_01.jpg
-[BMDParser] AABB: Min(-1.64947,-17.8525,-9.48136) Max(44.2343,21.3852,9.54922)
-[Hero] Loaded BootClass02.bmd
-[Hero] Root bone 0: walk stride=-242.878 MU-Y over 7 keys, LockPositions=1
-[Hero] DK Level 1 — HP=110 Dmg=4-7 Def=6 AtkRate=42 NextXP=63
-[Hero] Character initialized (DK Naked)
-[Hero] Loaded stats from server: Lv1 STR=28 DEX=20 VIT=25 ENE=10 HP=110/110 MP=20/20 AG=50/50 XP=0 pts=0
-[ChromeGlow] Textures loaded: chrome1=299 chrome2=300 shiny=301
+[GrassRenderer] Generated 36052 grass billboards (144208 vertices)
+[LoadWorld] Ready: 2870 objects, 118 lights, 114 fire emitters
 [UITexture] Failed to load PNG: Data/Interface/mu_inventory_bg.png (can't fopen)
 [UITexture] FAILED to load: Data/Interface/mu_inventory_bg.png
-[UI] Loaded Skill.OZJ icon sheet (tex=314)
-[UI] Loaded map name image: 166x90
+[UITexture] PNG Data/Interface/newui_item_weapon_r.png: 46x66 (idx=310)
+[UITexture] PNG Data/Interface/newui_item_weapon_l.png: 46x66 (idx=314)
+[UITexture] PNG Data/Interface/newui_item_cap.png: 46x46 (idx=315)
+[UITexture] PNG Data/Interface/newui_item_upper.png: 46x66 (idx=316)
+[UITexture] PNG Data/Interface/newui_item_lower.png: 46x46 (idx=317)
+[UITexture] PNG Data/Interface/newui_item_gloves.png: 46x46 (idx=318)
+[UITexture] PNG Data/Interface/newui_item_boots.png: 46x46 (idx=319)
+[UITexture] PNG Data/Interface/newui_item_wing.png: 61x46 (idx=320)
+[UITexture] PNG Data/Interface/newui_item_fairy.png: 46x46 (idx=321)
+[UITexture] PNG Data/Interface/newui_item_necklace.png: 28x28 (idx=322)
+[UITexture] PNG Data/Interface/newui_item_ring.png: 28x28 (idx=323)
+[UITexture] PNG Data/Interface/newui_item_ring.png: 28x28 (idx=324)
+[UI] Loaded Skill.OZJ icon sheet (tex=325)
+[UITexture] PNG Data/Interface/aura_guardian_angel.png: 1024x1024 (idx=326)
+[UITexture] PNG Data/Interface/aura_imp.png: 1024x1024 (idx=327)
+[UITexture] PNG Data/Interface/aura_uniria.png: 1024x1024 (idx=328)
+[UITexture] PNG Data/Interface/aura_dinorant.png: 1024x1024 (idx=329)
+[UI] Loaded 4 aura icons
+[UITexture] PNG Data/Interface/icon_character.png: 640x640 (idx=330)
+[UI] Loaded menu icon: icon_character.png
+[UITexture] PNG Data/Interface/icon_inventory.png: 640x640 (idx=331)
+[UI] Loaded menu icon: icon_inventory.png
+[UITexture] PNG Data/Interface/icon_skills.png: 640x640 (idx=332)
+[UI] Loaded menu icon: icon_skills.png
+[UITexture] PNG Data/Interface/icon_teleport.png: 640x640 (idx=333)
+[UI] Loaded menu icon: icon_teleport.png
+[UITexture] PNG Data/Interface/icon_quests.png: 640x640 (idx=334)
+[UI] Loaded menu icon: icon_quests.png
+[UITexture] PNG Data/Interface/icon_map.png: 640x640 (idx=335)
+[UI] Loaded menu icon: icon_map.png
+[UI] Loaded map name image: 0x0
 [BMDParser] Data/Effect/MoveTargetPosEffect.bmd Version: 0xc File size: 5830
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 27 Norms: 44 Tex: 60 Tris: 51 Texture: gra.jpg
 [BMDParser] AABB: Min(-12.1726,-20.8397,-92.0906) Max(24.1349,21.0846,39.5268)
-[ClickEffect] Loaded: BMD + 1 ring, 1 wave, 1 glow textures
+[ClickEffect] Loaded MoveTargetPosEffect.bmd + 1 mesh buffers
+[ClickEffect] Loaded cursorpin01.OZJ
+[ClickEffect] Loaded cursorpin02.OZJ
+[ClickEffect] Loaded Magic_Ground1.OZJ (glow)
 [CharSelect] Loading Lorencia terrain
 [TerrainParser] Loaded mapping: map_number=1, 196610 bytes
 [TerrainParser] Loaded attributes (WORD format): 131076 bytes
@@ -778,6 +826,7 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
 [Terrain] Loaded tile 6: TileWood01 (128x128)
 [Terrain] Loaded tile 7: TileRock01 (256x256)
 [Terrain] Loaded tile 8: TileRock02 (128x128)
+[Terrain] voidDist texture: 0 void cells, bridgeProtect=10
 [CharSelect] Lorencia terrain loaded
 [BMDParser] Data/Object1/Tree11.bmd Version: 0xa File size: 23279
 [BMDParser] Meshes: 2 Bones: 10 Actions: 1
@@ -895,13 +944,13 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
 [BMDParser] AABB: Min(-72.7248,-53.4063,3.3997e-05) Max(74.6489,39.8338,264.852)
 [ObjectRenderer] Loaded 174 object instances, 25 unique models, 0 interactive objects, skipped 0
 [CharSelect] Lorencia objects loaded: 174/2870 instances, 25 models
-[CharSelect] Collected 11 point lights (incl. slot lanterns)
+[CharSelect] Collected 15 point lights (incl. slot + tree-line)
 [GrassRenderer] Loaded TileGrass01
 [GrassRenderer] Loaded TileGrass02
 [GrassRenderer] Loaded TileGrass03
-[GrassRenderer] Generated 42116 grass billboards (168464 vertices)
+[GrassRenderer] Generated 36045 grass billboards (144180 vertices)
 [CharSelect] Grass loaded
-[Sky] Initialized with 36 segments, radius 3200
+[Sky] Initialized with 36 segments, radius 3200 (BGFX)
 [CharSelect] Sky dome initialized
 [BMDParser] Data/Object1/Bird01.bmd Version: 0xa File size: 13242
 [BMDParser] Meshes: 1 Bones: 20 Actions: 2
@@ -919,12 +968,25 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
  [Mesh 0] Verts: 40 Norms: 40 Tex: 40 Tris: 68 Texture: fish.tga
 [BMDParser] AABB: Min(-5.57075,-11.5289,-15.897) Max(5.86542,15.5935,22.8599)
 [Boid] Loaded Fish01.bmd (29 bones, 1 meshes)
-[Boid] Leaf texture loaded
+[BMDParser] Data/Object2/Rat01.bmd Version: 0xa File size: 4249
+[BMDParser] Meshes: 1 Bones: 6 Actions: 1
+ [Mesh 0] Verts: 22 Norms: 22 Tex: 17 Tris: 36 Texture: mouse.jpg
+[BMDParser] AABB: Min(-7.71982,-14.5251,-3.59808) Max(8.28498,52.9708,10.5296)
+[Boid] Loaded Rat01.bmd (6 bones, 1 meshes)
+[BMDParser] Data/Object1/Butterfly01.bmd Version: 0xa File size: 3408
+[BMDParser] Meshes: 1 Bones: 7 Actions: 1
+ [Mesh 0] Verts: 20 Norms: 17 Tex: 15 Tris: 28 Texture: Butterfly.tga
+[BMDParser] AABB: Min(-0.87895,-11.1976,-0.765478) Max(0.629728,11.3614,15.2484)
+[Boid] Loaded Butterfly01.bmd (7 bones, 1 meshes)
+[Boid] Leaf texture loaded (BGFX batched)
 [Boid] Ambient creature system initialized
 [CharSelect] Boid system initialized (birds + leaves)
 [CharSelect] Camera: pos=(21743.4, 667.7, 13132.7) yaw=297.3 pitch=-14.8
-[CharSelect] Model shader loaded
+[CharSelect] Model shader loaded (BGFX)
+[CharSelect] Shadow map initialized 2048x2048
 [CharSelect] Spotlight cylinder initialized (32 segments, h=800, r=55)
+[UITexture] PNG Data/Interface/mu_classic_logo.png: 1536x1024 (idx=401)
+[CharSelect] Logo loaded: 1536x1024
 [BMDParser] Data/Player/player.bmd Version: 0xc File size: 3324834
 [BMDParser] Meshes: 0 Bones: 60 Actions: 284
 [CharSelect] Player.bmd: 60 bones, 284 actions
@@ -1051,110 +1113,357 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
  [Mesh 5] Verts: 261 Norms: 305 Tex: 173 Tris: 478 Texture: magum_face.jpg
 [BMDParser] AABB: Min(-2.19526,-4.95525,-5.43659) Max(7.16138,5.20033,5.41317)
 [CharSelect] Face model NewFace04.bmd: 112 bones, 2 actions, 6 meshes
-[CharSelect] Face FBO created (410x500)
+[CharSelect] BGFX Face FBO created (410x500)
 [CharSelect] Initialized
 [Net] Connected to 127.0.0.1:44405
-[Sound] Initialized (143 sounds loaded)
-[Music] Playing: main_theme.mp3
+[Sound] Initialized (186 sounds loaded)
+[Music] Playing: crywolf_before-01.ogg
 [State] -> CHAR_SELECT (waiting for character list)
-[BMDParser] Data/Player/HelmMale06.bmd Version: 0xa File size: 13643
+[Net] Class definitions (charselect): 4 classes
+[ItemDB] Loaded 303 item definitions from server catalog
+[BMDParser] Data/Player/HelmMale10.bmd Version: 0xa File size: 6923
 [BMDParser] Meshes: 3 Bones: 56 Actions: 1
- [Mesh 0] Verts: 47 Norms: 50 Tex: 31 Tris: 69 Texture: head_07.jpg
- [Mesh 1] Verts: 19 Norms: 19 Tex: 13 Tris: 13 Texture: hide.jpg
- [Mesh 2] Verts: 22 Norms: 22 Tex: 24 Tris: 27 Texture: skin_barbarian_01.jpg
-[BMDParser] AABB: Min(-19.0254,-23.3891,-16.0521) Max(30.7698,23.5942,15.8919)
-[BMDParser] Data/Player/ArmorMale06.bmd Version: 0xa File size: 20621
+ [Mesh 0] Verts: 21 Norms: 21 Tex: 13 Tris: 35 Texture: head_11.jpg
+ [Mesh 1] Verts: 5 Norms: 4 Tex: 5 Tris: 3 Texture: hide.jpg
+ [Mesh 2] Verts: 8 Norms: 6 Tex: 4 Tris: 4 Texture: guard_hair.tga
+[BMDParser] AABB: Min(-7.48079,-23.1748,-10.5654) Max(39.8405,13.7504,17.1928)
+[BMDParser] Data/Player/ArmorMale10.bmd Version: 0xa File size: 22413
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 117 Norms: 125 Tex: 141 Tris: 174 Texture: upper_11.jpg
+ [Mesh 1] Verts: 32 Norms: 31 Tex: 32 Tris: 24 Texture: hide.jpg
+[BMDParser] AABB: Min(-12.6977,-18.9878,-20.7687) Max(37.8095,15.7788,20.944)
+[BMDParser] Data/Player/PantMale10.bmd Version: 0xa File size: 11977
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 49 Norms: 49 Tex: 69 Tris: 82 Texture: lower_11.jpg
+ [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide.jpg
+[BMDParser] AABB: Min(-9.56229,-13.3717,-19.2327) Max(51.8746,10.1307,19.0403)
+[BMDParser] Data/Player/GloveMale10.bmd Version: 0xa File size: 18443
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 104 Norms: 104 Tex: 94 Tris: 174 Texture: gloves_11.jpg
+[BMDParser] AABB: Min(-18.5964,-8.01221,-15.6) Max(49.066,16.8496,16.135)
+[BMDParser] Data/Player/BootMale10.bmd Version: 0xa File size: 19371
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 116 Norms: 114 Tex: 65 Tris: 186 Texture: boots_11.jpg
+[BMDParser] AABB: Min(-11.2245,-27.6859,-16.4599) Max(53.4032,21.5989,17.3277)
+[BMDParser] Data/Item/Sword13.bmd Version: 0xa File size: 18443
+[BMDParser] Meshes: 2 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 93 Norms: 188 Tex: 74 Tris: 168 Texture: sword14.jpg
+ [Mesh 1] Verts: 36 Norms: 1 Tex: 30 Tris: 12 Texture: sword14.tga
+[BMDParser] AABB: Min(-15.356,-15.041,-86.223) Max(15.041,15.356,121.382)
+[CharSelect] Slot 0: weapon loaded (2 meshes)
+[BMDParser] Data/Player/HelmMale08.bmd Version: 0xa File size: 17321
 [BMDParser] Meshes: 4 Bones: 56 Actions: 1
- [Mesh 0] Verts: 69 Norms: 69 Tex: 86 Tris: 106 Texture: upper_07_m.jpg
- [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 16 Texture: upper_07b_m.tga
- [Mesh 2] Verts: 32 Norms: 32 Tex: 48 Tris: 44 Texture: skin_barbarian_01.jpg
- [Mesh 3] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide_m.jpg
-[BMDParser] AABB: Min(-10.8544,-15.3671,-30.7371) Max(38.8051,24.6914,30.2589)
-[BMDParser] Data/Player/PantMale06.bmd Version: 0xa File size: 14385
+ [Mesh 0] Verts: 41 Norms: 41 Tex: 43 Tris: 64 Texture: head_09.jpg
+ [Mesh 1] Verts: 29 Norms: 29 Tex: 32 Tris: 41 Texture: skin_barbarian_01.jpg
+ [Mesh 2] Verts: 16 Norms: 16 Tex: 16 Tris: 14 Texture: hide.jpg
+ [Mesh 3] Verts: 24 Norms: 24 Tex: 20 Tris: 30 Texture: head_09b.tga
+[BMDParser] AABB: Min(-2.95266,-29.0977,-15.0541) Max(29.6681,23.4813,14.5814)
+[BMDParser] Data/Player/ArmorMale05.bmd Version: 0xa File size: 19873
 [BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 63 Norms: 63 Tex: 83 Tris: 110 Texture: lower_07_m.jpg
- [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide_m.jpg
-[BMDParser] AABB: Min(-12.959,-14.2836,-16.3835) Max(52.6129,13.9074,16.3143)
-[BMDParser] Data/Player/GloveMale06.bmd Version: 0xa File size: 16053
+ [Mesh 0] Verts: 105 Norms: 107 Tex: 134 Tris: 157 Texture: upper_06.jpg
+ [Mesh 1] Verts: 24 Norms: 24 Tex: 24 Tris: 16 Texture: hide.jpg
+[BMDParser] AABB: Min(-26.6962,-26.2583,-25.8386) Max(37.8176,27.0932,32.5236)
+[BMDParser] Data/Player/PantMale05.bmd Version: 0xa File size: 14631
+[BMDParser] Meshes: 3 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 57 Norms: 57 Tex: 77 Tris: 91 Texture: lower_06.jpg
+ [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide.jpg
+ [Mesh 2] Verts: 15 Norms: 15 Tex: 15 Tris: 16 Texture: lower_a06.tga
+[BMDParser] AABB: Min(-22.7817,-15.3138,-56.7666) Max(52.3913,20.6896,17.2332)
+[BMDParser] Data/Player/GloveMale05.bmd Version: 0xa File size: 16733
 [BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 78 Norms: 78 Tex: 60 Tris: 142 Texture: gloves_07.jpg
+ [Mesh 0] Verts: 82 Norms: 82 Tex: 63 Tris: 150 Texture: gloves_06.jpg
  [Mesh 1] Verts: 10 Norms: 10 Tex: 10 Tris: 6 Texture: hide.jpg
-[BMDParser] AABB: Min(-2.57268,-7.11589,-12.8795) Max(37.8176,6.63521,12.8144)
-[BMDParser] Data/Player/BootMale06.bmd Version: 0xa File size: 14021
+[BMDParser] AABB: Min(-12.7837,-11.3764,-16.6729) Max(37.8177,12.296,16.5805)
+[BMDParser] Data/Player/BootMale08.bmd Version: 0xa File size: 13629
 [BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 66 Norms: 66 Tex: 52 Tris: 118 Texture: boots_07.jpg
+ [Mesh 0] Verts: 64 Norms: 64 Tex: 44 Tris: 114 Texture: boots_09.jpg
  [Mesh 1] Verts: 10 Norms: 10 Tex: 10 Tris: 6 Texture: hide.jpg
-[BMDParser] AABB: Min(-1.64947,-16.1438,-12.0604) Max(44.2343,21.3852,12.1282)
-[BMDParser] Data/Item/Sword01.bmd Version: 0xa File size: 6866
+[BMDParser] AABB: Min(-1.64947,-21.3405,-8.19385) Max(44.2343,21.3852,8.54427)
+[BMDParser] Data/Item/Staff03.bmd Version: 0xa File size: 6522
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 42 Norms: 68 Tex: 42 Tris: 68 Texture: sword02.jpg
-[BMDParser] AABB: Min(-6.0028,-6.35266,-10.3176) Max(6.62106,5.76604,64.7253)
-[CharSelect] Slot 0: weapon loaded (1 meshes)
-[BMDParser] Data/Item/Shield01.bmd Version: 0xa File size: 1970
+ [Mesh 0] Verts: 36 Norms: 50 Tex: 56 Tris: 68 Texture: wand04.jpg
+[BMDParser] AABB: Min(-10.3015,-10.2585,-17.1462) Max(10.0308,10.0738,179.117)
+[CharSelect] Slot 1: weapon loaded (1 meshes)
+[BMDParser] Data/Item/Bow01.bmd Version: 0xa File size: 8224
+[BMDParser] Meshes: 2 Bones: 13 Actions: 1
+ [Mesh 0] Verts: 34 Norms: 39 Tex: 29 Tris: 55 Texture: bow01.jpg
+ [Mesh 1] Verts: 7 Norms: 1 Tex: 7 Tris: 3 Texture: bow05.tga
+[BMDParser] AABB: Min(0.0323,-83.6071,-14.92) Max(4.7868,22.4002,73.6872)
+[CharSelect] Slot 2: weapon loaded (2 meshes)
+[BMDParser] Data/Item/Arrows02.bmd Version: 0xa File size: 7530
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 14 Norms: 14 Tex: 21 Tris: 18 Texture: du_shield1.jpg
-[BMDParser] AABB: Min(-26.9996,-27.0376,-7.16765) Max(26.979,26.941,14.4776)
-[CharSelect] Slot 0: shield loaded (1 meshes)
+ [Mesh 0] Verts: 53 Norms: 64 Tex: 57 Tris: 75 Texture: bowbox.jpg
+[BMDParser] AABB: Min(-51.3622,-52.4591,-11.3278) Max(-37.2322,92.1456,10.7396)
+[CharSelect] Slot 2: shield loaded (1 meshes)
 [CharSelect] Received 4 characters
-[Net] Character list: 1 characters
-[PostProcess] FBOs resized to 2732x1536 (bloom 1366x768)
+[Net] Character list: 4 characters
+[Resize] Framebuffer changed: 0x0 -> 1366x768
+[BGFX Debug] First CHAR_SELECT frame rendering
+[PostProcess] Initialized successfully
+[PostProcess] FBOs resized to 1366x768 (bloom 683x384)
+[CharSelect] Render() first frame (1366x768)
+[CharSelect] Shadow pass: 30 draws, center=(22065,165.0,12511)
+[Terrain/BGFX] applyDynamicLights: plCount=15, lightmapTex valid=1, baseline[0] RGB=(0.550,0.550,0.550)
+[Terrain] Render: shadow=1 debug=0 tex_valid=1
+[BGFX] Requesting char select screenshot (frame 30)
+[BGFX Screenshot] Saved: screenshots/bgfx_charselect.png (1366x768)
 [Sound] Play: iButtonMove.wav (id=27)
+[Music] Stopped
 [State] -> LOADING (waiting for world data)
-[Net] CharInfo spawn position: grid (163,127)
-[Net] NPC viewport: 12 NPCs
-[Net] Monster viewport V2: 94 monsters
-[Net] Inventory sync: 1 items, zen=100255
-[Hero] Loaded stats from server: Lv50 STR=200 DEX=80 VIT=100 ENE=40 HP=433/433 MP=74/74 AG=116/116 XP=6512 pts=0
-[Net] Character stats: Lv.50 HP=433/433 STR=200 XP=6512 Pts=0
-[Net] Initial skill list: 8 skills
-[BMDParser] Data/Item/Sword01.bmd Version: 0xa File size: 6866
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 42 Norms: 68 Tex: 42 Tris: 68 Texture: sword02.jpg
-[BMDParser] AABB: Min(-6.0028,-6.35266,-10.3176) Max(6.62106,5.76604,64.7253)
-[Hero] Loaded weapon Sword01.bmd: 1 meshes, 1 bones (bone=33 idle=4 walk=17 2H=0)
-[Hero] Weapon equipped: Sword01.bmd (1 GPU meshes)
-[BMDParser] Data/Item/Shield01.bmd Version: 0xa File size: 1970
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 14 Norms: 14 Tex: 21 Tris: 18 Texture: du_shield1.jpg
-[BMDParser] AABB: Min(-26.9996,-27.0376,-7.16765) Max(26.979,26.941,14.4776)
-[Hero] Loaded shield Shield01.bmd: 1 meshes, 1 bones
-[Hero] Shield equipped: Shield01.bmd (1 GPU meshes)
-[BMDParser] Data/Player/HelmMale06.bmd Version: 0xa File size: 13643
+[Net] CharInfo spawn: map=4 grid=(45,152)
+[Net] Map change (initial): mapId=4 spawn=(45,152)
+[Net] Inventory sync: 4 items, zen=4111394
+[Hero] Loaded stats from server: Lv75 STR=333 DEX=65 VIT=44 ENE=11 HP=315/315 MP=58/58 AG=87/87 XP=26428694 pts=0
+[Net] Character stats: Lv.75 HP=315/315 STR=333 XP=26428694 Pts=0
+[Net] Initial skill list: 2 skills
+[BMDParser] Data/Item/Sword13.bmd Version: 0xa File size: 18443
+[BMDParser] Meshes: 2 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 93 Norms: 188 Tex: 74 Tris: 168 Texture: sword14.jpg
+ [Mesh 1] Verts: 36 Norms: 1 Tex: 30 Tris: 12 Texture: sword14.tga
+[BMDParser] AABB: Min(-15.356,-15.041,-86.223) Max(15.041,15.356,121.382)
+[Hero] Loaded weapon Sword13.bmd: 2 meshes, 2 bones (bone=33 idle=5 walk=18 2H=1)
+[Hero] Weapon equipped: Sword13.bmd (2 GPU meshes)
+[BMDParser] Data/Player/HelmMale10.bmd Version: 0xa File size: 6923
 [BMDParser] Meshes: 3 Bones: 56 Actions: 1
- [Mesh 0] Verts: 47 Norms: 50 Tex: 31 Tris: 69 Texture: head_07.jpg
- [Mesh 1] Verts: 19 Norms: 19 Tex: 13 Tris: 13 Texture: hide.jpg
- [Mesh 2] Verts: 22 Norms: 22 Tex: 24 Tris: 27 Texture: skin_barbarian_01.jpg
-[BMDParser] AABB: Min(-19.0254,-23.3891,-16.0521) Max(30.7698,23.5942,15.8919)
-[Hero] Equipped body part[0]: HelmMale06.bmd (3 GPU meshes)
-[BMDParser] Data/Player/ArmorMale06.bmd Version: 0xa File size: 20621
-[BMDParser] Meshes: 4 Bones: 56 Actions: 1
- [Mesh 0] Verts: 69 Norms: 69 Tex: 86 Tris: 106 Texture: upper_07_m.jpg
- [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 16 Texture: upper_07b_m.tga
- [Mesh 2] Verts: 32 Norms: 32 Tex: 48 Tris: 44 Texture: skin_barbarian_01.jpg
- [Mesh 3] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide_m.jpg
-[BMDParser] AABB: Min(-10.8544,-15.3671,-30.7371) Max(38.8051,24.6914,30.2589)
-[Hero] Equipped body part[1]: ArmorMale06.bmd (4 GPU meshes)
-[BMDParser] Data/Player/PantMale06.bmd Version: 0xa File size: 14385
+ [Mesh 0] Verts: 21 Norms: 21 Tex: 13 Tris: 35 Texture: head_11.jpg
+ [Mesh 1] Verts: 5 Norms: 4 Tex: 5 Tris: 3 Texture: hide.jpg
+ [Mesh 2] Verts: 8 Norms: 6 Tex: 4 Tris: 4 Texture: guard_hair.tga
+[BMDParser] AABB: Min(-7.48079,-23.1748,-10.5654) Max(39.8405,13.7504,17.1928)
+[Hero] Equipped body part[0]: HelmMale10.bmd (3 GPU meshes)
+[BMDParser] Data/Player/ArmorMale10.bmd Version: 0xa File size: 22413
 [BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 63 Norms: 63 Tex: 83 Tris: 110 Texture: lower_07_m.jpg
- [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide_m.jpg
-[BMDParser] AABB: Min(-12.959,-14.2836,-16.3835) Max(52.6129,13.9074,16.3143)
-[Hero] Equipped body part[2]: PantMale06.bmd (2 GPU meshes)
-[BMDParser] Data/Player/GloveMale06.bmd Version: 0xa File size: 16053
+ [Mesh 0] Verts: 117 Norms: 125 Tex: 141 Tris: 174 Texture: upper_11.jpg
+ [Mesh 1] Verts: 32 Norms: 31 Tex: 32 Tris: 24 Texture: hide.jpg
+[BMDParser] AABB: Min(-12.6977,-18.9878,-20.7687) Max(37.8095,15.7788,20.944)
+[Hero] Equipped body part[1]: ArmorMale10.bmd (2 GPU meshes)
+[BMDParser] Data/Player/PantMale10.bmd Version: 0xa File size: 11977
 [BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 78 Norms: 78 Tex: 60 Tris: 142 Texture: gloves_07.jpg
- [Mesh 1] Verts: 10 Norms: 10 Tex: 10 Tris: 6 Texture: hide.jpg
-[BMDParser] AABB: Min(-2.57268,-7.11589,-12.8795) Max(37.8176,6.63521,12.8144)
-[Hero] Equipped body part[3]: GloveMale06.bmd (2 GPU meshes)
-[BMDParser] Data/Player/BootMale06.bmd Version: 0xa File size: 14021
-[BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 66 Norms: 66 Tex: 52 Tris: 118 Texture: boots_07.jpg
- [Mesh 1] Verts: 10 Norms: 10 Tex: 10 Tris: 6 Texture: hide.jpg
-[BMDParser] AABB: Min(-1.64947,-16.1438,-12.0604) Max(44.2343,21.3852,12.1282)
-[Hero] Equipped body part[4]: BootMale06.bmd (2 GPU meshes)
-[Net] Equipment (C2): 7 slots
-[Quest] Initial state: quest=0 devias=12 targets=0
+ [Mesh 0] Verts: 49 Norms: 49 Tex: 69 Tris: 82 Texture: lower_11.jpg
+ [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide.jpg
+[BMDParser] AABB: Min(-9.56229,-13.3717,-19.2327) Max(51.8746,10.1307,19.0403)
+[Hero] Equipped body part[2]: PantMale10.bmd (2 GPU meshes)
+[BMDParser] Data/Player/GloveMale10.bmd Version: 0xa File size: 18443
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 104 Norms: 104 Tex: 94 Tris: 174 Texture: gloves_11.jpg
+[BMDParser] AABB: Min(-18.5964,-8.01221,-15.6) Max(49.066,16.8496,16.135)
+[Hero] Equipped body part[3]: GloveMale10.bmd (1 GPU meshes)
+[BMDParser] Data/Player/BootMale10.bmd Version: 0xa File size: 19371
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 116 Norms: 114 Tex: 65 Tris: 186 Texture: boots_11.jpg
+[BMDParser] AABB: Min(-11.2245,-27.6859,-16.4599) Max(53.4032,21.5989,17.3277)
+[Hero] Equipped body part[4]: BootMale10.bmd (1 GPU meshes)
+[BMDParser] Data/Player/Helper02.bmd Version: 0xa File size: 6897
+[BMDParser] Meshes: 2 Bones: 8 Actions: 1
+ [Mesh 0] Verts: 30 Norms: 30 Tex: 19 Tris: 54 Texture: satan.jpg
+ [Mesh 1] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: satan2.tga
+[BMDParser] AABB: Min(-35.4309,-31.5429,-22.4206) Max(37.2426,21.6734,21.1685)
+[TextureLoader::Resolve] Could not find texture: satan.jpg in Data/Player/
+[Hero] Pet mesh 0: texture 'satan.jpg' resolved from Item/
+[TextureLoader::Resolve] Could not find texture: satan2.tga in Data/Player/
+[Hero] Pet mesh 1: texture 'satan2.tga' resolved from Item/
+[Hero] Pet companion equipped: Helper02.bmd (2 meshes, blendMesh=1, radius=28.2819)
+[Net] Equipment (C2): 8 slots
+[Quest] Catalog: 42 quests
+[Quest] Initial state: completed=0x3fc003fffff active=0
 [CharSelect] Shutdown
+[TerrainParser] Loaded mapping: map_number=5, 196610 bytes
+[TerrainParser] Loaded attributes (BYTE format): 65540 bytes
+[TerrainParser] Object file: version=0 map=5 count=5380
+[TerrainParser] Loaded 5380 objects
+[TerrainParser] Applied directional sun lighting (sunDir=0.57735,-0.57735,0.57735)
+[Terrain] WARNING: Terrain uses tile index 255 which has no tile name (max=13)
+[Terrain] Loaded tile 0: TileGrass01 (256x256)
+[Terrain] Loaded tile 1: TileGrass02 (256x256)
+[Terrain] Loaded tile 2: TileGround01 (128x128)
+[Terrain] Loaded tile 4: TileGround03 (128x128)
+[Terrain] Loaded tile 5: TileWater01 (256x256)
+[Terrain] Loaded tile 6: TileWood01 (128x128)
+[Terrain] Loaded tile 7: TileRock01 (128x128)
+[Terrain] Loaded tile 8: TileRock02 (256x256)
+[Terrain] Loaded tile 9: TileRock03 (256x256)
+[Terrain] Loaded tile 10: TileRock04 (256x256)
+[Terrain] voidDist texture: 16014 void cells, bridgeProtect=10
+[LoadWorld] Map 5 (Lost Tower): 65536 height samples, 5380 objects
+[BMDParser] Data/Object5/Object02.bmd Version: 0xa File size: 19046
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 127 Norms: 147 Tex: 45 Tris: 212 Texture: re_04.jpg
+[BMDParser] AABB: Min(-161.253,-214.358,-54.748) Max(161.165,202.221,54.7479)
+[BMDParser] Data/Object5/Object06.bmd Version: 0xa File size: 12962
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 76 Norms: 96 Tex: 42 Tris: 146 Texture: re_04.jpg
+[BMDParser] AABB: Min(-65.9395,-233.419,-75.2026) Max(66.3077,233.416,75.2025)
+[BMDParser] Data/Object5/Object07.bmd Version: 0xa File size: 5670
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 56 Norms: 9 Tex: 28 Tris: 66 Texture: re_05.jpg
+[BMDParser] AABB: Min(-79.0435,-163.988,-337.014) Max(20.9566,-51.4281,-137.014)
+[BMDParser] Data/Object5/Object08.bmd Version: 0xa File size: 8169
+[BMDParser] Meshes: 1 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 72 Norms: 21 Tex: 47 Tris: 94 Texture: re_05.jpg
+[BMDParser] AABB: Min(-179.03,-163.988,-37.028) Max(20.9564,-42.5972,162.986)
+[BMDParser] Data/Object5/Object09.bmd Version: 0xa File size: 3553
+[BMDParser] Meshes: 1 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 32 Norms: 9 Tex: 28 Tris: 38 Texture: re_05.jpg
+[BMDParser] AABB: Min(-79.0435,-163.988,-337.014) Max(20.9566,-51.4282,-188.19)
+[BMDParser] Data/Object5/Object19.bmd Version: 0xa File size: 21110
+[BMDParser] Meshes: 2 Bones: 3 Actions: 1
+ [Mesh 0] Verts: 127 Norms: 147 Tex: 45 Tris: 212 Texture: re_04.jpg
+ [Mesh 1] Verts: 28 Norms: 16 Tex: 14 Tris: 16 Texture: light01.jpg
+[BMDParser] AABB: Min(-161.253,-214.358,-336.297) Max(161.165,209.162,336.297)
+[BMDParser] Data/Object5/Object39.bmd Version: 0xa File size: 7194
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 42 Norms: 42 Tex: 52 Tris: 80 Texture: bons.jpg
+[BMDParser] AABB: Min(-11.8481,-16.3834,-14.219) Max(11.8481,16.3834,14.219)
+[BMDParser] Data/Object5/Object21.bmd Version: 0xa File size: 40837
+[BMDParser] Meshes: 5 Bones: 22 Actions: 1
+ [Mesh 0] Verts: 75 Norms: 62 Tex: 4 Tris: 72 Texture: t17.jpg
+ [Mesh 1] Verts: 34 Norms: 1 Tex: 4 Tris: 32 Texture: t18.jpg
+ [Mesh 2] Verts: 15 Norms: 10 Tex: 15 Tris: 16 Texture: taa02.tga
+ [Mesh 3] Verts: 96 Norms: 73 Tex: 5 Tris: 128 Texture: taa03.tga
+ [Mesh 4] Verts: 12 Norms: 9 Tex: 5 Tris: 16 Texture: t20.jpg
+[BMDParser] AABB: Min(-276.875,-275.849,-112.984) Max(191.885,350.693,269.592)
+  [CPU-Anim] type 20 keys=30
+[BMDParser] Data/Object5/Object24.bmd Version: 0xa File size: 10833
+[BMDParser] Meshes: 2 Bones: 4 Actions: 1
+ [Mesh 0] Verts: 16 Norms: 13 Tex: 20 Tris: 26 Texture: re_07.jpg
+ [Mesh 1] Verts: 42 Norms: 42 Tex: 55 Tris: 80 Texture: re_008.jpg
+[BMDParser] AABB: Min(-32.8947,-32.8947,-4.47851) Max(32.8947,32.8948,132.255)
+  [CPU-Anim] type 23 keys=12
+[BMDParser] Data/Object5/Object25.bmd Version: 0xa File size: 1194
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 8 Norms: 6 Tex: 4 Tris: 12 Texture: t19.jpg
+[BMDParser] AABB: Min(-20,-20,0) Max(20,20,40)
+[BMDParser] Data/Object5/Object17.bmd Version: 0xa File size: 39554
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 252 Norms: 212 Tex: 52 Tris: 480 Texture: bons.jpg
+[BMDParser] AABB: Min(-104.036,-223.773,69.9355) Max(-24.5938,-104.751,98.0075)
+[BMDParser] Data/Object5/Object18.bmd Version: 0xa File size: 24618
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 158 Norms: 158 Tex: 76 Tris: 284 Texture: bons.jpg
+[BMDParser] AABB: Min(-34.1812,-137.915,9.41566) Max(66.7201,17.0439,34.9826)
+[BMDParser] Data/Object5/Object13.bmd Version: 0xa File size: 59875
+[BMDParser] Meshes: 1 Bones: 4 Actions: 1
+ [Mesh 0] Verts: 405 Norms: 458 Tex: 289 Tris: 650 Texture: guard_gold2.jpg
+[BMDParser] AABB: Min(-72.5328,-119.22,-50.7422) Max(64.698,68.092,82.818)
+[BMDParser] Data/Object5/Object20.bmd Version: 0xa File size: 40837
+[BMDParser] Meshes: 5 Bones: 22 Actions: 1
+ [Mesh 0] Verts: 75 Norms: 62 Tex: 4 Tris: 72 Texture: t17.jpg
+ [Mesh 1] Verts: 34 Norms: 1 Tex: 4 Tris: 32 Texture: t18.jpg
+ [Mesh 2] Verts: 15 Norms: 10 Tex: 15 Tris: 16 Texture: taa01.tga
+ [Mesh 3] Verts: 96 Norms: 73 Tex: 5 Tris: 128 Texture: taa03.tga
+ [Mesh 4] Verts: 12 Norms: 9 Tex: 5 Tris: 16 Texture: t20.jpg
+[BMDParser] AABB: Min(-276.875,-275.849,-112.984) Max(191.885,350.693,269.592)
+  [CPU-Anim] type 19 keys=30
+[BMDParser] Data/Object5/Object14.bmd Version: 0xa File size: 5446
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 32 Norms: 49 Tex: 44 Tris: 54 Texture: re_04.jpg
+[BMDParser] AABB: Min(-47.864,-47.864,-7.9) Max(47.8639,47.864,106.215)
+[BMDParser] Data/Object5/Object15.bmd Version: 0xa File size: 4330
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 24 Norms: 32 Tex: 43 Tris: 44 Texture: re_04.jpg
+[BMDParser] AABB: Min(53.6662,-47.864,-7.9) Max(149.394,47.8639,91.3832)
+[BMDParser] Data/Object5/Object16.bmd Version: 0xa File size: 4514
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 25 Norms: 32 Tex: 48 Tris: 46 Texture: re_04.jpg
+[BMDParser] AABB: Min(159.9,-47.8639,68.4372) Max(246.365,47.864,106.216)
+[BMDParser] Data/Object5/Object22.bmd Version: 0xa File size: 6546
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 48 Norms: 32 Tex: 48 Tris: 72 Texture: re_08.jpg
+[BMDParser] AABB: Min(-62.0348,-85.1118,-6.3755) Max(30.6662,17.3413,30.7046)
+[BMDParser] Data/Object5/Object40.bmd Version: 0xa File size: 1258
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 8 Norms: 6 Tex: 12 Tris: 12 Texture: re_08.jpg
+[BMDParser] AABB: Min(-15.098,-19.7333,-7.1308) Max(15.098,19.7333,7.1308)
+[BMDParser] Data/Object5/Object05.bmd Version: 0xa File size: 5236
+[BMDParser] Meshes: 2 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 40 Norms: 11 Tex: 16 Tris: 46 Texture: re_05.jpg
+ [Mesh 1] Verts: 16 Norms: 3 Tex: 4 Tris: 12 Texture: re02.tga
+[BMDParser] AABB: Min(-50,-50,0) Max(50,50,286.528)
+[BMDParser] Data/Object5/Object27.bmd Version: 0xa File size: 64130
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 380 Norms: 388 Tex: 380 Tris: 736 Texture: d_003.jpg
+[BMDParser] AABB: Min(-106.969,-64.7245,-129.549) Max(106.969,120.903,147.792)
+[BMDParser] Data/Object5/Object28.bmd Version: 0xa File size: 134962
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 840 Norms: 840 Tex: 112 Tris: 1620 Texture: d_003.jpg
+[BMDParser] AABB: Min(-327.323,-88.4171,-12.2739) Max(-53.6742,117.765,258.532)
+[BMDParser] Data/Object5/Object29.bmd Version: 0xa File size: 58482
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 360 Norms: 360 Tex: 72 Tris: 700 Texture: d_003.jpg
+[BMDParser] AABB: Min(-67.6288,-17.3623,0.199252) Max(143.026,275.38,151.19)
+[BMDParser] Data/Object5/Object31.bmd Version: 0xa File size: 9522
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 56 Norms: 56 Tex: 56 Tris: 108 Texture: d_003.jpg
+[BMDParser] AABB: Min(-86.6193,-7.47417,-239.428) Max(-14.0886,137.841,53.9994)
+[BMDParser] Data/Object5/Object10.bmd Version: 0xa File size: 2258
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 16 Norms: 8 Tex: 20 Tris: 24 Texture: re_08.jpg
+[BMDParser] AABB: Min(-149.885,-49.3228,0.7243) Max(50,49.3614,42.6257)
+[BMDParser] Data/Object5/Object12.bmd Version: 0xa File size: 71646
+[BMDParser] Meshes: 1 Bones: 5 Actions: 1
+ [Mesh 0] Verts: 492 Norms: 556 Tex: 374 Tris: 770 Texture: guard_gold2.jpg
+[BMDParser] AABB: Min(-61.9738,-147.855,-50.7422) Max(67.6596,68.092,50.7421)
+[BMDParser] Data/Object5/Object26.bmd Version: 0xa File size: 610
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 5 Norms: 4 Tex: 6 Tris: 4 Texture: t17.jpg
+[BMDParser] AABB: Min(-62.4821,-62.4822,7.15462) Max(62.4822,62.4821,16.487)
+[BMDParser] Data/Object5/Object23.bmd Version: 0xa File size: 6546
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 48 Norms: 32 Tex: 48 Tris: 72 Texture: re_08.jpg
+[BMDParser] AABB: Min(-62.0347,-32.5598,-6.3755) Max(71.1773,48.4153,30.7046)
+[BMDParser] Data/Object5/Object37.bmd Version: 0xa File size: 50775
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 273 Norms: 273 Tex: 189 Tris: 486 Texture: bons.jpg
+[BMDParser] AABB: Min(-16.1359,-10.0973,-19.0723) Max(51.8442,22.5432,19.8264)
+  [CPU-Anim] type 36 keys=6
+[BMDParser] Data/Object5/Object35.bmd Version: 0xa File size: 50775
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 273 Norms: 273 Tex: 189 Tris: 486 Texture: bons.jpg
+[BMDParser] AABB: Min(-16.1359,-10.0973,-19.0693) Max(51.8442,22.5432,19.8294)
+  [CPU-Anim] type 34 keys=6
+[BMDParser] Data/Object5/Object30.bmd Version: 0xa File size: 81586
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 504 Norms: 504 Tex: 72 Tris: 980 Texture: d_003.jpg
+[BMDParser] AABB: Min(35.923,239.914,0.341952) Max(201.031,503.436,123.277)
+[BMDParser] Data/Object5/Object32.bmd Version: 0xa File size: 9522
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 56 Norms: 56 Tex: 56 Tris: 108 Texture: d_003.jpg
+[BMDParser] AABB: Min(-92.7079,-12.2267,45.7851) Max(-11.7158,131.399,223.578)
+[BMDParser] Data/Object5/Object33.bmd Version: 0xa File size: 13010
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 84 Norms: 84 Tex: 78 Tris: 144 Texture: d_003.jpg
+[BMDParser] AABB: Min(-166.618,-111.78,155.75) Max(-75.6773,10.1202,279.063)
+[BMDParser] Data/Object5/Object34.bmd Version: 0xa File size: 9522
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 56 Norms: 56 Tex: 56 Tris: 108 Texture: d_003.jpg
+[BMDParser] AABB: Min(-158.962,-59.2304,204.143) Max(229.258,40.2874,302.875)
+[BMDParser] Data/Object5/Object11.bmd Version: 0xa File size: 67219
+[BMDParser] Meshes: 1 Bones: 4 Actions: 1
+ [Mesh 0] Verts: 468 Norms: 518 Tex: 355 Tris: 722 Texture: guard_gold2.jpg
+[BMDParser] AABB: Min(-44.0415,-140.65,-50.7422) Max(38.6783,68.092,100.002)
+[BMDParser] Data/Object5/Object36.bmd Version: 0xa File size: 50775
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 273 Norms: 273 Tex: 189 Tris: 486 Texture: bons.jpg
+[BMDParser] AABB: Min(-16.1359,-10.0985,-19.0723) Max(51.8442,22.5432,19.8264)
+  [CPU-Anim] type 35 keys=6
+[BMDParser] Data/Object5/Object38.bmd Version: 0xa File size: 50775
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 273 Norms: 273 Tex: 189 Tris: 486 Texture: bons.jpg
+[BMDParser] AABB: Min(-16.1359,-10.0985,-19.0734) Max(51.8442,22.5438,19.8254)
+  [CPU-Anim] type 37 keys=6
+[BMDParser] Cannot open file: Data/Object5/Object41.bmd
+[BMDParser] Data/Object1/StoneStatue01.bmd Version: 0xa File size: 8522
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 61 Norms: 46 Tex: 74 Tris: 92 Texture: stone_statue02.jpg
+[BMDParser] AABB: Min(-54.5946,-55.4054,0) Max(54.5946,55.4054,399.987)
+[BMDParser] Data/Object5/Object04.bmd Version: 0xa File size: 13766
+[BMDParser] Meshes: 3 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 108 Norms: 20 Tex: 16 Tris: 116 Texture: re_05.jpg
+ [Mesh 1] Verts: 48 Norms: 3 Tex: 4 Tris: 36 Texture: re02.tga
+ [Mesh 2] Verts: 12 Norms: 1 Tex: 12 Tris: 6 Texture: re_07.jpg
+[BMDParser] AABB: Min(-50,-50,-4.00096e-06) Max(250,50,286.528)
+[ObjectRenderer] Generic: Loaded 5380 instances, 39 unique models (1 from fallback), skipped 0
+[LoadWorld] Ready: 5380 objects, 889 lights, 4070 fire emitters
+[NPC] No server connection, using hardcoded NPCs
 [BMDParser] Data/NPC/Smith01.bmd Version: 0xa File size: 115452
 [BMDParser] Meshes: 5 Bones: 43 Actions: 3
  [Mesh 0] Verts: 32 Norms: 25 Tex: 44 Tris: 52 Texture: tile_02.jpg
@@ -1307,20 +1616,90 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 72 Norms: 105 Tex: 48 Tris: 112 Texture: Javelins05.jpg
 [BMDParser] AABB: Min(-43.4424,-16.2774,-2.99121) Max(224.946,32.9334,2.70169)
-[NPC] Models loaded: 8 types, 19 type mappings
-[NPC] Server-spawned NPC type=253 idx=1001 at grid (127,86) dir=3
-[NPC] Server-spawned NPC type=250 idx=1002 at grid (183,137) dir=3
-[NPC] Server-spawned NPC type=251 idx=1003 at grid (116,141) dir=4
-[NPC] Server-spawned NPC type=254 idx=1004 at grid (118,113) dir=4
-[NPC] Server-spawned NPC type=255 idx=1005 at grid (123,135) dir=2
-[NPC] Server-spawned NPC type=240 idx=1006 at grid (146,110) dir=4
-[NPC] Server-spawned NPC type=240 idx=1007 at grid (147,145) dir=2
-[NPC] Server-spawned NPC type=245 idx=1008 at grid (94,125) dir=3
-[NPC] Server-spawned NPC type=246 idx=1009 at grid (123,84) dir=3
-[NPC] Server-spawned NPC type=247 idx=1010 at grid (130,115) dir=4
-[NPC] Server-spawned NPC type=248 idx=1011 at grid (173,125) dir=5
-[NPC] Server-spawned NPC type=249 idx=1012 at grid (131,148) dir=3
-[NPC] Loaded 12 NPCs from server
+[BMDParser] Data/NPC/ElfWizard01.bmd Version: 0xa File size: 94195
+[BMDParser] Meshes: 4 Bones: 43 Actions: 2
+ [Mesh 0] Verts: 123 Norms: 75 Tex: 122 Tris: 157 Texture: hpp.jpg
+ [Mesh 1] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: lpwing.jpg
+ [Mesh 2] Verts: 169 Norms: 169 Tex: 217 Tris: 328 Texture: lplower.jpg
+ [Mesh 3] Verts: 79 Norms: 79 Tex: 75 Tris: 140 Texture: lptgq.tga
+[BMDParser] AABB: Min(-90.0444,-104.331,-21.8307) Max(117.331,104.331,192.064)
+[NPC] Loaded model 'ElfWizard' (43 bones, 0 parts, rootBone=0)
+[BMDParser] Data/NPC/ElfMerchant01.bmd Version: 0xa File size: 67432
+[BMDParser] Meshes: 1 Bones: 44 Actions: 2
+ [Mesh 0] Verts: 171 Norms: 171 Tex: 221 Tris: 322 Texture: ob.jpg
+[BMDParser] AABB: Min(-14.7111,-28.7336,-93.3418) Max(36.8496,28.8631,25.6787)
+[NPC] Loaded model 'ElfMerchant' (44 bones, 0 parts, rootBone=0)
+[BMDParser] Data/NPC/MixNpc01.bmd Version: 0xa File size: 65137
+[BMDParser] Meshes: 2 Bones: 49 Actions: 2
+ [Mesh 0] Verts: 221 Norms: 229 Tex: 277 Tris: 425 Texture: ob3.jpg
+ [Mesh 1] Verts: 18 Norms: 14 Tex: 10 Tris: 32 Texture: yellow_jewel.jpg
+[BMDParser] AABB: Min(-26.0576,-26.7153,-24.6766) Max(43.8214,27.394,52.8327)
+[NPC] Loaded model 'MixNpc' (49 bones, 0 parts, rootBone=0)
+[BMDParser] Data/Player/player.bmd Version: 0xc File size: 3324834
+[BMDParser] Meshes: 0 Bones: 60 Actions: 284
+[BMDParser] Data/Player/HelmElf05.bmd Version: 0xa File size: 18229
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 68 Norms: 84 Tex: 47 Tris: 98 Texture: head_a05.jpg
+ [Mesh 1] Verts: 42 Norms: 42 Tex: 44 Tris: 64 Texture: skin_warrior_01.jpg
+[BMDParser] AABB: Min(-12.5448,-28.2658,-18.6944) Max(36.0177,15.3055,18.7656)
+[BMDParser] Data/Player/ArmorElf05.bmd Version: 0xa File size: 25655
+[BMDParser] Meshes: 3 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 118 Norms: 118 Tex: 102 Tris: 176 Texture: upper_03.jpg
+ [Mesh 1] Verts: 32 Norms: 32 Tex: 48 Tris: 44 Texture: skin_warrior_01.jpg
+ [Mesh 2] Verts: 24 Norms: 24 Tex: 24 Tris: 16 Texture: hide.jpg
+[BMDParser] AABB: Min(-10.2318,-12.9491,-16.52) Max(37.9455,24.9298,16.4522)
+[BMDParser] Data/Player/PantElf05.bmd Version: 0xa File size: 15947
+[BMDParser] Meshes: 3 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 61 Norms: 61 Tex: 87 Tris: 106 Texture: lower_03.jpg
+ [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide.jpg
+ [Mesh 2] Verts: 18 Norms: 18 Tex: 18 Tris: 16 Texture: lower_03b.tga
+[BMDParser] AABB: Min(-13.3603,-19.3892,-27.0937) Max(55.1852,12.4674,17.6229)
+[BMDParser] Data/Player/GloveElf05.bmd Version: 0xa File size: 16571
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 82 Norms: 92 Tex: 78 Tris: 156 Texture: gloves_03b.jpg
+[BMDParser] AABB: Min(0.734404,-7.45001,-12.4433) Max(37.8177,14.6589,12.3583)
+[BMDParser] Data/Player/BootElf05.bmd Version: 0xa File size: 15915
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 80 Norms: 80 Tex: 62 Tris: 152 Texture: boots_03b.jpg
+[BMDParser] AABB: Min(-3.72342,-17.3314,-10.3434) Max(43.3411,23.3089,10.4079)
+[NPC] Loaded model 'ElfGuard' (60 bones, 5 parts, rootBone=0)
+[BMDParser] Data/Item/Bow06.bmd Version: 0xa File size: 12892
+[BMDParser] Meshes: 4 Bones: 13 Actions: 1
+ [Mesh 0] Verts: 48 Norms: 78 Tex: 20 Tris: 80 Texture: bow06.jpg
+ [Mesh 1] Verts: 9 Norms: 4 Tex: 6 Tris: 13 Texture: bow05.jpg
+ [Mesh 2] Verts: 7 Norms: 7 Tex: 7 Tris: 10 Texture: bow01.jpg
+ [Mesh 3] Verts: 7 Norms: 1 Tex: 7 Tris: 3 Texture: bow05.tga
+[BMDParser] AABB: Min(-5.5955,-86.7763,-36.5913) Max(9.7286,40.3512,73.6872)
+[BMDParser] Data/Player/player.bmd Version: 0xc File size: 3324834
+[BMDParser] Meshes: 0 Bones: 60 Actions: 284
+[BMDParser] Data/Player/HelmMale10.bmd Version: 0xa File size: 6923
+[BMDParser] Meshes: 3 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 21 Norms: 21 Tex: 13 Tris: 35 Texture: head_11.jpg
+ [Mesh 1] Verts: 5 Norms: 4 Tex: 5 Tris: 3 Texture: hide.jpg
+ [Mesh 2] Verts: 8 Norms: 6 Tex: 4 Tris: 4 Texture: guard_hair.tga
+[BMDParser] AABB: Min(-7.48079,-23.1748,-10.5654) Max(39.8405,13.7504,17.1928)
+[BMDParser] Data/Player/ArmorMale10.bmd Version: 0xa File size: 22413
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 117 Norms: 125 Tex: 141 Tris: 174 Texture: upper_11.jpg
+ [Mesh 1] Verts: 32 Norms: 31 Tex: 32 Tris: 24 Texture: hide.jpg
+[BMDParser] AABB: Min(-12.6977,-18.9878,-20.7687) Max(37.8095,15.7788,20.944)
+[BMDParser] Data/Player/PantMale10.bmd Version: 0xa File size: 11977
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 49 Norms: 49 Tex: 69 Tris: 82 Texture: lower_11.jpg
+ [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide.jpg
+[BMDParser] AABB: Min(-9.56229,-13.3717,-19.2327) Max(51.8746,10.1307,19.0403)
+[BMDParser] Data/Player/GloveMale10.bmd Version: 0xa File size: 18443
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 104 Norms: 104 Tex: 94 Tris: 174 Texture: gloves_11.jpg
+[BMDParser] AABB: Min(-18.5964,-8.01221,-15.6) Max(49.066,16.8496,16.135)
+[BMDParser] Data/Player/BootMale10.bmd Version: 0xa File size: 19371
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 116 Norms: 114 Tex: 65 Tris: 186 Texture: boots_11.jpg
+[BMDParser] AABB: Min(-11.2245,-27.6859,-16.4599) Max(53.4032,21.5989,17.3277)
+[NPC] Loaded model 'TowerWardenVeros' (60 bones, 5 parts, rootBone=0)
+[NPC] Models loaded: 13 types, 24 type mappings
+[NPC] Models loaded, waiting for server NPC spawns
+[Hero] Pet companion unequipped
 [BMDParser] Data/Player/HelmClass02.bmd Version: 0xa File size: 14031
 [BMDParser] Meshes: 1 Bones: 56 Actions: 1
  [Mesh 0] Verts: 81 Norms: 81 Tex: 86 Tris: 119 Texture: skin_wizard_01.jpg
@@ -1346,59 +1725,60 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
  [Mesh 0] Verts: 70 Norms: 70 Tex: 51 Tris: 126 Texture: skin_wizard_01.jpg
 [BMDParser] AABB: Min(-1.64947,-17.8525,-9.48136) Max(44.2343,21.3852,9.54922)
 [Hero] Equipped body part[4]: BootClass02.bmd (1 GPU meshes)
-[BMDParser] Data/Item/Sword01.bmd Version: 0xa File size: 6866
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 42 Norms: 68 Tex: 42 Tris: 68 Texture: sword02.jpg
-[BMDParser] AABB: Min(-6.0028,-6.35266,-10.3176) Max(6.62106,5.76604,64.7253)
-[Hero] Loaded weapon Sword01.bmd: 1 meshes, 1 bones (bone=33 idle=4 walk=17 2H=0)
-[Hero] Weapon equipped: Sword01.bmd (1 GPU meshes)
-[Equip] Slot 0: Sword01.bmd cat=0
-[BMDParser] Data/Item/Shield01.bmd Version: 0xa File size: 1970
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 14 Norms: 14 Tex: 21 Tris: 18 Texture: du_shield1.jpg
-[BMDParser] AABB: Min(-26.9996,-27.0376,-7.16765) Max(26.979,26.941,14.4776)
-[Hero] Loaded shield Shield01.bmd: 1 meshes, 1 bones
-[Hero] Shield equipped: Shield01.bmd (1 GPU meshes)
-[Equip] Slot 1: Shield01.bmd cat=6
-[BMDParser] Data/Player/HelmMale06.bmd Version: 0xa File size: 13643
+[BMDParser] Data/Item/Sword13.bmd Version: 0xa File size: 18443
+[BMDParser] Meshes: 2 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 93 Norms: 188 Tex: 74 Tris: 168 Texture: sword14.jpg
+ [Mesh 1] Verts: 36 Norms: 1 Tex: 30 Tris: 12 Texture: sword14.tga
+[BMDParser] AABB: Min(-15.356,-15.041,-86.223) Max(15.041,15.356,121.382)
+[Hero] Loaded weapon Sword13.bmd: 2 meshes, 2 bones (bone=33 idle=5 walk=18 2H=1)
+[Hero] Weapon equipped: Sword13.bmd (2 GPU meshes)
+[Equip] Slot 0: Sword13.bmd cat=0
+[Equip] Slot 1:  cat=255
+[BMDParser] Data/Player/HelmMale10.bmd Version: 0xa File size: 6923
 [BMDParser] Meshes: 3 Bones: 56 Actions: 1
- [Mesh 0] Verts: 47 Norms: 50 Tex: 31 Tris: 69 Texture: head_07.jpg
- [Mesh 1] Verts: 19 Norms: 19 Tex: 13 Tris: 13 Texture: hide.jpg
- [Mesh 2] Verts: 22 Norms: 22 Tex: 24 Tris: 27 Texture: skin_barbarian_01.jpg
-[BMDParser] AABB: Min(-19.0254,-23.3891,-16.0521) Max(30.7698,23.5942,15.8919)
-[Hero] Equipped body part[0]: HelmMale06.bmd (3 GPU meshes)
-[Equip] Slot 2: HelmMale06.bmd cat=7
-[BMDParser] Data/Player/ArmorMale06.bmd Version: 0xa File size: 20621
-[BMDParser] Meshes: 4 Bones: 56 Actions: 1
- [Mesh 0] Verts: 69 Norms: 69 Tex: 86 Tris: 106 Texture: upper_07_m.jpg
- [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 16 Texture: upper_07b_m.tga
- [Mesh 2] Verts: 32 Norms: 32 Tex: 48 Tris: 44 Texture: skin_barbarian_01.jpg
- [Mesh 3] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide_m.jpg
-[BMDParser] AABB: Min(-10.8544,-15.3671,-30.7371) Max(38.8051,24.6914,30.2589)
-[Hero] Equipped body part[1]: ArmorMale06.bmd (4 GPU meshes)
-[Equip] Slot 3: ArmorMale06.bmd cat=8
-[BMDParser] Data/Player/PantMale06.bmd Version: 0xa File size: 14385
+ [Mesh 0] Verts: 21 Norms: 21 Tex: 13 Tris: 35 Texture: head_11.jpg
+ [Mesh 1] Verts: 5 Norms: 4 Tex: 5 Tris: 3 Texture: hide.jpg
+ [Mesh 2] Verts: 8 Norms: 6 Tex: 4 Tris: 4 Texture: guard_hair.tga
+[BMDParser] AABB: Min(-7.48079,-23.1748,-10.5654) Max(39.8405,13.7504,17.1928)
+[Hero] Equipped body part[0]: HelmMale10.bmd (3 GPU meshes)
+[Equip] Slot 2: HelmMale10.bmd cat=7
+[BMDParser] Data/Player/ArmorMale10.bmd Version: 0xa File size: 22413
 [BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 63 Norms: 63 Tex: 83 Tris: 110 Texture: lower_07_m.jpg
- [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide_m.jpg
-[BMDParser] AABB: Min(-12.959,-14.2836,-16.3835) Max(52.6129,13.9074,16.3143)
-[Hero] Equipped body part[2]: PantMale06.bmd (2 GPU meshes)
-[Equip] Slot 4: PantMale06.bmd cat=9
-[BMDParser] Data/Player/GloveMale06.bmd Version: 0xa File size: 16053
+ [Mesh 0] Verts: 117 Norms: 125 Tex: 141 Tris: 174 Texture: upper_11.jpg
+ [Mesh 1] Verts: 32 Norms: 31 Tex: 32 Tris: 24 Texture: hide.jpg
+[BMDParser] AABB: Min(-12.6977,-18.9878,-20.7687) Max(37.8095,15.7788,20.944)
+[Hero] Equipped body part[1]: ArmorMale10.bmd (2 GPU meshes)
+[Equip] Slot 3: ArmorMale10.bmd cat=8
+[BMDParser] Data/Player/PantMale10.bmd Version: 0xa File size: 11977
 [BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 78 Norms: 78 Tex: 60 Tris: 142 Texture: gloves_07.jpg
- [Mesh 1] Verts: 10 Norms: 10 Tex: 10 Tris: 6 Texture: hide.jpg
-[BMDParser] AABB: Min(-2.57268,-7.11589,-12.8795) Max(37.8176,6.63521,12.8144)
-[Hero] Equipped body part[3]: GloveMale06.bmd (2 GPU meshes)
-[Equip] Slot 5: GloveMale06.bmd cat=10
-[BMDParser] Data/Player/BootMale06.bmd Version: 0xa File size: 14021
-[BMDParser] Meshes: 2 Bones: 56 Actions: 1
- [Mesh 0] Verts: 66 Norms: 66 Tex: 52 Tris: 118 Texture: boots_07.jpg
- [Mesh 1] Verts: 10 Norms: 10 Tex: 10 Tris: 6 Texture: hide.jpg
-[BMDParser] AABB: Min(-1.64947,-16.1438,-12.0604) Max(44.2343,21.3852,12.1282)
-[Hero] Equipped body part[4]: BootMale06.bmd (2 GPU meshes)
-[Equip] Slot 6: BootMale06.bmd cat=11
-[Music] Stopped
+ [Mesh 0] Verts: 49 Norms: 49 Tex: 69 Tris: 82 Texture: lower_11.jpg
+ [Mesh 1] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide.jpg
+[BMDParser] AABB: Min(-9.56229,-13.3717,-19.2327) Max(51.8746,10.1307,19.0403)
+[Hero] Equipped body part[2]: PantMale10.bmd (2 GPU meshes)
+[Equip] Slot 4: PantMale10.bmd cat=9
+[BMDParser] Data/Player/GloveMale10.bmd Version: 0xa File size: 18443
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 104 Norms: 104 Tex: 94 Tris: 174 Texture: gloves_11.jpg
+[BMDParser] AABB: Min(-18.5964,-8.01221,-15.6) Max(49.066,16.8496,16.135)
+[Hero] Equipped body part[3]: GloveMale10.bmd (1 GPU meshes)
+[Equip] Slot 5: GloveMale10.bmd cat=10
+[BMDParser] Data/Player/BootMale10.bmd Version: 0xa File size: 19371
+[BMDParser] Meshes: 1 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 116 Norms: 114 Tex: 65 Tris: 186 Texture: boots_11.jpg
+[BMDParser] AABB: Min(-11.2245,-27.6859,-16.4599) Max(53.4032,21.5989,17.3277)
+[Hero] Equipped body part[4]: BootMale10.bmd (1 GPU meshes)
+[Equip] Slot 6: BootMale10.bmd cat=11
+[BMDParser] Data/Player/Helper02.bmd Version: 0xa File size: 6897
+[BMDParser] Meshes: 2 Bones: 8 Actions: 1
+ [Mesh 0] Verts: 30 Norms: 30 Tex: 19 Tris: 54 Texture: satan.jpg
+ [Mesh 1] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: satan2.tga
+[BMDParser] AABB: Min(-35.4309,-31.5429,-22.4206) Max(37.2426,21.6734,21.1685)
+[TextureLoader::Resolve] Could not find texture: satan.jpg in Data/Player/
+[Hero] Pet mesh 0: texture 'satan.jpg' resolved from Item/
+[TextureLoader::Resolve] Could not find texture: satan2.tga in Data/Player/
+[Hero] Pet mesh 1: texture 'satan2.tga' resolved from Item/
+[Hero] Pet companion equipped: Helper02.bmd (2 meshes, blendMesh=1, radius=28.2819)
+[Equip] Slot 8: Helper02.bmd cat=13
 [BMDParser] Data/Monster/Monster01.bmd Version: 0xa File size: 158556
 [BMDParser] Meshes: 14 Bones: 45 Actions: 7
  [Mesh 0] Verts: 19 Norms: 23 Tex: 13 Tris: 26 Texture: helmat_01.jpg
@@ -1581,6 +1961,55 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
 [BMDParser] AABB: Min(-45.8065,-124.324,-141.344) Max(126.69,130.38,120.664)
 [Monster] Loaded model 'Ice Queen' (63 bones, 3 meshes, 7 actions, rootBone=0)
 [Monster]   Walk action 2: keys=13 LockPositions=1
+[BMDParser] Data/Monster/Monster20.bmd Version: 0xa File size: 90114
+[BMDParser] Meshes: 1 Bones: 45 Actions: 7
+ [Mesh 0] Verts: 190 Norms: 190 Tex: 242 Tris: 376 Texture: ob2.jpg
+[BMDParser] AABB: Min(-15.3522,-20.6889,-19.4932) Max(36.9207,22.0373,19.5294)
+[Monster] Loaded model 'Goblin' (45 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster21.bmd Version: 0xa File size: 32012
+[BMDParser] Meshes: 1 Bones: 9 Actions: 7
+ [Mesh 0] Verts: 138 Norms: 162 Tex: 82 Tris: 252 Texture: bug3.jpg
+[BMDParser] AABB: Min(-33.8641,-28.561,-13.3028) Max(82.6548,35.7571,37.7693)
+[Monster] Loaded model 'Chain Scorpion' (9 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=6 LockPositions=1
+[BMDParser] Data/Monster/Monster22.bmd Version: 0xa File size: 121139
+[BMDParser] Meshes: 2 Bones: 46 Actions: 7
+ [Mesh 0] Verts: 256 Norms: 266 Tex: 189 Tris: 430 Texture: bug.jpg
+ [Mesh 1] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: bug2.jpg
+[BMDParser] AABB: Min(-58.1646,-106.17,-38.4545) Max(73.202,44.553,45.9985)
+[Monster] Loaded model 'Beetle Monster' (46 bones, 2 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster23.bmd Version: 0xa File size: 101534
+[BMDParser] Meshes: 1 Bones: 37 Actions: 7
+ [Mesh 0] Verts: 214 Norms: 215 Tex: 298 Tris: 424 Texture: pt2.jpg
+[BMDParser] AABB: Min(-10.1138,-33.7003,-21.9707) Max(52.2819,41.7718,22.0974)
+[Monster] Loaded model 'Hunter' (37 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster24.bmd Version: 0xa File size: 130546
+[BMDParser] Meshes: 1 Bones: 41 Actions: 7
+ [Mesh 0] Verts: 262 Norms: 262 Tex: 137 Tris: 512 Texture: pt3.jpg
+[BMDParser] AABB: Min(-57.7835,-35,-33.5148) Max(115.679,61.9014,33.3086)
+[Monster] Loaded model 'Forest Monster' (41 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster25.bmd Version: 0xa File size: 117318
+[BMDParser] Meshes: 1 Bones: 41 Actions: 7
+ [Mesh 0] Verts: 276 Norms: 262 Tex: 348 Tris: 536 Texture: pt.jpg
+[BMDParser] AABB: Min(-11.5165,-31.4776,-35.0899) Max(47.3197,36.2212,31.3377)
+[Monster] Loaded model 'Agon' (41 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster26.bmd Version: 0xa File size: 88908
+[BMDParser] Meshes: 1 Bones: 31 Actions: 7
+ [Mesh 0] Verts: 270 Norms: 270 Tex: 108 Tris: 460 Texture: ston1.jpg
+[BMDParser] AABB: Min(-30.1301,-57.9055,-74.5463) Max(159.818,57.8379,66.4272)
+[Monster] Loaded model 'Stone Golem' (31 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster20.bmd Version: 0xa File size: 90114
+[BMDParser] Meshes: 1 Bones: 45 Actions: 7
+ [Mesh 0] Verts: 190 Norms: 190 Tex: 242 Tris: 376 Texture: ob2.jpg
+[BMDParser] AABB: Min(-15.3522,-20.6889,-19.4932) Max(36.9207,22.0373,19.5294)
+[Monster] Loaded model 'Elite Goblin' (45 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
 [BMDParser] Data/Player/Player.bmd Version: 0xc File size: 3324834
 [BMDParser] Meshes: 0 Bones: 60 Actions: 284
 [Monster] Loaded Player.bmd for skeleton animations (60 bones, 284 actions)
@@ -1634,47 +2063,244 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 39 Norms: 67 Tex: 30 Tris: 64 Texture: Axes08.jpg
 [BMDParser] AABB: Min(-87.2425,-25.5399,-3.79372) Max(50.0373,26.6755,3.62499)
-[Monster] Loaded weapon Axe07.bmd for type 0 (bone 42)
+[Monster] Loaded weapon Axe07.bmd for type 0 (bone 42, blendMesh -1)
 [BMDParser] Data/Item/Spear08.bmd Version: 0xa File size: 10454
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 74 Norms: 79 Tex: 47 Tris: 112 Texture: Polearms04.jpg
 [BMDParser] AABB: Min(-59.246,-15.5992,-2.38668) Max(215.573,27.925,2.11119)
-[Monster] Loaded weapon Spear08.bmd for type 4 (bone 42)
+[Monster] Loaded weapon Spear08.bmd for type 4 (bone 42, blendMesh -1)
 [BMDParser] Data/Item/Staff03.bmd Version: 0xa File size: 6522
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 36 Norms: 50 Tex: 56 Tris: 68 Texture: wand04.jpg
 [BMDParser] AABB: Min(-10.3015,-10.2585,-17.1462) Max(10.0308,10.0738,179.117)
-[Monster] Loaded weapon Staff03.bmd for type 6 (bone 41)
-[BMDParser] Data/Item/Staff03.bmd Version: 0xa File size: 6522
+[Monster] Loaded weapon Staff03.bmd for type 6 (bone 41, blendMesh -1)
+[BMDParser] Data/Item/Staff04.bmd Version: 0xa File size: 10122
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 36 Norms: 50 Tex: 56 Tris: 68 Texture: wand04.jpg
-[BMDParser] AABB: Min(-10.3015,-10.2585,-17.1462) Max(10.0308,10.0738,179.117)
-[Monster] Loaded weapon Staff03.bmd for type 9 (bone 41)
+ [Mesh 0] Verts: 58 Norms: 112 Tex: 51 Tris: 100 Texture: wand05.jpg
+[BMDParser] AABB: Min(-15.0359,-15.0553,-37.1681) Max(15.0552,15.0359,250.981)
+[Monster] Loaded weapon Staff04.bmd for type 9 (bone 41, blendMesh -1)
 [BMDParser] Data/Item/Sword08.bmd Version: 0xa File size: 9270
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 57 Norms: 65 Tex: 32 Tris: 104 Texture: hound_sword1.jpg
 [BMDParser] AABB: Min(-82.454,-17.6673,-0.364347) Max(62.186,18.5971,5.85506)
-[Monster] Loaded weapon Sword08.bmd for type 5 (bone 33)
+[Monster] Loaded weapon Sword08.bmd for type 5 (bone 19, blendMesh -1)
 [BMDParser] Data/Item/Shield02.bmd Version: 0xa File size: 2902
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 24 Norms: 25 Tex: 26 Tris: 26 Texture: du_shield2.jpg
 [BMDParser] AABB: Min(-29.9995,-30.0418,-7.96411) Max(29.9767,29.9344,15.5119)
-[Monster] Loaded weapon Shield02.bmd for type 5 (bone 42)
+[Monster] Loaded weapon Shield02.bmd for type 5 (bone 14, blendMesh -1)
 [BMDParser] Data/Item/Axe03.bmd Version: 0xa File size: 6438
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 39 Norms: 67 Tex: 29 Tris: 64 Texture: Axes04.jpg
 [BMDParser] AABB: Min(-38.8848,-25.7274,-3.31258) Max(77.4523,27.193,3.05933)
-[Monster] Loaded weapon Axe03.bmd for type 7 (bone 41)
+[Monster] Loaded weapon Axe03.bmd for type 7 (bone 41, blendMesh -1)
 [BMDParser] Data/Item/Axe03.bmd Version: 0xa File size: 6438
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 39 Norms: 67 Tex: 29 Tris: 64 Texture: Axes04.jpg
 [BMDParser] AABB: Min(-38.8848,-25.7274,-3.31258) Max(77.4523,27.193,3.05933)
-[Monster] Loaded weapon Axe03.bmd for type 7 (bone 32)
+[Monster] Loaded weapon Axe03.bmd for type 7 (bone 32, blendMesh -1)
+[BMDParser] Data/Item/Spear09.bmd Version: 0xa File size: 13334
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 76 Norms: 85 Tex: 68 Tris: 152 Texture: Polearms05.jpg
+[BMDParser] AABB: Min(-17.3771,-59.597,-4.54425) Max(242.414,75.437,4.12335)
+[Monster] Loaded weapon Spear09.bmd for type 8 (bone 42, blendMesh -1)
+[BMDParser] Data/Item/Sword14.bmd Version: 0xa File size: 16040
+[BMDParser] Meshes: 2 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 58 Norms: 59 Tex: 26 Tris: 102 Texture: sword015.jpg
+ [Mesh 1] Verts: 44 Norms: 58 Tex: 19 Tris: 78 Texture: sword015_2.jpg
+[BMDParser] AABB: Min(-152.699,13.1912,-16.9621) Max(28.8562,64.566,16.9621)
+[Monster] Loaded weapon Sword14.bmd for type 10 (bone 26, blendMesh 1)
+[BMDParser] Data/Item/Staff03.bmd Version: 0xa File size: 6522
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 36 Norms: 50 Tex: 56 Tris: 68 Texture: wand04.jpg
+[BMDParser] AABB: Min(-10.3015,-10.2585,-17.1462) Max(10.0308,10.0738,179.117)
+[Monster] Loaded weapon Staff03.bmd for type 13 (bone 29, blendMesh -1)
+[BMDParser] Data/Item/Axe09.bmd Version: 0xa File size: 10489
+[BMDParser] Meshes: 1 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 76 Norms: 75 Tex: 50 Tris: 112 Texture: Axes10.jpg
+[BMDParser] AABB: Min(-95.761,-8.26349,-3.43193) Max(26.9307,73.9736,6.77585)
+[Monster] Loaded weapon Axe09.bmd for type 17 (bone 41, blendMesh -1)
+[BMDParser] Data/Item/Staff05.bmd Version: 0xa File size: 20942
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 125 Norms: 191 Tex: 112 Tris: 220 Texture: wand06.jpg
+[BMDParser] AABB: Min(-27.8823,-12.0856,-116.9) Max(27.8823,12.7743,106.125)
+[Monster] Loaded weapon Staff05.bmd for type 18 (bone 30, blendMesh -1)
+[BMDParser] Data/Item/Axe08.bmd Version: 0xa File size: 7222
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 43 Norms: 75 Tex: 35 Tris: 72 Texture: Axes09.jpg
+[BMDParser] AABB: Min(-86.6794,-25.3078,-3.75922) Max(62.2679,26.4329,3.592)
+[Monster] Loaded weapon Axe08.bmd for type 23 (bone 30, blendMesh -1)
+[BMDParser] Data/Item/Shield11.bmd Version: 0xa File size: 3322
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 19 Norms: 20 Tex: 37 Tris: 34 Texture: hound_shield2.jpg
+[BMDParser] AABB: Min(-32.8222,-32.3236,1.62115e-05) Max(32.8222,32.3235,9.98634)
+[Monster] Loaded weapon Shield11.bmd for type 23 (bone 39, blendMesh -1)
+[BMDParser] Data/Item/Staff02.bmd Version: 0xa File size: 4800
+[BMDParser] Meshes: 2 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 25 Norms: 25 Tex: 24 Tris: 46 Texture: wand03.jpg
+ [Mesh 1] Verts: 8 Norms: 8 Tex: 4 Tris: 4 Texture: wand03.tga
+[BMDParser] AABB: Min(-6.65216,-6.69588,-29.9957) Max(23.5928,23.5491,145.497)
+[Monster] Loaded weapon Staff02.bmd for type 25 (bone 26, blendMesh -1)
+[BMDParser] Data/Item/Axe01.bmd Version: 0xa File size: 4722
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 31 Norms: 42 Tex: 21 Tris: 48 Texture: Axes02.jpg
+[BMDParser] AABB: Min(-34.8063,-22.5438,-2.95181) Max(72.4027,5.35389,2.53611)
+[Monster] Loaded weapon Axe01.bmd for type 26 (bone 31, blendMesh -1)
+[BMDParser] Data/Item/Spear02.bmd Version: 0xa File size: 9416
+[BMDParser] Meshes: 2 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 18 Norms: 36 Tex: 20 Tris: 32 Texture: Javelins03.jpg
+ [Mesh 1] Verts: 37 Norms: 39 Tex: 20 Tris: 70 Texture: sword12.jpg
+[BMDParser] AABB: Min(-96.5408,-7.90687,-5.49992) Max(246.746,8.95973,5.18299)
+[Monster] Loaded weapon Spear02.bmd for type 28 (bone 24, blendMesh -1)
+[BMDParser] Data/Item/Bow07.bmd Version: 0xa File size: 31196
+[BMDParser] Meshes: 3 Bones: 19 Actions: 1
+ [Mesh 0] Verts: 161 Norms: 248 Tex: 65 Tris: 285 Texture: bow77.jpg
+ [Mesh 1] Verts: 7 Norms: 7 Tex: 7 Tris: 10 Texture: bow01.jpg
+ [Mesh 2] Verts: 7 Norms: 1 Tex: 7 Tris: 3 Texture: bow05.tga
+[BMDParser] AABB: Min(-1.9697,-123.763,-31.5129) Max(7.4941,125.346,73.6872)
+[Monster] Loaded weapon Bow07.bmd for type 29 (bone 11, blendMesh -1)
+[BMDParser] Data/Item/Sword09.bmd Version: 0xa File size: 7742
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 49 Norms: 47 Tex: 30 Tris: 88 Texture: sword09.jpg
+[BMDParser] AABB: Min(-18.8274,-20.9372,1.39679) Max(5.95855,3.84885,146.968)
+[Monster] Loaded weapon Sword09.bmd for type 31 (bone 39, blendMesh -1)
+[BMDParser] Data/Item/Sword09.bmd Version: 0xa File size: 7742
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 49 Norms: 47 Tex: 30 Tris: 88 Texture: sword09.jpg
+[BMDParser] AABB: Min(-18.8274,-20.9372,1.39679) Max(5.95855,3.84885,146.968)
+[Monster] Loaded weapon Sword09.bmd for type 31 (bone 30, blendMesh -1)
+[BMDParser] Data/Item/Mace02.bmd Version: 0xa File size: 11290
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 67 Norms: 84 Tex: 105 Tris: 118 Texture: mace03.jpg
+[BMDParser] AABB: Min(-86.0337,-26.003,-17.3857) Max(47.0602,14.8733,20.8776)
+[Monster] Loaded weapon Mace02.bmd for type 33 (bone 31, blendMesh -1)
+[BMDParser] Data/Item/Shield02.bmd Version: 0xa File size: 2902
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 24 Norms: 25 Tex: 26 Tris: 26 Texture: du_shield2.jpg
+[BMDParser] AABB: Min(-29.9995,-30.0418,-7.96411) Max(29.9767,29.9344,15.5119)
+[Monster] Loaded weapon Shield02.bmd for type 33 (bone 22, blendMesh -1)
+[BMDParser] Data/Monster/Monster33.bmd Version: 0xa File size: 163064
+[BMDParser] Meshes: 2 Bones: 57 Actions: 11
+ [Mesh 0] Verts: 358 Norms: 409 Tex: 294 Tris: 692 Texture: rt03.jpg
+ [Mesh 1] Verts: 36 Norms: 36 Tex: 18 Tris: 28 Texture: tgh03.tga
+[BMDParser] AABB: Min(-239.841,-388.489,-229.858) Max(552.208,312.026,229.857)
+[Monster] Loaded model 'Bali' (57 bones, 2 meshes, 11 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Player/ArmorMale04.bmd Version: 0xa File size: 18913
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 98 Norms: 100 Tex: 118 Tris: 147 Texture: upper_13m.jpg
+ [Mesh 1] Verts: 24 Norms: 27 Tex: 24 Tris: 16 Texture: hide_m.jpg
+[BMDParser] AABB: Min(-10.0789,-16.1119,-35.4955) Max(40.2622,17.2432,35.0478)
+[BMDParser] Data/Player/HelmMale04.bmd Version: 0xa File size: 13045
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 37 Norms: 37 Tex: 35 Tris: 61 Texture: head_13m.jpg
+ [Mesh 1] Verts: 41 Norms: 41 Tex: 40 Tris: 45 Texture: skin_warrior_01.jpg
+[BMDParser] AABB: Min(0.188205,-18.4291,-13.8833) Max(36.1014,16.6056,13.6752)
+[BMDParser] Data/Player/PantMale04.bmd Version: 0xa File size: 14747
+[BMDParser] Meshes: 3 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 25 Norms: 24 Tex: 25 Tris: 24 Texture: lower_13m.tga
+ [Mesh 1] Verts: 53 Norms: 53 Tex: 73 Tris: 81 Texture: lower_13m.jpg
+ [Mesh 2] Verts: 18 Norms: 18 Tex: 18 Tris: 12 Texture: hide_m.jpg
+[BMDParser] AABB: Min(-28.1699,-13.0907,-68.8014) Max(52.6152,24.4643,19.5577)
+[BMDParser] Data/Player/GloveMale04.bmd Version: 0xa File size: 18109
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 90 Norms: 116 Tex: 73 Tris: 158 Texture: gloves_13m.jpg
+ [Mesh 1] Verts: 10 Norms: 10 Tex: 7 Tris: 6 Texture: hide_m.jpg
+[BMDParser] AABB: Min(-10.9527,-11.9892,-13.3999) Max(37.8165,13.5198,13.4191)
+[BMDParser] Data/Player/BootMale04.bmd Version: 0xa File size: 14825
+[BMDParser] Meshes: 2 Bones: 56 Actions: 1
+ [Mesh 0] Verts: 74 Norms: 73 Tex: 55 Tris: 126 Texture: boots_13m.jpg
+ [Mesh 1] Verts: 10 Norms: 10 Tex: 10 Tris: 6 Texture: hide_m.jpg
+[BMDParser] AABB: Min(-3.07073,-12.8815,-8.19364) Max(47.4609,21.4232,8.26144)
+[BMDParser] Data/Item/Staff06.bmd Version: 0xa File size: 27811
+[BMDParser] Meshes: 3 Bones: 4 Actions: 1
+ [Mesh 0] Verts: 156 Norms: 197 Tex: 23 Tris: 276 Texture: a9.jpg
+ [Mesh 1] Verts: 14 Norms: 14 Tex: 26 Tris: 24 Texture: a_2.jpg
+ [Mesh 2] Verts: 16 Norms: 2 Tex: 8 Tris: 8 Texture: shield11_a.jpg
+[BMDParser] AABB: Min(-85.2778,-83.7816,-66.9897) Max(66.1419,9.08208,180.23)
+[BMDParser] Data/Item/Shield15.bmd Version: 0xa File size: 15075
+[BMDParser] Meshes: 2 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 57 Norms: 90 Tex: 43 Tris: 106 Texture: shield11.tga
+ [Mesh 1] Verts: 37 Norms: 41 Tex: 31 Tris: 52 Texture: shield11_a.jpg
+[BMDParser] AABB: Min(-13.5648,-33.4275,-2.52254) Max(29.2705,104.906,12.9874)
+[Monster] Loaded Cursed Wizard: Player.bmd + 1 armor parts + 2 weapons (PVP glow)
+[BMDParser] Data/Monster/Monster12.bmd Version: 0xa File size: 155144
+[BMDParser] Meshes: 2 Bones: 41 Actions: 7
+ [Mesh 0] Verts: 471 Norms: 621 Tex: 356 Tris: 848 Texture: boss.jpg
+ [Mesh 1] Verts: 6 Norms: 4 Tex: 6 Tris: 4 Texture: boss_eye.jpg
+[BMDParser] AABB: Min(-23.2058,-53.4353,-67.6663) Max(63.2126,28.1809,67.7535)
+[Monster] Loaded model 'Death Gorgon' (41 bones, 2 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=12 LockPositions=1
+[BMDParser] Data/Monster/Monster29.bmd Version: 0xa File size: 109755
+[BMDParser] Meshes: 2 Bones: 54 Actions: 7
+ [Mesh 0] Verts: 255 Norms: 378 Tex: 112 Tris: 412 Texture: shadow_c.jpg
+ [Mesh 1] Verts: 6 Norms: 2 Tex: 3 Tris: 2 Texture: shadow_b.jpg
+[BMDParser] AABB: Min(-19.0324,-26.2844,-21.0103) Max(88.4051,29.9777,20.776)
+[Monster] Loaded model 'Shadow' (54 bones, 2 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster27.bmd Version: 0xa File size: 115058
+[BMDParser] Meshes: 1 Bones: 55 Actions: 7
+ [Mesh 0] Verts: 336 Norms: 365 Tex: 207 Tris: 662 Texture: satan_a.tga
+[BMDParser] AABB: Min(-11.1655,-61.6833,-35.4258) Max(123.987,60.4601,35.4258)
+[Monster] Loaded model 'Devil' (55 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster28.bmd Version: 0xa File size: 230057
+[BMDParser] Meshes: 2 Bones: 80 Actions: 7
+ [Mesh 0] Verts: 771 Norms: 904 Tex: 422 Tris: 1398 Texture: ho9_11.jpg
+ [Mesh 1] Verts: 38 Norms: 38 Tex: 31 Tris: 52 Texture: ho9_2.jpg
+[BMDParser] AABB: Min(-21.9679,-57.3747,-29.366) Max(64.999,34.7462,23.6516)
+[Monster] Loaded model 'Balrog' (80 bones, 2 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=6 LockPositions=1
+[BMDParser] Data/Monster/Monster29.bmd Version: 0xa File size: 109755
+[BMDParser] Meshes: 2 Bones: 54 Actions: 7
+ [Mesh 0] Verts: 255 Norms: 378 Tex: 112 Tris: 412 Texture: shadow_c.jpg
+ [Mesh 1] Verts: 6 Norms: 2 Tex: 3 Tris: 2 Texture: shadow_b.jpg
+[BMDParser] AABB: Min(-19.0324,-26.2844,-21.0103) Max(88.4051,29.9777,20.776)
+[Monster] Loaded model 'Poison Shadow' (54 bones, 2 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster30.bmd Version: 0xa File size: 186736
+[BMDParser] Meshes: 4 Bones: 49 Actions: 7
+ [Mesh 0] Verts: 60 Norms: 101 Tex: 28 Tris: 104 Texture: Polearms03.jpg
+ [Mesh 1] Verts: 671 Norms: 732 Tex: 327 Tris: 1206 Texture: as.jpg
+ [Mesh 2] Verts: 6 Norms: 2 Tex: 3 Tris: 2 Texture: shadow_b.jpg
+ [Mesh 3] Verts: 32 Norms: 20 Tex: 4 Tris: 16 Texture: as_1.jpg
+[BMDParser] AABB: Min(-97.6985,-81.8735,-74.8378) Max(125.964,30.3518,75.202)
+[Monster] Loaded model 'Death Knight' (49 bones, 4 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[BMDParser] Data/Monster/Monster31.bmd Version: 0xa File size: 189554
+[BMDParser] Meshes: 1 Bones: 45 Actions: 7
+ [Mesh 0] Verts: 612 Norms: 612 Tex: 229 Tris: 1109 Texture: wwo.jpg
+[BMDParser] AABB: Min(-19.6035,-27.2291,-44.874) Max(59.2739,48.7131,44.874)
+[Monster] Loaded model 'Death Cow' (45 bones, 1 meshes, 7 actions, rootBone=0)
+[Monster]   Walk action 2: keys=7 LockPositions=1
+[Monster] Loading Lost Tower weapons (itemPath=Data/Item/)
+[Monster] m_typeToModel check: 35=36 40=41
+[BMDParser] Data/Item/Axe09.bmd Version: 0xa File size: 10489
+[BMDParser] Meshes: 1 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 76 Norms: 75 Tex: 50 Tris: 112 Texture: Axes10.jpg
+[BMDParser] AABB: Min(-95.761,-8.26349,-3.43193) Max(26.9307,73.9736,6.77585)
+[Monster] Loaded weapon Axe09.bmd for type 35 (bone 30, blendMesh -1)
+[BMDParser] Data/Item/Axe09.bmd Version: 0xa File size: 10489
+[BMDParser] Meshes: 1 Bones: 2 Actions: 1
+ [Mesh 0] Verts: 76 Norms: 75 Tex: 50 Tris: 112 Texture: Axes10.jpg
+[BMDParser] AABB: Min(-95.761,-8.26349,-3.43193) Max(26.9307,73.9736,6.77585)
+[Monster] Loaded weapon Axe09.bmd for type 35 (bone 39, blendMesh -1)
 [BMDParser] Data/Item/Spear10.bmd Version: 0xa File size: 13574
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 84 Norms: 143 Tex: 49 Tris: 138 Texture: af.tga
 [BMDParser] AABB: Min(-46.9704,88.1179,-4.79994) Max(250.636,207.253,4.79966)
-[Monster] Loaded weapon Spear10.bmd for type 8 (bone 42)
+[Monster] Loaded weapon Spear10.bmd for type 38 (bone 17, blendMesh -1)
+[BMDParser] Data/Item/Sword15.bmd Version: 0xa File size: 9010
+[BMDParser] Meshes: 2 Bones: 3 Actions: 1
+ [Mesh 0] Verts: 44 Norms: 85 Tex: 41 Tris: 80 Texture: sword15.jpg
+ [Mesh 1] Verts: 16 Norms: 1 Tex: 8 Tris: 8 Texture: sword15_2.jpg
+[BMDParser] AABB: Min(-156.032,-31.2208,-3.59605) Max(63.169,28.7241,3.59645)
+[Monster] Loaded weapon Sword15.bmd for type 40 (bone 30, blendMesh 1)
+[BMDParser] Data/Item/Mace04.bmd Version: 0xa File size: 5270
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 37 Norms: 43 Tex: 27 Tris: 54 Texture: maul03.jpg
+[BMDParser] AABB: Min(-92.5302,-27.0933,-10.9924) Max(29.8755,21.5329,10.7479)
+[Monster] Loaded weapon Mace04.bmd for type 41 (bone 42, blendMesh -1)
 [BMDParser] Data/Monster/../Skill/Bone01.bmd Version: 0xa File size: 7194
 [BMDParser] Meshes: 1 Bones: 1 Actions: 1
  [Mesh 0] Verts: 42 Norms: 42 Tex: 52 Tris: 80 Texture: bons_particle.jpg
@@ -1692,1574 +2318,106 @@ Loaded Map 1 (Lorencia): 65536 height samples, 2870 objects
  [Mesh 1] Verts: 7 Norms: 10 Tex: 9 Tris: 9 Texture: fire01.jpg
 [BMDParser] AABB: Min(-3.72403,-64.0238,1.58942) Max(3.90335,26.5335,56.0468)
 [Monster] Loaded model 'Arrow' (2 bones, 2 meshes, 1 actions, rootBone=0)
-[Monster] Models loaded: 29 types
-[Monster] Spawned type=0 at grid (151,53)
-[Monster] Spawned type=0 at grid (155,52)
-[Monster] Spawned type=0 at grid (158,56)
-[Monster] Spawned type=0 at grid (148,50)
-[Monster] Spawned type=0 at grid (156,48)
-[Monster] Spawned type=0 at grid (151,54)
-[Monster] Spawned type=0 at grid (158,54)
-[Monster] Spawned type=0 at grid (142,45)
-[Monster] Spawned type=0 at grid (164,59)
-[Monster] Spawned type=0 at grid (156,41)
-[Monster] Spawned type=0 at grid (140,52)
-[Monster] Spawned type=0 at grid (171,49)
-[Monster] Spawned type=1 at grid (143,76)
-[Monster] Spawned type=1 at grid (146,75)
-[Monster] Spawned type=1 at grid (141,80)
-[Monster] Spawned type=1 at grid (139,74)
-[Monster] Spawned type=1 at grid (32,54)
-[Monster] Spawned type=1 at grid (50,88)
-[Monster] Spawned type=1 at grid (65,115)
-[Monster] Spawned type=1 at grid (28,155)
-[Monster] Spawned type=1 at grid (55,195)
-[Monster] Spawned type=1 at grid (79,35)
-[Monster] Spawned type=1 at grid (44,129)
-[Monster] Spawned type=1 at grid (71,198)
-[Monster] Spawned type=2 at grid (191,142)
-[Monster] Spawned type=2 at grid (194,144)
-[Monster] Spawned type=2 at grid (191,141)
-[Monster] Spawned type=2 at grid (193,142)
-[Monster] Spawned type=2 at grid (195,128)
-[Monster] Spawned type=2 at grid (203,131)
-[Monster] Spawned type=2 at grid (195,135)
-[Monster] Spawned type=2 at grid (207,151)
-[Monster] Spawned type=2 at grid (208,153)
-[Monster] Spawned type=2 at grid (204,149)
-[Monster] Spawned type=2 at grid (224,168)
-[Monster] Spawned type=2 at grid (226,168)
-[Monster] Spawned type=3 at grid (188,118)
-[Monster] Spawned type=3 at grid (188,117)
-[Monster] Spawned type=3 at grid (188,121)
-[Monster] Spawned type=3 at grid (189,118)
-[Monster] Spawned type=3 at grid (179,127)
-[Monster] Spawned type=3 at grid (182,131)
-[Monster] Spawned type=3 at grid (178,127)
-[Monster] Spawned type=3 at grid (182,129)
-[Monster] Spawned type=3 at grid (178,156)
-[Monster] Spawned type=3 at grid (177,153)
-[Monster] Spawned type=3 at grid (183,136)
-[Monster] Spawned type=3 at grid (191,125)
-[Monster] Spawned type=3 at grid (197,114)
-[Monster] Spawned type=3 at grid (194,123)
-[Monster] Spawned type=4 at grid (25,32)
-[Monster] Spawned type=4 at grid (40,49)
-[Monster] Spawned type=4 at grid (58,70)
-[Monster] Spawned type=4 at grid (31,90)
-[Monster] Spawned type=4 at grid (47,110)
-[Monster] Spawned type=4 at grid (63,132)
-[Monster] Spawned type=4 at grid (35,149)
-[Monster] Spawned type=4 at grid (49,170)
-[Monster] Spawned type=4 at grid (65,190)
-[Monster] Spawned type=4 at grid (41,213)
-[Monster] Spawned type=4 at grid (54,229)
-[Monster] Spawned type=4 at grid (70,40)
-[Monster] Spawned type=4 at grid (85,60)
-[Monster] Spawned type=4 at grid (21,81)
-[Monster] Spawned type=4 at grid (76,99)
-[Monster] Spawned type=6 at grid (110,181)
-[Monster] Spawned type=6 at grid (127,194)
-[Monster] Spawned type=6 at grid (139,209)
-[Monster] Spawned type=6 at grid (155,225)
-[Monster] Spawned type=6 at grid (100,190)
-[Monster] Spawned type=6 at grid (118,208)
-[Monster] Spawned type=6 at grid (130,220)
-[Monster] Spawned type=6 at grid (145,235)
-[Monster] Spawned type=6 at grid (160,174)
-[Monster] Spawned type=6 at grid (170,200)
-[Monster] Spawned type=6 at grid (105,240)
-[Monster] Spawned type=7 at grid (15,20)
-[Monster] Spawned type=7 at grid (25,35)
-[Monster] Spawned type=7 at grid (40,50)
-[Monster] Spawned type=7 at grid (56,66)
-[Monster] Spawned type=7 at grid (20,45)
-[Monster] Spawned type=7 at grid (35,61)
-[Monster] Spawned type=7 at grid (52,73)
-[Monster] Spawned type=7 at grid (30,26)
-[Monster] Spawned type=7 at grid (45,39)
-[Monster] Spawned type=14 at grid (100,175)
-[Monster] Spawned type=14 at grid (122,183)
-[Monster] Spawned type=14 at grid (135,198)
-[Monster] Spawned type=14 at grid (150,215)
-[Monster] Spawned type=14 at grid (165,230)
-[Monster] Spawned type=14 at grid (106,195)
-[Monster] Spawned type=14 at grid (144,242)
-[Monster] Spawned type=14 at grid (155,180)
-[Monster] Spawned type=14 at grid (171,210)
-[Monster] Spawned 94 monsters from server
-[Spawn] Using server position: grid (163,127) -> world (12700,16300)
-[Music] Playing: MuTheme.mp3
+[BMDParser] Data/Monster/../Skill/ArrowV01.bmd Version: 0xa File size: 1086
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 7 Norms: 7 Tex: 6 Tris: 10 Texture: v.jpg
+[BMDParser] AABB: Min(-25.559,-35.2749,-3.07537) Max(5.96156,21.3914,3.07543)
+[Monster] Loaded model 'ArrowV' (1 bones, 1 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/ArrowNature01.bmd Version: 0xa File size: 25580
+[BMDParser] Meshes: 2 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 23 Norms: 32 Tex: 18 Tris: 34 Texture: bowtt2.jpg
+ [Mesh 1] Verts: 132 Norms: 132 Tex: 132 Tris: 254 Texture: bowtt.jpg
+[BMDParser] AABB: Min(-46.1804,-139.133,-5.3159) Max(-18.0313,57.3812,25.7235)
+[Monster] Loaded model 'ArrowNature' (1 bones, 2 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/ArrowSteel01.bmd Version: 0xa File size: 2510
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 14 Norms: 25 Tex: 13 Tris: 24 Texture: bow_b.jpg
+[BMDParser] AABB: Min(-4.33663,-4.33663,-7.45743) Max(4.33657,4.33657,79.0114)
+[Monster] Loaded model 'ArrowSteel' (1 bones, 1 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/ArrowSaw01.bmd Version: 0xa File size: 10178
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 57 Norms: 74 Tex: 91 Tris: 108 Texture: toothed_whee.jpg
+[BMDParser] AABB: Min(-18.4086,-19.0758,-0.798957) Max(19.1633,18.6686,0.798943)
+[Monster] Loaded model 'ArrowSaw' (1 bones, 1 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/ArrowLaser01.bmd Version: 0xa File size: 602
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: bow_c.jpg
+[BMDParser] AABB: Min(-42.2896,-7.92929,5.749) Max(42.2896,7.92931,21.6076)
+[Monster] Loaded model 'ArrowLaser' (1 bones, 1 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/ArrowThunder01.bmd Version: 0xa File size: 2878
+[BMDParser] Meshes: 1 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 32 Norms: 15 Tex: 16 Tris: 28 Texture: bow_d.jpg
+[BMDParser] AABB: Min(-72.792,-19.9996,-8.90598) Max(135.806,18.6563,21.5089)
+[Monster] Loaded model 'ArrowThunder' (1 bones, 1 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/ArrowWing01.bmd Version: 0xa File size: 4682
+[BMDParser] Meshes: 1 Bones: 13 Actions: 1
+ [Mesh 0] Verts: 20 Norms: 25 Tex: 12 Tris: 26 Texture: bu009.jpg
+[BMDParser] AABB: Min(-0.131281,-23.6579,-2.8849) Max(17.9749,21.656,3.85799)
+[Monster] Loaded model 'ArrowWing' (13 bones, 1 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/ArrowBomb01.bmd Version: 0xa File size: 3144
+[BMDParser] Meshes: 1 Bones: 15 Actions: 1
+ [Mesh 0] Verts: 20 Norms: 5 Tex: 4 Tris: 10 Texture: wwe.jpg
+[BMDParser] AABB: Min(-32.6856,-31.672,5.39082) Max(31.3459,31.7147,76.6742)
+[Monster] Loaded model 'ArrowBomb' (15 bones, 1 meshes, 1 actions, rootBone=0)
+[TextureLoader::Resolve] Could not find texture: wwe.jpg in Data/Skill/
+[BMDParser] Data/Monster/../Skill/ArrowDouble01.bmd Version: 0xa File size: 10316
+[BMDParser] Meshes: 2 Bones: 1 Actions: 1
+ [Mesh 0] Verts: 60 Norms: 60 Tex: 22 Tris: 112 Texture: crossB.jpg
+ [Mesh 1] Verts: 10 Norms: 2 Tex: 5 Tris: 6 Texture: ring2.jpg
+[BMDParser] AABB: Min(-102.067,-29.8108,-210.293) Max(-16.824,41.7165,164.49)
+[Monster] Loaded model 'ArrowDouble' (1 bones, 2 meshes, 1 actions, rootBone=0)
+[BMDParser] Data/Monster/../Skill/Arrow_Spark.bmd Version: 0xc File size: 7984
+[BMDParser] Meshes: 1 Bones: 3 Actions: 1
+ [Mesh 0] Verts: 45 Norms: 45 Tex: 31 Tris: 88 Texture: smoke02.tga
+[BMDParser] AABB: Min(-12.5574,-12.8131,-0.9671) Max(12.5574,156.974,0.9671)
+[Monster] Loaded model 'ArrowSpark' (3 bones, 1 meshes, 1 actions, rootBone=0)
+[Monster] Models loaded: 56 types
+[Spawn] Using server position: grid (45,152) -> world (15200,4500)
+[Hero] Left SafeZone, action=5
+[Sound] PlayLoop: aTower.wav (id=359)
 [World] Game world initialized
+[NPC] Server-spawned NPC type=253 idx=1001 at grid (207,76) dir=2
+[NPC] Server-spawned NPC type=240 idx=1002 at grid (201,76) dir=4
+[NPC] Server-spawned NPC type=313 idx=1003 at grid (213,76) dir=7
+[Net] NPC viewport (game): 3 NPCs
+[Net] Monster viewport V2 (game): 255 monsters
+[Net] Monster viewport V2 (game): 191 monsters
 [State] -> INGAME
-[Net] Map change: mapId=2 spawn=(210,40)
-[ChangeMap] Transitioning to map 2 (Devias, World3) spawn=(210,40)
-[TerrainParser] Loaded mapping: map_number=3, 196610 bytes
-[TerrainParser] Loaded attributes (WORD format): 131076 bytes
-[TerrainParser] Object file: version=0 map=3 count=2237
-[TerrainParser] Loaded 2237 objects
-[TerrainParser] Applied directional sun lighting (sunDir=0.57735,-0.57735,0.57735)
-[Terrain] WARNING: Terrain uses tile index 255 which has no tile name (max=13)
-[Terrain] Loaded tile 0: TileGrass01 (256x256)
-[Terrain] Loaded tile 1: TileGrass02 (128x128)
-[Terrain] Loaded tile 2: TileGround01 (256x256)
-[Terrain] Loaded tile 3: TileGround02 (128x128)
-[Terrain] Loaded tile 4: TileGround03 (128x128)
-[Terrain] Loaded tile 5: TileWater01 (256x256)
-[Terrain] Loaded tile 6: TileWood01 (128x128)
-[Terrain] Loaded tile 7: TileRock01 (256x256)
-[Terrain] Loaded tile 8: TileRock02 (128x128)
-[Terrain] Loaded tile 9: TileRock03 (128x128)
-[Terrain] Loaded tile 10: TileRock04 (128x128)
-[Terrain] Loaded tile 11: TileRock05 (256x256)
-[Terrain] Loaded tile 12: TileRock06 (128x128)
-[Terrain] Loaded tile 13: TileRock07 (256x256)
-[BMDParser] Data/Object3/Object19.bmd Version: 0xc File size: 7388
-[BMDParser] Meshes: 4 Bones: 1 Actions: 1
- [Mesh 0] Verts: 12 Norms: 9 Tex: 16 Tris: 12 Texture: titel_b03.jpg
- [Mesh 1] Verts: 27 Norms: 21 Tex: 31 Tris: 25 Texture: titel_b04.jpg
- [Mesh 2] Verts: 24 Norms: 33 Tex: 36 Tris: 26 Texture: titel_b06.jpg
- [Mesh 3] Verts: 3 Norms: 1 Tex: 2 Tris: 1 Texture: titel_b01.jpg
-[BMDParser] AABB: Min(-150,-118.939,-48.3921) Max(150,45.4545,274.021)
-[BMDParser] Data/Object3/Object18.bmd Version: 0xc File size: 6764
-[BMDParser] Meshes: 4 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 18 Tex: 20 Tris: 26 Texture: titel_b04.jpg
- [Mesh 1] Verts: 21 Norms: 18 Tex: 14 Tris: 16 Texture: titel_b06.jpg
- [Mesh 2] Verts: 12 Norms: 9 Tex: 12 Tris: 8 Texture: titel_b05.jpg
- [Mesh 3] Verts: 13 Norms: 7 Tex: 15 Tris: 11 Texture: titel_b03.jpg
-[BMDParser] AABB: Min(-50,-114.863,-70.4971) Max(50,50,356.878)
-[BMDParser] Data/Object3/Object01.bmd Version: 0xc File size: 23341
-[BMDParser] Meshes: 2 Bones: 12 Actions: 1
- [Mesh 0] Verts: 21 Norms: 21 Tex: 26 Tris: 36 Texture: stree.jpg
- [Mesh 1] Verts: 117 Norms: 114 Tex: 9 Tris: 104 Texture: stree.tga
-[BMDParser] AABB: Min(-176.817,-180.902,-260.963) Max(162.262,564.907,204.478)
-[BMDParser] Data/Object3/Object85.bmd Version: 0xc File size: 9041
-[BMDParser] Meshes: 2 Bones: 8 Actions: 1
- [Mesh 0] Verts: 10 Norms: 11 Tex: 10 Tris: 8 Texture: badge_01.tga
- [Mesh 1] Verts: 17 Norms: 32 Tex: 19 Tris: 28 Texture: Javelins03.jpg
-[BMDParser] AABB: Min(5.23176,-25.0419,-11.7336) Max(394.783,21.3484,5.76314)
-[BMDParser] Data/Object3/Object89.bmd Version: 0xc File size: 18051
-[BMDParser] Meshes: 2 Bones: 6 Actions: 1
- [Mesh 0] Verts: 44 Norms: 30 Tex: 56 Tris: 64 Texture: wall_door03.jpg
- [Mesh 1] Verts: 76 Norms: 103 Tex: 31 Tris: 128 Texture: wall_door02.jpg
-[BMDParser] AABB: Min(-100,-150.276,-14.0828) Max(100,150,78.71)
-[BMDParser] Data/Object3/Object64.bmd Version: 0xc File size: 7494
-[BMDParser] Meshes: 5 Bones: 1 Actions: 1
- [Mesh 0] Verts: 12 Norms: 9 Tex: 16 Tris: 12 Texture: titel_b03.jpg
- [Mesh 1] Verts: 25 Norms: 20 Tex: 25 Tris: 21 Texture: titel_b04.jpg
- [Mesh 2] Verts: 24 Norms: 33 Tex: 36 Tris: 26 Texture: titel_b06.jpg
- [Mesh 3] Verts: 6 Norms: 1 Tex: 6 Tris: 4 Texture: ti05.jpg
- [Mesh 4] Verts: 3 Norms: 1 Tex: 2 Tris: 1 Texture: titel_b01.jpg
-[BMDParser] AABB: Min(-150,-130.833,-48.5962) Max(150,50,275.177)
-[BMDParser] Data/Object3/Object63.bmd Version: 0xc File size: 6950
-[BMDParser] Meshes: 5 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 17 Tex: 20 Tris: 22 Texture: titel_b04.jpg
- [Mesh 1] Verts: 21 Norms: 18 Tex: 14 Tris: 16 Texture: titel_b06.jpg
- [Mesh 2] Verts: 12 Norms: 9 Tex: 12 Tris: 8 Texture: titel_b05.jpg
- [Mesh 3] Verts: 6 Norms: 1 Tex: 6 Tris: 4 Texture: ti05.jpg
- [Mesh 4] Verts: 13 Norms: 7 Tex: 15 Tris: 11 Texture: titel_b03.jpg
-[BMDParser] AABB: Min(-50,-114.863,-68.7324) Max(50,50,347.945)
-[BMDParser] Data/Object3/Object62.bmd Version: 0xc File size: 7990
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 48 Norms: 44 Tex: 86 Tris: 86 Texture: ti05.jpg
-[BMDParser] AABB: Min(99.7281,-300.106,-22.9) Max(199.762,-200.072,291.385)
-[BMDParser] Data/Object3/Object38.bmd Version: 0xc File size: 10658
-[BMDParser] Meshes: 2 Bones: 3 Actions: 1
- [Mesh 0] Verts: 70 Norms: 70 Tex: 27 Tris: 98 Texture: sword04.jpg
- [Mesh 1] Verts: 13 Norms: 13 Tex: 13 Tris: 12 Texture: shield03.jpg
-[BMDParser] AABB: Min(-33.9337,-33.9336,-132.378) Max(33.9337,33.9337,132.378)
-[BMDParser] Data/Object3/Object100.bmd Version: 0xc File size: 7484
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 22 Norms: 1 Tex: 22 Tris: 12 Texture: show_ston01.jpg
- [Mesh 1] Verts: 48 Norms: 16 Tex: 35 Tris: 72 Texture: titel_b06.jpg
-[BMDParser] AABB: Min(-150,-99.4723,-3.05176e-05) Max(249.578,300.45,99.7)
-[BMDParser] Data/Object3/Object57.bmd Version: 0xc File size: 12744
-[BMDParser] Meshes: 2 Bones: 9 Actions: 1
- [Mesh 0] Verts: 64 Norms: 64 Tex: 77 Tris: 110 Texture: candle.jpg
- [Mesh 1] Verts: 15 Norms: 4 Tex: 15 Tris: 6 Texture: candle2.jpg
-[BMDParser] AABB: Min(-16.966,-18.9973,-124.183) Max(16.9661,19.0237,71.7047)
-[BMDParser] Data/Object3/Object88.bmd Version: 0xc File size: 71572
-[BMDParser] Meshes: 8 Bones: 5 Actions: 1
- [Mesh 0] Verts: 49 Norms: 49 Tex: 69 Tris: 82 Texture: lower_11.jpg
- [Mesh 1] Verts: 55 Norms: 53 Tex: 54 Tris: 39 Texture: hide.jpg
- [Mesh 2] Verts: 116 Norms: 113 Tex: 65 Tris: 186 Texture: boots_11.jpg
- [Mesh 3] Verts: 21 Norms: 21 Tex: 13 Tris: 35 Texture: head_11.jpg
- [Mesh 4] Verts: 8 Norms: 6 Tex: 4 Tris: 4 Texture: guard_hair.tga
- [Mesh 5] Verts: 104 Norms: 104 Tex: 94 Tris: 174 Texture: gloves_11.jpg
- [Mesh 6] Verts: 41 Norms: 46 Tex: 27 Tris: 66 Texture: sword08.jpg
- [Mesh 7] Verts: 117 Norms: 125 Tex: 141 Tris: 174 Texture: upper_11.jpg
-[BMDParser] AABB: Min(-50.3157,-139.985,-17.64) Max(47.2912,64.5187,48.0517)
-[BMDParser] Data/Object3/Object108.bmd Version: 0xc File size: 3698
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 25 Norms: 17 Tex: 15 Tris: 42 Texture: cho_wedding_01.JPG
-[BMDParser] AABB: Min(-12.917,-12.917,-4.9111) Max(12.917,12.917,56.8226)
-[BMDParser] Data/Object3/Object109.bmd Version: 0xc File size: 21568
-[BMDParser] Meshes: 4 Bones: 1 Actions: 1
- [Mesh 0] Verts: 25 Norms: 21 Tex: 25 Tris: 32 Texture: cho_wedding_03.tga
- [Mesh 1] Verts: 72 Norms: 72 Tex: 9 Tris: 64 Texture: cho_wedding_05.tga
- [Mesh 2] Verts: 88 Norms: 88 Tex: 11 Tris: 80 Texture: cho_wedding_04.tga
- [Mesh 3] Verts: 25 Norms: 22 Tex: 25 Tris: 32 Texture: cho_wedding_06.tga
-[BMDParser] AABB: Min(-29.0663,-29.0664,-6.9486) Max(29.0664,29.0663,6.9486)
-[BMDParser] Data/Object3/Object22.bmd Version: 0xc File size: 6466
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 47 Norms: 15 Tex: 74 Tris: 73 Texture: ti06.jpg
-[BMDParser] AABB: Min(-200,-300.532,0.3072) Max(200,0.148834,321.838)
-[BMDParser] Data/Object3/Object106.bmd Version: 0xc File size: 168582
-[BMDParser] Meshes: 6 Bones: 3 Actions: 1
- [Mesh 0] Verts: 71 Norms: 22 Tex: 43 Tris: 106 Texture: cho_wedding_01.JPG
- [Mesh 1] Verts: 405 Norms: 378 Tex: 9 Tris: 360 Texture: cho_wedding_05.tga
- [Mesh 2] Verts: 836 Norms: 487 Tex: 11 Tris: 760 Texture: cho_wedding_04.tga
- [Mesh 3] Verts: 125 Norms: 105 Tex: 25 Tris: 160 Texture: cho_wedding_06.tga
- [Mesh 4] Verts: 275 Norms: 147 Tex: 25 Tris: 352 Texture: cho_wedding_03.tga
- [Mesh 5] Verts: 46 Norms: 11 Tex: 29 Tris: 72 Texture: cho_wedding_01_a.JPG
-[BMDParser] AABB: Min(-62.4204,-20.7886,-15.7339) Max(62.4204,20.7886,74.6205)
-[BMDParser] Data/Object3/Object110.bmd Version: 0xc File size: 2822
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 24 Norms: 28 Tex: 24 Tris: 24 Texture: cho_wedding_01.JPG
-[BMDParser] AABB: Min(-2.8929,-55.3602,-16.0304) Max(2.8929,55.3602,12.4561)
-[BMDParser] Data/Object3/Object26.bmd Version: 0xc File size: 6634
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 76 Norms: 5 Tex: 70 Tris: 72 Texture: ti03.jpg
-[BMDParser] AABB: Min(-8.64376,-26.7207,-18.4777) Max(193.083,23.5985,99.6058)
-[BMDParser] Data/Object3/Object20.bmd Version: 0xc File size: 6720
-[BMDParser] Meshes: 1 Bones: 7 Actions: 1
- [Mesh 0] Verts: 14 Norms: 12 Tex: 14 Tris: 12 Texture: aurora.jpg
-[BMDParser] AABB: Min(-81.041,-132.529,-6.01402e-05) Max(80.4452,130.383,6.2506e-05)
-[BMDParser] Data/Object3/Object74.bmd Version: 0xc File size: 2606
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 18 Norms: 18 Tex: 18 Tris: 26 Texture: snow_ston.jpg
-[BMDParser] AABB: Min(-30.6375,-32.5962,-5.3193) Max(31.1656,32.3875,51.7053)
-[BMDParser] Data/Object3/Object67.bmd Version: 0xc File size: 11509
-[BMDParser] Meshes: 2 Bones: 4 Actions: 1
- [Mesh 0] Verts: 48 Norms: 48 Tex: 60 Tris: 72 Texture: fire_01.jpg
- [Mesh 1] Verts: 43 Norms: 43 Tex: 43 Tris: 38 Texture: fire_02.jpg
-[BMDParser] AABB: Min(-56.363,-59.2674,-25.2916) Max(63.2833,50.5776,37.608)
-[BMDParser] Data/Object3/Object75.bmd Version: 0xc File size: 25854
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 185 Norms: 204 Tex: 149 Tris: 273 Texture: tree_03.jpg
-[BMDParser] AABB: Min(-158.433,-142.654,-1.9504) Max(132.705,148.06,568.087)
-[BMDParser] Data/Object3/Object104.bmd Version: 0xc File size: 60985
-[BMDParser] Meshes: 2 Bones: 47 Actions: 2
- [Mesh 0] Verts: 225 Norms: 239 Tex: 165 Tris: 440 Texture: dog_g991.jpg
- [Mesh 1] Verts: 156 Norms: 111 Tex: 4 Tris: 78 Texture: dog_g99.jpg
-[BMDParser] AABB: Min(-18.7921,-30.4028,-15.7575) Max(38.8861,33.2063,15.7574)
-[BMDParser] Data/Object3/Object102.bmd Version: 0xc File size: 81160
-[BMDParser] Meshes: 10 Bones: 1 Actions: 1
- [Mesh 0] Verts: 93 Norms: 188 Tex: 74 Tris: 168 Texture: sword14.jpg
- [Mesh 1] Verts: 9 Norms: 1 Tex: 9 Tris: 6 Texture: sword14.tga
- [Mesh 2] Verts: 210 Norms: 307 Tex: 151 Tris: 342 Texture: snowmachine2.JPG
- [Mesh 3] Verts: 50 Norms: 43 Tex: 30 Tris: 68 Texture: sword11.jpg
- [Mesh 4] Verts: 8 Norms: 1 Tex: 8 Tris: 4 Texture: sword11.tga
- [Mesh 5] Verts: 40 Norms: 48 Tex: 25 Tris: 59 Texture: sword06.jpg
- [Mesh 6] Verts: 57 Norms: 52 Tex: 32 Tris: 80 Texture: hound_sword1.jpg
- [Mesh 7] Verts: 12 Norms: 12 Tex: 12 Tris: 14 Texture: hound_shield1.tga
- [Mesh 8] Verts: 60 Norms: 24 Tex: 31 Tris: 56 Texture: shield05.jpg
- [Mesh 9] Verts: 30 Norms: 52 Tex: 21 Tris: 44 Texture: sword03.jpg
-[BMDParser] AABB: Min(-309.645,-36.4084,-80.8432) Max(114.991,181.225,79.1378)
-[TextureLoader::Resolve] Could not find texture: sword14.jpg in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: sword14.jpg in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: sword14.tga in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: sword14.tga in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: sword11.jpg in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: sword11.jpg in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: sword11.tga in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: sword11.tga in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: sword06.jpg in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: sword06.jpg in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: hound_sword1.jpg in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: hound_sword1.jpg in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: hound_shield1.tga in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: hound_shield1.tga in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: shield05.jpg in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: shield05.jpg in Data/Object1/
-[TextureLoader::Resolve] Could not find texture: sword03.jpg in Data/Object3/
-[TextureLoader::Resolve] Could not find texture: sword03.jpg in Data/Object1/
-[BMDParser] Data/Object3/Object103.bmd Version: 0xc File size: 6394
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 40 Norms: 41 Tex: 54 Tris: 68 Texture: drum2.JPG
-[BMDParser] AABB: Min(-32.4815,-30.8918,-43.608) Max(32.4815,30.8918,43.6079)
-[BMDParser] Data/Object3/Object12.bmd Version: 0xc File size: 15430
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 100 Norms: 100 Tex: 100 Tris: 170 Texture: ice_block01.jpg
-[BMDParser] AABB: Min(-238.773,-479.681,-147.244) Max(225.121,379.115,46.624)
-[BMDParser] Data/Object3/Object05.bmd Version: 0xc File size: 15430
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 100 Norms: 100 Tex: 100 Tris: 170 Texture: ice_block07.jpg
-[BMDParser] AABB: Min(-238.773,152.86,-342.199) Max(225.121,1038.06,42.7478)
-[BMDParser] Data/Object3/Object94.bmd Version: 0xc File size: 14273
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 96 Norms: 188 Tex: 72 Tris: 128 Texture: ice.jpg
-[BMDParser] AABB: Min(-146.068,-75.4399,-30.0324) Max(34.4331,78.2113,262.543)
-[BMDParser] Data/Object3/Object71.bmd Version: 0xc File size: 7126
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 42 Norms: 42 Tex: 43 Tris: 80 Texture: show_ston01.jpg
-[BMDParser] AABB: Min(-139.34,-67.2891,-15.7344) Max(31.3107,129.957,239.897)
-[BMDParser] Data/Object3/Object70.bmd Version: 0xc File size: 7857
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 50 Norms: 50 Tex: 51 Tris: 85 Texture: show_ston01.jpg
-[BMDParser] AABB: Min(-129.116,-171.046,-20.3343) Max(84.9363,99.1171,179.176)
-[BMDParser] Data/Object3/Object93.bmd Version: 0xc File size: 21076
-[BMDParser] Meshes: 1 Bones: 3 Actions: 1
- [Mesh 0] Verts: 144 Norms: 282 Tex: 72 Tris: 192 Texture: ice.jpg
-[BMDParser] AABB: Min(-230.788,-119.195,-109.967) Max(66.3242,123.574,410.497)
-[BMDParser] Data/Object3/Object69.bmd Version: 0xc File size: 8993
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 54 Norms: 54 Tex: 55 Tris: 100 Texture: show_ston01.jpg
-[BMDParser] AABB: Min(-78.0851,-114.375,-38.3736) Max(129.506,100.287,181.049)
-[BMDParser] Data/Object3/Object101.bmd Version: 0xc File size: 690
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 6 Norms: 5 Tex: 3 Tris: 5 Texture: aurora.jpg
-[BMDParser] AABB: Min(-48.8012,-139.232,0.0153) Max(48.798,-54.7081,231.62)
-[BMDParser] Data/Object3/Object21.bmd Version: 0xc File size: 18051
-[BMDParser] Meshes: 2 Bones: 6 Actions: 1
- [Mesh 0] Verts: 44 Norms: 30 Tex: 56 Tris: 64 Texture: wall_door01.jpg
- [Mesh 1] Verts: 76 Norms: 103 Tex: 31 Tris: 128 Texture: wall_door02.jpg
-[BMDParser] AABB: Min(-100,-150.276,-14.0828) Max(100,150,78.71)
-[BMDParser] Data/Object3/Object92.bmd Version: 0xc File size: 690
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 6 Norms: 5 Tex: 3 Tris: 5 Texture: aurora.jpg
-[BMDParser] AABB: Min(-48.8012,-139.232,0.0153) Max(48.798,-54.7081,231.62)
-[BMDParser] Data/Object3/Object107.bmd Version: 0xc File size: 4771
+[Music] Playing: lost_tower_a.mp3
+[BGFX Debug] First INGAME frame
+[BMDParser] Cannot open file: Data/Item/Helper03.bmd
+[BMDParser] Data/Player/Helper03.bmd Version: 0xa File size: 4907
 [BMDParser] Meshes: 2 Bones: 2 Actions: 1
- [Mesh 0] Verts: 18 Norms: 1 Tex: 6 Tris: 16 Texture: cho_wedding_02.JPG
- [Mesh 1] Verts: 40 Norms: 1 Tex: 22 Tris: 36 Texture: cho_wedding_07.tga
-[BMDParser] AABB: Min(-80.5993,-338.33,0) Max(80.5993,338.33,0)
-[BMDParser] Data/Object3/Object36.bmd Version: 0xc File size: 6062
-[BMDParser] Meshes: 3 Bones: 5 Actions: 1
- [Mesh 0] Verts: 22 Norms: 22 Tex: 22 Tris: 26 Texture: snotice.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: ssignboard.tga
- [Mesh 2] Verts: 8 Norms: 1 Tex: 4 Tris: 4 Texture: sdoorknob.tga
-[BMDParser] AABB: Min(-84.2137,-6.5966,-69.6156) Max(72.7268,9.8654,27.3122)
-[BMDParser] Data/Object3/Object04.bmd Version: 0xc File size: 5558
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 32 Norms: 32 Tex: 52 Tris: 60 Texture: drum.jpg
-[BMDParser] AABB: Min(-40.6342,-40.6342,-2.8e-05) Max(40.6342,40.6342,102.977)
-[BMDParser] Data/Object3/Object31.bmd Version: 0xc File size: 5214
-[BMDParser] Meshes: 3 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 20 Tex: 13 Tris: 20 Texture: light.tga
- [Mesh 1] Verts: 20 Norms: 16 Tex: 17 Tris: 22 Texture: light2.jpg
- [Mesh 2] Verts: 7 Norms: 7 Tex: 7 Tris: 6 Texture: light3.jpg
-[BMDParser] AABB: Min(-25.3117,-25.3117,-0.3611) Max(25.3118,25.3118,155.148)
-[BMDParser] Data/Object3/Object73.bmd Version: 0xc File size: 30260
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 94 Norms: 38 Tex: 92 Tris: 54 Texture: show_ston01.jpg
- [Mesh 1] Verts: 172 Norms: 195 Tex: 152 Tris: 246 Texture: sky.jpg
-[BMDParser] AABB: Min(-65.1874,-198.043,-30.7388) Max(65.1874,151.357,99.9899)
-[BMDParser] Data/Object3/Object59.bmd Version: 0xc File size: 4936
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 17 Norms: 17 Tex: 11 Tris: 24 Texture: snotice02.jpg
- [Mesh 1] Verts: 17 Norms: 17 Tex: 13 Tris: 28 Texture: snotice.jpg
-[BMDParser] AABB: Min(-154.351,-167.428,200.029) Max(-51.5047,9.36594,223.347)
-[BMDParser] Data/Object3/Object60.bmd Version: 0xc File size: 4936
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 17 Norms: 17 Tex: 11 Tris: 24 Texture: snotice02.jpg
- [Mesh 1] Verts: 17 Norms: 17 Tex: 13 Tris: 28 Texture: snotice.jpg
-[BMDParser] AABB: Min(-160.984,-167.428,196.316) Max(-58.1383,9.36594,223.258)
-[BMDParser] Data/Object3/Object87.bmd Version: 0xc File size: 9282
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 101 Norms: 17 Tex: 33 Tris: 108 Texture: tile_02.jpg
-[BMDParser] AABB: Min(-307.695,-120.529,63.4097) Max(-0.208738,-84.1027,464.431)
-[BMDParser] Data/Object3/Object28.bmd Version: 0xc File size: 3750
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 28 Norms: 24 Tex: 30 Tris: 38 Texture: snotice.jpg
-[BMDParser] AABB: Min(-49.6726,-139.974,-15.4062) Max(49.6725,0.0812112,-1.69948e-05)
-[BMDParser] Data/Object3/Object112.bmd Version: 0xc File size: 14875
-[BMDParser] Meshes: 2 Bones: 2 Actions: 1
- [Mesh 0] Verts: 46 Norms: 46 Tex: 83 Tris: 78 Texture: devgateice.jpg
- [Mesh 1] Verts: 46 Norms: 46 Tex: 83 Tris: 78 Texture: devgateice_R.jpg
-[BMDParser] AABB: Min(-35.6812,-37.4491,-6.97589) Max(36.2226,36.6637,162.02)
-[BMDParser] Data/Object3/Object111.bmd Version: 0xc File size: 132306
-[BMDParser] Meshes: 3 Bones: 5 Actions: 1
- [Mesh 0] Verts: 70 Norms: 50 Tex: 70 Tris: 99 Texture: devgateice.jpg
- [Mesh 1] Verts: 1134 Norms: 146 Tex: 296 Tris: 1384 Texture: devgate1.jpg
- [Mesh 2] Verts: 78 Norms: 39 Tex: 74 Tris: 128 Texture: devgateice_R.jpg
-[BMDParser] AABB: Min(-169.177,-148.277,-93.0166) Max(169.176,72.4446,257.242)
-[BMDParser] Data/Object3/Object13.bmd Version: 0xc File size: 14046
-[BMDParser] Meshes: 3 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: snow_ston.jpg
- [Mesh 1] Verts: 48 Norms: 38 Tex: 47 Tris: 88 Texture: sston.jpg
- [Mesh 2] Verts: 56 Norms: 32 Tex: 34 Tris: 66 Texture: bridge01.jpg
-[BMDParser] AABB: Min(-176.416,-50.9878,-107.626) Max(-105.494,321.264,398.349)
-[BMDParser] Data/Object3/Object14.bmd Version: 0xc File size: 6182
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 56 Norms: 32 Tex: 34 Tris: 66 Texture: bridge01.jpg
-[BMDParser] AABB: Min(-150,-351.258,-118.017) Max(-129.871,-46.7654,25.5578)
-[BMDParser] Data/Object3/Object16.bmd Version: 0xc File size: 3988
-[BMDParser] Meshes: 4 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 2 Tex: 4 Tris: 2 Texture: titel_a06.jpg
- [Mesh 1] Verts: 21 Norms: 17 Tex: 23 Tris: 20 Texture: titel_a03.jpg
- [Mesh 2] Verts: 10 Norms: 5 Tex: 10 Tris: 8 Texture: titel_a05.jpg
- [Mesh 3] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: sston.jpg
-[BMDParser] AABB: Min(-50,-166.544,-94.2744) Max(50,50,306.824)
-[BMDParser] Data/Object3/Object86.bmd Version: 0xc File size: 9041
-[BMDParser] Meshes: 2 Bones: 8 Actions: 1
- [Mesh 0] Verts: 10 Norms: 11 Tex: 10 Tris: 8 Texture: badge_02.tga
- [Mesh 1] Verts: 17 Norms: 32 Tex: 19 Tris: 28 Texture: Javelins03.jpg
-[BMDParser] AABB: Min(5.23176,-25.0419,-11.7336) Max(394.783,21.3484,5.76314)
-[BMDParser] Data/Object3/Object17.bmd Version: 0xc File size: 6136
-[BMDParser] Meshes: 4 Bones: 1 Actions: 1
- [Mesh 0] Verts: 14 Norms: 7 Tex: 21 Tris: 14 Texture: titel_a05.jpg
- [Mesh 1] Verts: 16 Norms: 9 Tex: 16 Tris: 14 Texture: sston.jpg
- [Mesh 2] Verts: 24 Norms: 19 Tex: 30 Tris: 26 Texture: titel_a03.jpg
- [Mesh 3] Verts: 4 Norms: 4 Tex: 4 Tris: 2 Texture: titel_a04.jpg
-[BMDParser] AABB: Min(-150,-118.939,-52.9152) Max(150,45.4545,303.817)
-[BMDParser] Data/Object3/Object15.bmd Version: 0xc File size: 4638
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 38 Norms: 26 Tex: 20 Tris: 50 Texture: blockhead.jpg
-[BMDParser] AABB: Min(-111.045,-77.861,-2.19583) Max(111.045,40.2103,18.3688)
-[BMDParser] Data/Object3/Object02.bmd Version: 0xc File size: 4176
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 24 Norms: 24 Tex: 16 Tris: 42 Texture: sston.jpg
- [Mesh 1] Verts: 4 Norms: 4 Tex: 4 Tris: 2 Texture: sston2.jpg
-[BMDParser] AABB: Min(-76,-76,-152) Max(76,76.0001,1.05402e-05)
-[BMDParser] Data/Object3/Object03.bmd Version: 0xc File size: 30622
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 187 Norms: 184 Tex: 127 Tris: 356 Texture: deer.jpg
-[BMDParser] AABB: Min(-143.956,-25.4735,0.276) Max(34.506,155.469,193.78)
-[BMDParser] Data/Object3/Object77.bmd Version: 0xc File size: 5632
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 24 Norms: 7 Tex: 50 Tris: 28 Texture: wall_door03.jpg
- [Mesh 1] Verts: 24 Norms: 9 Tex: 46 Tris: 28 Texture: house_stone_out.jpg
-[BMDParser] AABB: Min(-179.796,-137.006,-209.152) Max(121.244,127.192,91.6144)
-[BMDParser] Data/Object3/Object80.bmd Version: 0xc File size: 1962
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 16 Norms: 5 Tex: 22 Tris: 20 Texture: wall_door03.jpg
-[BMDParser] AABB: Min(319.24,-137.812,-8.76975) Max(521.335,127.192,31.893)
-[BMDParser] Data/Object3/Object79.bmd Version: 0xc File size: 6834
-[BMDParser] Meshes: 4 Bones: 3 Actions: 1
- [Mesh 0] Verts: 8 Norms: 5 Tex: 12 Tris: 10 Texture: wall_door01.jpg
- [Mesh 1] Verts: 24 Norms: 5 Tex: 40 Tris: 36 Texture: wall_door03.jpg
- [Mesh 2] Verts: 16 Norms: 5 Tex: 24 Tris: 18 Texture: house_stone_out.jpg
- [Mesh 3] Verts: 12 Norms: 3 Tex: 4 Tris: 6 Texture: light_02.jpg
-[BMDParser] AABB: Min(-72.5284,-137.006,-43.2984) Max(521.335,127.192,124.662)
-[BMDParser] Data/Object3/Object39.bmd Version: 0xc File size: 11060
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 13 Norms: 14 Tex: 15 Tris: 15 Texture: shield02.jpg
- [Mesh 1] Verts: 76 Norms: 67 Tex: 27 Tris: 102 Texture: sword08.jpg
-[BMDParser] AABB: Min(-55.6245,-49.3227,-15.9725) Max(51.9277,67.4289,6.23976)
-[BMDParser] Data/Object3/Object40.bmd Version: 0xc File size: 6487
-[BMDParser] Meshes: 1 Bones: 4 Actions: 1
- [Mesh 0] Verts: 42 Norms: 34 Tex: 73 Tris: 66 Texture: treasure_chest.jpg
-[BMDParser] AABB: Min(-57.7335,-63.993,-36.1854) Max(56.8326,0.327116,35.6717)
-[BMDParser] Data/Object3/Object24.bmd Version: 0xc File size: 3202
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 32 Norms: 7 Tex: 28 Tris: 34 Texture: desk_big.jpg
-[BMDParser] AABB: Min(-94.7121,-34.9971,-79.5328) Max(108.757,34.997,25.8427)
-[BMDParser] Data/Object3/Object45.bmd Version: 0xc File size: 3706
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 25 Norms: 31 Tex: 29 Tris: 36 Texture: winecup.jpg
-[BMDParser] AABB: Min(-16.1412,-7.72906,-20.3876) Max(11.3615,11.9001,3.8673)
-[BMDParser] Data/Object3/Object44.bmd Version: 0xc File size: 3414
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 20 Tex: 30 Tris: 36 Texture: bottle.tga
-[BMDParser] AABB: Min(-5.54524,-6.51882,-2.6e-05) Max(6.85436,6.51888,60.8264)
-[BMDParser] Data/Object3/Object84.bmd Version: 0xc File size: 9233
-[BMDParser] Meshes: 2 Bones: 8 Actions: 1
- [Mesh 0] Verts: 10 Norms: 11 Tex: 10 Tris: 8 Texture: badge_03.tga
- [Mesh 1] Verts: 17 Norms: 32 Tex: 19 Tris: 28 Texture: Javelins03.jpg
-[BMDParser] AABB: Min(-66.512,-25.0419,-11.7336) Max(267.928,21.3484,5.66965)
-[BMDParser] Data/Object3/Object82.bmd Version: 0xc File size: 3212
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 12 Norms: 1 Tex: 11 Tris: 6 Texture: show_ston01.jpg
- [Mesh 1] Verts: 27 Norms: 6 Tex: 31 Tris: 24 Texture: tile_wood04.jpg
-[BMDParser] AABB: Min(-254.161,-260.708,-3.05176e-05) Max(205.922,199.262,90.0434)
-[BMDParser] Data/Object3/Object76.bmd Version: 0xc File size: 23321
-[BMDParser] Meshes: 2 Bones: 12 Actions: 1
- [Mesh 0] Verts: 21 Norms: 21 Tex: 26 Tris: 36 Texture: stree.jpg
- [Mesh 1] Verts: 117 Norms: 113 Tex: 9 Tris: 104 Texture: stree.tga
-[BMDParser] AABB: Min(-132.16,-161.737,-302.974) Max(128.523,456.575,141.006)
-[BMDParser] Data/Object3/Object78.bmd Version: 0xc File size: 3592
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 16 Norms: 5 Tex: 24 Tris: 18 Texture: wall_door03.jpg
- [Mesh 1] Verts: 16 Norms: 5 Tex: 24 Tris: 18 Texture: house_stone_out.jpg
-[BMDParser] AABB: Min(120.143,-137.006,-8.83575) Max(320.236,127.192,91.6144)
-[BMDParser] Data/Object3/Object10.bmd Version: 0xc File size: 4760
-[BMDParser] Meshes: 1 Bones: 3 Actions: 1
- [Mesh 0] Verts: 21 Norms: 31 Tex: 31 Tris: 30 Texture: ice01.jpg
-[BMDParser] AABB: Min(-70.9141,-68.8082,-21.0103) Max(64.6442,61.7101,38.926)
-[BMDParser] Data/Object3/Object11.bmd Version: 0xc File size: 4832
-[BMDParser] Meshes: 1 Bones: 3 Actions: 1
- [Mesh 0] Verts: 21 Norms: 31 Tex: 31 Tris: 30 Texture: ice01.jpg
-[BMDParser] AABB: Min(-50.8891,-57.5319,-16.7815) Max(54.0056,45.3856,44.545)
-[BMDParser] Data/Object3/Object23.bmd Version: 0xc File size: 8182
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 70 Norms: 14 Tex: 77 Tris: 94 Texture: ti03.jpg
-[BMDParser] AABB: Min(-24.1781,-26.7207,-18.4777) Max(45.8658,23.5986,133.184)
-[BMDParser] Data/Object3/Object96.bmd Version: 0xc File size: 12351
-[BMDParser] Meshes: 4 Bones: 10 Actions: 1
- [Mesh 0] Verts: 32 Norms: 5 Tex: 39 Tris: 32 Texture: bookshelf.jpg
- [Mesh 1] Verts: 20 Norms: 18 Tex: 20 Tris: 26 Texture: desk.jpg
- [Mesh 2] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: feather.tga
- [Mesh 3] Verts: 56 Norms: 8 Tex: 36 Tris: 70 Texture: books.jpg
-[BMDParser] AABB: Min(-136.82,-23.2143,-2.6e-05) Max(24.446,23.2143,210.074)
-[BMDParser] Data/Object3/Object47.bmd Version: 0xc File size: 3958
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 28 Norms: 32 Tex: 36 Tris: 38 Texture: desk_big.jpg
-[BMDParser] AABB: Min(-106.743,-59.648,-5e-06) Max(96.9429,39.6415,86.3275)
-[BMDParser] Data/Object3/Object54.bmd Version: 0xc File size: 2193
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 16 Norms: 8 Tex: 36 Tris: 20 Texture: books.jpg
-[BMDParser] AABB: Min(-3.75098,-18.7549,2.089e-05) Max(24.4459,18.7549,30.0078)
-[BMDParser] Data/Object3/Object55.bmd Version: 0xc File size: 12720
-[BMDParser] Meshes: 2 Bones: 9 Actions: 1
- [Mesh 0] Verts: 64 Norms: 64 Tex: 74 Tris: 110 Texture: candle.jpg
- [Mesh 1] Verts: 15 Norms: 4 Tex: 15 Tris: 6 Texture: candle2.jpg
-[BMDParser] AABB: Min(-11.2358,-18.9973,-1.48985) Max(11.2359,19.0237,71.7047)
-[BMDParser] Data/Object3/Object81.bmd Version: 0xc File size: 6723
-[BMDParser] Meshes: 2 Bones: 2 Actions: 1
- [Mesh 0] Verts: 60 Norms: 21 Tex: 62 Tris: 68 Texture: desk.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: feather.tga
-[BMDParser] AABB: Min(-30.3711,-68.1989,0) Max(119.022,19.1742,140.75)
-[BMDParser] Data/Object3/Object41.bmd Version: 0xc File size: 5096
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 48 Norms: 5 Tex: 58 Tris: 52 Texture: chair.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: chair2.tga
-[BMDParser] AABB: Min(-9.33532,-28.8583,-19.9559) Max(32.9787,25.4865,90.9432)
-[BMDParser] Data/Object3/Object56.bmd Version: 0xc File size: 5096
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 48 Norms: 5 Tex: 58 Tris: 52 Texture: chair.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: chair2.tga
-[BMDParser] AABB: Min(-8.64376,-26.7207,-18.4777) Max(30.5358,23.5986,111.935)
-[BMDParser] Data/Object3/Object98.bmd Version: 0xc File size: 2004
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: art.jpg
- [Mesh 1] Verts: 12 Norms: 8 Tex: 24 Tris: 16 Texture: ti02.jpg
-[BMDParser] AABB: Min(-84.5018,-49.0775,6.64204) Max(84.5019,49.0775,14.3421)
-[BMDParser] Data/Object3/Object83.bmd Version: 0xc File size: 2992
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 12 Norms: 1 Tex: 12 Tris: 6 Texture: show_ston01.jpg
- [Mesh 1] Verts: 26 Norms: 5 Tex: 23 Tris: 22 Texture: tile_wood04.jpg
-[BMDParser] AABB: Min(205.574,-260.708,-3.05176e-05) Max(605.974,199.262,90.0434)
-[BMDParser] Data/Object3/Object72.bmd Version: 0xc File size: 3892
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 19 Tex: 30 Tris: 36 Texture: wall_door03.jpg
- [Mesh 1] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: sky.tga
-[BMDParser] AABB: Min(-20.6418,-42.6368,-28.1194) Max(20.6419,44.2225,20.3131)
-[BMDParser] Data/Object3/Object97.bmd Version: 0xc File size: 3114
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 24 Norms: 9 Tex: 28 Tris: 34 Texture: house_stone_out.jpg
-[BMDParser] AABB: Min(-33.8942,-35.5889,3.05176e-05) Max(33.8942,35.5889,85.166)
-[BMDParser] Data/Object3/Object37.bmd Version: 0xc File size: 8625
-[BMDParser] Meshes: 3 Bones: 2 Actions: 1
- [Mesh 0] Verts: 39 Norms: 37 Tex: 45 Tris: 57 Texture: house_stone_out.jpg
- [Mesh 1] Verts: 14 Norms: 14 Tex: 14 Tris: 19 Texture: fireplace_down.tga
- [Mesh 2] Verts: 12 Norms: 10 Tex: 12 Tris: 10 Texture: fireplace.tga
-[BMDParser] AABB: Min(-76.8127,-50.406,-0.110913) Max(75.9022,66.188,219.932)
-[BMDParser] Data/Object3/Object51.bmd Version: 0xc File size: 40126
-[BMDParser] Meshes: 3 Bones: 13 Actions: 1
- [Mesh 0] Verts: 32 Norms: 5 Tex: 39 Tris: 32 Texture: bookshelf.jpg
- [Mesh 1] Verts: 62 Norms: 37 Tex: 36 Tris: 108 Texture: pot2.jpg
- [Mesh 2] Verts: 200 Norms: 40 Tex: 30 Tris: 360 Texture: bottle.tga
-[BMDParser] AABB: Min(-136.82,-23.2143,-3.53164e-05) Max(23.3595,23.2144,193.277)
-[BMDParser] Data/Object3/Object46.bmd Version: 0xc File size: 4466
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 37 Norms: 37 Tex: 37 Tris: 42 Texture: chair.jpg
-[BMDParser] AABB: Min(-17.1803,-21.2861,-3e-05) Max(26.2029,21.0451,51.4094)
-[BMDParser] Data/Object3/Object30.bmd Version: 0xc File size: 5598
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 32 Norms: 34 Tex: 52 Tris: 60 Texture: drums.jpg
-[BMDParser] AABB: Min(-40.6342,-40.6342,-2.8e-05) Max(40.6342,40.6342,102.977)
-[BMDParser] Data/Object3/Object06.bmd Version: 0xc File size: 2665
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 18 Norms: 18 Tex: 18 Tris: 26 Texture: snow_ston.jpg
-[BMDParser] AABB: Min(-50.7489,-53.3606,0) Max(50.7489,53.3605,62.0724)
-[BMDParser] Data/Object3/Object07.bmd Version: 0xc File size: 1869
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 13 Norms: 13 Tex: 13 Tris: 17 Texture: snow_ston.jpg
-[BMDParser] AABB: Min(65.5398,-10.943,0) Max(151.507,66.9422,47.3699)
-[BMDParser] Data/Object3/Object95.bmd Version: 0xc File size: 7466
-[BMDParser] Meshes: 2 Bones: 3 Actions: 1
- [Mesh 0] Verts: 48 Norms: 18 Tex: 64 Tris: 62 Texture: wall_door03.jpg
- [Mesh 1] Verts: 12 Norms: 11 Tex: 14 Tris: 16 Texture: desk.jpg
-[BMDParser] AABB: Min(-44.7319,-57.241,-124.158) Max(47.7769,52.8865,9.79847)
-[BMDParser] Data/Object3/Object43.bmd Version: 0xc File size: 2660
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 9 Norms: 9 Tex: 9 Tris: 12 Texture: snotice.jpg
- [Mesh 1] Verts: 10 Norms: 10 Tex: 6 Tris: 14 Texture: snotice03.jpg
-[BMDParser] AABB: Min(-44.1057,-4.8493,0) Max(44.1057,5,163.7)
-[BMDParser] Data/Object3/Object66.bmd Version: 0xc File size: 18051
-[BMDParser] Meshes: 2 Bones: 6 Actions: 1
- [Mesh 0] Verts: 44 Norms: 30 Tex: 56 Tris: 64 Texture: wall_door03.jpg
- [Mesh 1] Verts: 76 Norms: 103 Tex: 31 Tris: 128 Texture: wall_door02.jpg
-[BMDParser] AABB: Min(-100,-150.276,-14.0828) Max(100,150,78.71)
-[BMDParser] Data/Object3/Object34.bmd Version: 0xc File size: 4110
-[BMDParser] Meshes: 5 Bones: 1 Actions: 1
- [Mesh 0] Verts: 4 Norms: 2 Tex: 4 Tris: 2 Texture: titel_a06.jpg
- [Mesh 1] Verts: 21 Norms: 16 Tex: 21 Tris: 18 Texture: titel_a03.jpg
- [Mesh 2] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: ti01.jpg
- [Mesh 3] Verts: 10 Norms: 5 Tex: 10 Tris: 8 Texture: titel_a05.jpg
- [Mesh 4] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: sston.jpg
-[BMDParser] AABB: Min(-50,-166.544,-89.2375) Max(50,50,290.431)
-[BMDParser] Data/Object3/Object35.bmd Version: 0xc File size: 6242
-[BMDParser] Meshes: 5 Bones: 1 Actions: 1
- [Mesh 0] Verts: 14 Norms: 7 Tex: 21 Tris: 14 Texture: titel_a05.jpg
- [Mesh 1] Verts: 16 Norms: 9 Tex: 16 Tris: 14 Texture: sston.jpg
- [Mesh 2] Verts: 22 Norms: 18 Tex: 24 Tris: 22 Texture: titel_a03.jpg
- [Mesh 3] Verts: 4 Norms: 4 Tex: 4 Tris: 2 Texture: titel_a04.jpg
- [Mesh 4] Verts: 6 Norms: 1 Tex: 6 Tris: 4 Texture: ti01.jpg
-[BMDParser] AABB: Min(-150,-130.833,-53.1384) Max(150,50,305.098)
-[BMDParser] Data/Object3/Object91.bmd Version: 0xc File size: 8548
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 48 Norms: 24 Tex: 54 Tris: 48 Texture: ti02.jpg
- [Mesh 1] Verts: 40 Norms: 17 Tex: 24 Tris: 38 Texture: ti01.jpg
-[BMDParser] AABB: Min(99.728,-300.106,-22.9) Max(199.762,-200.072,291.385)
-[BMDParser] Data/Object3/Object99.bmd Version: 0xc File size: 7484
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 22 Norms: 1 Tex: 22 Tris: 12 Texture: show_ston01.jpg
- [Mesh 1] Verts: 48 Norms: 16 Tex: 35 Tris: 72 Texture: titel_a04.jpg
-[BMDParser] AABB: Min(-150,-99.4723,0) Max(249.578,300.45,99.7)
-[BMDParser] Data/Object3/Object52.bmd Version: 0xc File size: 38400
-[BMDParser] Meshes: 2 Bones: 13 Actions: 1
- [Mesh 0] Verts: 240 Norms: 140 Tex: 30 Tris: 432 Texture: bottle.tga
- [Mesh 1] Verts: 32 Norms: 5 Tex: 39 Tris: 32 Texture: bookshelf.jpg
-[BMDParser] AABB: Min(-136.82,-23.2143,-2.6e-05) Max(23.3595,23.2143,210.074)
-[BMDParser] Data/Object3/Object32.bmd Version: 0xc File size: 7334
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 46 Norms: 52 Tex: 52 Tris: 78 Texture: pot.jpg
-[BMDParser] AABB: Min(-20.0102,-12.5136,0.0939) Max(23.3431,12.5136,43.4658)
-[BMDParser] Data/Object3/Object42.bmd Version: 0xc File size: 3962
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 40 Norms: 9 Tex: 38 Tris: 42 Texture: desk_big.jpg
-[BMDParser] AABB: Min(-94.7122,-51.4457,-79.5328) Max(108.758,51.4457,7.04812)
-[BMDParser] Data/Object3/Object48.bmd Version: 0xc File size: 21070
-[BMDParser] Meshes: 5 Bones: 5 Actions: 1
- [Mesh 0] Verts: 19 Norms: 25 Tex: 28 Tris: 30 Texture: plate.jpg
- [Mesh 1] Verts: 25 Norms: 31 Tex: 29 Tris: 36 Texture: winecup.jpg
- [Mesh 2] Verts: 69 Norms: 75 Tex: 78 Tris: 110 Texture: plate2.jpg
- [Mesh 3] Verts: 6 Norms: 4 Tex: 6 Tris: 4 Texture: pot3.tga
- [Mesh 4] Verts: 20 Norms: 20 Tex: 30 Tris: 36 Texture: bottle.tga
-[BMDParser] AABB: Min(-23.1887,-20.082,-20.3877) Max(23.1887,32.2127,60.8264)
-[BMDParser] Data/Object3/Object49.bmd Version: 0xc File size: 21317
-[BMDParser] Meshes: 5 Bones: 6 Actions: 1
- [Mesh 0] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: pot3.tga
- [Mesh 1] Verts: 52 Norms: 52 Tex: 30 Tris: 96 Texture: apple.jpg
- [Mesh 2] Verts: 20 Norms: 20 Tex: 30 Tris: 36 Texture: bottle.tga
- [Mesh 3] Verts: 38 Norms: 25 Tex: 28 Tris: 60 Texture: plate.jpg
- [Mesh 4] Verts: 25 Norms: 31 Tex: 29 Tris: 36 Texture: winecup.jpg
-[BMDParser] AABB: Min(-16.1412,-23.28,-20.3876) Max(14.1205,12.2288,60.8264)
-[BMDParser] Data/Object3/Object50.bmd Version: 0xc File size: 9754
-[BMDParser] Meshes: 2 Bones: 3 Actions: 1
- [Mesh 0] Verts: 40 Norms: 20 Tex: 30 Tris: 72 Texture: bottle.tga
- [Mesh 1] Verts: 25 Norms: 31 Tex: 29 Tris: 36 Texture: winecup.jpg
-[BMDParser] AABB: Min(-16.1412,-7.72911,-20.3877) Max(11.3615,11.9,60.8264)
-[BMDParser] Data/Object3/Object53.bmd Version: 0xc File size: 24619
-[BMDParser] Meshes: 4 Bones: 6 Actions: 1
- [Mesh 0] Verts: 46 Norms: 52 Tex: 52 Tris: 78 Texture: pot.jpg
- [Mesh 1] Verts: 31 Norms: 37 Tex: 36 Tris: 54 Texture: pot2.jpg
- [Mesh 2] Verts: 32 Norms: 5 Tex: 39 Tris: 32 Texture: bookshelf.jpg
- [Mesh 3] Verts: 60 Norms: 40 Tex: 30 Tris: 108 Texture: bottle.tga
-[BMDParser] AABB: Min(-136.82,-23.2144,-2.6e-05) Max(23.3595,23.2143,210.074)
-[BMDParser] Data/Object3/Object58.bmd Version: 0xc File size: 10999
-[BMDParser] Meshes: 2 Bones: 2 Actions: 1
- [Mesh 0] Verts: 69 Norms: 75 Tex: 78 Tris: 110 Texture: plate2.jpg
- [Mesh 1] Verts: 6 Norms: 4 Tex: 6 Tris: 4 Texture: pot3.tga
-[BMDParser] AABB: Min(-23.1887,-20.082,-19.0503) Max(23.1887,32.2127,13.9677)
-[BMDParser] Data/Object3/Object68.bmd Version: 0xc File size: 20117
-[BMDParser] Meshes: 3 Bones: 2 Actions: 1
- [Mesh 0] Verts: 122 Norms: 52 Tex: 81 Tris: 220 Texture: show_ston01.jpg
- [Mesh 1] Verts: 6 Norms: 6 Tex: 6 Tris: 5 Texture: snotice02.jpg
- [Mesh 2] Verts: 18 Norms: 16 Tex: 18 Tris: 12 Texture: ti05.jpg
-[BMDParser] AABB: Min(-47.106,-49.5302,-42.1329) Max(47.106,49.5301,121.379)
-[BMDParser] Data/Object3/Object09.bmd Version: 0xc File size: 1918
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 14 Norms: 8 Tex: 21 Tris: 19 Texture: ice01.jpg
-[BMDParser] AABB: Min(-83.2914,29.1603,-18.5448) Max(78.1836,155.243,9.79997)
-[BMDParser] Data/Object3/Object08.bmd Version: 0xc File size: 2990
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 22 Norms: 12 Tex: 33 Tris: 31 Texture: ice01.jpg
-[BMDParser] AABB: Min(-312.484,35.4725,-18.5448) Max(-131.331,169.155,10.2)
-[BMDParser] Data/Object3/Object65.bmd Version: 0xc File size: 6458
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 47 Norms: 15 Tex: 73 Tris: 73 Texture: ti01.jpg
-[BMDParser] AABB: Min(-200,-300.532,0.3072) Max(200,0.148834,321.838)
-[ObjectRenderer] Generic: Loaded 2237 instances, 105 unique models (0 from fallback), skipped 0
-[TextureLoader] Cannot open OZT: Data/World3/TileGrass01.OZT
-[GrassRenderer] TileGrass01 using snowy TileGrass02
-[GrassRenderer] Loaded TileGrass01
-[GrassRenderer] Loaded TileGrass02
-[TextureLoader] Cannot open OZT: Data/World3/TileGrass03.OZT
-[GrassRenderer] TileGrass03 using snowy TileGrass02
-[GrassRenderer] Loaded TileGrass03
-[GrassRenderer] Generated 28530 grass billboards (114120 vertices)
-[ChangeMap] Map 2 loaded: 2237 objects, 73 lights, 15 fire emitters
-[NPC] Server-spawned NPC type=300 idx=1001 at grid (218,63) dir=4
-[NPC] Server-spawned NPC type=301 idx=1002 at grid (215,45) dir=3
-[NPC] Server-spawned NPC type=302 idx=1003 at grid (226,25) dir=5
-[NPC] Server-spawned NPC type=303 idx=1004 at grid (225,41) dir=5
-[NPC] Server-spawned NPC type=304 idx=1005 at grid (186,47) dir=5
-[NPC] Server-spawned NPC type=310 idx=1006 at grid (218,79) dir=4
-[NPC] Server-spawned NPC type=311 idx=1007 at grid (195,55) dir=5
-[NPC] Server-spawned NPC type=312 idx=1008 at grid (180,70) dir=4
-[Net] NPC viewport (game): 8 NPCs
-[Monster] Spawned type=24 at grid (130,10)
-[Monster] Spawned type=24 at grid (135,25)
-[Monster] Spawned type=24 at grid (140,42)
-[Monster] Spawned type=24 at grid (145,58)
-[Monster] Spawned type=24 at grid (150,72)
-[Monster] Spawned type=24 at grid (155,88)
-[Monster] Spawned type=24 at grid (160,105)
-[Monster] Spawned type=24 at grid (165,118)
-[Monster] Spawned type=24 at grid (132,50)
-[Monster] Spawned type=24 at grid (148,95)
-[Monster] Spawned type=24 at grid (175,82)
-[Monster] Spawned type=24 at grid (185,90)
-[Monster] Spawned type=24 at grid (195,85)
-[Monster] Spawned type=24 at grid (205,95)
-[Monster] Spawned type=24 at grid (215,88)
-[Monster] Spawned type=24 at grid (225,100)
-[Monster] Spawned type=24 at grid (235,92)
-[Monster] Spawned type=24 at grid (240,110)
-[Monster] Spawned type=24 at grid (180,105)
-[Monster] Spawned type=24 at grid (200,118)
-[Monster] Spawned type=21 at grid (130,30)
-[Monster] Spawned type=21 at grid (138,60)
-[Monster] Spawned type=21 at grid (146,90)
-[Monster] Spawned type=21 at grid (155,120)
-[Monster] Spawned type=21 at grid (135,75)
-[Monster] Spawned type=21 at grid (162,45)
-[Monster] Spawned type=21 at grid (142,110)
-[Monster] Spawned type=21 at grid (178,95)
-[Monster] Spawned type=21 at grid (192,100)
-[Monster] Spawned type=21 at grid (208,88)
-[Monster] Spawned type=21 at grid (222,108)
-[Monster] Spawned type=21 at grid (238,95)
-[Monster] Spawned type=21 at grid (248,115)
-[Monster] Spawned type=21 at grid (185,118)
-[Monster] Spawned type=21 at grid (215,82)
-[Monster] Spawned type=22 at grid (10,12)
-[Monster] Spawned type=22 at grid (25,28)
-[Monster] Spawned type=22 at grid (40,45)
-[Monster] Spawned type=22 at grid (55,58)
-[Monster] Spawned type=22 at grid (70,72)
-[Monster] Spawned type=22 at grid (85,88)
-[Monster] Spawned type=22 at grid (100,102)
-[Monster] Spawned type=22 at grid (115,118)
-[Monster] Spawned type=22 at grid (15,55)
-[Monster] Spawned type=22 at grid (30,78)
-[Monster] Spawned type=22 at grid (45,100)
-[Monster] Spawned type=22 at grid (60,120)
-[Monster] Spawned type=22 at grid (75,15)
-[Monster] Spawned type=22 at grid (90,42)
-[Monster] Spawned type=22 at grid (105,68)
-[Monster] Spawned type=22 at grid (120,95)
-[Monster] Spawned type=22 at grid (20,92)
-[Monster] Spawned type=22 at grid (38,112)
-[Monster] Spawned type=22 at grid (52,22)
-[Monster] Spawned type=22 at grid (68,48)
-[Monster] Spawned type=22 at grid (82,75)
-[Monster] Spawned type=22 at grid (98,110)
-[Monster] Spawned type=22 at grid (112,35)
-[Monster] Spawned type=22 at grid (125,62)
-[Monster] Spawned type=22 at grid (8,85)
-[Monster] Spawned type=23 at grid (5,18)
-[Monster] Spawned type=23 at grid (20,35)
-[Monster] Spawned type=23 at grid (35,52)
-[Monster] Spawned type=23 at grid (50,68)
-[Monster] Spawned type=23 at grid (65,82)
-[Monster] Spawned type=23 at grid (80,98)
-[Monster] Spawned type=23 at grid (95,112)
-[Monster] Spawned type=23 at grid (110,125)
-[Monster] Spawned type=23 at grid (12,62)
-[Monster] Spawned type=23 at grid (28,85)
-[Monster] Spawned type=23 at grid (42,108)
-[Monster] Spawned type=23 at grid (58,10)
-[Monster] Spawned type=23 at grid (72,38)
-[Monster] Spawned type=23 at grid (88,55)
-[Monster] Spawned type=23 at grid (102,78)
-[Monster] Spawned type=23 at grid (118,100)
-[Monster] Spawned type=23 at grid (18,95)
-[Monster] Spawned type=23 at grid (32,115)
-[Monster] Spawned type=23 at grid (48,28)
-[Monster] Spawned type=23 at grid (62,52)
-[Monster] Spawned type=23 at grid (78,72)
-[Monster] Spawned type=23 at grid (92,105)
-[Monster] Spawned type=23 at grid (108,42)
-[Monster] Spawned type=23 at grid (122,18)
-[Monster] Spawned type=23 at grid (6,48)
-[Monster] Spawned type=20 at grid (194,165)
-[Monster] Spawned type=20 at grid (190,162)
-[Monster] Spawned type=20 at grid (198,168)
-[Monster] Spawned type=20 at grid (36,25)
-[Monster] Spawned type=20 at grid (32,22)
-[Monster] Spawned type=20 at grid (40,28)
-[Monster] Spawned type=20 at grid (215,212)
-[Monster] Spawned type=20 at grid (222,215)
-[Monster] Spawned type=20 at grid (228,218)
-[Monster] Spawned type=20 at grid (234,213)
-[Monster] Spawned type=20 at grid (240,216)
-[Monster] Spawned type=20 at grid (10,132)
-[Monster] Spawned type=20 at grid (25,142)
-[Monster] Spawned type=20 at grid (42,155)
-[Monster] Spawned type=20 at grid (58,168)
-[Monster] Spawned type=20 at grid (72,178)
-[Monster] Spawned type=20 at grid (88,188)
-[Monster] Spawned type=20 at grid (102,198)
-[Monster] Spawned type=20 at grid (118,210)
-[Monster] Spawned type=20 at grid (132,222)
-[Monster] Spawned type=20 at grid (148,235)
-[Monster] Spawned type=20 at grid (162,240)
-[Monster] Spawned type=20 at grid (178,138)
-[Monster] Spawned type=20 at grid (192,148)
-[Monster] Spawned type=20 at grid (208,158)
-[Monster] Spawned type=20 at grid (225,168)
-[Monster] Spawned type=20 at grid (240,178)
-[Monster] Spawned type=20 at grid (15,188)
-[Monster] Spawned type=20 at grid (32,200)
-[Monster] Spawned type=20 at grid (48,215)
-[Monster] Spawned type=20 at grid (65,228)
-[Monster] Spawned type=20 at grid (80,238)
-[Monster] Spawned type=20 at grid (95,135)
-[Monster] Spawned type=20 at grid (112,145)
-[Monster] Spawned type=20 at grid (128,158)
-[Monster] Spawned type=20 at grid (145,170)
-[Monster] Spawned type=20 at grid (160,182)
-[Monster] Spawned type=20 at grid (175,195)
-[Monster] Spawned type=20 at grid (190,208)
-[Monster] Spawned type=20 at grid (205,220)
-[Monster] Spawned type=20 at grid (220,232)
-[Monster] Spawned type=20 at grid (238,242)
-[Monster] Spawned type=20 at grid (22,150)
-[Monster] Spawned type=20 at grid (55,180)
-[Monster] Spawned type=20 at grid (85,210)
-[Monster] Spawned type=20 at grid (115,240)
-[Monster] Spawned type=20 at grid (140,130)
-[Monster] Spawned type=20 at grid (170,160)
-[Monster] Spawned type=20 at grid (200,190)
-[Monster] Spawned type=20 at grid (230,225)
-[Monster] Spawned type=25 at grid (10,135)
-[Monster] Spawned type=25 at grid (25,152)
-[Monster] Spawned type=25 at grid (40,168)
-[Monster] Spawned type=25 at grid (55,182)
-[Monster] Spawned type=25 at grid (70,198)
-[Monster] Spawned type=25 at grid (85,212)
-[Monster] Spawned type=25 at grid (100,228)
-[Monster] Spawned type=25 at grid (115,242)
-[Monster] Spawned type=25 at grid (15,162)
-[Monster] Spawned type=25 at grid (30,178)
-[Monster] Spawned type=25 at grid (45,195)
-[Monster] Spawned type=25 at grid (60,208)
-[Monster] Spawned type=25 at grid (75,225)
-[Monster] Spawned type=25 at grid (90,238)
-[Monster] Spawned type=25 at grid (105,148)
-[Monster] Spawned type=25 at grid (120,168)
-[Monster] Spawned type=25 at grid (20,188)
-[Monster] Spawned type=25 at grid (35,205)
-[Monster] Spawned type=25 at grid (50,218)
-[Monster] Spawned type=25 at grid (65,235)
-[Net] Monster viewport V2 (game): 155 monsters
-[Music] Stopped
-[Music] Playing: Devias.mp3
-[Hero] Left SafeZone, action=17
-[Sound] PlayLoop: aWind.wav (id=0)
-[Music] Stopped
-[Sound] Play3D: mWorm1.wav (id=302) at (9050,165,21650)
-[Net] Map change: mapId=0 spawn=(125,125)
-[ChangeMap] Transitioning to map 0 (Lorencia, World1) spawn=(125,125)
-[TerrainParser] Loaded mapping: map_number=1, 196610 bytes
-[TerrainParser] Loaded attributes (WORD format): 131076 bytes
-[TerrainParser] Object file: version=0 map=1 count=2870
-[TerrainParser] Loaded 2870 objects
-[TerrainParser] Applied directional sun lighting (sunDir=0.57735,-0.57735,0.57735)
-[Terrain] WARNING: Terrain uses tile index 255 which has no tile name (max=13)
-[Terrain] Loaded tile 0: TileGrass01 (256x256)
-[Terrain] Loaded tile 1: TileGrass02 (128x128)
-[Terrain] Loaded tile 2: TileGround01 (256x256)
-[Terrain] Loaded tile 3: TileGround02 (128x128)
-[Terrain] Loaded tile 4: TileGround03 (128x128)
-[Terrain] Loaded tile 5: TileWater01 (256x256)
-[Terrain] Loaded tile 6: TileWood01 (128x128)
-[Terrain] Loaded tile 7: TileRock01 (256x256)
-[Terrain] Loaded tile 8: TileRock02 (128x128)
-[BMDParser] Data/Object1/Stone01.bmd Version: 0xa File size: 16124
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 87 Norms: 82 Tex: 87 Tris: 140 Texture: ston01.jpg
- [Mesh 1] Verts: 52 Norms: 36 Tex: 4 Tris: 26 Texture: ston02.tga
-[BMDParser] AABB: Min(-154.66,-168.202,-52.5961) Max(161.868,145.176,173.199)
-[BMDParser] Data/Object1/Stone04.bmd Version: 0xa File size: 4302
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 33 Norms: 33 Tex: 11 Tris: 45 Texture: ston01.jpg
-[BMDParser] AABB: Min(-40.0352,-8.867,-29.5384) Max(75.0313,92.9935,0.588367)
-[BMDParser] Data/Object1/Tree01.bmd Version: 0xa File size: 50091
-[BMDParser] Meshes: 2 Bones: 16 Actions: 1
- [Mesh 0] Verts: 145 Norms: 145 Tex: 203 Tris: 268 Texture: tree.jpg
- [Mesh 1] Verts: 288 Norms: 99 Tex: 4 Tris: 144 Texture: Tree_a.tga
-[BMDParser] AABB: Min(-401.66,-242.611,-26.1444) Max(318.458,257.81,415.394)
-  [GPU-Anim] type 0 keys=31
-[BMDParser] Data/Object1/Grass05.bmd Version: 0xa File size: 12719
-[BMDParser] Meshes: 1 Bones: 4 Actions: 1
- [Mesh 0] Verts: 144 Norms: 139 Tex: 18 Tris: 112 Texture: tree_09.tga
-[BMDParser] AABB: Min(-125.769,-42.9646,-101.046) Max(80.9489,42.9646,90.6349)
-[BMDParser] Data/Object1/Stone03.bmd Version: 0xa File size: 7114
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 42 Norms: 42 Tex: 42 Tris: 80 Texture: ston01.jpg
-[BMDParser] AABB: Min(-124.223,-67.2892,-15.7344) Max(106.732,123.764,165.359)
-[BMDParser] Data/Object1/Tree02.bmd Version: 0xa File size: 90633
-[BMDParser] Meshes: 2 Bones: 24 Actions: 1
- [Mesh 0] Verts: 338 Norms: 338 Tex: 444 Tris: 606 Texture: tree.jpg
- [Mesh 1] Verts: 328 Norms: 232 Tex: 4 Tris: 164 Texture: Tree_a.tga
-[BMDParser] AABB: Min(-286.126,-267.272,-132.264) Max(288.802,346.684,376.242)
-  [GPU-Anim] type 1 keys=31
-[BMDParser] Data/Object1/StoneStatue02.bmd Version: 0xa File size: 9706
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 60 Norms: 60 Tex: 69 Tris: 107 Texture: stone_statue01.jpg
-[BMDParser] AABB: Min(-134.625,-148.096,0.594872) Max(134.625,97.4231,485.87)
-[BMDParser] Data/Object1/Grass02.bmd Version: 0xa File size: 13214
-[BMDParser] Meshes: 1 Bones: 5 Actions: 1
- [Mesh 0] Verts: 160 Norms: 128 Tex: 4 Tris: 120 Texture: tree_08.tga
-[BMDParser] AABB: Min(-106.527,-81.3043,-0.5449) Max(43.8291,114.892,28.3781)
-[BMDParser] Data/Object1/Grass03.bmd Version: 0xa File size: 14661
-[BMDParser] Meshes: 2 Bones: 4 Actions: 1
- [Mesh 0] Verts: 112 Norms: 112 Tex: 7 Tris: 96 Texture: tree_01.tga
- [Mesh 1] Verts: 64 Norms: 48 Tex: 4 Tris: 32 Texture: tree_02.tga
-[BMDParser] AABB: Min(-56.0135,-60.7206,-46.2642) Max(53.151,55.214,88.0783)
-[BMDParser] Data/Object1/Grass04.bmd Version: 0xa File size: 14661
-[BMDParser] Meshes: 2 Bones: 4 Actions: 1
- [Mesh 0] Verts: 112 Norms: 112 Tex: 7 Tris: 96 Texture: tree_01.tga
- [Mesh 1] Verts: 64 Norms: 48 Tex: 4 Tris: 32 Texture: tree_02.tga
-[BMDParser] AABB: Min(-46.2921,-50.1823,-39.3089) Max(45.1401,45.6314,72.792)
-[BMDParser] Data/Object1/Stone02.bmd Version: 0xa File size: 16056
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 83 Norms: 78 Tex: 83 Tris: 125 Texture: ston01.jpg
- [Mesh 1] Verts: 68 Norms: 51 Tex: 4 Tris: 34 Texture: ston02.tga
-[BMDParser] AABB: Min(-129.116,-172.264,-46.8992) Max(111.864,99.2581,255.694)
-[BMDParser] Data/Object1/Grass01.bmd Version: 0xa File size: 13214
-[BMDParser] Meshes: 1 Bones: 5 Actions: 1
- [Mesh 0] Verts: 160 Norms: 128 Tex: 4 Tris: 120 Texture: tree_08.tga
-[BMDParser] AABB: Min(-106.527,-81.3043,-0.5449) Max(43.8291,114.892,28.3781)
-[BMDParser] Data/Object1/Grass06.bmd Version: 0xa File size: 12719
-[BMDParser] Meshes: 1 Bones: 4 Actions: 1
- [Mesh 0] Verts: 144 Norms: 139 Tex: 18 Tris: 112 Texture: tree_09.tga
-[BMDParser] AABB: Min(-87.3397,-29.8364,-70.1706) Max(56.2145,29.8365,62.9409)
-[BMDParser] Data/Object1/Light02.bmd Version: 0xa File size: 1194
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 6 Tex: 4 Tris: 12 Texture: ston03.jpg
-[BMDParser] AABB: Min(-25.6123,-25.6123,-3.19481e-05) Max(25.6123,25.6123,51.2247)
-[BMDParser] Data/Object1/Light03.bmd Version: 0xa File size: 1194
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 6 Tex: 4 Tris: 12 Texture: ston03.jpg
-[BMDParser] AABB: Min(-25.6123,-25.6123,-3.19481e-05) Max(25.6123,25.6123,51.2247)
-[BMDParser] Data/Object1/Stone05.bmd Version: 0xa File size: 11082
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 88 Norms: 88 Tex: 11 Tris: 120 Texture: ston01.jpg
-[BMDParser] AABB: Min(-46.2208,-8.867,-29.1235) Max(51.9842,102.678,0.588367)
-[BMDParser] Data/Object1/FireLight02.bmd Version: 0xa File size: 3677
-[BMDParser] Meshes: 3 Bones: 2 Actions: 1
- [Mesh 0] Verts: 21 Norms: 20 Tex: 15 Tris: 24 Texture: tile_02.jpg
- [Mesh 1] Verts: 8 Norms: 4 Tex: 4 Tris: 8 Texture: fire_light_01.tga
- [Mesh 2] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: copra_gate.jpg
-[BMDParser] AABB: Min(173.166,-364.586,291.221) Max(233.621,-304.131,337.211)
-[BMDParser] Data/Object1/TreasureChest01.bmd Version: 0xa File size: 7059
-[BMDParser] Meshes: 1 Bones: 4 Actions: 1
- [Mesh 0] Verts: 42 Norms: 34 Tex: 73 Tris: 66 Texture: treasure_chest.jpg
-[BMDParser] AABB: Min(-57.7335,-63.993,-36.1854) Max(56.8326,0.327116,35.6717)
-[BMDParser] Data/Object1/StoneWall01.bmd Version: 0xa File size: 27144
-[BMDParser] Meshes: 4 Bones: 1 Actions: 1
- [Mesh 0] Verts: 64 Norms: 13 Tex: 80 Tris: 88 Texture: tile_01.jpg
- [Mesh 1] Verts: 16 Norms: 5 Tex: 20 Tris: 20 Texture: tile_03.jpg
- [Mesh 2] Verts: 61 Norms: 10 Tex: 33 Tris: 82 Texture: tile_02.jpg
- [Mesh 3] Verts: 88 Norms: 44 Tex: 44 Tris: 128 Texture: bridge_01.jpg
-[BMDParser] AABB: Min(-253.174,-346.898,-62.1917) Max(342.305,275.895,110.49)
-[BMDParser] Data/Object1/PoseBox01.bmd Version: 0xa File size: 802
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 6 Norms: 4 Tex: 4 Tris: 7 Texture: ston03.jpg
-[BMDParser] AABB: Min(-50,-100,-6.49689e-05) Max(50,100,100)
-[BMDParser] Data/Object1/Tree07.bmd Version: 0xa File size: 8736
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 58 Norms: 58 Tex: 61 Tris: 84 Texture: tree_03.jpg
- [Mesh 1] Verts: 8 Norms: 1 Tex: 8 Tris: 6 Texture: tree_04.jpg
-[BMDParser] AABB: Min(-73.3929,-80.8327,-1.23328) Max(69.1018,74.5207,69.2887)
-[BMDParser] Data/Object1/MerchantAnimal02.bmd Version: 0xa File size: 71040
-[BMDParser] Meshes: 1 Bones: 34 Actions: 2
- [Mesh 0] Verts: 261 Norms: 218 Tex: 198 Tris: 484 Texture: merchant_moster_b01.jpg
-[BMDParser] AABB: Min(-87.4194,-76.0693,-35.4188) Max(86.0082,35.5832,29.1187)
-  [CPU-Anim] type 57 keys=20
-[BMDParser] Data/Object1/MerchantAnimal01.bmd Version: 0xa File size: 137285
-[BMDParser] Meshes: 2 Bones: 59 Actions: 2
- [Mesh 0] Verts: 317 Norms: 388 Tex: 271 Tris: 540 Texture: merchant_moster_a01.jpg
- [Mesh 1] Verts: 85 Norms: 101 Tex: 50 Tris: 88 Texture: merchant_moster_a02.tga
-[BMDParser] AABB: Min(-69.399,-332.164,-108.549) Max(115.586,176.841,101.983)
-  [CPU-Anim] type 56 keys=30
-[BMDParser] Data/Object1/TreasureDrum01.bmd Version: 0xa File size: 5594
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 32 Norms: 34 Tex: 52 Tris: 60 Texture: drum.jpg
-[BMDParser] AABB: Min(-40.6342,-40.6342,-2.8e-05) Max(40.6342,40.6342,102.977)
-[BMDParser] Data/Object1/Cannon02.bmd Version: 0xa File size: 13850
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 109 Norms: 46 Tex: 140 Tris: 155 Texture: horse_drawn_01.jpg
-[BMDParser] AABB: Min(-294.322,39.8414,-5.29885e-05) Max(-158.845,175.479,133.429)
-[BMDParser] Data/Object1/House02.bmd Version: 0xa File size: 15400
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 16 Norms: 11 Tex: 25 Tris: 26 Texture: drum.jpg
- [Mesh 1] Verts: 99 Norms: 80 Tex: 35 Tris: 147 Texture: steel.jpg
-[BMDParser] AABB: Min(-111.491,-89.2931,-0.1624) Max(92.7868,47.6089,188.551)
-[BMDParser] Data/Object1/Tree10.bmd Version: 0xa File size: 40981
-[BMDParser] Meshes: 1 Bones: 10 Actions: 1
- [Mesh 0] Verts: 360 Norms: 180 Tex: 28 Tris: 480 Texture: tree_07.tga
-[BMDParser] AABB: Min(-62.4373,-31.0915,0.4408) Max(55.9898,31.0915,159.078)
-[BMDParser] Data/Object1/Grass07.bmd Version: 0xa File size: 13576
-[BMDParser] Meshes: 1 Bones: 7 Actions: 1
- [Mesh 0] Verts: 133 Norms: 133 Tex: 28 Tris: 126 Texture: mushroom.jpg
-[BMDParser] AABB: Min(-10.0077,-13.16,-10.5581) Max(12.153,13.16,22.3862)
-[BMDParser] Data/Object1/Grass08.bmd Version: 0xa File size: 5940
-[BMDParser] Meshes: 1 Bones: 3 Actions: 1
- [Mesh 0] Verts: 57 Norms: 57 Tex: 21 Tris: 54 Texture: mushroom.jpg
-[BMDParser] AABB: Min(-7.75616,-10.0458,-7.96576) Max(9.24473,10.0458,17.2862)
-[BMDParser] Data/Object1/Ship01.bmd Version: 0xa File size: 87431
-[BMDParser] Meshes: 10 Bones: 10 Actions: 1
- [Mesh 0] Verts: 263 Norms: 239 Tex: 309 Tris: 284 Texture: TileGround03.jpg
- [Mesh 1] Verts: 38 Norms: 38 Tex: 22 Tris: 34 Texture: ship01.jpg
- [Mesh 2] Verts: 76 Norms: 65 Tex: 74 Tris: 62 Texture: ship03.jpg
- [Mesh 3] Verts: 68 Norms: 72 Tex: 66 Tris: 58 Texture: ship04.jpg
- [Mesh 4] Verts: 152 Norms: 155 Tex: 77 Tris: 188 Texture: ship07.jpg
- [Mesh 5] Verts: 10 Norms: 10 Tex: 6 Tris: 8 Texture: ship05.tga
- [Mesh 6] Verts: 48 Norms: 38 Tex: 23 Tris: 24 Texture: ship07.tga
- [Mesh 7] Verts: 48 Norms: 38 Tex: 9 Tris: 24 Texture: ship06.tga
- [Mesh 8] Verts: 14 Norms: 14 Tex: 7 Tris: 12 Texture: ship06.jpg
- [Mesh 9] Verts: 36 Norms: 35 Tex: 36 Tris: 60 Texture: ship05.jpg
-[BMDParser] AABB: Min(-1151.54,-54.2294,-570.665) Max(682.526,982.674,564.669)
-  [CPU-Anim] type 60 keys=30
-[BMDParser] Data/Object1/HouseEtc01.bmd Version: 0xa File size: 3384
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 4 Tex: 6 Tris: 8 Texture: c_wall04.jpg
- [Mesh 1] Verts: 16 Norms: 19 Tex: 16 Tris: 26 Texture: c_wall06.jpg
-[BMDParser] AABB: Min(-50.8287,-93.2505,1e-06) Max(49.0529,49.3561,137.017)
-[BMDParser] Data/Object1/Tree08.bmd Version: 0xa File size: 16458
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 96 Norms: 128 Tex: 119 Tris: 176 Texture: tree_01.jpg
-[BMDParser] AABB: Min(-276.394,-218.326,98.1899) Max(319.362,-62.183,203.267)
-[BMDParser] Data/Object1/HouseEtc03.bmd Version: 0xa File size: 1704
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 6 Tex: 12 Tris: 12 Texture: steel_barred_a.tga
- [Mesh 1] Verts: 6 Norms: 1 Tex: 4 Tris: 4 Texture: steel_barred_door.tga
-[BMDParser] AABB: Min(-100,-44.1564,-5.00679e-06) Max(100,155.655,243.517)
-[BMDParser] Data/Object1/Tree06.bmd Version: 0xa File size: 9438
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 93 Norms: 93 Tex: 31 Tris: 89 Texture: tree_02.jpg
-[BMDParser] AABB: Min(-83.3483,-61.4798,0.0174558) Max(81.4585,52.322,808.961)
-[BMDParser] Data/Object1/Tree09.bmd Version: 0xa File size: 22446
-[BMDParser] Meshes: 1 Bones: 5 Actions: 1
- [Mesh 0] Verts: 180 Norms: 180 Tex: 28 Tris: 240 Texture: tree_07.tga
-[BMDParser] AABB: Min(-82.2105,-35.7552,0.5619) Max(55.9898,35.7552,192.241)
-[BMDParser] Data/Object1/Tree11.bmd Version: 0xa File size: 23279
-[BMDParser] Meshes: 2 Bones: 10 Actions: 1
- [Mesh 0] Verts: 102 Norms: 102 Tex: 17 Tris: 144 Texture: tree_06.tga
- [Mesh 1] Verts: 16 Norms: 16 Tex: 20 Tris: 25 Texture: tree_03.jpg
-[BMDParser] AABB: Min(-201.85,-170.892,-132.856) Max(226.09,187.597,560.078)
-  [GPU-Anim] type 10 keys=31
-[BMDParser] Data/Object1/House05.bmd Version: 0xa File size: 34077
-[BMDParser] Meshes: 3 Bones: 10 Actions: 1
- [Mesh 0] Verts: 168 Norms: 149 Tex: 174 Tris: 228 Texture: tile_wood02.jpg
- [Mesh 1] Verts: 20 Norms: 4 Tex: 22 Tris: 20 Texture: tile_wood01.jpg
- [Mesh 2] Verts: 24 Norms: 24 Tex: 24 Tris: 28 Texture: ston02.jpg
-[BMDParser] AABB: Min(-309.845,-458.589,-147.377) Max(721.995,418.803,359.636)
-  [CPU-Anim] type 119 keys=30
-[BMDParser] Data/Object1/Bonfire01.bmd Version: 0xa File size: 11505
-[BMDParser] Meshes: 2 Bones: 4 Actions: 1
- [Mesh 0] Verts: 48 Norms: 48 Tex: 60 Tris: 72 Texture: fire_01.jpg
- [Mesh 1] Verts: 43 Norms: 43 Tex: 43 Tris: 38 Texture: fire_02.jpg
-[BMDParser] AABB: Min(-56.363,-59.2674,-25.2916) Max(63.2833,50.5776,37.608)
-[BMDParser] Data/Object1/Tent01.bmd Version: 0xa File size: 9449
-[BMDParser] Meshes: 2 Bones: 4 Actions: 1
- [Mesh 0] Verts: 18 Norms: 18 Tex: 18 Tris: 26 Texture: tile_house01.jpg
- [Mesh 1] Verts: 32 Norms: 5 Tex: 12 Tris: 40 Texture: tile_ston06.jpg
-[BMDParser] AABB: Min(-155.046,-215.293,-211.174) Max(155.177,186.173,120.61)
-  [CPU-Anim] type 120 keys=36
-[BMDParser] Data/Object1/Beer02.bmd Version: 0xa File size: 21313
-[BMDParser] Meshes: 5 Bones: 6 Actions: 1
- [Mesh 0] Verts: 8 Norms: 2 Tex: 4 Tris: 4 Texture: pot3.tga
- [Mesh 1] Verts: 52 Norms: 52 Tex: 30 Tris: 96 Texture: apple.jpg
- [Mesh 2] Verts: 20 Norms: 20 Tex: 30 Tris: 36 Texture: bottle.tga
- [Mesh 3] Verts: 38 Norms: 25 Tex: 28 Tris: 60 Texture: plate.jpg
- [Mesh 4] Verts: 25 Norms: 31 Tex: 29 Tris: 36 Texture: winecup.jpg
-[BMDParser] AABB: Min(-16.1412,-23.28,-20.3876) Max(14.1205,12.2287,60.8264)
-[BMDParser] Data/Object1/Beer03.bmd Version: 0xa File size: 9750
-[BMDParser] Meshes: 2 Bones: 3 Actions: 1
- [Mesh 0] Verts: 40 Norms: 20 Tex: 30 Tris: 72 Texture: bottle.tga
- [Mesh 1] Verts: 25 Norms: 31 Tex: 29 Tris: 36 Texture: winecup.jpg
-[BMDParser] AABB: Min(-16.1412,-7.72904,-20.3876) Max(11.3616,11.9,60.8264)
-[BMDParser] Data/Object1/Candle01.bmd Version: 0xa File size: 12716
-[BMDParser] Meshes: 2 Bones: 9 Actions: 1
- [Mesh 0] Verts: 64 Norms: 64 Tex: 74 Tris: 110 Texture: candle.jpg
- [Mesh 1] Verts: 15 Norms: 4 Tex: 15 Tris: 6 Texture: candle2.jpg
-[BMDParser] AABB: Min(-11.2358,-18.9973,-1.48985) Max(11.2359,19.0237,71.7047)
-  [CPU-Anim] type 150 keys=7
-[BMDParser] Data/Object1/Carriage01.bmd Version: 0xa File size: 32867
-[BMDParser] Meshes: 3 Bones: 14 Actions: 1
- [Mesh 0] Verts: 231 Norms: 96 Tex: 218 Tris: 270 Texture: horse_drawn_01.jpg
- [Mesh 1] Verts: 8 Norms: 5 Tex: 8 Tris: 8 Texture: horse_drawn_02.tga
- [Mesh 2] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: horse_drawn_03.jpg
-[BMDParser] AABB: Min(-80.6773,-196.966,-173.572) Max(281.144,11.0835,60.4486)
-  [CPU-Anim] type 98 keys=21
-[BMDParser] Data/Object1/Carriage02.bmd Version: 0xa File size: 23617
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 185 Norms: 129 Tex: 170 Tris: 258 Texture: horse_drawn_01.jpg
-[BMDParser] AABB: Min(-58.478,-144.164,-163.655) Max(98.3529,303.977,85.6957)
-[BMDParser] Data/Object1/Sign02.bmd Version: 0xa File size: 2826
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 24 Norms: 6 Tex: 32 Tris: 30 Texture: notice.jpg
-[BMDParser] AABB: Min(-49.6726,-139.974,-15.4062) Max(49.6725,-4.86009,-1.73094e-05)
-[BMDParser] Data/Object1/HouseWall02.bmd Version: 0xa File size: 6952
-[BMDParser] Meshes: 5 Bones: 3 Actions: 1
- [Mesh 0] Verts: 8 Norms: 5 Tex: 12 Tris: 10 Texture: tile_ston06.jpg
- [Mesh 1] Verts: 16 Norms: 5 Tex: 28 Tris: 26 Texture: tile_wood01.jpg
- [Mesh 2] Verts: 16 Norms: 5 Tex: 24 Tris: 20 Texture: tile_wood02.jpg
- [Mesh 3] Verts: 8 Norms: 4 Tex: 12 Tris: 8 Texture: tile_ston04.jpg
- [Mesh 4] Verts: 12 Norms: 3 Tex: 4 Tris: 6 Texture: light_02.jpg
-[BMDParser] AABB: Min(-72.5284,-137.006,-43.2984) Max(521.335,127.192,124.662)
-[BMDParser] Data/Object1/HouseWall04.bmd Version: 0xa File size: 5806
-[BMDParser] Meshes: 3 Bones: 1 Actions: 1
- [Mesh 0] Verts: 12 Norms: 6 Tex: 22 Tris: 12 Texture: tile_wood01.jpg
- [Mesh 1] Verts: 25 Norms: 11 Tex: 56 Tris: 32 Texture: tile_wood02.jpg
- [Mesh 2] Verts: 11 Norms: 5 Tex: 20 Tris: 12 Texture: tile_ston04.jpg
-[BMDParser] AABB: Min(-179.796,-137.006,-209.152) Max(121.244,127.192,91.6144)
-[BMDParser] Data/Object1/Tree05.bmd Version: 0xa File size: 8318
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 58 Norms: 71 Tex: 48 Tris: 85 Texture: tree_03.jpg
-[BMDParser] AABB: Min(-22.6607,-29.5467,-2.23655) Max(67.8666,28.0247,352.866)
-[BMDParser] Data/Object1/Furniture06.bmd Version: 0xa File size: 5076
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 48 Norms: 5 Tex: 56 Tris: 52 Texture: bookshelf.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: chair2.tga
-[BMDParser] AABB: Min(-9.33527,-28.8583,-19.9558) Max(32.9787,25.4865,90.9432)
-[BMDParser] Data/Object1/Furniture01.bmd Version: 0xa File size: 24615
-[BMDParser] Meshes: 4 Bones: 6 Actions: 1
- [Mesh 0] Verts: 46 Norms: 52 Tex: 52 Tris: 78 Texture: pot.jpg
- [Mesh 1] Verts: 31 Norms: 37 Tex: 36 Tris: 54 Texture: pot2.jpg
- [Mesh 2] Verts: 32 Norms: 5 Tex: 39 Tris: 32 Texture: bookshelf.jpg
- [Mesh 3] Verts: 60 Norms: 40 Tex: 30 Tris: 108 Texture: bottle.tga
-[BMDParser] AABB: Min(-136.82,-23.2144,-2.6e-05) Max(23.3594,23.2143,210.074)
-[BMDParser] Data/Object1/Furniture03.bmd Version: 0xa File size: 3958
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 40 Norms: 9 Tex: 38 Tris: 42 Texture: desk_big.jpg
-[BMDParser] AABB: Min(-94.7121,-51.4457,-79.5328) Max(108.757,51.4457,7.04812)
-[BMDParser] Data/Object1/Furniture02.bmd Version: 0xa File size: 38396
-[BMDParser] Meshes: 2 Bones: 13 Actions: 1
- [Mesh 0] Verts: 240 Norms: 140 Tex: 30 Tris: 432 Texture: bottle.tga
- [Mesh 1] Verts: 32 Norms: 5 Tex: 39 Tris: 32 Texture: bookshelf.jpg
-[BMDParser] AABB: Min(-136.82,-23.2144,-2.6e-05) Max(23.3594,23.2143,210.074)
-[BMDParser] Data/Object1/HouseWall03.bmd Version: 0xa File size: 1878
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 16 Norms: 5 Tex: 12 Tris: 20 Texture: tile_wood02.jpg
-[BMDParser] AABB: Min(319.24,-137.812,-1.95193) Max(521.335,127.192,41.4333)
-[BMDParser] Data/Object1/HouseWall05.bmd Version: 0xa File size: 3072
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 26 Norms: 5 Tex: 31 Tris: 26 Texture: tile_wood02.jpg
- [Mesh 1] Verts: 6 Norms: 2 Tex: 8 Tris: 4 Texture: tile_wood03.jpg
-[BMDParser] AABB: Min(-254.161,-260.708,-3.8147e-06) Max(205.922,199.262,90.0434)
-[BMDParser] Data/Object1/Fence01.bmd Version: 0xa File size: 3590
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 34 Norms: 21 Tex: 22 Tris: 36 Texture: tile_wood02.jpg
-[BMDParser] AABB: Min(-127.982,-184.455,38.6194) Max(-44.1229,-100.595,216.377)
-[BMDParser] Data/Object1/StreetLight01.bmd Version: 0xa File size: 12524
-[BMDParser] Meshes: 2 Bones: 11 Actions: 1
- [Mesh 0] Verts: 40 Norms: 26 Tex: 57 Tris: 48 Texture: streetlight.jpg
- [Mesh 1] Verts: 24 Norms: 24 Tex: 28 Tris: 36 Texture: streetlight_brightness2.jpg
-[BMDParser] AABB: Min(-11.911,-10.9939,-207.808) Max(12.8276,69.0887,50.1497)
-  [CPU-Anim] type 90 keys=21
-[BMDParser] Data/Object1/FireLight01.bmd Version: 0xa File size: 5210
-[BMDParser] Meshes: 3 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 20 Tex: 13 Tris: 20 Texture: light.tga
- [Mesh 1] Verts: 20 Norms: 16 Tex: 17 Tris: 22 Texture: light2.jpg
- [Mesh 2] Verts: 7 Norms: 7 Tex: 7 Tris: 6 Texture: light3.jpg
-[BMDParser] AABB: Min(-28.5887,-28.5887,-0.4079) Max(28.5887,28.5887,175.234)
-[BMDParser] Data/Object1/Curtain01.bmd Version: 0xa File size: 11222
-[BMDParser] Meshes: 2 Bones: 7 Actions: 1
- [Mesh 0] Verts: 35 Norms: 40 Tex: 51 Tris: 60 Texture: badge_01.jpg
- [Mesh 1] Verts: 10 Norms: 6 Tex: 10 Tris: 8 Texture: badge_02.tga
-[BMDParser] AABB: Min(-95.4221,-279.641,-3.57903) Max(97.7532,44.391,22.8648)
-  [CPU-Anim] type 95 keys=26
-[BMDParser] Data/Object1/Bridge01.bmd Version: 0xa File size: 17511
-[BMDParser] Meshes: 2 Bones: 2 Actions: 1
- [Mesh 0] Verts: 146 Norms: 65 Tex: 121 Tris: 194 Texture: bridge_01.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: bridge_shadow01.tga
-[BMDParser] AABB: Min(-399.212,-401.485,-102.4) Max(400.418,398.196,239.906)
-[BMDParser] Data/Object1/Tree04.bmd Version: 0xa File size: 26190
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 185 Norms: 221 Tex: 149 Tris: 273 Texture: tree_03.jpg
-[BMDParser] AABB: Min(-241.316,-261.295,49.1913) Max(237.528,268.884,541.181)
-[BMDParser] Data/Object1/Tree03.bmd Version: 0xa File size: 25830
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 185 Norms: 203 Tex: 149 Tris: 273 Texture: tree_03.jpg
-[BMDParser] AABB: Min(-260.29,-242.568,-1.84045) Max(245.208,262.193,536.064)
-[BMDParser] Data/Object1/StoneWall04.bmd Version: 0xa File size: 8865
-[BMDParser] Meshes: 2 Bones: 8 Actions: 1
- [Mesh 0] Verts: 17 Norms: 21 Tex: 25 Tris: 28 Texture: badge_01.jpg
- [Mesh 1] Verts: 10 Norms: 11 Tex: 10 Tris: 8 Texture: badge_03.tga
-[BMDParser] AABB: Min(-11.5766,-115.025,-24.7358) Max(26.7911,65.0477,1.70804)
-  [CPU-Anim] type 72 keys=25
-[BMDParser] Data/Object1/Fence03.bmd Version: 0xa File size: 1110
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 5 Tex: 12 Tris: 10 Texture: joint.jpg
-[BMDParser] AABB: Min(-249.981,-8.47146,0) Max(-49.8825,18.0423,22.6887)
-[BMDParser] Data/Object1/Tree13.bmd Version: 0xa File size: 47019
-[BMDParser] Meshes: 2 Bones: 10 Actions: 1
- [Mesh 0] Verts: 240 Norms: 60 Tex: 4 Tris: 120 Texture: tree_05.tga
- [Mesh 1] Verts: 185 Norms: 205 Tex: 227 Tris: 273 Texture: tree_01.jpg
-[BMDParser] AABB: Min(-149.022,-203.053,-89.4024) Max(156.525,194.015,329.168)
-  [GPU-Anim] type 12 keys=31
-[BMDParser] Data/Object1/Tree12.bmd Version: 0xa File size: 46200
-[BMDParser] Meshes: 2 Bones: 9 Actions: 1
- [Mesh 0] Verts: 185 Norms: 203 Tex: 227 Tris: 273 Texture: tree_01.jpg
- [Mesh 1] Verts: 240 Norms: 60 Tex: 4 Tris: 120 Texture: tree_04.tga
-[BMDParser] AABB: Min(-160.634,-196.265,-62.6671) Max(203.14,229.755,245.815)
-  [GPU-Anim] type 11 keys=31
-[BMDParser] Data/Object1/SteelWall02.bmd Version: 0xa File size: 6561
-[BMDParser] Meshes: 2 Bones: 4 Actions: 1
- [Mesh 0] Verts: 64 Norms: 8 Tex: 12 Tris: 64 Texture: steel_barred_b.jpg
- [Mesh 1] Verts: 16 Norms: 1 Tex: 4 Tris: 8 Texture: steel_barred_a.tga
-[BMDParser] AABB: Min(-84.4122,-83.1278,-3.56113e-05) Max(71.2016,72.4862,99.997)
-[BMDParser] Data/Object1/SteelWall03.bmd Version: 0xa File size: 1968
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 16 Norms: 8 Tex: 12 Tris: 16 Texture: steel_barred_b.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: steel_barred_a.tga
-[BMDParser] AABB: Min(-84.4122,-83.1278,-3.9426e-05) Max(71.2016,72.4862,99.9969)
-[BMDParser] Data/Object1/StoneMuWall02.bmd Version: 0xa File size: 5362
-[BMDParser] Meshes: 3 Bones: 1 Actions: 1
- [Mesh 0] Verts: 16 Norms: 16 Tex: 11 Tris: 10 Texture: c_wall06.jpg
- [Mesh 1] Verts: 18 Norms: 27 Tex: 18 Tris: 22 Texture: c_wall05.jpg
- [Mesh 2] Verts: 16 Norms: 18 Tex: 8 Tris: 12 Texture: c_wall04.jpg
-[BMDParser] AABB: Min(-50,-147.32,-174.173) Max(50,50,334.093)
-[BMDParser] Data/Object1/StoneMuWall03.bmd Version: 0xa File size: 5640
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 26 Norms: 41 Tex: 45 Tris: 38 Texture: c_wall04.jpg
- [Mesh 1] Verts: 12 Norms: 12 Tex: 12 Tris: 14 Texture: c_wall06.jpg
-[BMDParser] AABB: Min(-150,-109.9,-103.47) Max(150,50,291.268)
-[BMDParser] Data/Object1/Fence04.bmd Version: 0xa File size: 1110
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 5 Tex: 12 Tris: 10 Texture: joint.jpg
-[BMDParser] AABB: Min(-50.2762,-8.47146,0) Max(49.7568,18.0423,22.6887)
-[BMDParser] Data/Object1/SteelDoor01.bmd Version: 0xa File size: 5608
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 52 Norms: 22 Tex: 40 Tris: 56 Texture: steel_barred_b.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: steel_barred_door.tga
-[BMDParser] AABB: Min(2.95026,-6.66098,-351.743) Max(157.396,6.66106,4.28003)
-[BMDParser] Data/Object1/House04.bmd Version: 0xa File size: 43670
-[BMDParser] Meshes: 9 Bones: 9 Actions: 1
- [Mesh 0] Verts: 68 Norms: 93 Tex: 56 Tris: 100 Texture: tile_02.jpg
- [Mesh 1] Verts: 117 Norms: 71 Tex: 77 Tris: 117 Texture: tile_wood01.jpg
- [Mesh 2] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: tile_house01.jpg
- [Mesh 3] Verts: 35 Norms: 25 Tex: 46 Tris: 48 Texture: tile_ston04.jpg
- [Mesh 4] Verts: 27 Norms: 28 Tex: 47 Tris: 31 Texture: tile_wood03.jpg
- [Mesh 5] Verts: 16 Norms: 14 Tex: 27 Tris: 16 Texture: tile_wood02.jpg
- [Mesh 6] Verts: 8 Norms: 5 Tex: 8 Tris: 4 Texture: tile_windows01.jpg
- [Mesh 7] Verts: 13 Norms: 13 Tex: 13 Tris: 12 Texture: bridge_01.jpg
- [Mesh 8] Verts: 13 Norms: 13 Tex: 13 Tris: 12 Texture: tile_space01.jpg
-[BMDParser] AABB: Min(-190.975,-217.635,-318.327) Max(309.208,198.662,238.964)
-  [CPU-Anim] type 118 keys=40
-[BMDParser] Data/Object1/Stair01.bmd Version: 0xa File size: 6642
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 70 Norms: 12 Tex: 18 Tris: 78 Texture: tile_wood01.jpg
-[BMDParser] AABB: Min(-4.68753,-4.68746,0) Max(79.6342,4.68754,330)
-[BMDParser] Data/Object1/Sign01.bmd Version: 0xa File size: 5443
-[BMDParser] Meshes: 3 Bones: 4 Actions: 1
- [Mesh 0] Verts: 20 Norms: 17 Tex: 30 Tris: 24 Texture: notice.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: signboard.tga
- [Mesh 2] Verts: 8 Norms: 1 Tex: 4 Tris: 4 Texture: doorknob.tga
-[BMDParser] AABB: Min(-46.8474,-4.6355,-57.8431) Max(72.9545,7.9309,15.5093)
-  [CPU-Anim] type 96 keys=21
-[BMDParser] Data/Object1/Straw01.bmd Version: 0xa File size: 11064
-[BMDParser] Meshes: 1 Bones: 3 Actions: 1
- [Mesh 0] Verts: 96 Norms: 32 Tex: 22 Tris: 132 Texture: grass_01.tga
-[BMDParser] AABB: Min(-38.8078,-35.7097,-3.52759) Max(40.9689,33.379,200.474)
-[BMDParser] Data/Object1/HouseWall06.bmd Version: 0xa File size: 2828
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 26 Norms: 5 Tex: 27 Tris: 26 Texture: tile_wood02.jpg
- [Mesh 1] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: tile_wood03.jpg
-[BMDParser] AABB: Min(205.574,-260.708,-3.8147e-06) Max(605.974,199.262,90.0434)
-[BMDParser] Data/Object1/StoneMuWall04.bmd Version: 0xa File size: 26248
-[BMDParser] Meshes: 3 Bones: 3 Actions: 1
- [Mesh 0] Verts: 26 Norms: 41 Tex: 45 Tris: 38 Texture: c_wall04.jpg
- [Mesh 1] Verts: 12 Norms: 12 Tex: 12 Tris: 14 Texture: c_wall06.jpg
- [Mesh 2] Verts: 195 Norms: 50 Tex: 177 Tris: 233 Texture: horse_drawn_01.jpg
-[BMDParser] AABB: Min(-168.523,-166.901,-103.47) Max(157.4,110.75,291.268)
-[BMDParser] Data/Object1/Fence02.bmd Version: 0xa File size: 1694
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 12 Norms: 7 Tex: 24 Tris: 16 Texture: joint.jpg
-[BMDParser] AABB: Min(49.9709,-8.47147,0) Max(156.193,98.1754,22.6887)
-[BMDParser] Data/Object1/Furniture04.bmd Version: 0xa File size: 3954
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 28 Norms: 32 Tex: 36 Tris: 38 Texture: desk_big.jpg
-[BMDParser] AABB: Min(-106.743,-59.6479,0) Max(96.9429,39.6415,86.3275)
-[BMDParser] Data/Object1/StoneMuWall01.bmd Version: 0xa File size: 28110
-[BMDParser] Meshes: 5 Bones: 1 Actions: 1
- [Mesh 0] Verts: 48 Norms: 25 Tex: 38 Tris: 56 Texture: c_wall04.jpg
- [Mesh 1] Verts: 40 Norms: 22 Tex: 16 Tris: 32 Texture: c_wall05.jpg
- [Mesh 2] Verts: 24 Norms: 6 Tex: 10 Tris: 20 Texture: c_wall06.jpg
- [Mesh 3] Verts: 61 Norms: 10 Tex: 33 Tris: 82 Texture: tile_02.jpg
- [Mesh 4] Verts: 88 Norms: 44 Tex: 44 Tris: 128 Texture: bridge_01.jpg
-[BMDParser] AABB: Min(-549.497,-238.839,-137.049) Max(50.4865,-3.20528,486.525)
-[BMDParser] Data/Object1/HouseWall01.bmd Version: 0xa File size: 3690
-[BMDParser] Meshes: 3 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 4 Tex: 12 Tris: 8 Texture: tile_wood01.jpg
- [Mesh 1] Verts: 16 Norms: 5 Tex: 24 Tris: 20 Texture: tile_wood02.jpg
- [Mesh 2] Verts: 8 Norms: 4 Tex: 12 Tris: 8 Texture: tile_ston04.jpg
-[BMDParser] AABB: Min(120.143,-137.006,-8.83574) Max(320.236,127.192,91.6144)
-[BMDParser] Data/Object1/Furniture05.bmd Version: 0xa File size: 3198
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 32 Norms: 7 Tex: 28 Tris: 34 Texture: desk_big.jpg
-[BMDParser] AABB: Min(-94.7121,-34.9971,-79.5328) Max(108.757,34.997,25.8427)
-[BMDParser] Data/Object1/Beer01.bmd Version: 0xa File size: 21066
-[BMDParser] Meshes: 5 Bones: 5 Actions: 1
- [Mesh 0] Verts: 19 Norms: 25 Tex: 28 Tris: 30 Texture: plate.jpg
- [Mesh 1] Verts: 25 Norms: 31 Tex: 29 Tris: 36 Texture: winecup.jpg
- [Mesh 2] Verts: 69 Norms: 75 Tex: 78 Tris: 110 Texture: plate2.jpg
- [Mesh 3] Verts: 6 Norms: 4 Tex: 6 Tris: 4 Texture: pot3.tga
- [Mesh 4] Verts: 20 Norms: 20 Tex: 30 Tris: 36 Texture: bottle.tga
-[BMDParser] AABB: Min(-23.1887,-20.0821,-20.3876) Max(23.1887,32.2128,60.8264)
-[BMDParser] Data/Object1/Furniture07.bmd Version: 0xa File size: 4478
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 37 Norms: 37 Tex: 39 Tris: 42 Texture: bookshelf.jpg
-[BMDParser] AABB: Min(-17.1804,-21.286,-3e-05) Max(26.2029,21.0452,51.4094)
-[BMDParser] Data/Object1/Carriage04.bmd Version: 0xa File size: 34636
-[BMDParser] Meshes: 2 Bones: 5 Actions: 1
- [Mesh 0] Verts: 185 Norms: 129 Tex: 170 Tris: 258 Texture: horse_drawn_01.jpg
- [Mesh 1] Verts: 96 Norms: 32 Tex: 22 Tris: 132 Texture: grass_01.tga
-[BMDParser] AABB: Min(-58.478,-144.164,-163.655) Max(98.3529,303.977,200.474)
-[BMDParser] Data/Object1/Cannon03.bmd Version: 0xa File size: 6946
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 54 Norms: 26 Tex: 77 Tris: 75 Texture: horse_drawn_01.jpg
-[BMDParser] AABB: Min(-263.583,39.8414,-5.29885e-05) Max(-190.932,175.479,133.429)
-[BMDParser] Data/Object1/House03.bmd Version: 0xa File size: 25024
-[BMDParser] Meshes: 5 Bones: 7 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: tile_ston05.jpg
- [Mesh 1] Verts: 49 Norms: 15 Tex: 72 Tris: 77 Texture: tile_ston04.jpg
- [Mesh 2] Verts: 144 Norms: 21 Tex: 58 Tris: 192 Texture: tile_ston06.jpg
- [Mesh 3] Verts: 15 Norms: 15 Tex: 9 Tris: 12 Texture: tile_ston07.tga
- [Mesh 4] Verts: 12 Norms: 3 Tex: 4 Tris: 6 Texture: light_02.jpg
-[BMDParser] AABB: Min(-243.224,-681.634,-2.54141) Max(389.695,232.69,380.216)
-[BMDParser] Data/Object1/DoungeonGate01.bmd Version: 0xa File size: 30536
-[BMDParser] Meshes: 1 Bones: 7 Actions: 1
- [Mesh 0] Verts: 210 Norms: 203 Tex: 163 Tris: 333 Texture: copra_gate.jpg
-[BMDParser] AABB: Min(-143.009,-63.043,-364.771) Max(128.346,315.758,86.1228)
-[BMDParser] Data/Object1/StoneStatue01.bmd Version: 0xa File size: 8522
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 61 Norms: 46 Tex: 74 Tris: 92 Texture: stone_statue02.jpg
-[BMDParser] AABB: Min(-54.5946,-55.4054,0) Max(54.5946,55.4054,399.987)
-[BMDParser] Data/Object1/HouseEtc02.bmd Version: 0xa File size: 21366
-[BMDParser] Meshes: 8 Bones: 3 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: tile_wood02.jpg
- [Mesh 1] Verts: 32 Norms: 14 Tex: 41 Tris: 46 Texture: tile_ston04.jpg
- [Mesh 2] Verts: 23 Norms: 17 Tex: 25 Tris: 25 Texture: c_wall04.jpg
- [Mesh 3] Verts: 12 Norms: 8 Tex: 13 Tris: 16 Texture: tile_wood03.jpg
- [Mesh 4] Verts: 7 Norms: 1 Tex: 7 Tris: 5 Texture: tile_house01.jpg
- [Mesh 5] Verts: 10 Norms: 4 Tex: 12 Tris: 8 Texture: tile_ston01.jpg
- [Mesh 6] Verts: 109 Norms: 7 Tex: 92 Tris: 94 Texture: horse_drawn_01.jpg
- [Mesh 7] Verts: 24 Norms: 6 Tex: 12 Tris: 30 Texture: tile_ston06.jpg
-[BMDParser] AABB: Min(-264.382,-1645.24,-66.3316) Max(434.64,339.307,332.477)
-[BMDParser] Data/Object1/Well04.bmd Version: 0xa File size: 35179
-[BMDParser] Meshes: 1 Bones: 8 Actions: 1
- [Mesh 0] Verts: 240 Norms: 251 Tex: 116 Tris: 388 Texture: jar_01.jpg
-[BMDParser] AABB: Min(-28.8534,-32.3825,-4.93218e-05) Max(34.083,32.4474,99.3271)
-[BMDParser] Data/Object1/Waterspout01.bmd Version: 0xa File size: 63146
-[BMDParser] Meshes: 4 Bones: 11 Actions: 1
- [Mesh 0] Verts: 60 Norms: 36 Tex: 29 Tris: 72 Texture: stone_statue02.jpg
- [Mesh 1] Verts: 232 Norms: 209 Tex: 224 Tris: 417 Texture: reagon_waterspout.jpg
- [Mesh 2] Verts: 36 Norms: 36 Tex: 39 Tris: 60 Texture: ston01.jpg
- [Mesh 3] Verts: 66 Norms: 66 Tex: 66 Tris: 90 Texture: ston02.jpg
-[BMDParser] AABB: Min(-192.428,-590.959,-34.7636) Max(562.76,86.9581,312.311)
-  [CPU-Anim] type 105 keys=21
-[BMDParser] Data/Object1/House01.bmd Version: 0xa File size: 15375
-[BMDParser] Meshes: 4 Bones: 2 Actions: 1
- [Mesh 0] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: tile_ston05.jpg
- [Mesh 1] Verts: 42 Norms: 17 Tex: 57 Tris: 65 Texture: tile_ston04.jpg
- [Mesh 2] Verts: 7 Norms: 1 Tex: 7 Tris: 5 Texture: tile_house01.jpg
- [Mesh 3] Verts: 80 Norms: 18 Tex: 46 Tris: 104 Texture: tile_ston06.jpg
-[BMDParser] AABB: Min(-221.253,-370.756,-1.30272) Max(214.14,232.69,313.917)
-[BMDParser] Data/Object1/SteelStatue01.bmd Version: 0xa File size: 6134
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 48 Norms: 17 Tex: 82 Tris: 66 Texture: tombstone_big.jpg
-[BMDParser] AABB: Min(-65.8937,-65.8937,6.00144e-06) Max(65.8938,65.8938,321.621)
-[BMDParser] Data/Object1/SteelWall01.bmd Version: 0xa File size: 5360
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 38 Norms: 38 Tex: 34 Tris: 48 Texture: steel_barred_b.jpg
- [Mesh 1] Verts: 6 Norms: 3 Tex: 6 Tris: 4 Texture: steel_barred_a.tga
-[BMDParser] AABB: Min(-37.7177,-4.43842,-102.088) Max(37.6689,38.1281,144.945)
-[BMDParser] Data/Object1/Tomb03.bmd Version: 0xa File size: 2954
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 18 Norms: 18 Tex: 30 Tris: 30 Texture: tombstone.jpg
-[BMDParser] AABB: Min(-44.9326,-22.4801,-5.20406e-05) Max(44.8266,94.7737,19.635)
-[BMDParser] Data/Object1/Tomb01.bmd Version: 0xa File size: 4305
-[BMDParser] Meshes: 1 Bones: 2 Actions: 1
- [Mesh 0] Verts: 28 Norms: 21 Tex: 52 Tris: 44 Texture: grave_02.jpg
-[BMDParser] AABB: Min(-61.9286,-120.608,-3.70555e-05) Max(61.9287,120.608,228.721)
-[BMDParser] Data/Object1/Tomb02.bmd Version: 0xa File size: 3802
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 28 Norms: 10 Tex: 56 Tris: 40 Texture: grave_01.jpg
-[BMDParser] AABB: Min(-70.2957,-121.168,-23.1766) Max(70.2958,121.304,26.0499)
-[BMDParser] Data/Object1/StoneStatue03.bmd Version: 0xa File size: 22528
-[BMDParser] Meshes: 2 Bones: 1 Actions: 1
- [Mesh 0] Verts: 20 Norms: 20 Tex: 20 Tris: 20 Texture: tombstone_big.jpg
- [Mesh 1] Verts: 123 Norms: 123 Tex: 145 Tris: 228 Texture: angel_stone_statue.jpg
-[BMDParser] AABB: Min(-72.7248,-53.4063,3.3997e-05) Max(74.6489,39.8338,264.852)
-[BMDParser] Data/Object1/Cannon01.bmd Version: 0xa File size: 15850
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 125 Norms: 50 Tex: 140 Tris: 181 Texture: horse_drawn_01.jpg
-[BMDParser] AABB: Min(-291.176,39.8414,-5.29885e-05) Max(-158.845,175.479,133.429)
-[BMDParser] Data/Object1/Straw02.bmd Version: 0xa File size: 31199
-[BMDParser] Meshes: 1 Bones: 8 Actions: 1
- [Mesh 0] Verts: 256 Norms: 192 Tex: 22 Tris: 352 Texture: grass_01.tga
-[BMDParser] AABB: Min(-38.8079,-35.7097,-3.5276) Max(40.9689,33.3791,200.474)
-[BMDParser] Data/Object1/Hanging01.bmd Version: 0xa File size: 17239
-[BMDParser] Meshes: 1 Bones: 4 Actions: 1
- [Mesh 0] Verts: 146 Norms: 27 Tex: 171 Tris: 162 Texture: horse_drawn_01.jpg
-[BMDParser] AABB: Min(-101.914,-408.574,-130.972) Max(108.161,15.6509,170.158)
-  [CPU-Anim] type 110 keys=25
-[BMDParser] Data/Object1/Well03.bmd Version: 0xa File size: 18247
-[BMDParser] Meshes: 1 Bones: 4 Actions: 1
- [Mesh 0] Verts: 120 Norms: 133 Tex: 116 Tris: 194 Texture: jar_01.jpg
-[BMDParser] AABB: Min(-29.3509,-28.1587,9.0003e-06) Max(31.3243,28.2151,101.04)
-[BMDParser] Data/Object1/Well02.bmd Version: 0xa File size: 11690
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 89 Norms: 72 Tex: 101 Tris: 123 Texture: well.jpg
-[BMDParser] AABB: Min(-78.6369,-93.4238,0) Max(78.6368,93.4963,270.819)
-[BMDParser] Data/Object1/StoneWall02.bmd Version: 0xa File size: 27144
-[BMDParser] Meshes: 4 Bones: 1 Actions: 1
- [Mesh 0] Verts: 64 Norms: 13 Tex: 80 Tris: 88 Texture: tile_01.jpg
- [Mesh 1] Verts: 16 Norms: 5 Tex: 20 Tris: 20 Texture: tile_03.jpg
- [Mesh 2] Verts: 61 Norms: 10 Tex: 33 Tris: 82 Texture: tile_02.jpg
- [Mesh 3] Verts: 88 Norms: 44 Tex: 44 Tris: 128 Texture: bridge_01.jpg
-[BMDParser] AABB: Min(-253.174,-349.205,-62.1917) Max(342.305,73.9168,110.49)
-[BMDParser] Data/Object1/StoneWall03.bmd Version: 0xa File size: 26339
-[BMDParser] Meshes: 3 Bones: 4 Actions: 1
- [Mesh 0] Verts: 40 Norms: 8 Tex: 55 Tris: 50 Texture: tile_01.jpg
- [Mesh 1] Verts: 195 Norms: 50 Tex: 177 Tris: 233 Texture: horse_drawn_01.jpg
- [Mesh 2] Verts: 8 Norms: 9 Tex: 12 Tris: 10 Texture: tile_03.jpg
-[BMDParser] AABB: Min(-168.523,-166.901,-3.29912e-05) Max(448.148,110.75,300.525)
-[BMDParser] Data/Object1/StoneWall06.bmd Version: 0xa File size: 11370
-[BMDParser] Meshes: 3 Bones: 9 Actions: 1
- [Mesh 0] Verts: 17 Norms: 20 Tex: 25 Tris: 28 Texture: badge_01.jpg
- [Mesh 1] Verts: 10 Norms: 11 Tex: 10 Tris: 8 Texture: badge_03.tga
- [Mesh 2] Verts: 12 Norms: 10 Tex: 22 Tris: 20 Texture: tile_01.jpg
-[BMDParser] AABB: Min(-50.0152,-115.025,-24.7359) Max(50.4566,65.0476,350.838)
-  [CPU-Anim] type 74 keys=25
-[BMDParser] Data/Object1/Light01.bmd Version: 0xa File size: 1194
-[BMDParser] Meshes: 1 Bones: 1 Actions: 1
- [Mesh 0] Verts: 8 Norms: 6 Tex: 4 Tris: 12 Texture: ston03.jpg
-[BMDParser] AABB: Min(-25.6123,-25.6123,-3.19481e-05) Max(25.6123,25.6123,51.2247)
-[BMDParser] Data/Object1/BridgeStone01.bmd Version: 0xa File size: 7775
-[BMDParser] Meshes: 4 Bones: 2 Actions: 1
- [Mesh 0] Verts: 20 Norms: 2 Tex: 5 Tris: 12 Texture: tree_04.jpg
- [Mesh 1] Verts: 51 Norms: 42 Tex: 27 Tris: 52 Texture: tile_ston06.jpg
- [Mesh 2] Verts: 12 Norms: 4 Tex: 6 Tris: 8 Texture: tile_wood02.jpg
- [Mesh 3] Verts: 4 Norms: 1 Tex: 4 Tris: 2 Texture: bridge_shadow01.tga
-[BMDParser] AABB: Min(-163.611,-166.271,-0.276103) Max(164.106,75.0783,399.828)
-[ObjectRenderer] Loaded 2831 object instances, 109 unique models, 110 interactive objects, skipped 39
-[GrassRenderer] Loaded TileGrass01
-[GrassRenderer] Loaded TileGrass02
-[GrassRenderer] Loaded TileGrass03
-[GrassRenderer] Generated 42116 grass billboards (168464 vertices)
-[Hero] Entered SafeZone, action=1
-[Music] Playing: MuTheme.mp3
-[ChangeMap] Map 0 loaded: 2831 objects, 118 lights, 114 fire emitters
-[NPC] Server-spawned NPC type=253 idx=1001 at grid (127,86) dir=3
-[NPC] Server-spawned NPC type=250 idx=1002 at grid (183,137) dir=3
-[NPC] Server-spawned NPC type=251 idx=1003 at grid (116,141) dir=4
-[NPC] Server-spawned NPC type=254 idx=1004 at grid (118,113) dir=4
-[NPC] Server-spawned NPC type=255 idx=1005 at grid (123,135) dir=2
-[NPC] Server-spawned NPC type=240 idx=1006 at grid (146,110) dir=4
-[NPC] Server-spawned NPC type=240 idx=1007 at grid (147,145) dir=2
-[NPC] Server-spawned NPC type=245 idx=1008 at grid (94,125) dir=3
-[NPC] Server-spawned NPC type=246 idx=1009 at grid (123,84) dir=3
-[NPC] Server-spawned NPC type=247 idx=1010 at grid (130,115) dir=4
-[NPC] Server-spawned NPC type=248 idx=1011 at grid (173,125) dir=5
-[NPC] Server-spawned NPC type=249 idx=1012 at grid (131,148) dir=3
-[Net] NPC viewport (game): 12 NPCs
-[Monster] Spawned type=0 at grid (152,53)
-[Monster] Spawned type=0 at grid (154,51)
-[Monster] Spawned type=0 at grid (155,54)
-[Monster] Spawned type=0 at grid (148,50)
-[Monster] Spawned type=0 at grid (156,48)
-[Monster] Spawned type=0 at grid (150,56)
-[Monster] Spawned type=0 at grid (160,55)
-[Monster] Spawned type=0 at grid (145,45)
-[Monster] Spawned type=0 at grid (165,60)
-[Monster] Spawned type=0 at grid (158,42)
-[Monster] Spawned type=0 at grid (140,52)
-[Monster] Spawned type=0 at grid (170,50)
-[Monster] Spawned type=1 at grid (143,76)
-[Monster] Spawned type=1 at grid (145,75)
-[Monster] Spawned type=1 at grid (140,80)
-[Monster] Spawned type=1 at grid (138,72)
-[Monster] Spawned type=1 at grid (35,55)
-[Monster] Spawned type=1 at grid (50,85)
-[Monster] Spawned type=1 at grid (65,115)
-[Monster] Spawned type=1 at grid (30,155)
-[Monster] Spawned type=1 at grid (55,195)
-[Monster] Spawned type=1 at grid (80,35)
-[Monster] Spawned type=1 at grid (45,130)
-[Monster] Spawned type=1 at grid (70,200)
-[Monster] Spawned type=2 at grid (191,142)
-[Monster] Spawned type=2 at grid (193,143)
-[Monster] Spawned type=2 at grid (190,140)
-[Monster] Spawned type=2 at grid (194,141)
-[Monster] Spawned type=2 at grid (198,126)
-[Monster] Spawned type=2 at grid (200,130)
-[Monster] Spawned type=2 at grid (195,135)
-[Monster] Spawned type=2 at grid (206,151)
-[Monster] Spawned type=2 at grid (208,153)
-[Monster] Spawned type=2 at grid (204,149)
-[Monster] Spawned type=2 at grid (224,168)
-[Monster] Spawned type=2 at grid (226,170)
-[Monster] Spawned type=3 at grid (187,119)
-[Monster] Spawned type=3 at grid (188,117)
-[Monster] Spawned type=3 at grid (186,120)
-[Monster] Spawned type=3 at grid (189,118)
-[Monster] Spawned type=3 at grid (181,128)
-[Monster] Spawned type=3 at grid (183,130)
-[Monster] Spawned type=3 at grid (180,126)
-[Monster] Spawned type=3 at grid (182,129)
-[Monster] Spawned type=3 at grid (179,154)
-[Monster] Spawned type=3 at grid (175,155)
-[Monster] Spawned type=3 at grid (185,135)
-[Monster] Spawned type=3 at grid (191,125)
-[Monster] Spawned type=3 at grid (195,115)
-[Monster] Spawned type=3 at grid (192,122)
-[Monster] Spawned type=4 at grid (25,30)
-[Monster] Spawned type=4 at grid (40,50)
-[Monster] Spawned type=4 at grid (55,70)
-[Monster] Spawned type=4 at grid (30,90)
-[Monster] Spawned type=4 at grid (45,110)
-[Monster] Spawned type=4 at grid (60,130)
-[Monster] Spawned type=4 at grid (35,150)
-[Monster] Spawned type=4 at grid (50,170)
-[Monster] Spawned type=4 at grid (65,190)
-[Monster] Spawned type=4 at grid (40,210)
-[Monster] Spawned type=4 at grid (55,230)
-[Monster] Spawned type=4 at grid (70,40)
-[Monster] Spawned type=4 at grid (85,60)
-[Monster] Spawned type=4 at grid (20,80)
-[Monster] Spawned type=4 at grid (75,100)
-[Monster] Spawned type=6 at grid (110,180)
-[Monster] Spawned type=6 at grid (125,195)
-[Monster] Spawned type=6 at grid (140,210)
-[Monster] Spawned type=6 at grid (155,225)
-[Monster] Spawned type=6 at grid (100,190)
-[Monster] Spawned type=6 at grid (115,205)
-[Monster] Spawned type=6 at grid (130,220)
-[Monster] Spawned type=6 at grid (145,235)
-[Monster] Spawned type=6 at grid (160,175)
-[Monster] Spawned type=6 at grid (170,200)
-[Monster] Spawned type=6 at grid (105,240)
-[Monster] Spawned type=7 at grid (15,20)
-[Monster] Spawned type=7 at grid (25,35)
-[Monster] Spawned type=7 at grid (40,50)
-[Monster] Spawned type=7 at grid (55,65)
-[Monster] Spawned type=7 at grid (20,45)
-[Monster] Spawned type=7 at grid (35,60)
-[Monster] Spawned type=7 at grid (50,75)
-[Monster] Spawned type=7 at grid (30,25)
-[Monster] Spawned type=7 at grid (45,40)
-[Monster] Spawned type=14 at grid (100,175)
-[Monster] Spawned type=14 at grid (120,185)
-[Monster] Spawned type=14 at grid (135,200)
-[Monster] Spawned type=14 at grid (150,215)
-[Monster] Spawned type=14 at grid (165,230)
-[Monster] Spawned type=14 at grid (108,195)
-[Monster] Spawned type=14 at grid (142,240)
-[Monster] Spawned type=14 at grid (155,180)
-[Monster] Spawned type=14 at grid (170,210)
-[Net] Monster viewport V2 (game): 94 monsters
-[Sound] Play3D: nBlackSmith.wav (id=230) at (14150,165,11650)
+ [Mesh 0] Verts: 25 Norms: 33 Tex: 24 Tris: 28 Texture: unicon.jpg
+ [Mesh 1] Verts: 15 Norms: 18 Tex: 15 Tris: 14 Texture: unicon01.tga
+[BMDParser] AABB: Min(-64.7272,-28.7106,-7.43753) Max(5.07406,76.8637,4.91038)
+[TextureLoader::Resolve] Could not find texture: unicon.jpg in Data/Player/
+[TextureLoader::Resolve] Could not find texture: unicon01.tga in Data/Player/
+[Sound] Play3D: mBone2.wav (id=124) at (14044.7,167.632,4527.2)
+[Sound] Play3D: mBone2.wav (id=124) at (13983.2,169.5,4574.41)
+[Sound] Play3D: mBone2.wav (id=124) at (13902.8,169.5,4549.88)
+[Sound] Play3D: mBone2.wav (id=124) at (12173.7,169.5,3552.59)
+[MonSound] IDLE type=35 t=23.577 pos=(11350,5650)
+[Sound] Play3D: mGorgon2.wav (id=262) at (11350,169.5,5650)
+[MonSound] IDLE type=35 t=27.9771 pos=(12150,5650)
+[Sound] Play3D: mGorgon2.wav (id=262) at (12150,169.5,5650)
+[BMDParser] Data/Skill/Rider01.bmd Version: 0xa File size: 56540
+[BMDParser] Meshes: 2 Bones: 24 Actions: 4
+ [Mesh 0] Verts: 238 Norms: 278 Tex: 149 Tris: 438 Texture: unicon.jpg
+ [Mesh 1] Verts: 45 Norms: 45 Tex: 26 Tris: 40 Texture: unicon01.tga
+[BMDParser] AABB: Min(-44.3667,-37.8587,-27.9435) Max(60.21,61.7006,26.5094)
+[Sound] Play: pHorseStep1.wav (id=236)
+[Sound] Play: pHorseStep3.wav (id=238)
+[Hero] Mount equipped: Rider01.bmd (2 meshes, 24 bones, 4 actions)
+[Sound] Play3D: mBone2.wav (id=124) at (12322.3,169.5,3837.65)
+[Sound] Play3D: mBone2.wav (id=124) at (12394.9,172.78,3822.02)
+[Sound] Play3D: mBone2.wav (id=124) at (12399.4,172.784,3772.99)
+[Sound] Play3D: mBone2.wav (id=124) at (12442.4,179.885,3761.02)
+[MonSound] IDLE type=40 t=33.6992 pos=(13350,4250)
+[Sound] Play3D: mDarkKnight2.wav (id=272) at (13350,169.5,4250)
+[Sound] Play3D: mBone2.wav (id=124) at (13965.7,169.5,4372.73)
+[Sound] Play3D: mBone2.wav (id=124) at (13967.4,169.5,4306.08)
+[Sound] Play3D: mBone2.wav (id=124) at (14052.2,169.5,4391.64)
 [Music] Stopped
 [Sound] Shutdown
 [CharSelect] Shutdown

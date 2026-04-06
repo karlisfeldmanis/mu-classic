@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <unordered_map>
 
 // ─── Constructor / Destructor ────────────────────────────────────────────────
 
@@ -790,8 +791,10 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
   }
 
   // Leash check — chase limit from spawn point
-  // Damage-aggro'd monsters get a much larger leash to chase attackers
+  // Damage-aggro'd monsters get extended leash to chase long-range attackers
   int leashDist = std::max(25, mon.viewRange * 3);
+  if (mon.aggroTargetFd != -1)
+    leashDist = std::max(leashDist, 60); // Aggro'd by damage: chase up to 60 cells
   int distFromSpawn = PathFinder::ChebyshevDist(mon.gridX, mon.gridY,
                                                 mon.spawnGridX, mon.spawnGridY);
   if (distFromSpawn > leashDist) {
@@ -919,16 +922,15 @@ void GameWorld::processChasing(MonsterInstance &mon, float dt,
         emitMoveIfChanged(mon, pathEnd.x, pathEnd.y, true, true, outMoves);
       } else {
         mon.chaseFailCount++;
-        if (mon.chaseFailCount >= 10) {
-          // If explicitly aggro'd by damage, don't return — stay in place
-          // so the monster doesn't heal to full when hit from range by Elf bow.
-          // Just stop chasing and idle (aggro timer handles de-aggro after 15s).
+        int failThreshold = (mon.aggroTargetFd != -1) ? 20 : 10;
+        if (mon.chaseFailCount >= failThreshold) {
           if (mon.aggroTargetFd != -1) {
+            // Aggro'd by damage: idle briefly then retry (don't give up)
             mon.aiState = MonsterInstance::AIState::IDLE;
             mon.currentPath.clear();
             mon.pathStep = 0;
-            mon.stateTimer = 2.0f;
-            // Keep aggroTargetFd and aggroTimer so findBestTarget still returns target
+            mon.stateTimer = 1.5f;
+            mon.chaseFailCount = failThreshold / 2; // Partial reset to allow re-engage
           } else {
             beginReturn();
           }
@@ -2196,145 +2198,65 @@ std::vector<uint8_t> GameWorld::BuildMonsterViewportV2Packet() const {
   return result;
 }
 
-// ─── 0.97d Lorencia Drop Tables ──────────────────────────────────────────────
+// ─── OpenMU-style Level-Based Drop System ────────────────────────────────────
+//
+// Algorithm (from OpenMU Version075 DefaultDropGenerator.cs):
+// 1. Filter all droppable items by: dropLevel in (monsterLevel-11, monsterLevel]
+// 2. Pick random item from filtered pool
+// 3. Item enhancement = min((monsterLevel - dropLevel) / 3, maxItemLevel)
+// 4. Jewels drop via separate 0.1% roll (not from item pool)
+//
 
-struct DropEntry {
-  int16_t defIndex;
-  int weight;
-  uint8_t maxPlus;
-};
-
-static const DropEntry &PickWeighted(const std::vector<DropEntry> &pool) {
-  int total = 0;
-  for (auto &e : pool)
-    total += e.weight;
-  int roll = rand() % total;
-  int acc = 0;
-  for (auto &e : pool) {
-    acc += e.weight;
-    if (roll < acc)
-      return e;
-  }
-  return pool.back();
+// Items that should NOT drop from monsters (OpenMU: DropsFromMonsters=false)
+static bool IsExcludedFromDrops(uint8_t cat, uint8_t idx) {
+  // Jewels: drop via separate jewel roll only
+  if (cat == 14 && (idx == 13 || idx == 14 || idx == 16 || idx == 22)) return true;
+  if (cat == 12 && idx == 15) return true; // Jewel of Chaos
+  // Chaos weapons: not droppable
+  if (cat == 2 && idx == 6) return true;  // Chaos Dragon Axe
+  if (cat == 4 && idx == 6) return true;  // Chaos Nature Bow
+  if (cat == 5 && idx == 7) return true;  // Chaos Lightning Staff
+  // Ammunition
+  if (cat == 4 && (idx == 7 || idx == 15)) return true; // Arrows, Bolts
+  // Potions (handled separately)
+  if (cat == 14 && idx <= 8) return true;
+  // Mount items
+  if (cat == 13 && (idx == 2 || idx == 3)) return true;
+  return false;
 }
 
-// Spider (type 3, Lv2)
-static const std::vector<DropEntry> s_spiderDrops = {
-    {14 * 32 + 1, 30, 0}, {14 * 32 + 4, 20, 0}, {0 * 32 + 0, 5, 0},
-    {1 * 32 + 0, 5, 0},   {15 * 32 + 3, 3, 0},
-};
+// Cached droppable items per monster level (OpenMU: _droppableItemsPerMonsterLevel)
+static std::unordered_map<int, std::vector<ItemDropInfo>> s_dropCache;
 
-// Budge Dragon (type 2, Lv4)
-static const std::vector<DropEntry> s_budgeDrops = {
-    {14 * 32 + 1, 25, 0}, {14 * 32 + 4, 20, 0}, {0 * 32 + 0, 8, 0},
-    {0 * 32 + 1, 6, 0},   {1 * 32 + 0, 6, 0},   {1 * 32 + 1, 4, 0},
-    {5 * 32 + 0, 5, 0},   {6 * 32 + 0, 4, 0},   {10 * 32 + 2, 3, 0},
-    {11 * 32 + 2, 3, 0},  {15 * 32 + 3, 3, 0},  {15 * 32 + 10, 2, 0},
-};
+static const std::vector<ItemDropInfo> &GetDroppableItems(int monsterLevel,
+                                                          Database &db) {
+  auto it = s_dropCache.find(monsterLevel);
+  if (it != s_dropCache.end())
+    return it->second;
 
-// Bull Fighter (type 0, Lv6)
-static const std::vector<DropEntry> s_bullDrops = {
-    {14 * 32 + 1, 20, 0}, {14 * 32 + 2, 10, 0}, {14 * 32 + 4, 15, 0},
-    {0 * 32 + 0, 6, 1},   {0 * 32 + 1, 5, 1},   {0 * 32 + 2, 3, 0},
-    {1 * 32 + 0, 5, 1},   {1 * 32 + 1, 4, 0},   {2 * 32 + 0, 3, 0},
-    {5 * 32 + 0, 4, 1},   {6 * 32 + 0, 4, 1},   {6 * 32 + 4, 3, 0},
-    {7 * 32 + 2, 3, 0},   {8 * 32 + 2, 3, 0},   {9 * 32 + 2, 2, 0},
-    {10 * 32 + 2, 3, 0},  {11 * 32 + 2, 3, 0},  {7 * 32 + 5, 2, 0},
-    {8 * 32 + 5, 2, 0},   {15 * 32 + 3, 3, 0},  {15 * 32 + 10, 2, 0},
-};
+  // OpenMU: items with dropLevel in (monsterLevel-11, monsterLevel]
+  int minDropLevel = std::max(1, monsterLevel - 11);
+  int maxDropLevel = monsterLevel;
+  auto allItems = db.GetItemsByLevelRange(minDropLevel, maxDropLevel);
 
-// Hound (type 1, Lv9)
-static const std::vector<DropEntry> s_houndDrops = {
-    {14 * 32 + 2, 15, 0}, {14 * 32 + 5, 12, 0}, {0 * 32 + 1, 5, 1},
-    {0 * 32 + 2, 5, 1},   {0 * 32 + 4, 3, 0},   {1 * 32 + 1, 4, 1},
-    {1 * 32 + 2, 3, 0},   {2 * 32 + 0, 4, 1},   {2 * 32 + 1, 3, 0},
-    {4 * 32 + 0, 4, 0},   {4 * 32 + 1, 3, 0},   {4 * 32 + 8, 3, 0},
-    {5 * 32 + 0, 3, 1},   {6 * 32 + 0, 3, 1},   {6 * 32 + 1, 3, 0},
-    {6 * 32 + 4, 3, 1},   {7 * 32 + 2, 3, 1},   {7 * 32 + 5, 3, 0},
-    {7 * 32 + 10, 2, 0},  {8 * 32 + 2, 3, 1},   {8 * 32 + 5, 3, 0},
-    {8 * 32 + 10, 2, 0},  {15 * 32 + 2, 3, 0},  {15 * 32 + 5, 2, 0},
-    {13 * 32 + 8, 1, 0},
-};
-
-// Elite Bull Fighter (type 4, Lv12)
-static const std::vector<DropEntry> s_eliteBullDrops = {
-    {14 * 32 + 2, 12, 0}, {14 * 32 + 5, 10, 0}, {0 * 32 + 2, 4, 1},
-    {0 * 32 + 3, 4, 1},   {0 * 32 + 4, 3, 0},   {1 * 32 + 2, 4, 1},
-    {1 * 32 + 3, 3, 0},   {2 * 32 + 1, 4, 1},   {2 * 32 + 2, 3, 0},
-    {3 * 32 + 5, 3, 0},   {3 * 32 + 2, 3, 0},   {4 * 32 + 1, 3, 1},
-    {4 * 32 + 9, 3, 0},   {5 * 32 + 1, 3, 0},   {6 * 32 + 1, 3, 1},
-    {6 * 32 + 2, 3, 0},   {6 * 32 + 6, 2, 0},   {7 * 32 + 0, 3, 0},
-    {7 * 32 + 4, 3, 0},   {8 * 32 + 0, 3, 0},   {8 * 32 + 4, 3, 0},
-    {9 * 32 + 0, 2, 0},   {10 * 32 + 0, 2, 0},  {11 * 32 + 0, 2, 0},
-    {15 * 32 + 2, 3, 0},  {15 * 32 + 6, 2, 0},  {13 * 32 + 9, 1, 0},
-};
-
-// Lich (type 6, Lv14)
-static const std::vector<DropEntry> s_lichDrops = {
-    {14 * 32 + 2, 10, 0}, {14 * 32 + 3, 5, 0},  {14 * 32 + 5, 8, 0},
-    {14 * 32 + 6, 4, 0},  {0 * 32 + 3, 3, 1},   {0 * 32 + 5, 3, 0},
-    {0 * 32 + 6, 3, 0},   {1 * 32 + 3, 3, 1},   {1 * 32 + 4, 2, 0},
-    {2 * 32 + 2, 3, 1},   {3 * 32 + 1, 3, 0},   {3 * 32 + 6, 3, 0},
-    {4 * 32 + 2, 3, 0},   {4 * 32 + 10, 2, 0},  {5 * 32 + 1, 3, 1},
-    {5 * 32 + 2, 3, 0},   {6 * 32 + 2, 3, 1},   {6 * 32 + 3, 2, 0},
-    {7 * 32 + 4, 3, 1},   {7 * 32 + 11, 2, 0},  {8 * 32 + 4, 3, 1},
-    {8 * 32 + 11, 2, 0},  {15 * 32 + 0, 3, 0},  {15 * 32 + 6, 3, 0},
-    {15 * 32 + 7, 2, 0},  {13 * 32 + 12, 1, 0}, {13 * 32 + 8, 1, 0},
-};
-
-// Giant (type 7, Lv17)
-static const std::vector<DropEntry> s_giantDrops = {
-    {14 * 32 + 3, 8, 0},  {14 * 32 + 6, 6, 0},  {0 * 32 + 5, 3, 1},
-    {0 * 32 + 6, 3, 1},   {0 * 32 + 7, 2, 0},   {1 * 32 + 4, 3, 1},
-    {1 * 32 + 5, 2, 0},   {2 * 32 + 2, 3, 1},   {2 * 32 + 3, 2, 0},
-    {3 * 32 + 6, 3, 1},   {3 * 32 + 7, 2, 0},   {4 * 32 + 2, 3, 1},
-    {4 * 32 + 3, 2, 0},   {4 * 32 + 11, 2, 0},  {5 * 32 + 2, 3, 1},
-    {5 * 32 + 3, 2, 0},   {6 * 32 + 6, 3, 1},   {6 * 32 + 9, 2, 0},
-    {6 * 32 + 10, 2, 0},  {7 * 32 + 0, 3, 1},   {7 * 32 + 6, 2, 0},
-    {7 * 32 + 12, 2, 0},  {8 * 32 + 0, 3, 1},   {8 * 32 + 6, 2, 0},
-    {8 * 32 + 12, 2, 0},  {9 * 32 + 5, 2, 0},   {9 * 32 + 6, 2, 0},
-    {10 * 32 + 5, 2, 0},  {11 * 32 + 5, 2, 0},  {15 * 32 + 7, 2, 0},
-    {13 * 32 + 12, 1, 0}, {13 * 32 + 13, 1, 0},
-};
-
-// Skeleton Warrior (type 14, Lv19)
-static const std::vector<DropEntry> s_skelDrops = {
-    {14 * 32 + 3, 8, 0},  {14 * 32 + 6, 6, 0},  {0 * 32 + 6, 3, 2},
-    {0 * 32 + 7, 3, 1},   {0 * 32 + 8, 2, 0},   {1 * 32 + 4, 3, 1},
-    {1 * 32 + 5, 3, 0},   {1 * 32 + 6, 2, 0},   {2 * 32 + 2, 3, 1},
-    {2 * 32 + 3, 2, 0},   {3 * 32 + 7, 3, 1},   {3 * 32 + 3, 2, 0},
-    {4 * 32 + 3, 3, 0},   {4 * 32 + 11, 3, 0},  {5 * 32 + 2, 3, 1},
-    {5 * 32 + 3, 2, 0},   {6 * 32 + 7, 3, 0},   {6 * 32 + 9, 2, 0},
-    {7 * 32 + 6, 3, 1},   {7 * 32 + 8, 2, 0},   {7 * 32 + 12, 2, 0},
-    {7 * 32 + 13, 1, 0},  {8 * 32 + 6, 3, 1},   {8 * 32 + 8, 2, 0},
-    {8 * 32 + 12, 2, 0},  {9 * 32 + 6, 2, 1},   {9 * 32 + 8, 2, 0},
-    {10 * 32 + 6, 2, 1},  {11 * 32 + 6, 2, 1},  {15 * 32 + 7, 2, 0},
-    {15 * 32 + 8, 1, 0},  {13 * 32 + 8, 1, 0},  {13 * 32 + 9, 1, 0},
-    {13 * 32 + 12, 1, 0}, {13 * 32 + 13, 1, 0},
-};
-
-static const std::vector<DropEntry> &GetDropPool(uint16_t monsterType) {
-  switch (monsterType) {
-  case 3:
-    return s_spiderDrops;
-  case 2:
-    return s_budgeDrops;
-  case 0:
-    return s_bullDrops;
-  case 1:
-    return s_houndDrops;
-  case 4:
-    return s_eliteBullDrops;
-  case 6:
-    return s_lichDrops;
-  case 7:
-    return s_giantDrops;
-  case 14:
-    return s_skelDrops;
-  default:
-    return s_bullDrops;
+  // Filter out excluded items
+  std::vector<ItemDropInfo> filtered;
+  for (auto &item : allItems) {
+    if (!IsExcludedFromDrops(item.category, item.itemIndex))
+      filtered.push_back(item);
   }
+
+  s_dropCache[monsterLevel] = std::move(filtered);
+  return s_dropCache[monsterLevel];
 }
+
+// (Old per-monster drop tables removed — now using level-based system above)
+//
+// Legacy reference: Spider, Budge, Bull, Hound, Elite Bull, Lich, Giant,
+// Skeleton had hand-crafted pools. Now all monsters use GetDroppableItems()
+// which filters item_definitions by level_req in [monsterLevel-11, monsterLevel].
+//
+// (Old per-monster drop tables removed — now using GetDroppableItems() above)
 
 std::vector<GroundDrop> GameWorld::SpawnDrops(float worldX, float worldZ,
                                               int monsterLevel,
@@ -2382,36 +2304,42 @@ std::vector<GroundDrop> GameWorld::SpawnDrops(float worldX, float worldZ,
     }
   }
 
-  // 3. Item Drop — 8-15%
+  // 3. Item Drop — OpenMU level-based system
+  // Drop chance: 8% base + monsterLevel/3 (scales ~8-30%)
   int itemChance = 8 + monsterLevel / 3;
   if (rand() % 100 < itemChance) {
-    const auto &pool = GetDropPool(monsterType);
-    const auto &picked = PickWeighted(pool);
-    uint8_t dropLvl = 0;
-    if (picked.maxPlus > 0) {
-      dropLvl = std::min((uint8_t)(rand() % (picked.maxPlus + 1)), (uint8_t)11);
-    }
+    const auto &pool = GetDroppableItems(monsterLevel, db);
+    if (!pool.empty()) {
+      // Pick random item from level-filtered pool
+      const auto &picked = pool[rand() % pool.size()];
+      int16_t defIndex = picked.category * 32 + picked.itemIndex;
 
-    // Roll item options for equipment (categories 0-11)
-    uint8_t optFlags = 0;
-    uint8_t cat = (uint8_t)(picked.defIndex / 32);
-    if (cat <= 11) {
-      // Luck: 5% base + 1% per 5 monster levels (max ~25%)
-      if (rand() % 100 < (5 + monsterLevel / 5))
-        optFlags |= 0x40;
-      // Skill: bows/crossbows only (cat 4) — multi-shot
-      if (cat == 4 && rand() % 100 < (5 + monsterLevel / 5))
-        optFlags |= 0x80;
-      // Additional Option: 15% chance, level scales with monster level
-      if (rand() % 100 < 15) {
-        int maxAdd = 1 + monsterLevel / 10;
-        if (maxAdd > 7)
-          maxAdd = 7;
-        optFlags |= (uint8_t)(1 + rand() % maxAdd);
+      // OpenMU item level formula: min((monsterLevel - dropLevel) / 3, maxItemLevel)
+      // Using level_req as dropLevel, max +9 for equipment
+      int maxItemLevel = (picked.category <= 11) ? 9 : 0;
+      int itemLevel = std::min((monsterLevel - (int)picked.level) / 3, maxItemLevel);
+      if (itemLevel < 0) itemLevel = 0;
+      uint8_t dropLvl = (uint8_t)itemLevel;
+
+      // Roll item options for equipment (categories 0-11)
+      uint8_t optFlags = 0;
+      if (picked.category <= 11) {
+        // Luck: 5% base + 1% per 5 monster levels
+        if (rand() % 100 < (5 + monsterLevel / 5))
+          optFlags |= 0x40;
+        // Skill: 50% chance (OpenMU: CanHaveSkill → 50%)
+        if (picked.category == 4 && rand() % 100 < 50)
+          optFlags |= 0x80;
+        // Additional Option: 15% chance, level scales with monster level
+        if (rand() % 100 < 15) {
+          int maxAdd = 1 + monsterLevel / 10;
+          if (maxAdd > 7) maxAdd = 7;
+          optFlags |= (uint8_t)(1 + rand() % maxAdd);
+        }
       }
+      makeDrop(defIndex, 1, dropLvl, optFlags);
+      return spawned;
     }
-    makeDrop(picked.defIndex, 1, dropLvl, optFlags);
-    return spawned;
   }
 
   // 4. Potion Drop — 20% fallback

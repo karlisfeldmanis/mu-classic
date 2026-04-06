@@ -94,7 +94,9 @@ void SendCharStats(Session &session, Database &db, int characterId) {
   pkt.charClass = c.charClass;
   memcpy(pkt.skillBar, c.skillBar, 10);
   memcpy(pkt.potionBar, c.potionBar, 8);
-  pkt.rmcSkillId = c.rmcSkillId; // New: Populate rmcSkillId
+  pkt.rmcSkillId = c.rmcSkillId;
+  pkt.resets = session.resets;
+  pkt.role = session.role;
 
   session.hasBow = false;
   for (auto &slot : equip) {
@@ -153,7 +155,9 @@ void SendCharStats(Session &session) {
   pkt.charClass = session.charClass;
   memcpy(pkt.skillBar, session.skillBar, 10);
   memcpy(pkt.potionBar, session.potionBar, 8);
-  pkt.rmcSkillId = session.rmcSkillId; // New: Populate rmcSkillId
+  pkt.rmcSkillId = session.rmcSkillId;
+  pkt.resets = session.resets;
+  pkt.role = session.role;
 
   session.Send(&pkt, sizeof(pkt));
 }

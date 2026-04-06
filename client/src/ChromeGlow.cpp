@@ -1,6 +1,9 @@
 #include "ChromeGlow.hpp"
+#include "BMDUtils.hpp"
+#include "Shader.hpp"
 #include "TextureLoader.hpp"
 #include <iostream>
+#include <glm/gtc/type_ptr.hpp>
 
 namespace ChromeGlow {
 
@@ -204,7 +207,7 @@ glm::vec3 GetPartObjectColor2(int category, int itemIndex) {
     {1.0f, 1.0f, 1.0f}, // 3: pure white
   };
 
-  int color = 0;
+  int color = -1; // -1 = use primary color (PartObjectColor)
 
   if (category >= 7 && category <= 11) {
     switch (itemIndex) {
@@ -220,21 +223,26 @@ glm::vec3 GetPartObjectColor2(int category, int itemIndex) {
     case 42: color = 1; break;
     case 43: color = 2; break;
     case 44: color = 3; break;
-    default: color = 0; break;
+    default: color = -1; break; // Use primary color for CHROME2/CHROME4
     }
   } else if (category == 0) {
     if (itemIndex == 14) color = 2;
-    else color = 0;
+    else color = -1;
   } else if (category == 4) {
     if (itemIndex == 5 || itemIndex == 13) color = 2;
-    else color = 0;
+    else color = -1;
   } else if (category == 5) {
     if (itemIndex == 5) color = 2;
-    else color = 0;
+    else color = -1;
   } else {
-    color = 0;
+    color = -1;
   }
 
+  // Main 5.2 PartObjectColor2 Color=0 multiplies existing BodyLight (which has
+  // the primary color). Our shader uses scene lighting instead. To match, fall
+  // back to the primary color so CHROME2/CHROME4 pass inherits the item's tint.
+  if (color < 0)
+    return GetPartObjectColor(category, itemIndex);
   return kColors2[color];
 }
 
@@ -292,6 +300,57 @@ int GetGlowPasses(int enhanceLevel, int category, int itemIndex,
     n = 1;
   }
   return n;
+}
+
+void RenderGlowMeshes(Shader *shader,
+                      const std::vector<::MeshBuffers> &meshes,
+                      const GlowRenderParams &params) {
+  if (!shader || params.enhanceLevel < 7) return;
+  if (!TexValid(s_tex.chrome1)) return;
+
+  GlowPass passes[3];
+  int n = GetGlowPasses(params.enhanceLevel, params.category,
+                        params.itemIndex, passes);
+  if (n <= 0) return;
+
+  uint64_t glowState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                     | BGFX_STATE_DEPTH_TEST_LEQUAL | BGFX_STATE_BLEND_ADD;
+
+  for (int gp = 0; gp < n; ++gp) {
+    glm::vec3 color = passes[gp].color;
+    if (params.colorScale != 1.0f)
+      color *= params.colorScale;
+
+    // Glow uniforms: objectAlpha=1, bml=1, chromeMode, chromeTime
+    // IMPORTANT: Set ALL uniforms to prevent BGFX uniform persistence bugs
+    shader->setVec4("u_params", glm::vec4(1.0f, 1.0f,
+                    (float)passes[gp].chromeMode, params.time));
+    shader->setVec4("u_params2", glm::vec4(params.luminosity, 0.0f, 0.0f, 0.0f));
+    shader->setVec4("u_viewPos", glm::vec4(params.viewPos, 0.0f));
+    shader->setVec4("u_lightPos", glm::vec4(params.viewPos + glm::vec3(0, 500, 0), 0.0f));
+    shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_terrainLight", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_glowColor", glm::vec4(color, 0.0f));
+    shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
+    shader->setVec4("u_fogParams", glm::vec4(0.0f));
+    shader->setVec4("u_fogColor", glm::vec4(0.0f));
+    shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+
+    for (auto &mb : meshes) {
+      if (mb.indexCount == 0 || mb.hidden) continue;
+      if (params.skipBlendMesh >= 0 && mb.bmdTextureId == params.skipBlendMesh)
+        continue;
+
+      bgfx::setTransform(glm::value_ptr(*params.modelMat));
+      if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+      else bgfx::setVertexBuffer(0, mb.vbo);
+      bgfx::setIndexBuffer(mb.ebo);
+      shader->setTexture(0, "s_texColor", passes[gp].texture);
+      bgfx::setState(glowState);
+      bgfx::submit(params.viewId, shader->program);
+    }
+  }
 }
 
 } // namespace ChromeGlow

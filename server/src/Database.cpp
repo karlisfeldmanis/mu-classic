@@ -4,6 +4,7 @@
 #include <cstdio>
 
 bool Database::Open(const std::string &dbPath) {
+  m_dbPath = dbPath;
   if (sqlite3_open(dbPath.c_str(), &m_db) != SQLITE_OK) {
     printf("[DB] Failed to open: %s\n", sqlite3_errmsg(m_db));
     return false;
@@ -11,6 +12,16 @@ bool Database::Open(const std::string &dbPath) {
   CreateTables();
   printf("[DB] Opened %s\n", dbPath.c_str());
   return true;
+}
+
+void Database::Reopen() {
+  if (m_db) sqlite3_close(m_db);
+  m_db = nullptr;
+  if (sqlite3_open(m_dbPath.c_str(), &m_db) != SQLITE_OK) {
+    printf("[DB] Reopen failed: %s\n", sqlite3_errmsg(m_db));
+  } else {
+    printf("[DB] Reopened %s\n", m_dbPath.c_str());
+  }
 }
 
 void Database::Close() {
@@ -293,6 +304,14 @@ void Database::CreateTables() {
   sqlite3_exec(m_db,
       "ALTER TABLE characters ADD COLUMN buff_dmg_value INTEGER DEFAULT 0",
       nullptr, nullptr, nullptr);
+
+  // Migration: add resets counter and role to characters
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN resets INTEGER DEFAULT 0",
+      nullptr, nullptr, nullptr);
+  sqlite3_exec(m_db,
+      "ALTER TABLE characters ADD COLUMN role INTEGER DEFAULT 0",
+      nullptr, nullptr, nullptr); // 0=player, 1=gm, 2=admin, 3=bot
 
   // Quest definition tables (DB-driven quest system)
   const char *questDefSql = R"(
@@ -589,7 +608,8 @@ CharacterData Database::GetCharacter(const std::string &name) {
       "experience, level_up_points, skill_bar, potion_bar, "
       "rmc_skill_id, summon_type, camera_zoom, "
       "buff_def_type, buff_def_remaining, buff_def_value, "
-      "buff_dmg_type, buff_dmg_remaining, buff_dmg_value "
+      "buff_dmg_type, buff_dmg_remaining, buff_dmg_value, "
+      "resets, role "
       "FROM characters WHERE name=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return c;
@@ -642,6 +662,8 @@ CharacterData Database::GetCharacter(const std::string &name) {
     c.buffDmgType = static_cast<uint8_t>(sqlite3_column_int(stmt, 31));
     c.buffDmgRemaining = static_cast<float>(sqlite3_column_double(stmt, 32));
     c.buffDmgValue = sqlite3_column_int(stmt, 33);
+    c.resets = static_cast<uint16_t>(sqlite3_column_int(stmt, 34));
+    c.role = static_cast<uint8_t>(sqlite3_column_int(stmt, 35));
   }
   sqlite3_finalize(stmt);
   return c;
@@ -657,7 +679,8 @@ CharacterData Database::GetCharacterById(int id) {
       "experience, level_up_points, skill_bar, potion_bar, "
       "rmc_skill_id, summon_type, camera_zoom, "
       "buff_def_type, buff_def_remaining, buff_def_value, "
-      "buff_dmg_type, buff_dmg_remaining, buff_dmg_value "
+      "buff_dmg_type, buff_dmg_remaining, buff_dmg_value, "
+      "resets, role "
       "FROM characters WHERE id=?";
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return c;
@@ -710,6 +733,8 @@ CharacterData Database::GetCharacterById(int id) {
     c.buffDmgType = static_cast<uint8_t>(sqlite3_column_int(stmt, 31));
     c.buffDmgRemaining = static_cast<float>(sqlite3_column_double(stmt, 32));
     c.buffDmgValue = sqlite3_column_int(stmt, 33);
+    c.resets = static_cast<uint16_t>(sqlite3_column_int(stmt, 34));
+    c.role = static_cast<uint8_t>(sqlite3_column_int(stmt, 35));
   }
   sqlite3_finalize(stmt);
   return c;
@@ -970,14 +995,15 @@ void Database::SeedNpcSpawns() {
   const char *ltNpcSql = R"(
         INSERT INTO npc_spawns (type, map_id, pos_x, pos_y, direction, name) VALUES
             (253, 4, 207, 76, 2, 'Potion Girl Amy'),
-            (240, 4, 201, 76, 4, 'Baz the Vault Keeper');
+            (240, 4, 201, 76, 4, 'Baz the Vault Keeper'),
+            (313, 4, 213, 76, 7, 'Tower Warden Veros');
     )";
   err = nullptr;
   if (sqlite3_exec(m_db, ltNpcSql, nullptr, nullptr, &err) != SQLITE_OK) {
     printf("[DB] SeedLostTowerNpcSpawns error: %s\n", err);
     sqlite3_free(err);
   } else {
-    printf("[DB] Seeded 2 Lost Tower NPC spawns (Amy + vault keeper)\n");
+    printf("[DB] Seeded 3 Lost Tower NPC spawns (Amy + vault keeper + quest guard)\n");
   }
 }
 
@@ -1581,11 +1607,11 @@ std::vector<ItemDropInfo> Database::GetItemsByLevelRange(int minLevel,
                                                          int maxLevel) {
   std::vector<ItemDropInfo> items;
   sqlite3_stmt *stmt = nullptr;
-  // Exclude Wings (12+), Orbs, Quest Items, etc. Only allow Categories 0-11
-  // (Gear)
+  // Droppable items: weapons (0-5), shields (6), armor (7-11), orbs (12),
+  // accessories (13), scrolls (15). Exclude potions (14), misc.
   const char *sql =
       "SELECT category, item_index, name, level_req FROM item_definitions "
-      "WHERE level_req BETWEEN ? AND ? AND category <= 11";
+      "WHERE level_req BETWEEN ? AND ? AND (category <= 13 OR category = 15)";
 
   if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
     return items;
@@ -2559,8 +2585,8 @@ void Database::SeedQuests() {
       // Q0: Brynn — Bull Fighter x10
       {246, 1, {{0, 10}, {0, 0}, {0, 0}},
        "The Road's First Threat", "Lorencia",
-       {{{160, 1}, {461, 0}}, {{0, 1}, {461, 0}},
-        {{128, 1}, {461, 0}}, {{1, 1}, {461, 0}}},
+       {{{192, 1}, {449, 0}}, {{0, 1}, {449, 0}},
+        {{128, 1}, {449, 0}}, {{1, 1}, {449, 0}}},
        "The roads around Lorencia grow\n"
        "dangerous. Bull Fighters charge at\n"
        "travelers without warning. Slay 10\n"
@@ -2569,8 +2595,8 @@ void Database::SeedQuests() {
       // Q1: Brynn — Hound x10
       {246, 1, {{1, 10}, {0, 0}, {0, 0}},
        "Hounds of Lorencia", "Lorencia",
-       {{{226, 1}, {461, 0}}, {{224, 1}, {461, 0}},
-        {{234, 1}, {461, 0}}, {{2, 1}, {461, 0}}},
+       {{{226, 1}, {449, 0}}, {{224, 1}, {449, 0}},
+        {{234, 1}, {449, 0}}, {{288, 1}, {449, 0}}},
        "Feral Hounds roam the plains at night,\n"
        "picking off livestock and stragglers.\n"
        "The farmers plead for help. Hunt down\n"
@@ -2578,8 +2604,8 @@ void Database::SeedQuests() {
       // Q2: Kael — Budge Dragon x10
       {248, 1, {{2, 10}, {0, 0}, {0, 0}},
        "Dragon Whelps", "Lorencia",
-       {{{228, 0}, {461, 0}}, {{64, 0}, {461, 0}},
-        {{136, 0}, {461, 0}}, {{33, 0}, {461, 0}}},
+       {{{228, 0}, {449, 0}}, {{64, 0}, {449, 0}},
+        {{136, 0}, {449, 0}}, {{320, 0}, {449, 0}}},
        "Budge Dragons nest in the rocky\n"
        "outcrops south of town. They are small\n"
        "but their fire breath is deadly to the\n"
@@ -2587,8 +2613,8 @@ void Database::SeedQuests() {
       // Q3: Kael — Spider x10
       {248, 1, {{3, 10}, {0, 0}, {0, 0}},
        "Vermin in the Shadows", "Lorencia",
-       {{{258, 0}, {461, 0}}, {{65, 0}, {461, 0}},
-        {{266, 0}, {461, 0}}, {{101, 0}, {461, 0}}},
+       {{{258, 0}, {449, 0}}, {{65, 0}, {449, 0}},
+        {{266, 0}, {449, 0}}, {{352, 0}, {449, 0}}},
        "Giant Spiders infest the sewers\n"
        "beneath the city. Their webs block the\n"
        "tunnels and their venom sickens all who\n"
@@ -2596,8 +2622,8 @@ void Database::SeedQuests() {
       // Q4: Aldric — Elite Bull Fighter x10
       {245, 1, {{4, 10}, {0, 0}, {0, 0}},
        "The Elite Vanguard", "Lorencia",
-       {{{292, 2}, {461, 0}}, {{4, 2}, {461, 0}},
-        {{130, 2}, {461, 0}}, {{6, 2}, {461, 0}}},
+       {{{292, 2}, {450, 0}}, {{4, 2}, {450, 0}},
+        {{130, 2}, {450, 0}}, {{256, 2}, {450, 0}}},
        "Elite Bull Fighters are far more\n"
        "dangerous than their common kin. They\n"
        "coordinate attacks on supply wagons.\n"
@@ -2605,8 +2631,8 @@ void Database::SeedQuests() {
       // Q5: Dorian — Lich x8
       {247, 1, {{6, 8}, {0, 0}, {0, 0}},
        "Whispers from the Ruins", "Lorencia",
-       {{{161, 2}, {461, 0}}, {{3, 2}, {461, 0}},
-        {{137, 2}, {461, 0}}, {{98, 2}, {461, 0}}},
+       {{{193, 2}, {450, 0}}, {{3, 2}, {450, 0}},
+        {{137, 2}, {450, 0}}, {{98, 2}, {450, 0}}},
        "Liches linger in the ruined chapel\n"
        "west of town. Their dark magic corrupts\n"
        "the land itself. Destroy 8 Liches\n"
@@ -2615,7 +2641,7 @@ void Database::SeedQuests() {
       {245, 1, {{7, 7}, {0, 0}, {0, 0}},
        "The Gatekeepers", "Lorencia",
        {{{260, 3}, {461, 0}}, {{7, 3}, {461, 0}},
-        {{138, 3}, {461, 0}}, {{102, 3}, {461, 0}}},
+        {{138, 3}, {461, 0}}, {{224, 3}, {461, 0}}},
        "Giants have come down from the\n"
        "mountains. Their massive clubs crush\n"
        "men in full plate. Strike down 7 of\n"
@@ -2624,8 +2650,8 @@ void Database::SeedQuests() {
       // Q7: Dorian — Skeleton Warrior x7
       {247, 1, {{14, 7}, {0, 0}, {0, 0}},
        "The Undead March", "Lorencia",
-       {{{231, 3}, {461, 0}}, {{8, 3}, {461, 0}},
-        {{131, 3}, {461, 0}}, {{97, 3}, {461, 0}}},
+       {{{231, 3}, {461, 0}}, {{229, 3}, {461, 0}},
+        {{363, 3}, {461, 0}}, {{97, 3}, {461, 0}}},
        "Skeleton Warriors march from the\n"
        "ancient cemetery at nightfall. Once\n"
        "noble soldiers, now bound in undeath.\n"
@@ -2634,8 +2660,8 @@ void Database::SeedQuests() {
       // Q8: Skeleton Warrior x15
       {249, 1, {{14, 15}, {0, 0}, {0, 0}},
        "Descent Into Darkness", "Dungeon",
-       {{{359, 3}, {461, 0}}, {{66, 3}, {461, 0}},
-        {{364, 3}, {461, 0}}, {{99, 3}, {461, 0}}},
+       {{{359, 3}, {450, 0}}, {{260, 3}, {450, 0}},
+        {{362, 3}, {450, 0}}, {{99, 3}, {450, 0}}},
        "The dungeon entrance is overrun with\n"
        "Skeleton Warriors. They guard the\n"
        "passages to deeper chambers. Cut\n"
@@ -2643,8 +2669,8 @@ void Database::SeedQuests() {
       // Q9: Larva x12
       {249, 1, {{12, 12}, {0, 0}, {0, 0}},
        "The Larvae Nests", "Dungeon",
-       {{{162, 4}, {461, 0}}, {{262, 4}, {461, 0}},
-        {{268, 4}, {461, 0}}, {{5, 4}, {461, 0}}},
+       {{{196, 3}, {450, 0}}, {{262, 4}, {450, 0}},
+        {{268, 4}, {450, 0}}, {{261, 4}, {450, 0}}},
        "Larvae crawl through the dungeon's\n"
        "narrow tunnels, leaving trails of\n"
        "caustic slime. Their acid dissolves\n"
@@ -2652,8 +2678,8 @@ void Database::SeedQuests() {
       // Q10: Hell Hound x10
       {249, 1, {{5, 10}, {0, 0}, {0, 0}},
        "Infernal Hounds", "Dungeon",
-       {{{263, 6}, {461, 0}}, {{9, 6}, {461, 0}},
-        {{139, 6}, {461, 0}}, {{103, 6}, {461, 0}}},
+       {{{263, 6}, {452, 0}}, {{9, 6}, {452, 0}},
+        {{300, 4}, {452, 0}}, {{100, 6}, {452, 0}}},
        "Hell Hounds prowl the second level,\n"
        "their hellfire breath lighting corridors\n"
        "with infernal glow. They must be\n"
@@ -2661,8 +2687,8 @@ void Database::SeedQuests() {
       // Q11: Poison Bull x12
       {249, 1, {{8, 12}, {0, 0}, {0, 0}},
        "The Venomous Herd", "Dungeon",
-       {{{327, 7}, {461, 0}}, {{67, 7}, {461, 0}},
-        {{333, 7}, {461, 0}}, {{96, 7}, {461, 0}}},
+       {{{327, 7}, {451, 0}}, {{67, 7}, {451, 0}},
+        {{333, 7}, {451, 0}}, {{260, 4}, {451, 0}}},
        "Poison Bulls fill the corridors with\n"
        "toxic fumes. Their very breath is\n"
        "lethal. Destroy 12 of these creatures\n"
@@ -2671,7 +2697,7 @@ void Database::SeedQuests() {
       {249, 1, {{15, 12}, {0, 0}, {0, 0}},
        "Arrows from the Dark", "Dungeon",
        {{{227, 5}, {461, 0}}, {{34, 5}, {461, 0}},
-        {{301, 5}, {461, 0}}, {{100, 5}, {461, 0}}},
+        {{301, 5}, {461, 0}}, {{356, 5}, {461, 0}}},
        "Skeleton Archers line the corridors,\n"
        "raining arrows on anyone who dares\n"
        "enter. Their aim is deadly even in\n"
@@ -2680,7 +2706,7 @@ void Database::SeedQuests() {
       {249, 1, {{9, 12}, {0, 0}, {0, 0}},
        "Storm Beneath the Earth", "Dungeon",
        {{{295, 6}, {461, 0}}, {{35, 6}, {461, 0}},
-        {{132, 6}, {461, 0}}, {{13, 6}, {461, 0}}},
+        {{236, 5}, {461, 0}}, {{293, 5}, {461, 0}}},
        "Thunder Liches unleash lightning\n"
        "through the dungeon halls. Their storms\n"
        "shatter stone and scatter expeditions.\n"
@@ -2688,8 +2714,8 @@ void Database::SeedQuests() {
       // Q14: Hell Spider x7
       {249, 1, {{13, 7}, {0, 0}, {0, 0}},
        "Web of Nightmares", "Dungeon",
-       {{{163, 6}, {461, 0}}, {{39, 6}, {461, 0}},
-        {{269, 6}, {461, 0}}, {{10, 6}, {461, 0}}},
+       {{{198, 5}, {461, 0}}, {{292, 5}, {461, 0}},
+        {{332, 5}, {461, 0}}, {{325, 5}, {461, 0}}},
        "Hell Spiders weave webs of shadow and\n"
        "fire in the deep tunnels. Their venom\n"
        "burns like acid. Only 7 remain -- but\n"
@@ -2697,8 +2723,8 @@ void Database::SeedQuests() {
       // Q15: Ghost x20
       {249, 1, {{11, 20}, {0, 0}, {0, 0}},
        "The Restless Dead", "Dungeon",
-       {{{323, 5}, {461, 0}}, {{297, 5}, {461, 0}},
-        {{195, 5}, {461, 0}}, {{38, 5}, {461, 0}}},
+       {{{323, 5}, {451, 0}}, {{230, 5}, {451, 0}},
+        {{195, 5}, {451, 0}}, {{357, 5}, {451, 0}}},
        "Ghosts drift through the dungeon in\n"
        "countless numbers. They drain the life\n"
        "from the living with a single touch.\n"
@@ -2706,8 +2732,8 @@ void Database::SeedQuests() {
       // Q16: Elite Skeleton x15
       {249, 1, {{16, 15}, {0, 0}, {0, 0}},
        "The Bone Commanders", "Dungeon",
-       {{{164, 6}, {461, 0}}, {{11, 6}, {461, 0}},
-        {{238, 6}, {461, 0}}, {{104, 6}, {461, 0}}},
+       {{{199, 5}, {461, 0}}, {{11, 6}, {461, 0}},
+        {{237, 6}, {461, 0}}, {{262, 5}, {461, 0}}},
        "Elite Skeletons command the undead\n"
        "legions. They are ancient warriors of\n"
        "terrible skill, far deadlier than their\n"
@@ -2715,8 +2741,8 @@ void Database::SeedQuests() {
       // Q17: Cyclops x15
       {249, 1, {{17, 15}, {0, 0}, {0, 0}},
        "The One-Eyed Terror", "Dungeon",
-       {{{291, 4}, {461, 0}}, {{329, 4}, {461, 0}},
-        {{133, 4}, {461, 0}}, {{105, 4}, {461, 0}}},
+       {{{291, 4}, {461, 0}}, {{330, 4}, {461, 0}},
+        {{134, 4}, {461, 0}}, {{326, 4}, {461, 0}}},
        "Cyclops roam the dungeon's great\n"
        "caverns, crushing everything in their\n"
        "path. Their single eye sees in perfect\n"
@@ -2724,7 +2750,7 @@ void Database::SeedQuests() {
       // Q18: Dark Knight x5
       {249, 1, {{10, 5}, {0, 0}, {0, 0}},
        "Fallen Champions", "Dungeon",
-       {{{165, 7}, {461, 0}}, {{15, 7}, {461, 0}},
+       {{{200, 6}, {461, 0}}, {{293, 5}, {461, 0}},
         {{302, 7}, {461, 0}}, {{14, 7}, {461, 0}}},
        "Dark Knights were once heroes who fell\n"
        "to corruption. Their swordplay is\n"
@@ -2733,7 +2759,7 @@ void Database::SeedQuests() {
       // Q19: Gorgon x3
       {249, 1, {{18, 3}, {0, 0}, {0, 0}},
        "Heart of Darkness", "Dungeon",
-       {{{166, 7}, {462, 0}}, {{12, 7}, {462, 0}},
+       {{{201, 7}, {462, 0}}, {{12, 7}, {462, 0}},
         {{270, 7}, {462, 0}}, {{19, 7}, {462, 0}}},
        "At the dungeon's heart lurks the\n"
        "Gorgon -- a creature of terrible power.\n"
@@ -2744,8 +2770,8 @@ void Database::SeedQuests() {
       // Q20: Elise — Worm x20
       {310, 1, {{24, 20}, {0, 0}, {0, 0}},
        "Beneath the Snow", "Devias",
-       {{{356, 3}, {461, 0}}, {{326, 3}, {461, 0}},
-        {{332, 3}, {461, 0}}, {{98, 3}, {461, 0}}},
+       {{{356, 3}, {450, 0}}, {{357, 5}, {450, 0}},
+        {{330, 5}, {450, 0}}, {{358, 3}, {450, 0}}},
        "Worms burrow beneath the frozen\n"
        "ground of Devias, emerging without\n"
        "warning to drag victims below. Slay\n"
@@ -2753,8 +2779,8 @@ void Database::SeedQuests() {
       // Q21: Elise — Assassin x15
       {310, 1, {{21, 15}, {0, 0}, {0, 0}},
        "Shadow Stalkers", "Devias",
-       {{{231, 4}, {461, 0}}, {{8, 4}, {461, 0}},
-        {{131, 4}, {461, 0}}, {{97, 4}, {461, 0}}},
+       {{{229, 4}, {461, 0}}, {{261, 4}, {461, 0}},
+        {{364, 2}, {461, 0}}, {{229, 4}, {461, 0}}},
        "Assassins lurk in the frozen forests,\n"
        "striking from the shadows. Their blades\n"
        "are swift and silent. Eliminate 15 of\n"
@@ -2762,8 +2788,8 @@ void Database::SeedQuests() {
       // Q22: Nolan — Ice Monster x20
       {311, 1, {{22, 20}, {0, 0}, {0, 0}},
        "Frozen Sentinels", "Devias",
-       {{{162, 4}, {461, 0}}, {{66, 4}, {461, 0}},
-        {{139, 4}, {461, 0}}, {{5, 4}, {461, 0}}},
+       {{{230, 4}, {461, 0}}, {{36, 4}, {461, 0}},
+        {{267, 4}, {461, 0}}, {{294, 4}, {461, 0}}},
        "Ice Monsters guard the mountain\n"
        "passes of Devias. Born of ancient\n"
        "winter magic, they freeze all who\n"
@@ -2771,8 +2797,8 @@ void Database::SeedQuests() {
       // Q23: Nolan — Hommerd x20
       {311, 1, {{23, 20}, {0, 0}, {0, 0}},
        "The Iron Brutes", "Devias",
-       {{{263, 4}, {461, 0}}, {{264, 4}, {461, 0}},
-        {{132, 4}, {461, 0}}, {{103, 4}, {461, 0}}},
+       {{{267, 4}, {461, 0}}, {{264, 4}, {461, 0}},
+        {{131, 4}, {461, 0}}, {{328, 4}, {461, 0}}},
        "Hommerds are armored beasts of\n"
        "immense strength. They patrol the\n"
        "central plains, crushing anything\n"
@@ -2780,8 +2806,8 @@ void Database::SeedQuests() {
       // Q24: Hale — Elite Yeti x25
       {312, 1, {{20, 25}, {0, 0}, {0, 0}},
        "The Yeti Hordes", "Devias",
-       {{{163, 5}, {461, 0}}, {{39, 5}, {461, 0}},
-        {{269, 5}, {461, 0}}, {{10, 5}, {461, 0}}},
+       {{{195, 5}, {461, 0}}, {{356, 5}, {461, 0}},
+        {{365, 5}, {461, 0}}, {{264, 5}, {461, 0}}},
        "Elite Yetis have overrun the southern\n"
        "reaches of Devias. Their numbers seem\n"
        "endless. Push them back -- slay 25 of\n"
@@ -2789,8 +2815,8 @@ void Database::SeedQuests() {
       // Q25: Hale — Ice Queen x20
       {312, 1, {{25, 20}, {0, 0}, {0, 0}},
        "The Frozen Throne", "Devias",
-       {{{164, 7}, {462, 0}}, {{15, 7}, {462, 0}},
-        {{238, 7}, {462, 0}}, {{104, 7}, {462, 0}}},
+       {{{197, 6}, {462, 0}}, {{232, 7}, {462, 0}},
+        {{269, 7}, {462, 0}}, {{296, 7}, {462, 0}}},
        "The Ice Queen commands all creatures\n"
        "of Devias from her frozen throne. She\n"
        "is the source of the endless winter.\n"
@@ -2799,8 +2825,8 @@ void Database::SeedQuests() {
       // Q26: Goblin x10
       {256, 1, {{26, 10}, {0, 0}, {0, 0}},
        "Goblin Menace", "Noria",
-       {{{160, 0}, {461, 0}}, {{1, 0}, {461, 0}},
-        {{363, 0}, {461, 0}}, {{2, 0}, {461, 0}}},
+       {{{354, 0}, {449, 0}}, {{1, 0}, {449, 0}},
+        {{129, 0}, {449, 0}}, {{2, 0}, {449, 0}}},
        "Greetings, young archer. The Goblins\n"
        "near the village entrance grow bolder\n"
        "each day. Thin their numbers -- slay 10\n"
@@ -2808,8 +2834,8 @@ void Database::SeedQuests() {
       // Q27: Chain Scorpion x8
       {256, 1, {{27, 8}, {0, 0}, {0, 0}},
        "Scorpion Sting", "Noria",
-       {{{224, 0}, {461, 0}}, {{33, 0}, {461, 0}},
-        {{331, 0}, {461, 0}}, {{96, 0}, {461, 0}}},
+       {{{224, 0}, {449, 0}}, {{33, 0}, {449, 0}},
+        {{331, 0}, {449, 0}}, {{101, 0}, {449, 0}}},
        "Well struck. Now the Chain Scorpions\n"
        "threaten our eastern paths. Their poison\n"
        "is deadly to the young elves. Eliminate\n"
@@ -2817,8 +2843,8 @@ void Database::SeedQuests() {
       // Q28: Elite Goblin x8
       {256, 1, {{33, 8}, {0, 0}, {0, 0}},
        "Elite Threat", "Noria",
-       {{{288, 1}, {461, 0}}, {{3, 1}, {461, 0}},
-        {{299, 1}, {461, 0}}, {{5, 1}, {461, 0}}},
+       {{{290, 1}, {461, 0}}, {{38, 1}, {461, 0}},
+        {{356, 3}, {461, 0}}, {{360, 1}, {461, 0}}},
        "The Elite Goblins are smarter and\n"
        "stronger than their lesser kin. They\n"
        "coordinate raids on our supply lines.\n"
@@ -2826,8 +2852,8 @@ void Database::SeedQuests() {
       // Q29: Beetle Monster x10
       {256, 1, {{28, 10}, {0, 0}, {0, 0}},
        "Root Rot", "Noria",
-       {{{256, 1}, {461, 0}}, {{4, 1}, {461, 0}},
-        {{267, 1}, {461, 0}}, {{6, 1}, {461, 0}}},
+       {{{256, 1}, {461, 0}}, {{68, 1}, {461, 0}},
+        {{299, 1}, {461, 0}}, {{6, 1}, {461, 0}}},
        "Beetle Monsters burrow through the\n"
        "forest floor, destroying the ancient\n"
        "roots of our sacred trees. Slay 10\n"
@@ -2835,8 +2861,8 @@ void Database::SeedQuests() {
       // Q30: Hunter x8
       {256, 1, {{29, 8}, {0, 0}, {0, 0}},
        "The Poachers", "Noria",
-       {{{161, 2}, {461, 0}}, {{194, 2}, {461, 0}},
-        {{235, 2}, {461, 0}}, {{7, 2}, {461, 0}}},
+       {{{322, 2}, {461, 0}}, {{194, 2}, {461, 0}},
+        {{235, 2}, {461, 0}}, {{102, 2}, {461, 0}}},
        "Poachers -- Hunters who stalk our\n"
        "forest creatures without mercy. They\n"
        "encroach deeper each season. Put an\n"
@@ -2845,7 +2871,7 @@ void Database::SeedQuests() {
       {256, 1, {{30, 8}, {0, 0}, {0, 0}},
        "Corrupted Guardians", "Noria",
        {{{321, 2}, {461, 0}}, {{5, 2}, {461, 0}},
-        {{362, 2}, {461, 0}}, {{97, 2}, {461, 0}}},
+        {{298, 2}, {461, 0}}, {{230, 2}, {461, 0}}},
        "The Forest Monsters were once peaceful\n"
        "guardians, now corrupted by dark magic.\n"
        "Free their tortured spirits -- slay 8\n"
@@ -2853,8 +2879,8 @@ void Database::SeedQuests() {
       // Q32: Agon x6
       {256, 1, {{31, 6}, {0, 0}, {0, 0}},
        "Beast Territory", "Noria",
-       {{{289, 3}, {461, 0}}, {{34, 3}, {461, 0}},
-        {{298, 3}, {461, 0}}, {{8, 3}, {461, 0}}},
+       {{{355, 3}, {461, 0}}, {{288, 3}, {461, 0}},
+        {{133, 3}, {461, 0}}, {{104, 3}, {461, 0}}},
        "The Agons are fierce beasts that even\n"
        "seasoned warriors fear. Their territory\n"
        "blocks the southern passage. Defeat 6\n"
@@ -2862,12 +2888,95 @@ void Database::SeedQuests() {
       // Q33: Stone Golem x5
       {256, 1, {{32, 5}, {0, 0}, {0, 0}},
        "Ancient Constructs", "Noria",
-       {{{162, 3}, {461, 0}}, {{6, 3}, {461, 0}},
-        {{266, 3}, {461, 0}}, {{10, 3}, {461, 0}}},
+       {{{194, 3}, {461, 0}}, {{325, 3}, {461, 0}},
+        {{139, 3}, {461, 0}}, {{106, 3}, {461, 0}}},
        "The Stone Golems are ancient constructs\n"
        "awakened by forbidden magic. They are\n"
        "the greatest threat Noria faces. Destroy\n"
        "5 -- and the forest will know peace again."},
+
+      // ═══ Lost Tower quests (Q34-Q41) — Tower Warden Veros ═══
+      // Ordered by monster level ascending (47→66)
+
+      // Q34: Shadow x15 (lvl 47)
+      {313, 1, {{36, 15}, {0, 0}, {0, 0}},
+       "Living Darkness", "Lost Tower",
+       {{{163, 4}, {450, 0}}, {{10, 4}, {450, 0}},
+        {{132, 4}, {450, 0}}, {{13, 4}, {450, 0}}},
+       "Shadows drift through the tower halls\n"
+       "like living darkness. They devour all\n"
+       "light and warmth. Hunt down 15 before\n"
+       "they spread to the lower floors."},
+
+      // Q35: Poison Shadow x15 (lvl 50)
+      {313, 1, {{39, 15}, {0, 0}, {0, 0}},
+       "Toxic Wraiths", "Lost Tower",
+       {{{232, 5}, {461, 0}}, {{69, 6}, {461, 0}},
+        {{324, 5}, {461, 0}}, {{265, 5}, {461, 0}}},
+       "Poison Shadows leave trails of blight\n"
+       "wherever they pass. The air itself turns\n"
+       "venomous in their wake. Destroy 15\n"
+       "of these toxic wraiths."},
+
+      // Q36: Cursed Wizard x12 (lvl 54)
+      {313, 1, {{34, 12}, {0, 0}, {0, 0}},
+       "Curse of the Tower", "Lost Tower",
+       {{{296, 5}, {451, 0}}, {{40, 5}, {451, 0}},
+        {{334, 5}, {451, 0}}, {{329, 5}, {451, 0}}},
+       "Dark incantations echo through the\n"
+       "corridors. Cursed Wizards draw power\n"
+       "from the tower itself. Slay 12 of\n"
+       "these fell sorcerers."},
+
+      // Q37: Death Cow x12 (lvl 57)
+      {313, 1, {{41, 12}, {0, 0}, {0, 0}},
+       "The Slaughterhouse", "Lost Tower",
+       {{{265, 6}, {461, 0}}, {{37, 5}, {461, 0}},
+        {{140, 6}, {461, 0}}, {{233, 6}, {461, 0}}},
+       "Death Cows lumber through the middle\n"
+       "floors, their massive frames shaking\n"
+       "the walls with every step. Put down\n"
+       "12 of these undead beasts."},
+
+      // Q38: Devil x10 (lvl 60)
+      {313, 1, {{37, 10}, {0, 0}, {0, 0}},
+       "The Devil's Due", "Lost Tower",
+       {{{329, 6}, {461, 0}}, {{265, 6}, {461, 0}},
+        {{360, 6}, {461, 0}}, {{297, 6}, {461, 0}}},
+       "Devils stalk the upper tower with\n"
+       "terrible cunning. Their lightning\n"
+       "strikes without warning. Destroy 10\n"
+       "before they claim more souls."},
+
+      // Q39: Death Knight x10 (lvl 62)
+      {313, 1, {{40, 10}, {0, 0}, {0, 0}},
+       "Fallen Guardians", "Lost Tower",
+       {{{233, 7}, {462, 0}}, {{329, 6}, {462, 0}},
+        {{366, 6}, {462, 0}}, {{361, 6}, {462, 0}}},
+       "Death Knights once guarded this tower\n"
+       "in life. Now they guard it in death,\n"
+       "cutting down all who ascend. Slay 10\n"
+       "of these fallen champions."},
+
+      // Q40: Death Gorgon x8 (lvl 64)
+      {313, 1, {{35, 8}, {0, 0}, {0, 0}},
+       "The Gorgon's Wrath", "Lost Tower",
+       {{{361, 7}, {462, 0}}, {{233, 7}, {462, 0}},
+        {{238, 7}, {462, 0}}, {{270, 7}, {462, 0}}},
+       "Death Gorgons rule the upper floors\n"
+       "with savage fury. Their twin axes\n"
+       "cleave through the strongest armor.\n"
+       "Destroy 8 of these monstrosities."},
+
+      // Q41: Balrog x2 (lvl 66, boss — long respawn)
+      {313, 1, {{38, 2}, {0, 0}, {0, 0}},
+       "Lord of the Tower", "Lost Tower",
+       {{{297, 8}, {462, 0}}, {{361, 8}, {462, 0}},
+        {{142, 8}, {462, 0}}, {{302, 8}, {462, 0}}},
+       "The Balrog commands all creatures within\n"
+       "the Lost Tower. It is ancient, powerful,\n"
+       "and nearly immortal. Slay 2 of these\n"
+       "demon lords to break their reign."},
   };
 
   int questCount = sizeof(quests) / sizeof(quests[0]);

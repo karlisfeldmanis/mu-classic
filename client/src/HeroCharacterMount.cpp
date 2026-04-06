@@ -146,6 +146,10 @@ void HeroCharacter::renderMountModel(const glm::mat4 &view, const glm::mat4 &pro
 
 
       // BGFX: per-submit uniforms and state
+      // IMPORTANT: BGFX uniforms persist across submit calls within a frame.
+      // Must set ALL uniforms here — any missing uniform inherits stale state
+      // from the hero's glow/tint passes, causing invisible mount when items
+      // are upgraded (+5/+7+).
       auto mountDrawMesh = [&](MeshBuffers &mb, float bml, uint64_t state) {
         bgfx::setTransform(glm::value_ptr(mountModel));
         if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
@@ -154,11 +158,17 @@ void HeroCharacter::renderMountModel(const glm::mat4 &view, const glm::mat4 &pro
         m_shader->setTexture(0, "s_texColor", mb.texture);
         m_shader->setVec4("u_params", glm::vec4(m_mount.alpha, bml, 0.0f, 0.0f));
         m_shader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, 0.0f, 0.0f));
+        m_shader->setVec4("u_viewPos", glm::vec4(camPos, 0.0f));
+        m_shader->setVec4("u_lightPos", glm::vec4(camPos + glm::vec3(0, 500, 0), 0.0f));
+        m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
         m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
         m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
         m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+        m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
         m_shader->setVec4("u_fogParams", glm::vec4(0.0f));
         m_shader->setVec4("u_fogColor", glm::vec4(0.0f));
+        m_shader->setVec4("u_shadowParams", glm::vec4(0.0f));
+        m_shader->uploadPointLights(0, m_pointLights.data());
         bgfx::setState(state);
         bgfx::submit(0, m_shader->program);
       };

@@ -207,12 +207,12 @@ static void ApplyDamageToMonster(Session &session, MonsterInstance *mon,
     damage =
         baseMin + (baseMax > baseMin ? rand() % (baseMax - baseMin + 1) : 0);
 
-    // Luck bonus: equipped weapon with Luck flag adds +5% crit chance
+    // Luck bonus: each equipped item with Luck flag adds +5% crit chance
     int critBonus = 0;
-    if (session.equipment[0].optionFlags & 0x40)
-      critBonus += 5;
-    if (session.equipment[1].optionFlags & 0x40)
-      critBonus += 5;
+    for (int sl = 0; sl < 12; sl++) {
+      if (session.equipment[sl].optionFlags & 0x40)
+        critBonus += 5;
+    }
 
     int critRoll = rand() % 100;
     if (critRoll < (1 + critBonus)) {

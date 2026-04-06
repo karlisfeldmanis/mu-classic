@@ -21,6 +21,7 @@ struct ItemRenderJob {
   int x, y, w, h;
   bool hovered;
   uint8_t itemLevel = 0;
+  bool overlay = false; // true for accessory slots (no depth clear)
 };
 
 // Equipment slot layout rect (virtual coords)
@@ -59,6 +60,11 @@ struct InventoryUIContext {
   int *serverHP, *serverMaxHP, *serverMP, *serverMaxMP;
   int *serverAG; // AG for DK (separate from mana)
   int64_t *serverXP;
+  int *serverResets;
+
+  // Quest state for map panel markers
+  void *questCatalog;  // std::vector<QuestCatalogEntry>*
+  void *activeQuests;  // std::vector<ActiveQuestClient>*
 
   // Teleport / warp cast
   bool *teleportingToTown;
@@ -80,8 +86,11 @@ struct InventoryUIContext {
   ServerConnection *server;
   UICoords *hudCoords;
   ImFont *fontDefault;
-  ImFont *fontBold;     // Decorative title font (Cinzel / WoW-style)
-  ImFont *fontRegion;   // Large font for region name display
+  ImFont *fontBold;      // Decorative title font (Cinzel / WoW-style)
+  ImFont *fontRegion;    // Large font for region name display
+  ImFont *fontHeadline;  // Newsreader Bold Italic: tooltip item names
+  ImFont *fontLabel;     // Work Sans Regular: tooltip body/labels (13px)
+  ImFont *fontLabelBold; // Work Sans SemiBold: tooltip bold values (13px)
 };
 
 namespace InventoryUI {
@@ -141,6 +150,7 @@ void LoadSlotBackgrounds(const std::string &dataPath);
 
 // Panel geometry queries
 float GetCharInfoPanelX();
+float GetMapPanelX();
 float GetInventoryPanelX();
 float GetShopPanelX();
 bool IsPointInPanel(float vx, float vy, float panelX);

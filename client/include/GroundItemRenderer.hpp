@@ -55,6 +55,10 @@ void UpdateSparkleTimers(GroundItem *items, int maxItems, float deltaTime,
 // Render blob shadows for all active ground items (call before RenderModels)
 void RenderShadows(GroundItem *items, int maxItems, const glm::mat4 &view,
                    const glm::mat4 &proj);
+// Pick ground item by label click (screen-space hit test)
+int PickLabel(GroundItem *items, int maxItems, float mouseX, float mouseY,
+              ImFont *font, const glm::mat4 &view, const glm::mat4 &proj,
+              int winW, int winH, const glm::vec3 &camPos);
 } // namespace GroundItemRenderer
 
 #endif // MU_GROUND_ITEM_RENDERER_HPP

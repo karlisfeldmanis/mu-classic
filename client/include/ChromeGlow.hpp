@@ -1,6 +1,8 @@
 #pragma once
 
 #include "TextureLoader.hpp" // TexHandle, TexValid, TexDestroy
+#include "Shader.hpp"
+#include "MeshBuffers.hpp"
 #include <glm/glm.hpp>
 #include <string>
 
@@ -37,5 +39,38 @@ glm::vec3 GetPartObjectColor2(int category, int itemIndex);
 // Each pass has chromeMode, texture, and color already resolved.
 int GetGlowPasses(int enhanceLevel, int category, int itemIndex,
                   GlowPass *outPasses);
+
+// ── Centralized glow rendering helper ──
+// Renders all glow passes for a set of mesh buffers at the given enhancement
+// level. This replaces the duplicated glow rendering loops in HeroCharacter,
+// CharacterSelect, NpcManager, and ItemModelManager.
+//
+// Parameters:
+//   shader       - The model shader to use
+//   meshes       - Vector of mesh buffers to render with glow
+//   modelMat     - Model transform matrix
+//   enhanceLevel - Item enhancement level (+7, +9, +11, +13)
+//   category     - Item category (0-14)
+//   itemIndex    - Item index within category
+//   viewId       - BGFX view ID to submit to
+//   time         - Current time for chrome animation (glfwGetTime)
+//   skipBlendMesh- BlendMesh index to skip (-1 = skip none)
+//   colorScale   - Per-pass color multiplier (1.0 = normal, <1.0 for weapons)
+struct GlowRenderParams {
+  const glm::mat4 *modelMat;
+  int enhanceLevel;
+  int category;
+  int itemIndex;
+  uint8_t viewId;
+  float time;
+  int skipBlendMesh;    // -1 = don't skip any
+  float colorScale;     // 1.0 = normal
+  glm::vec3 viewPos;    // Camera position (for u_viewPos, u_lightPos)
+  float luminosity;     // Map luminosity (for u_params2)
+};
+
+void RenderGlowMeshes(Shader *shader,
+                      const std::vector<::MeshBuffers> &meshes,
+                      const GlowRenderParams &params);
 
 } // namespace ChromeGlow

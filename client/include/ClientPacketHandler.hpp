@@ -53,6 +53,7 @@ struct ClientGameState {
   int *serverDefense = nullptr;
   int *serverAttackSpeed = nullptr;
   int *serverMagicSpeed = nullptr;
+  int *serverResets = nullptr;
   int16_t *potionBar = nullptr; // [4]
   int8_t *skillBar = nullptr;   // [10]
   int8_t *rmcSkillId = nullptr;

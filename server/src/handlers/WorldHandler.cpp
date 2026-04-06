@@ -83,6 +83,7 @@ void HandlePrecisePosition(Session &session,
   // packets (sent before client received MAP_CHANGE) from triggering viewport.
   if (session.pendingViewportDelay > 0.0f && session.pendingViewportDelay < 4.5f) {
     session.pendingViewportDelay = 0.0f;
+    session.mapLoading = false; // Client is ready — allow monster aggro
     SendNpcViewport(session, world);
     auto v2pkt = world.BuildMonsterViewportV2Packet();
     if (!v2pkt.empty())
@@ -289,6 +290,9 @@ void HandleCharSelect(Session &session, const std::vector<uint8_t> &packet,
     world.SetActiveMap(c.mapId);
     world.LoadNpcsFromDB(db, c.mapId);
     world.LoadMonstersFromDB(db, c.mapId);
+
+    // Mark player as loading — monsters will ignore until client signals ready
+    session.mapLoading = true;
 
     // Tell client to load the correct map
     PMSG_MAP_CHANGE_SEND mapPkt{};
