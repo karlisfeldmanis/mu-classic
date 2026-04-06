@@ -402,6 +402,8 @@ private:
   static constexpr int ACTION_WALK_BOW = 21;
   static constexpr int ACTION_WALK_CROSSBOW = 22;
   static constexpr int ACTION_WALK_WAND = 23;
+  static constexpr int ACTION_WALK_SWIM = 24;  // Atlans swimming walk
+  static constexpr int ACTION_RUN_SWIM = 33;   // Atlans swimming run
 
   // Attack actions (_enum.h)
   static constexpr int ACTION_ATTACK_FIST = 38;

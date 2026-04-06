@@ -277,8 +277,10 @@ static int DetermineFloor(int mapId, int gx, int gy) {
 static const char *GetFloorDisplayName() {
   static char buf[64];
   static const char *mapNames[] = {
-      "Lorencia", "Dungeon", "Devias", "Noria", "Lost Tower"};
-  const char *base = (g_currentMapId >= 0 && g_currentMapId < 5)
+      "Lorencia", "Dungeon", "Devias", "Noria", "Lost Tower",
+      nullptr, nullptr, "Atlans"}; // indices 5,6 unused
+  const char *base = (g_currentMapId >= 0 && g_currentMapId < 8 &&
+                      mapNames[g_currentMapId])
                          ? mapNames[g_currentMapId]
                          : "Unknown";
   if (g_currentFloor > 1) {
@@ -509,6 +511,43 @@ static const MapConfig MAP_CONFIGS[] = {
         "Music/lost_tower_a.mp3",
         nullptr,
         false, // useNamedObjects (Object5/ numbered)
+        {0},
+        0,
+        {0},
+        0,
+        false,
+        0, // roofHiding (none)
+        {0},
+        0, // bridgeTypes (none)
+    },
+    {
+        // Atlans (mapId=7) — underwater swimming map
+        7,
+        "Atlans",
+        0.0f,
+        0.02f,
+        0.06f, // clearColor (deep ocean blue-black)
+        0.04f,
+        0.10f,
+        0.18f, // fogColor (underwater blue haze)
+        600.f,
+        2200.f,
+        0.85f, // fogNear, fogFar, luminosity
+        0.30f,
+        0.45f,
+        0.20f, // bloom, threshold, vignette
+        0.82f,
+        0.92f,
+        1.18f, // colorTint (underwater blue shift)
+        false,
+        false,
+        false,
+        false,
+        false, // sky, grass, doors, leaves, wind
+        SOUND_WATER01,
+        "Music/atlans.mp3",
+        nullptr,
+        false, // useNamedObjects (Object8/ numbered)
         {0},
         0,
         {0},
@@ -5715,7 +5754,12 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
       glm::mat3 rot;
       for (int c = 0; c < 3; c++)
         rot[c] = glm::normalize(glm::vec3(inst.modelMatrix[c]));
-      g_fireEffect.AddEmitter(worldPos + rot * off);
+      // Type 24 on Lost Tower: tall rising fire column, all others: stationary fire
+      bool isColumn = (mapId == 4 && inst.type == 24);
+      if (isColumn)
+        g_fireEffect.AddColumnEmitter(worldPos + rot * off);
+      else
+        g_fireEffect.AddEmitter(worldPos + rot * off);
     }
   }
   for (auto &inst : g_objectRenderer.GetInstances()) {

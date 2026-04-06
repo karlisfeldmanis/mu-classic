@@ -56,6 +56,9 @@ static const std::unordered_map<uint16_t, std::string> s_monsterNames = {
     {39, "Poison Shadow"},
     {40, "Death Knight"},
     {41, "Death Cow"},
+    // Atlans
+    {45, "Bahamut"}, {46, "Vepar"}, {47, "Valkyrie"}, {48, "Lizard King"},
+    {49, "Hydra"}, {50, "Sea Worm"}, {51, "Great Bahamut"}, {52, "Silver Valkyrie"},
     // Elf summon
     {150, "Bali"}};
 
@@ -1064,6 +1067,90 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     m_typeToModel[41] = idx;
   }
 
+  // ── Atlans monsters (OpenMU Version075 Atlans.cs) ──
+  // Monster32-39.bmd — underwater sea creatures
+
+  // Bahamut (type 45): Monster32.bmd
+  {
+    int idx = loadMonsterModel("Monster32.bmd", "Bahamut", 1.0f, 80.0f, 120.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 65;
+      m_models[idx].defenseRate = 52;
+      m_models[idx].attackRate = 215;
+    }
+    m_typeToModel[45] = idx;
+  }
+  // Vepar (type 46): Monster33.bmd — ranged attacker
+  {
+    int idx = loadMonsterModel("Monster33.bmd", "Vepar", 1.0f, 80.0f, 130.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 70;
+      m_models[idx].defenseRate = 58;
+      m_models[idx].attackRate = 225;
+    }
+    m_typeToModel[46] = idx;
+  }
+  // Valkyrie (type 47): Monster34.bmd — ranged attacker
+  {
+    int idx = loadMonsterModel("Monster34.bmd", "Valkyrie", 1.0f, 80.0f, 130.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 75;
+      m_models[idx].defenseRate = 64;
+      m_models[idx].attackRate = 230;
+    }
+    m_typeToModel[47] = idx;
+  }
+  // Lizard King (type 48): Monster35.bmd — strong melee
+  {
+    int idx = loadMonsterModel("Monster35.bmd", "Lizard King", 1.0f, 100.0f, 160.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 180;
+      m_models[idx].defenseRate = 115;
+      m_models[idx].attackRate = 350;
+    }
+    m_typeToModel[48] = idx;
+  }
+  // Hydra (type 49): Monster36.bmd — boss
+  {
+    int idx = loadMonsterModel("Monster36.bmd", "Hydra", 1.2f, 120.0f, 200.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 200;
+      m_models[idx].defenseRate = 125;
+      m_models[idx].attackRate = 430;
+    }
+    m_typeToModel[49] = idx;
+  }
+  // Sea Worm (type 50): Monster37.bmd — boss
+  {
+    int idx = loadMonsterModel("Monster37.bmd", "Sea Worm", 1.2f, 120.0f, 200.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 200;
+      m_models[idx].defenseRate = 125;
+      m_models[idx].attackRate = 430;
+    }
+    m_typeToModel[50] = idx;
+  }
+  // Great Bahamut (type 51): Monster38.bmd — stronger variant
+  {
+    int idx = loadMonsterModel("Monster38.bmd", "Great Bahamut", 1.2f, 100.0f, 150.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 150;
+      m_models[idx].defenseRate = 98;
+      m_models[idx].attackRate = 330;
+    }
+    m_typeToModel[51] = idx;
+  }
+  // Silver Valkyrie (type 52): Monster39.bmd — ranged ice attacker
+  {
+    int idx = loadMonsterModel("Monster39.bmd", "Silver Valkyrie", 1.0f, 90.0f, 140.0f);
+    if (idx >= 0) {
+      m_models[idx].defense = 170;
+      m_models[idx].defenseRate = 110;
+      m_models[idx].attackRate = 340;
+    }
+    m_typeToModel[52] = idx;
+  }
+
   // ── Lost Tower monster weapons (must come AFTER model registration) ──
   // These were previously in the non-skeleton weapons block but failed silently
   // because m_typeToModel[35..41] wasn't populated yet at that point.
@@ -1490,6 +1577,17 @@ void MonsterManager::playIdleSound(MonsterInstance &mon) {
     SoundManager::Play3D(SOUND_MONSTER_DARKKNIGHT1 + rand() % 2, px, py, pz); break;
   case 41: // Death Cow — Main 5.2 model 30: mBull1/2.wav idle
     SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz); break;
+  // Atlans monsters
+  case 45: case 51: // Bahamut, Great Bahamut
+    SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
+  case 46: // Vepar — uses Bahamut sound
+    SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
+  case 47: case 52: // Valkyrie, Silver Valkyrie
+    SoundManager::Play3D(SOUND_MONSTER_VALKYRIE1, px, py, pz); break;
+  case 48: // Lizard King
+    SoundManager::Play3D(SOUND_MONSTER_LIZARDKING1 + rand() % 2, px, py, pz); break;
+  case 49: case 50: // Hydra, Sea Worm
+    SoundManager::Play3D(SOUND_MONSTER_HYDRA1, px, py, pz); break;
   default: break;
   }
 }
@@ -2211,6 +2309,15 @@ void MonsterManager::SetMonsterDying(int index) {
       case 41: // Death Cow — mBullDie (model 30, same sounds as Bull Fighter)
         SoundManager::Play3D(SOUND_MONSTER_BULLDIE, px, py, pz);
         break;
+      // Atlans monsters
+      case 45: case 51: // Bahamut, Great Bahamut
+        SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
+      case 47: case 52: // Valkyrie, Silver Valkyrie
+        SoundManager::Play3D(SOUND_MONSTER_VALKYRIEDIE, px, py, pz); break;
+      case 48: // Lizard King
+        SoundManager::Play3D(SOUND_MONSTER_LIZARDKING2, px, py, pz); break;
+      case 49: case 50: // Hydra, Sea Worm
+        SoundManager::Play3D(SOUND_MONSTER_HYDRA1, px, py, pz); break;
       default: break;
       }
       }
@@ -2431,6 +2538,17 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     case 41: // Death Cow — mBullAttack (model 30, same sounds as Bull Fighter)
       SoundManager::Play3D(SOUND_MONSTER_BULLATTACK1 + rand() % 2, px, py, pz);
       break;
+    // Atlans monsters
+    case 45: case 51: // Bahamut, Great Bahamut
+      SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
+    case 46: // Vepar
+      SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
+    case 47: case 52: // Valkyrie, Silver Valkyrie
+      SoundManager::Play3D(SOUND_MONSTER_VALKYRIE1, px, py, pz); break;
+    case 48: // Lizard King
+      SoundManager::Play3D(SOUND_MONSTER_LIZARDKING1, px, py, pz); break;
+    case 49: case 50: // Hydra, Sea Worm
+      SoundManager::Play3D(SOUND_MONSTER_HYDRAATTACK1, px, py, pz); break;
     default: break;
     }
     }

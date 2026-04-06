@@ -1005,6 +1005,45 @@ void Database::SeedNpcSpawns() {
   } else {
     printf("[DB] Seeded 3 Lost Tower NPC spawns (Amy + vault keeper + quest guard)\n");
   }
+
+  // Seed Atlans (map_id=7) spawns if not already present
+  sqlite3_prepare_v2(m_db, "SELECT COUNT(*) FROM npc_spawns WHERE map_id=7",
+                     -1, &stmt, nullptr);
+  int atlansCount = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW)
+    atlansCount = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  if (atlansCount > 0) {
+    printf("[DB] Atlans spawns already seeded (%d entries)\n", atlansCount);
+    return;
+  }
+  // Load Atlans spawn SQL from file if available, otherwise use inline guard NPC
+  {
+    // Try loading from atlans_spawns.sql next to the database
+    std::string sqlPath = "atlans_spawns.sql";
+    FILE *f = fopen(sqlPath.c_str(), "r");
+    if (f) {
+      fseek(f, 0, SEEK_END);
+      long sz = ftell(f);
+      fseek(f, 0, SEEK_SET);
+      std::string sql(sz, '\0');
+      fread(&sql[0], 1, sz, f);
+      fclose(f);
+      err = nullptr;
+      if (sqlite3_exec(m_db, sql.c_str(), nullptr, nullptr, &err) != SQLITE_OK) {
+        printf("[DB] SeedAtlansSpawns error: %s\n", err);
+        sqlite3_free(err);
+      } else {
+        printf("[DB] Seeded Atlans spawns from %s\n", sqlPath.c_str());
+      }
+    } else {
+      // Fallback: just seed the guard NPC
+      const char *guardSql = "INSERT INTO npc_spawns (type, map_id, pos_x, pos_y, direction, name) "
+                             "VALUES (240, 7, 23, 17, 2, 'Guard');";
+      sqlite3_exec(m_db, guardSql, nullptr, nullptr, nullptr);
+      printf("[DB] Seeded 1 Atlans guard NPC (spawn file not found)\n");
+    }
+  }
 }
 
 std::vector<NpcSpawnData> Database::GetNpcSpawns(uint8_t mapId) {

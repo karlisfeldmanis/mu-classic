@@ -136,6 +136,18 @@ enum SoundId {
   SOUND_DUNGEON01 = 251,
   // Lost Tower ambient (Main 5.2: aTower.wav — creaking/wind tower atmosphere)
   SOUND_TOWER01 = 359,
+  // Atlans ambient (Main 5.2: aWater.wav — underwater ambience)
+  SOUND_WATER01 = 360,
+  // Swimming footstep (Main 5.2: pSwim.wav)
+  SOUND_SWIM_STEP = 361,
+  // Atlans monster sounds
+  SOUND_MONSTER_BAHAMUT1 = 362,
+  SOUND_MONSTER_VALKYRIE1 = 363,
+  SOUND_MONSTER_VALKYRIEDIE = 364,
+  SOUND_MONSTER_LIZARDKING1 = 365,
+  SOUND_MONSTER_LIZARDKING2 = 366,
+  SOUND_MONSTER_HYDRA1 = 367,
+  SOUND_MONSTER_HYDRAATTACK1 = 368,
   // Dungeon critter: bat screech (Main 5.2: aBat.wav — 3D positional)
   SOUND_BAT01 = 252,
   // Ghost (type 11) — Main 5.2: SOUND_MONSTER + 35..39

@@ -1368,10 +1368,9 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       }
       activeShader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, cliffFadeFlag, cliffTopH));
       activeShader->setVec4("u_lightPos", glm::vec4(sunPos, 0.0f));
-      // Indoor maps (Dungeon, Lost Tower): minimal sun direction — lighting from
-      // lightmap only. Main 5.2: indoor objects use BodyLight from lightmap,
-      // no directional sun contribution on walls.
-      float sunIntensity = (m_mapId == 1 || m_mapId == 4) ? 0.4f : 1.0f;
+      // Indoor/underwater maps: minimal sun direction — lighting from lightmap only.
+      // Main 5.2: indoor objects use BodyLight from lightmap, no directional sun.
+      float sunIntensity = (m_mapId == 1 || m_mapId == 4 || m_mapId == 7) ? 0.4f : 1.0f;
       activeShader->setVec4("u_lightColor", glm::vec4(sunIntensity, sunIntensity, sunIntensity, 0.0f));
       activeShader->setVec4("u_viewPos", glm::vec4(cameraPos, 0.0f));
       // w=1.0 enables per-pixel lightmap sampling in shader (smooth across meshes)

@@ -257,6 +257,16 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_WIND01, sndPath + "aWind.wav", 1);
   LoadSound(SOUND_DUNGEON01, sndPath + "aDungeon.wav", 1);
   LoadSound(SOUND_TOWER01, sndPath + "aTower.wav", 1);
+  LoadSound(SOUND_WATER01, sndPath + "aWater.wav", 1);
+  LoadSound(SOUND_SWIM_STEP, sndPath + "pSwim.wav", 2, true);
+  // Atlans monster sounds
+  LoadSound(SOUND_MONSTER_BAHAMUT1, sndPath + "mBahamut1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_VALKYRIE1, sndPath + "mValkyrie1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_VALKYRIEDIE, sndPath + "mValkyrieDie.wav", 2, true);
+  LoadSound(SOUND_MONSTER_LIZARDKING1, sndPath + "mLizardKing1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_LIZARDKING2, sndPath + "mLizardKing2.wav", 2, true);
+  LoadSound(SOUND_MONSTER_HYDRA1, sndPath + "mHydra1.wav", 2, true);
+  LoadSound(SOUND_MONSTER_HYDRAATTACK1, sndPath + "mHydraAttack1.wav", 2, true);
   LoadSound(SOUND_BAT01, sndPath + "aBat.wav", 1, true); // 3D positional
   LoadSound(SOUND_MOUSE01, sndPath + "aMouse.wav", 1, true); // 3D positional
   LoadSound(SOUND_FOREST01, sndPath + "aForest.wav", 1); // Noria forest ambient

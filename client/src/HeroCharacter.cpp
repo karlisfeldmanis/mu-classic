@@ -327,6 +327,10 @@ float HeroCharacter::idlePlaySpeed(int action) const {
 }
 
 int HeroCharacter::weaponIdleAction() const {
+  // Atlans: swim idle (uses swim walk at slower speed, handled in animation update)
+  if (m_mapId == 7 && !m_inSafeZone)
+    return ACTION_WALK_SWIM;
+
   if (isMountRiding())
     return m_weaponBmd ? ACTION_STOP_RIDE_WEAPON : ACTION_STOP_RIDE;
 
@@ -357,6 +361,10 @@ int HeroCharacter::weaponIdleAction() const {
 }
 
 int HeroCharacter::weaponWalkAction() const {
+  // Atlans: swimming overrides all weapon walk actions
+  if (m_mapId == 7 && !m_inSafeZone)
+    return ACTION_WALK_SWIM;
+
   // Both mounts bounce — character uses running ride animation
   if (isMountRiding())
     return m_weaponBmd ? ACTION_RUN_RIDE_WEAPON : ACTION_RUN_RIDE;
@@ -648,7 +656,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     // City (safe zone) uses soil footsteps, fields use grass
     // Slight pitch variation (0.9-1.1) so steps don't sound identical
     if (m_moving) {
-      int walkSound = m_inSafeZone ? SOUND_WALK_SOIL : SOUND_WALK_GRASS;
+      int walkSound = (m_mapId == 7 && !m_inSafeZone) ? SOUND_SWIM_STEP
+                     : m_inSafeZone ? SOUND_WALK_SOIL : SOUND_WALK_GRASS;
       if (m_animFrame >= 1.5f && !m_foot[0]) {
         m_foot[0] = true;
         SoundManager::PlayPitched(walkSound, 0.9f, 1.1f);

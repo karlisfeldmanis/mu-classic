@@ -221,6 +221,14 @@ void FireEffect::AddEmitter(const glm::vec3 &worldPos) {
   emitters.push_back(e);
 }
 
+void FireEffect::AddColumnEmitter(const glm::vec3 &worldPos) {
+  Emitter e;
+  e.position = worldPos;
+  e.spawnAccum = RandFloat(0.0f, 1.0f);
+  e.column = true;
+  emitters.push_back(e);
+}
+
 void FireEffect::AddSmokeEmitter(const glm::vec3 &worldPos) {
   Emitter e;
   e.position = worldPos;
@@ -304,33 +312,45 @@ void FireEffect::Update(float deltaTime, const glm::vec3 &cameraPos) {
         p.subType = rand() % 4;
         p.gravity = 0.0f;
         p.frameOffset = rand() % 4;
-        // Brighter fire: lum 1.2-2.0 creates white-hot core when overlapping
-        // (additive blend: multiple overlapping particles → near-white center)
-        float lum = RandFloat(1.2f, 2.0f);
-        p.color = glm::vec3(lum, lum * 0.6f, lum * 0.4f);
         p.maxLifetime = PARTICLE_LIFETIME;
         p.lifetime = PARTICLE_LIFETIME;
 
-        if (p.subType == 0) {
-          // Main 5.2 BITMAP_FLAME SubType 0: RISING fire particles
-          // Velocity Z = (rand()%128+128)*0.15 per tick = 19.2-38.4 per tick
-          // Converted to per-second: * 25
-          float upSpeed = RandFloat(19.2f, 38.4f) * 25.0f;
-          p.velocity = glm::vec3(RandFloat(-5.0f, 5.0f), upSpeed,
-                                 RandFloat(-5.0f, 5.0f));
-          p.scale = RandFloat(100.0f, 150.0f);
-        } else if (p.subType == 1) {
-          // Tiny sparks: slight upward drift
-          p.velocity = glm::vec3(RandFloat(-3.0f, 3.0f),
-                                 RandFloat(60.0f, 120.0f),
-                                 RandFloat(-3.0f, 3.0f));
-          p.scale = RandFloat(10.0f, 18.0f);
+        if (emitter.column) {
+          // Lost Tower fire column: bright, fast-rising particles
+          float lum = RandFloat(1.2f, 2.0f);
+          p.color = glm::vec3(lum, lum * 0.6f, lum * 0.4f);
+          if (p.subType == 0) {
+            float upSpeed = RandFloat(19.2f, 38.4f) * 25.0f;
+            p.velocity = glm::vec3(RandFloat(-5.0f, 5.0f), upSpeed,
+                                   RandFloat(-5.0f, 5.0f));
+            p.scale = RandFloat(100.0f, 150.0f);
+          } else if (p.subType == 1) {
+            p.velocity = glm::vec3(RandFloat(-3.0f, 3.0f),
+                                   RandFloat(60.0f, 120.0f),
+                                   RandFloat(-3.0f, 3.0f));
+            p.scale = RandFloat(10.0f, 18.0f);
+          } else {
+            float upSpeed = RandFloat(10.0f, 25.0f) * 25.0f;
+            p.velocity = glm::vec3(RandFloat(-3.0f, 3.0f), upSpeed,
+                                   RandFloat(-3.0f, 3.0f));
+            p.scale = RandFloat(60.0f, 100.0f);
+          }
         } else {
-          // SubType 2,3: rising glow — slower upward drift for volume
-          float upSpeed = RandFloat(10.0f, 25.0f) * 25.0f;
-          p.velocity = glm::vec3(RandFloat(-3.0f, 3.0f), upSpeed,
-                                 RandFloat(-3.0f, 3.0f));
-          p.scale = RandFloat(60.0f, 100.0f);
+          // Regular fire (bonfires, torches): stationary with slight flicker
+          float lum = RandFloat(0.9f, 1.5f);
+          p.color = glm::vec3(lum, lum * 0.6f, lum * 0.4f);
+          if (p.subType == 0) {
+            p.velocity = glm::vec3(0.0f, 0.0f, 0.0f);
+            p.scale = RandFloat(80.0f, 115.0f);
+          } else if (p.subType == 1) {
+            p.velocity = glm::vec3(RandFloat(-2.0f, 2.0f),
+                                   RandFloat(8.0f, 18.0f),
+                                   RandFloat(-2.0f, 2.0f));
+            p.scale = RandFloat(8.0f, 14.0f);
+          } else {
+            p.velocity = glm::vec3(0.0f, 0.0f, 0.0f);
+            p.scale = RandFloat(40.0f, 60.0f);
+          }
         }
       }
 
@@ -362,12 +382,14 @@ void FireEffect::Update(float deltaTime, const glm::vec3 &cameraPos) {
       p.velocity.y *= (1.0f - 1.5f * deltaTime);
       p.scale -= 50.0f * deltaTime;
     } else {
-      // Main 5.2: BITMAP_FLAME SubType 0/1 — random rotation every tick
-      // Plus XZ wobble for organic look
-      p.position.x += RandFloat(-5.0f, 5.0f) * deltaTime;
-      p.position.z += RandFloat(-5.0f, 5.0f) * deltaTime;
-      // Full random rotation each frame (Main 5.2: rand()%360 per tick)
-      p.rotation = RandFloat(0.0f, 6.2832f);
+      p.position.x += RandFloat(-3.0f, 3.0f) * deltaTime;
+      p.position.z += RandFloat(-3.0f, 3.0f) * deltaTime;
+      // Column fire (high velocity): full random rotation per frame
+      // Regular fire (stationary): slow rotation drift
+      if (p.velocity.y > 100.0f)
+        p.rotation = RandFloat(0.0f, 6.2832f);
+      else
+        p.rotation += RandFloat(-0.5f, 0.5f) * deltaTime;
 
       if (p.subType <= 1) {
         // SubType 0: shrinks. SubType 1 (sparks): slight rise + shrinks.

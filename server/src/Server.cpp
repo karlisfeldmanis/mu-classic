@@ -47,6 +47,7 @@ bool Server::Start(uint16_t port) {
   m_world.LoadTerrainAttributesForMap(2, "Data/World3/EncTerrain3.att");
   m_world.LoadTerrainAttributesForMap(3, "Data/World4/EncTerrain4.att");
   m_world.LoadTerrainAttributesForMap(4, "Data/World5/EncTerrain5.att");
+  m_world.LoadTerrainAttributesForMap(7, "Data/World8/EncTerrain8.att");
   m_world.SetActiveMap(0);
 
   // Load NPC and monster data from database
@@ -1171,6 +1172,15 @@ void Server::CheckGateZones(Session &session) {
   } else if (session.mapId == 4 && gx >= 8 && gx <= 9 && gy >= 85 && gy <= 87) {
     // Gate 41→40: spawn outside return trigger (6-7, 5-8)
     TransitionMap(session, 4, 5, 9);
+  }
+  // ── Noria ↔ Atlans gates ──
+  else if (session.mapId == 3 && gx >= 242 && gx <= 245 && gy >= 240 && gy <= 243) {
+    // Noria → Atlans (OpenMU gate 45→46)
+    if (session.level >= 60)
+      TransitionMap(session, 7, 14, 12);
+  } else if (session.mapId == 7 && gx >= 9 && gx <= 15 && gy >= 9 && gy <= 15) {
+    // Atlans → Noria (OpenMU gate 47→48)
+    TransitionMap(session, 3, 240, 241);
   }
 }
 

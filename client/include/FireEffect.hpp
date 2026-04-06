@@ -31,10 +31,9 @@ public:
   void Init(const std::string &effectDataPath);
   void ClearEmitters();
   void AddEmitter(const glm::vec3 &worldPos); // Fire emitter (GL world coords)
-  void
-  AddSmokeEmitter(const glm::vec3 &worldPos); // Smoke emitter (gray, slower)
-  void
-  AddWaterSmokeEmitter(const glm::vec3 &worldPos); // Water mist (blue tint)
+  void AddColumnEmitter(const glm::vec3 &worldPos); // Fire column (tall rising)
+  void AddSmokeEmitter(const glm::vec3 &worldPos); // Smoke emitter (gray, slower)
+  void AddWaterSmokeEmitter(const glm::vec3 &worldPos); // Water mist (blue tint)
   void Update(float deltaTime, const glm::vec3 &cameraPos = glm::vec3(0));
   void Render(const glm::mat4 &view, const glm::mat4 &projection);
   void Cleanup();
@@ -46,8 +45,9 @@ private:
   struct Emitter {
     glm::vec3 position;
     float spawnAccum = 0.0f;
-    bool smoke = false; // true = gray smoke, false = orange fire
-    bool water = false; // true = blue water mist
+    bool smoke = false;  // true = gray smoke, false = orange fire
+    bool water = false;  // true = blue water mist
+    bool column = false; // true = Lost Tower fire column (tall rising particles)
   };
 
   struct Particle {
