@@ -1516,6 +1516,8 @@ void BoidManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   if (m_mapId == 0) {
     for (int i = 0; i < MAX_BOIDS; ++i)
       renderBoid(m_boids[i], view, proj, camPos);
+    for (int i = 0; i < MAX_FISHS; ++i)
+      renderFish(m_fishs[i], view, proj, camPos);
   } else if (m_mapId == 1) {
     for (int i = 0; i < MAX_BATS; ++i)
       renderBat(m_bats[i], view, proj, camPos);
@@ -1524,6 +1526,10 @@ void BoidManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
   } else if (m_mapId == 3) {
     for (int i = 0; i < MAX_BUTTERFLIES; ++i)
       renderButterfly(m_butterflies[i], view, proj, camPos);
+  } else if (m_mapId == 7) {
+    // Atlans: underwater fish
+    for (int i = 0; i < MAX_FISHS; ++i)
+      renderFish(m_fishs[i], view, proj, camPos);
   }
 }
 

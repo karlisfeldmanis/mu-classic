@@ -1078,7 +1078,9 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       MuMath::IsCrossbow(m_weaponInfo.category, m_weaponInfo.itemIndex);
 
   int combatBone = isCrossbowWep ? BONE_R_HAND : wCat.attachBone;
-  bool weaponOnBack = m_inSafeZone || isMountRiding();
+  // Main 5.2: weapons move to back during swimming (bBindBack=true)
+  bool isSwimming = (m_mapId == 7 && !m_inSafeZone && m_moving);
+  bool weaponOnBack = m_inSafeZone || isMountRiding() || isSwimming;
   int attachBone = (weaponOnBack && BONE_BACK < (int)bones.size())
                        ? BONE_BACK
                        : combatBone;

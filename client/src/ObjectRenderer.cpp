@@ -53,6 +53,7 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
   case 20:
     return (mapId == 4) ? 4 : -1; // Lost Tower: lightning pillar additive mesh 4
   case 23:
+    if (mapId == 7) return 0;  // Atlans: pulsing underwater blend
     return (mapId == 4) ? 1 : -1; // Lost Tower: window/grate additive mesh 1
   case 92:
   case 93:
@@ -77,6 +78,13 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
     return 1; // MerchantAnimal glow
   case 78:
     return 3; // StoneMuWall torch/window glow
+  // Atlans (mapId=7) — Main 5.2 ZzzObject.cpp WD_7ATLANSE
+  case 32: case 34:
+    return (mapId == 7) ? 1 : -1; // Atlans: pulsing coral/plant blend
+  case 38:
+    return (mapId == 7) ? 0 : -1; // Atlans: light object blend
+  case 40:
+    return (mapId == 7) ? 0 : -1; // Atlans: drifting object blend
   default:
     return -1;
   }
@@ -1109,6 +1117,16 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       continue;
     if (m_mapId == 0 && (inst.type == 20 || inst.type == 21)) // Lorencia grass (bad Y coords)
       continue;
+    if (m_mapId == 7 && (inst.type == 22 || inst.type == 39)) {
+      // Atlans: HiddenMesh=-2, type 22 emits bubble particles
+      if (inst.type == 22 && m_vfxManager && rand() % 5 == 0) {
+        glm::vec3 pos(inst.modelMatrix[3][0], inst.modelMatrix[3][1] + 50.0f,
+                      inst.modelMatrix[3][2]);
+        m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, pos,
+                                         glm::vec3(0.5f, 0.7f, 1.0f), 1);
+      }
+      continue;
+    }
     if (!m_typeFilter.empty()) {
       bool allowed = false;
       for (int t : m_typeFilter)
@@ -1289,6 +1307,17 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           float phase = inst.modelMatrix[3][0] * 0.013f;
           intensity = 0.78f + 0.10f * std::sin(currentTime * 3.8f + phase)
                             + 0.06f * std::sin(currentTime * 9.5f + phase * 2.1f);
+        }
+        // Atlans: pulsing underwater BlendMesh (Main 5.2 sinf-based BlendMeshLight)
+        if (m_mapId == 7) {
+          if (inst.type == 23) // Slow pulse 0.2-0.8
+            intensity = std::sin(currentTime * 2.0f) * 0.3f + 0.5f;
+          else if (inst.type == 32 || inst.type == 34) // Faster pulse 0.0-1.0
+            intensity = std::sin(currentTime * 4.0f) * 0.5f + 0.5f;
+          else if (inst.type == 40) // Slow pulse 0.2-0.8 + drift
+            intensity = std::sin(currentTime * 4.0f) * 0.3f + 0.5f;
+          else // Type 38 etc: steady glow
+            intensity = 0.7f;
         }
         // Noria BlendMesh objects: steady glow
         if (m_mapId == 3) intensity = 1.0f;
