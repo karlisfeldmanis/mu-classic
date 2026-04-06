@@ -560,6 +560,10 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   if (!m_skeleton || !m_shader)
     return;
 
+  // Decay damage flash timer
+  if (m_damageFlashTimer > 0.0f)
+    m_damageFlashTimer = std::max(0.0f, m_damageFlashTimer - deltaTime);
+
   m_weaponTrailValid = false; // Reset each frame
 
   // Advance animation
@@ -976,6 +980,9 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     // Freeze blue tint (Main 5.2: eDeBuff_Freeze BodyLight 0.3, 0.5, 1.0)
     if (m_frozen)
       finalTint *= glm::vec3(0.3f, 0.5f, 1.0f);
+    // Damage flash: brief white flash on hit (Main 5.2 visual feedback)
+    if (m_damageFlashTimer > 0.0f)
+      finalTint = glm::mix(finalTint, glm::vec3(2.0f), m_damageFlashTimer / 0.15f);
 
     for (auto &mb : m_parts[p].meshBuffers) {
       if (mb.indexCount == 0 || mb.hidden) continue;
@@ -1022,20 +1029,10 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
     if (anyGlow && TexValid(ChromeGlow::GetTextures().chrome1)) {
       float t = (float)glfwGetTime();
-      static float glowLogTimer = 0.0f;
-      glowLogTimer += deltaTime;
       for (int p = 0; p < PART_COUNT; ++p) {
         if (m_partLevels[p] < 7) continue;
         ChromeGlow::GlowPass passes[3];
         int n = ChromeGlow::GetGlowPasses(m_partLevels[p], 7 + p, m_partItemIndices[p], passes);
-        if (glowLogTimer >= 5.0f) {
-          std::cout << "[Glow] part=" << p << " cat=" << (7+p) << " idx=" << (int)m_partItemIndices[p]
-                    << " lvl=" << (int)m_partLevels[p] << " passes=" << n;
-          for (int g = 0; g < n; ++g)
-            std::cout << " c" << g << "=(" << passes[g].color.r << "," << passes[g].color.g << "," << passes[g].color.b
-                      << " mode=" << passes[g].chromeMode << ")";
-          std::cout << std::endl;
-        }
         for (int gp = 0; gp < n; ++gp) {
           for (auto &mb : m_parts[p].meshBuffers) {
             if (mb.indexCount == 0 || mb.hidden) continue;
@@ -1050,7 +1047,6 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
           }
         }
       }
-      if (glowLogTimer >= 5.0f) glowLogTimer = 0.0f;
     }
     // Reset uniforms after glow passes to prevent leaking into subsequent renderers
     setHeroUniforms(1.0f, 0.0f, 0.0f, glm::vec3(0.0f));
@@ -3598,6 +3594,7 @@ void HeroCharacter::TakeDamage(int damage) {
     return;
 
   m_hp -= damage;
+  m_damageFlashTimer = 0.15f; // Brief white flash on hit (Main 5.2 visual feedback)
   if (m_hp <= 0) {
     ForceDie();
   } else {

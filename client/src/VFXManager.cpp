@@ -977,6 +977,24 @@ void VFXManager::SpawnSkillCast(uint8_t skillId, const glm::vec3 &heroPos,
     break;
   case 14: // Inferno — no cast-side particles (Main 5.2: ring IS the effect)
     break;
+  // Elf buff skills
+  case 26: // Heal — green healing glow
+    SpawnBurstColored(ParticleType::FLARE, castPos, glm::vec3(0.2f, 1.0f, 0.3f), 3);
+    SpawnBurstColored(ParticleType::BUFF_AURA, castPos, glm::vec3(0.3f, 1.0f, 0.4f), 6);
+    break;
+  case 27: // Greater Defense — blue shield glow
+    SpawnBurstColored(ParticleType::FLARE, castPos, glm::vec3(0.3f, 0.5f, 1.0f), 3);
+    SpawnBurstColored(ParticleType::BUFF_AURA, castPos, glm::vec3(0.2f, 0.4f, 1.0f), 8);
+    break;
+  case 28: // Greater Damage — orange power glow
+    SpawnBurstColored(ParticleType::FLARE, castPos, glm::vec3(1.0f, 0.7f, 0.3f), 3);
+    SpawnBurstColored(ParticleType::BUFF_AURA, castPos, glm::vec3(1.0f, 0.5f, 0.2f), 8);
+    break;
+  // Elf summon skills
+  case 30: case 31: case 32: case 33: case 34: case 35:
+    SpawnBurst(ParticleType::FLARE, castPos, 4);
+    SpawnBurst(ParticleType::SPELL_ENERGY, heroPos + glm::vec3(0, 10, 0), 15);
+    break;
   }
 }
 

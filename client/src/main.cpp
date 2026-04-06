@@ -3602,7 +3602,15 @@ int main(int argc, char **argv) {
           g_groundItems, MAX_GROUND_ITEMS, deltaTime, view, projection,
           [](float x, float z) -> float { return g_terrain.GetHeight(x, z); });
 
-      // Ground item sparkle disabled — cleaner look
+      // Ground item sparkle: Main 5.2 BITMAP_FLARE at enhanced item drops
+      {
+        static std::vector<glm::vec3> sparklePos;
+        sparklePos.clear();
+        GroundItemRenderer::UpdateSparkleTimers(
+            g_groundItems, MAX_GROUND_ITEMS, deltaTime, sparklePos);
+        for (auto &sp : sparklePos)
+          g_vfxManager.SpawnBurst(ParticleType::FLARE, sp, 1);
+      }
 
       // ── Ground item labels + tooltips ──
       GroundItemRenderer::RenderLabels(

@@ -1009,6 +1009,12 @@ void HandleGamePacket(const uint8_t *pkt, int pktSize) {
         for (int i = 0; i < MAX_GROUND_ITEMS; i++) {
           if (g_state->groundItems[i].active &&
               g_state->groundItems[i].dropIndex == p->dropIndex) {
+            // Item pickup sparkle VFX
+            if (g_state->vfxManager) {
+              glm::vec3 pp = g_state->groundItems[i].position + glm::vec3(0, 20, 0);
+              g_state->vfxManager->SpawnBurst(ParticleType::FLARE, pp, 2);
+              g_state->vfxManager->SpawnBurst(ParticleType::HIT_SPARK, pp, 4);
+            }
             g_state->groundItems[i].active = false;
             break;
           }

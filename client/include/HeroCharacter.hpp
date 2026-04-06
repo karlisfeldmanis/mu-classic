@@ -752,6 +752,7 @@ private:
   int m_mapId = 0;
   bool m_poisoned = false; // Green tint when poisoned by monster
   bool m_frozen = false;   // Blue tint + 50% speed when frozen by ice monster
+  float m_damageFlashTimer = 0.0f; // Brief white flash on hit (Main 5.2)
 
   // Elf buff aura VFX state (Main 5.2: eBuff_Defense / eBuff_Attack)
   bool m_buffDefenseActive = false;

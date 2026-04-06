@@ -335,6 +335,9 @@ void UpdateSparkleTimers(GroundItem *items, int maxItems, float deltaTime,
     auto &gi = items[i];
     if (!gi.active || !gi.isResting)
       continue;
+    // Main 5.2: only enhanced items (+7+) or excellent/+skill items sparkle
+    if (gi.itemLevel < 7 && gi.optionFlags == 0)
+      continue;
 
     gi.sparkleTimer += deltaTime;
     if (gi.sparkleTimer >= 1.92f) {
