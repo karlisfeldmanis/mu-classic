@@ -1099,12 +1099,8 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
          inst.type == 52 || inst.type == 60))
       continue;
     if (m_mapId == 4 && (inst.type == 24 || inst.type == 25)) {
-      // Main 5.2: HiddenMesh=-2 (hidden mesh), type 24 spawns occasional flame bursts
-      if (inst.type == 24 && m_vfxManager && rand() % 64 == 0) {
-        glm::vec3 pos(inst.modelMatrix[3][0], inst.modelMatrix[3][1],
-                      inst.modelMatrix[3][2]);
-        m_vfxManager->SpawnBurst(ParticleType::SPELL_FLAME, pos, 1);
-      }
+      // Type 24/25: HiddenMesh=-2 (invisible mesh). Type 24 fire columns
+      // are created via FireEffect emitters registered in main.cpp, not here.
       continue;
     }
     if (m_mapId == 2 && (inst.type == 91 || inst.type == 100))
@@ -1372,7 +1368,11 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       }
       activeShader->setVec4("u_params2", glm::vec4(m_luminosity, 0.0f, cliffFadeFlag, cliffTopH));
       activeShader->setVec4("u_lightPos", glm::vec4(sunPos, 0.0f));
-      activeShader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      // Indoor maps (Dungeon, Lost Tower): minimal sun direction — lighting from
+      // lightmap only. Main 5.2: indoor objects use BodyLight from lightmap,
+      // no directional sun contribution on walls.
+      float sunIntensity = (m_mapId == 1 || m_mapId == 4) ? 0.4f : 1.0f;
+      activeShader->setVec4("u_lightColor", glm::vec4(sunIntensity, sunIntensity, sunIntensity, 0.0f));
       activeShader->setVec4("u_viewPos", glm::vec4(cameraPos, 0.0f));
       // w=1.0 enables per-pixel lightmap sampling in shader (smooth across meshes)
       // Tentacle/steam objects (23,24,35) in dungeon span into void areas where

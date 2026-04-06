@@ -485,21 +485,21 @@ static const MapConfig MAP_CONFIGS[] = {
         // Lost Tower (mapId=4)
         4,
         "Lost Tower",
-        0.f,
-        0.f,
-        0.f, // clearColor (black — indoor)
-        0.f,
-        0.f,
-        0.f, // fogColor (black)
-        800.f,
+        0.05f,
+        0.04f,
+        0.06f, // clearColor (dark warm gray — visible void with subtle color)
+        0.05f,
+        0.04f,
+        0.06f, // fogColor (match clear — smooth fade to void)
+        500.f,
         2500.f,
-        0.9f, // fogNear, fogFar, luminosity (dark indoor)
-        0.25f,
-        0.55f,
+        0.85f, // fogNear, fogFar, luminosity (fog starts closer for smoother edge fade)
+        0.22f,
+        0.50f,
         0.25f, // bloom, threshold, vignette
-        0.90f,
-        0.85f,
-        1.05f, // colorTint (cool blue stone)
+        0.75f,
+        0.88f,
+        1.12f, // colorTint (subtle cyan-blue: shift hue without crushing brightness)
         false,
         false,
         false,
@@ -1034,6 +1034,7 @@ static int g_mapTransitionFrames = 0; // Frames rendered in current phase
 static uint8_t g_mapTransMapId = 0;
 static uint8_t g_mapTransSpawnX = 0;
 static uint8_t g_mapTransSpawnY = 0;
+static int g_deferredSoundMapId = -1; // Play ambient/music after preloader closes
 
 // ── Shadow map state (BGFX) ──
 struct ShadowMapState {
@@ -1409,6 +1410,9 @@ BuildPondCells(const std::vector<ObjectRenderer::ObjectInstance> &insts) {
 static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
   static const LightTemplate fireLightProps = {glm::vec3(0.8f, 0.48f, 0.27f),
                                                800.0f, 150.0f};
+  // Lost Tower fire column: brighter, wider range light
+  static const LightTemplate fireColumnProps = {glm::vec3(1.0f, 0.5f, 0.2f),
+                                                1200.0f, 150.0f};
   static const LightTemplate bonfireProps = {glm::vec3(0.8f, 0.4f, 0.16f),
                                              1000.0f, 100.0f};
   static const LightTemplate gateProps = {glm::vec3(0.8f, 0.48f, 0.27f), 800.0f,
@@ -1476,6 +1480,8 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
   case 3:
   case 4:
     return (mapId == 4) ? &dungeonTorchProps : nullptr;
+  case 24: // Lost Tower fire column — bright orange, wide range
+    return (mapId == 4) ? &fireColumnProps : nullptr;
   case 19:
     return (mapId == 4) ? &dungeonTorchProps : nullptr;
   case 20:
@@ -2388,6 +2394,25 @@ int main(int argc, char **argv) {
         if (g_mapTransitionAlpha <= 0.0f) {
           g_mapTransitionAlpha = 0.0f;
           g_mapTransitionActive = false;
+          // Deferred sound: play ambient + music NOW that preloader is gone
+          if (g_deferredSoundMapId >= 0) {
+            int mid = g_deferredSoundMapId;
+            g_deferredSoundMapId = -1;
+            glm::vec3 hp = g_hero.GetPosition();
+            const int S = TerrainParser::TERRAIN_SIZE;
+            int gz = (int)(hp.x / 100.0f), gx = (int)(hp.z / 100.0f);
+            bool inSafe = (gx >= 0 && gz >= 0 && gx < S && gz < S) &&
+                          (g_terrainDataPtr->mapping.attributes[gz * S + gx] & 0x01) != 0;
+            g_hero.SetInSafeZone(inSafe);
+            bool indoorLoop = (mid == 1 || mid == 4);
+            if (GetMapConfig(mid)->ambientLoop &&
+                (indoorLoop || !inSafe) && !GetMapConfig(mid)->hasWind)
+              SoundManager::PlayLoop(GetMapConfig(mid)->ambientLoop);
+            if (GetMapConfig(mid)->safeMusic)
+              SoundManager::CrossfadeTo(g_dataPath + "/" + GetMapConfig(mid)->safeMusic);
+            else if (GetMapConfig(mid)->wildMusic)
+              SoundManager::CrossfadeTo(g_dataPath + "/" + GetMapConfig(mid)->wildMusic);
+          }
         }
       }
     }
@@ -5449,7 +5474,9 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
         (g_terrainDataPtr->mapping.attributes[gz * S + gx] & 0x01) != 0;
     g_hero.SetInSafeZone(inSafeZone);
     const MapConfig &sndCfg = *GetMapConfig(g_currentMapId);
-    if (sndCfg.ambientLoop && !inSafeZone && !sndCfg.hasWind)
+    // Indoor maps (Dungeon, Lost Tower): always play ambient regardless of safe zone
+    bool indoorMap = (g_currentMapId == 1 || g_currentMapId == 4);
+    if (sndCfg.ambientLoop && (indoorMap || !inSafeZone) && !sndCfg.hasWind)
       SoundManager::PlayLoop(sndCfg.ambientLoop);
     if (inSafeZone && sndCfg.safeMusic)
       SoundManager::PlayMusic(g_dataPath + "/" + sndCfg.safeMusic);
@@ -5721,9 +5748,10 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
     // Lost Tower type 19 uses rotating magic sprite, not fire.
     bool isFire = (inst.type == 50 || inst.type == 51 || inst.type == 52 ||
                    (mapId == 1 && (inst.type == 41 || inst.type == 42)) ||
-                   (mapId == 4 && (inst.type == 3 || inst.type == 4)));
+                   (mapId == 4 && (inst.type == 3 || inst.type == 4 || inst.type == 24)));
     if (isFire) {
       float intensity = (inst.type == 52)  ? 1.2f :   // bonfire
+                        (mapId == 4 && inst.type == 24) ? 1.5f : // fire column
                         0.7f;                          // torch
       g_vfxManager.AddAmbientFire(
           worldPos + glm::vec3(0.0f, props->heightOffset, 0.0f), intensity);
@@ -5807,23 +5835,11 @@ static void ChangeMap(uint8_t mapId, uint8_t spawnX, uint8_t spawnY,
   g_currentFloor = DetermineFloor(mapId, spawnX, spawnY);
   InventoryUI::ShowRegionName(GetFloorDisplayName());
 
-  // Sound/music transition — reset wind state so 3D loop restarts
+  // Sound/music transition — stop old sounds immediately, but defer new sounds
+  // until preloader fully closes to avoid audio playing over loading screen
   SoundManager::StopAll();
   SoundManager::StopMusic();
   g_windStarted = false;
-  {
-    glm::vec3 hp = g_hero.GetPosition();
-    const int S = TerrainParser::TERRAIN_SIZE;
-    int gz = (int)(hp.x / 100.0f), gx = (int)(hp.z / 100.0f);
-    bool inSafe =
-        (gx >= 0 && gz >= 0 && gx < S && gz < S) &&
-        (g_terrainDataPtr->mapping.attributes[gz * S + gx] & 0x01) != 0;
-    g_hero.SetInSafeZone(inSafe);
-    if (GetMapConfig(mapId)->ambientLoop && !inSafe && !GetMapConfig(mapId)->hasWind)
-      SoundManager::PlayLoop(GetMapConfig(mapId)->ambientLoop);
-    // Play map theme once on first visit (CrossfadeTo skips if already played)
-    if (GetMapConfig(mapId)->safeMusic)
-      SoundManager::CrossfadeTo(g_dataPath + "/" + GetMapConfig(mapId)->safeMusic);
-  }
+  g_deferredSoundMapId = mapId; // Deferred: play after preloader closes
 
 }

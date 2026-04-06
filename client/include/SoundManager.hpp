@@ -135,7 +135,7 @@ enum SoundId {
   // Dungeon ambient (Main 5.2: aDungeon.wav — looping cave atmosphere)
   SOUND_DUNGEON01 = 251,
   // Lost Tower ambient (Main 5.2: aTower.wav — creaking/wind tower atmosphere)
-  SOUND_TOWER01 = 253,
+  SOUND_TOWER01 = 359,
   // Dungeon critter: bat screech (Main 5.2: aBat.wav — 3D positional)
   SOUND_BAT01 = 252,
   // Ghost (type 11) — Main 5.2: SOUND_MONSTER + 35..39

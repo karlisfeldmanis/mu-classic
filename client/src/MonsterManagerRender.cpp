@@ -655,10 +655,12 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         // BlendMesh: additive glow mesh (e.g. Death Knight lightning sword)
         bool isWeaponBlend = (wd.blendMesh >= 0 && mb.bmdTextureId == wd.blendMesh);
         if (isWeaponBlend) {
-          // Flickering additive glow — Main 5.2 BlendMeshLight
+          // Flickering additive glow + UV scroll — Main 5.2 BlendMeshLight + BlendMeshTexCoordV
           float phase = model[3][0] * 0.013f;
           float blendLight = 0.6f + 0.3f * std::sin(m_worldTime * 4.0f + phase);
-          monDrawMesh(model, mb, renderAlpha, blendLight, tLight * 0.4f, additiveState);
+          // Same UV scroll as body cape (Main 5.2: shared BlendMeshTexCoordV)
+          monDrawMesh(model, mb, renderAlpha, blendLight, tLight * 0.4f, additiveState,
+                      glm::vec3(1.0f), blendMeshUVOff);
         } else if (mb.noneBlend) {
           monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, noneBlendState);
         } else if (mb.bright) {

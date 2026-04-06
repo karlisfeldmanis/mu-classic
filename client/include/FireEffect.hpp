@@ -88,7 +88,7 @@ private:
   void submitBatch(const std::vector<InstanceData> &batch, TexHandle tex,
                    bool pureAdditive = false);
 
-  static constexpr int MAX_PARTICLES = 4096;
+  static constexpr int MAX_PARTICLES = 8192; // Increased for Lost Tower fire columns
   static constexpr float PARTICLE_LIFETIME = 0.96f; // 24 ticks / 25fps
   static constexpr float SPAWN_RATE = 12.0f; // particles/sec per emitter
 };

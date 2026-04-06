@@ -1445,6 +1445,9 @@ void MonsterManager::playIdleSound(MonsterInstance &mon) {
   mon.lastIdleSoundTime = m_worldTime;
   s_lastGlobalIdleSound = m_worldTime;
   float px = mon.position.x, py = mon.position.y, pz = mon.position.z;
+  std::cout << "[MonSound] IDLE type=" << mon.monsterType
+            << " t=" << m_worldTime << " pos=(" << px << "," << pz << ")"
+            << std::endl;
   switch (mon.monsterType) {
   case 0: SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz); break;
   case 1: SoundManager::Play3D(SOUND_MONSTER_HOUND1 + rand() % 2, px, py, pz); break;
@@ -2273,6 +2276,8 @@ void MonsterManager::TriggerAttackAnimation(int index) {
 
   // Server-authoritative: attack packet means monster is ready to attack.
   mon.serverChasing = true;
+  std::cout << "[MonSound] ATTACK type=" << mon.monsterType
+            << " t=" << m_worldTime << std::endl;
 
   // If still mid-spline (walking to target), defer the attack until the walk
   // finishes so the monster smoothly approaches before attacking — no teleport.

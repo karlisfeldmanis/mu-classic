@@ -267,8 +267,8 @@ void Terrain::Load(const TerrainData &data, int worldID,
 
       float vd = voidDist[i];
       if (vd > 2.0f) continue;
-      // vd=1 → 85%, vd=2 → 95%
-      float darken = 0.75f + 0.125f * vd;
+      // vd=1 → 90%, vd=2 → 95% (softer edge, less harsh band)
+      float darken = 0.85f + 0.075f * vd;
       darken = std::min(darken, 1.0f);
       for (int c = 0; c < 3; c++)
         m_baselineLightRGBA[i * 4 + c] *= darken;
@@ -284,7 +284,7 @@ void Terrain::Load(const TerrainData &data, int worldID,
       float td = terrainDist[i];
       // Find nearest terrain cell's lightmap brightness
       int cy = i / S, cx = i % S;
-      float nearBright = 0.40f;
+      float nearBright = 0.50f; // Higher void floor = less harsh black
       bool foundTerr = false;
       for (int r = 1; r <= 6; ++r) {
         for (int dy = -r; dy <= r; ++dy) {
@@ -571,8 +571,12 @@ void Terrain::setupMesh(const std::vector<float> &heightmap,
       // Skip void quads (top-left corner check only — matching original engine).
       // Terrain quads at void edges intentionally extend one cell into void to
       // fill gaps behind world objects (tentacles, cliff walls).
+      // Skip void cells on outdoor maps (Lorencia, Devias, Noria) where voids are
+      // deep pits. Indoor maps (Dungeon=1, Lost Tower=4) have void cells at the SAME
+      // height as walkable terrain — they are non-walkable floor, not holes.
       if (hasAttrs && (rawAttributes[i00] & 0x08) &&
-          !(hasBridgeMask && bridgeMask[i00]))
+          !(hasBridgeMask && bridgeMask[i00]) &&
+          worldID != 1 && worldID != 4)
         continue;
       int current = z * size + x;
       int next = current + size;
@@ -924,7 +928,7 @@ void Terrain::applyDynamicLights() {
 
     int cellRange = 3;
     if (li < (int)plRanges.size() && plRanges[li] > 0.0f) {
-      cellRange = std::max(1, std::min(5, (int)(plRanges[li] / 100.0f)));
+      cellRange = std::max(1, std::min(8, (int)(plRanges[li] / 100.0f)));
     }
 
     static float s_flickerPhase = 0.0f;
@@ -962,6 +966,21 @@ void Terrain::applyDynamicLights() {
       float phase = s_flickerPhase + (float)li * 2.1f;
       float L = 0.5f + 0.04f * std::sin(phase);
       color = glm::vec3(L, L * 0.7f, L * 0.4f);
+    } else if (objType == 3 || objType == 4 || objType == 19) {
+      // Lost Tower fire torches: bright warm orange
+      float phase = s_flickerPhase + (float)li * 1.4f;
+      float L = 0.6f + 0.1f * std::sin(phase);
+      color = glm::vec3(L * 1.0f, L * 0.5f, L * 0.2f);
+    } else if (objType == 20) {
+      // Lost Tower lightning pillar: blue-cyan terrain light
+      float phase = s_flickerPhase + (float)li * 1.8f;
+      float L = 0.5f + 0.08f * std::sin(phase);
+      color = glm::vec3(L * 0.3f, L * 0.6f, L * 1.0f);
+    } else if (objType == 24) {
+      // Lost Tower fire column: BRIGHT warm orange glow (large range)
+      float phase = s_flickerPhase + (float)li * 1.2f;
+      float L = 0.8f + 0.15f * std::sin(phase);
+      color = glm::vec3(L, L * 0.5f, L * 0.15f);
     } else {
       color *= 0.5f;
     }
