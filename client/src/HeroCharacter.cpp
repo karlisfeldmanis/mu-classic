@@ -1710,6 +1710,24 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
   }
 
+  // ── Atlans: underwater bubble emission from head bone ──
+  // Main 5.2: if(WorldActive==WD_7ATLANSE && WorldTime%10000<1000) CreateParticle(BUBBLE)
+  if (m_mapId == 7 && !m_inSafeZone && m_vfxManager) {
+    static float bubbleTimer = 0.0f;
+    bubbleTimer += deltaTime;
+    if (bubbleTimer >= 10.0f) { // Every ~10 seconds
+      bubbleTimer -= 10.0f;
+      // Spawn a few bubbles from head area
+      glm::vec3 headPos = m_pos + glm::vec3(0, 160, 0);
+      for (int b = 0; b < 3; ++b) {
+        glm::vec3 off((float)(rand() % 20 - 10), (float)(rand() % 10),
+                      (float)(rand() % 20 - 10));
+        m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, headPos + off,
+                                         glm::vec3(0.5f, 0.7f, 1.0f), 1);
+      }
+    }
+  }
+
   // ── Twisting Slash: render ghost weapon copies orbiting the hero ──
   if (m_twistingSlashActive && !m_ghostWeaponMeshBuffers.empty()) {
     for (int i = 0; i < MAX_WHEEL_GHOSTS; ++i) {
@@ -1764,6 +1782,9 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
 
 void HeroCharacter::RenderShadow(const glm::mat4 &view, const glm::mat4 &proj) {
   if (!m_skeleton || !m_shadowShader || m_cachedBones.empty())
+    return;
+  // Atlans: no character shadows underwater (light diffusion)
+  if (m_mapId == 7)
     return;
 
   // Shadow model matrix: NO facing rotation (facing is baked into vertices

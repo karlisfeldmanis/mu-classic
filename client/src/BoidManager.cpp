@@ -966,23 +966,32 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       spawnPos.z = heroPos.z + (float)(rand() % 1024 - 512);
       spawnPos.y = heroPos.y;
 
-      // Check if on water tile and not near shore (layer1 == 5 for Lorencia)
-      uint8_t layer1 = getTerrainLayer1(spawnPos.x, spawnPos.z);
-      if (layer1 != 5)
-        continue;
-      // Skip spawn near shore — all 4 neighbors must also be water
-      const float sp = 200.0f;
-      if (getTerrainLayer1(spawnPos.x + sp, spawnPos.z) != 5 ||
-          getTerrainLayer1(spawnPos.x - sp, spawnPos.z) != 5 ||
-          getTerrainLayer1(spawnPos.x, spawnPos.z + sp) != 5 ||
-          getTerrainLayer1(spawnPos.x, spawnPos.z - sp) != 5)
-        continue;
+      // Atlans: entire map is underwater, skip water tile check
+      // Lorencia: only spawn on water tiles (layer1 == 5)
+      if (m_mapId != 7) {
+        uint8_t layer1 = getTerrainLayer1(spawnPos.x, spawnPos.z);
+        if (layer1 != 5)
+          continue;
+        // Skip spawn near shore — all 4 neighbors must also be water
+        const float sp = 200.0f;
+        if (getTerrainLayer1(spawnPos.x + sp, spawnPos.z) != 5 ||
+            getTerrainLayer1(spawnPos.x - sp, spawnPos.z) != 5 ||
+            getTerrainLayer1(spawnPos.x, spawnPos.z + sp) != 5 ||
+            getTerrainLayer1(spawnPos.x, spawnPos.z - sp) != 5)
+          continue;
+      }
 
       f = Fish{}; // Reset
       f.live = true;
       f.alpha = 0.0f;
-      f.alphaTarget = (float)(rand() % 2 + 2) * 0.1f; // 0.2 or 0.3
-      f.scale = (float)(rand() % 4 + 4) * 0.1f;       // 0.4-0.7
+      // Atlans fish: bigger and more opaque (underwater sea creatures)
+      if (m_mapId == 7) {
+        f.alphaTarget = (float)(rand() % 3 + 4) * 0.1f; // 0.4-0.6
+        f.scale = (float)(rand() % 5 + 6) * 0.1f;       // 0.6-1.0
+      } else {
+        f.alphaTarget = (float)(rand() % 2 + 2) * 0.1f; // 0.2 or 0.3
+        f.scale = (float)(rand() % 4 + 4) * 0.1f;       // 0.4-0.7
+      }
       f.velocity = 0.6f / f.scale;
       f.subType = 0;
       f.lifetime = rand() % 128;
@@ -1248,6 +1257,9 @@ void BoidManager::Update(float deltaTime, const glm::vec3 &heroPos,
     // Noria: butterflies and leaves (elf forest — Main 5.2 GOBoid.cpp:1334)
     updateButterflies(deltaTime, heroPos);
     updateLeaves(deltaTime, heroPos);
+  } else if (m_mapId == 7) {
+    // Atlans: underwater fish (Main 5.2 GOBoid.cpp: CreateAtlanseFish)
+    updateFishs(deltaTime, heroPos);
   }
 }
 

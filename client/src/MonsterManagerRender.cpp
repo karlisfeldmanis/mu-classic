@@ -681,6 +681,9 @@ void MonsterManager::RenderShadows(const glm::mat4 &view,
                                    const glm::mat4 &proj) {
   if (!m_shadowShader || m_monsters.empty())
     return;
+  // Atlans: no shadows underwater
+  if (m_mapId == 7)
+    return;
 
   const float sx = 2000.0f;
   const float sy = 4000.0f;
