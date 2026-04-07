@@ -151,8 +151,9 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       else if (mapId == 2) { sx = 210; sy = 40; }    // Devias center
       else if (mapId == 3) { sx = 174; sy = 110; }   // Noria center
       else if (mapId == 4) { sx = 208; sy = 75; }    // Lost Tower NPC area
+      else if (mapId == 7) { sx = 14; sy = 12; }     // Atlans entry
     }
-    if (mapId <= 4) { // Allow maps 0-4
+    if (mapId <= 4 || mapId == 7) { // Allow maps 0-4 + Atlans (7)
       server.TransitionMap(session, mapId, sx, sy);
     }
     break;

@@ -1118,13 +1118,8 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     if (m_mapId == 0 && (inst.type == 20 || inst.type == 21)) // Lorencia grass (bad Y coords)
       continue;
     if (m_mapId == 7 && (inst.type == 22 || inst.type == 39)) {
-      // Atlans: HiddenMesh=-2, type 22 emits bubble particles
-      if (inst.type == 22 && m_vfxManager && rand() % 5 == 0) {
-        glm::vec3 pos(inst.modelMatrix[3][0], inst.modelMatrix[3][1] + 50.0f,
-                      inst.modelMatrix[3][2]);
-        m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, pos,
-                                         glm::vec3(0.5f, 0.7f, 1.0f), 1);
-      }
+      // Atlans: HiddenMesh=-2 (invisible objects)
+      // Type 22: very occasional tiny bubble (Main 5.2: every ~5 frames)
       continue;
     }
     if (!m_typeFilter.empty()) {
