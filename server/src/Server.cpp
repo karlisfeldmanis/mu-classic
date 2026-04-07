@@ -1177,8 +1177,8 @@ void Server::CheckGateZones(Session &session) {
   else if (session.mapId == 3 && gx >= 242 && gx <= 245 && gy >= 240 && gy <= 243) {
     // Noria → Atlans (OpenMU gate 45→46)
     if (session.level >= 60)
-      TransitionMap(session, 7, 14, 12);
-  } else if (session.mapId == 7 && gx >= 9 && gx <= 15 && gy >= 9 && gy <= 15) {
+      TransitionMap(session, 7, 24, 22); // Spawn outside return gate zone
+  } else if (session.mapId == 7 && gx >= 9 && gx <= 13 && gy >= 9 && gy <= 13) {
     // Atlans → Noria (OpenMU gate 47→48)
     TransitionMap(session, 3, 240, 241);
   }

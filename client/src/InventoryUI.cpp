@@ -1572,7 +1572,7 @@ static const MapEntry s_maps[] = {
     {4, "Lost Tower 5", "Lv 53+", 125,  56, false, {0,0,0,0}},
     {4, "Lost Tower 6", "Lv 57+",  48,  56, false, {0,0,0,0}},
     {4, "Lost Tower 7", "Lv 60+",  12,  88, false, {0,0,0,0}},
-    {7, "Atlans",       "Lv 60+",  14,  12, false, {0,0,0,0}},
+    {7, "Atlans",       "Lv 60+",  24,  22, false, {0,0,0,0}},
 };
 static constexpr int MAP_COUNT = 14;
 
