@@ -340,7 +340,8 @@ void Terrain::Load(const TerrainData &data, int worldID,
           m_baselineLightRGBA.data(), m_baselineLightRGBA.size() * sizeof(float));
       lightmapTex = bgfx::createTexture2D(
           S, S, false, 1, bgfx::TextureFormat::RGBA32F,
-          BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, mem);
+          BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP |
+          BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC, mem);
     }
   }
 }
