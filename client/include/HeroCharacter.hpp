@@ -394,6 +394,8 @@ private:
   static constexpr int ACTION_STOP_BOW = 8;
   static constexpr int ACTION_STOP_CROSSBOW = 9;
   static constexpr int ACTION_STOP_WAND = 10;
+  static constexpr int ACTION_STOP_FLY = 11;          // Atlans/wing floating idle
+  static constexpr int ACTION_STOP_FLY_CROSSBOW = 12; // Floating idle with crossbow
 
   static constexpr int ACTION_WALK_SWORD = 17;
   static constexpr int ACTION_WALK_TWO_HAND_SWORD = 18;

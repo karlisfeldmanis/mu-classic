@@ -998,8 +998,8 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       f.action = 0;
       f.position = spawnPos;
       if (m_mapId == 7) {
-        // Atlans: fish swim near hero height, slightly below
-        f.position.y = heroPos.y - (float)(rand() % 60 + 20);
+        // Main 5.2: fish spawn 150-350 units above terrain (RequestTerrainHeight+rand%200+150)
+        f.position.y = getTerrainHeight(spawnPos.x, spawnPos.z) + (float)(rand() % 200 + 150);
       } else {
         f.position.y = getTerrainHeight(spawnPos.x, spawnPos.z);
       }

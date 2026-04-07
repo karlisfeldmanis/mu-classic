@@ -1977,6 +1977,16 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
     } else {
       mon.corpseAlpha = 0.0f;
     }
+    // Main 5.2: dead monsters on Atlans emit 4 bubbles per frame
+    if (m_mapId == 7 && mon.corpseAlpha > 0.01f && m_vfxManager) {
+      for (int b = 0; b < 4; ++b) {
+        glm::vec3 bp = mon.position + glm::vec3(
+            (float)(rand() % 128 - 64), (float)(rand() % 256),
+            (float)(rand() % 128 - 64));
+        m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, bp,
+                                         glm::vec3(0.5f, 0.7f, 1.0f), 1);
+      }
+    }
     break;
   }
 

@@ -115,7 +115,7 @@ private:
   static constexpr int MAX_BOIDS = 3;       // Lorencia bird count (reduced for ambience)
   static constexpr int MAX_BATS = 3;        // Dungeon bat count (reduced from 5)
   static constexpr int MAX_BUTTERFLIES = 3; // Noria butterfly count (reduced from 5)
-  static constexpr int MAX_FISHS = 3;       // Lorencia fish count (GOBoid.cpp:1661)
+  static constexpr int MAX_FISHS = 20;      // Main 5.2: up to 40 boids, 20 for perf
   static constexpr int MAX_RATS = 5;        // Dungeon rat count
   static constexpr int MAX_LEAVES = 160;    // Shared leaf/snow count (doubled for denser Devias snow)
   static constexpr int MAX_POINT_LIGHTS = 64;

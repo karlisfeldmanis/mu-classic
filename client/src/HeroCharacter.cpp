@@ -327,7 +327,12 @@ float HeroCharacter::idlePlaySpeed(int action) const {
 }
 
 int HeroCharacter::weaponIdleAction() const {
-  // Main 5.2: NO special swimming idle — uses normal weapon stop animation in water
+  // Main 5.2: Atlans uses PLAYER_STOP_FLY (floating idle) outside safe zone
+  if (m_mapId == 7 && !m_inSafeZone) {
+    if (m_weaponInfo.category == 4 && m_weaponInfo.itemIndex >= 8)
+      return ACTION_STOP_FLY_CROSSBOW;
+    return ACTION_STOP_FLY;
+  }
   if (isMountRiding())
     return m_weaponBmd ? ACTION_STOP_RIDE_WEAPON : ACTION_STOP_RIDE;
 
@@ -1710,20 +1715,18 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
   }
 
   // ── Atlans: underwater bubble emission from head bone ──
-  // Main 5.2: if(WorldActive==WD_7ATLANSE && WorldTime%10000<1000) CreateParticle(BUBBLE)
+  // Main 5.2: WorldTime%10000<1000 → emit 1 bubble/frame for 1s every 10s
   if (m_mapId == 7 && !m_inSafeZone && m_vfxManager) {
     static float bubbleTimer = 0.0f;
     bubbleTimer += deltaTime;
-    if (bubbleTimer >= 10.0f) { // Every ~10 seconds
-      bubbleTimer -= 10.0f;
-      // Spawn a few bubbles from head area
+    if (bubbleTimer >= 10.0f) bubbleTimer -= 10.0f;
+    // Emit bubbles during first 1 second of each 10-second cycle
+    if (bubbleTimer < 1.0f) {
       glm::vec3 headPos = m_pos + glm::vec3(0, 160, 0);
-      for (int b = 0; b < 3; ++b) {
-        glm::vec3 off((float)(rand() % 20 - 10), (float)(rand() % 10),
-                      (float)(rand() % 20 - 10));
-        m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, headPos + off,
-                                         glm::vec3(0.5f, 0.7f, 1.0f), 1);
-      }
+      glm::vec3 off((float)(rand() % 20 - 10), (float)(rand() % 20),
+                    (float)(rand() % 20 - 10));
+      m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, headPos + off,
+                                       glm::vec3(0.5f, 0.7f, 1.0f), 1);
     }
   }
 

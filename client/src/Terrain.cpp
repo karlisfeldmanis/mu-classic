@@ -572,10 +572,10 @@ void Terrain::setupMesh(const std::vector<float> &heightmap,
       // Terrain quads at void edges intentionally extend one cell into void to
       // fill gaps behind world objects (tentacles, cliff walls).
       // Skip void cells on most maps where voids are deep pits.
-      // Lost Tower (worldID=5) has void cells at the SAME height as walkable
-      // terrain — they are non-walkable floor, not holes.
+      // Lost Tower (worldID=5) and Atlans (worldID=8) have void cells at the
+      // SAME height as walkable terrain — non-walkable floor, not holes.
       // Dungeon (worldID=2) voids ARE deep pits and must stay black.
-      bool indoorVoid = (worldID == 5);
+      bool indoorVoid = (worldID == 5 || worldID == 8);
       if (hasAttrs && (rawAttributes[i00] & 0x08) &&
           !(hasBridgeMask && bridgeMask[i00]) &&
           !indoorVoid)

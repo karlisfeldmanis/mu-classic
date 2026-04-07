@@ -527,18 +527,18 @@ static const MapConfig MAP_CONFIGS[] = {
         0.0f,
         0.02f,
         0.06f, // clearColor (deep ocean blue-black)
-        0.04f,
-        0.10f,
-        0.18f, // fogColor (underwater blue haze)
-        600.f,
-        2200.f,
-        0.85f, // fogNear, fogFar, luminosity
-        0.30f,
-        0.45f,
-        0.20f, // bloom, threshold, vignette
-        0.82f,
-        0.92f,
-        1.18f, // colorTint (underwater blue shift)
+        0.02f,
+        0.05f,
+        0.10f, // fogColor (subtle underwater blue)
+        2000.f,
+        4500.f,
+        1.0f, // fogNear, fogFar, luminosity (Main 5.2: NO fog, full brightness)
+        0.25f,
+        0.50f,
+        0.15f, // bloom, threshold, vignette
+        0.90f,
+        0.95f,
+        1.10f, // colorTint (subtle underwater blue, much brighter)
         false,
         false,
         false,
