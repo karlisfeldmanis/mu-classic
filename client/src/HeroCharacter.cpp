@@ -327,10 +327,7 @@ float HeroCharacter::idlePlaySpeed(int action) const {
 }
 
 int HeroCharacter::weaponIdleAction() const {
-  // Atlans: swim idle (uses swim walk at slower speed, handled in animation update)
-  if (m_mapId == 7 && !m_inSafeZone)
-    return ACTION_WALK_SWIM;
-
+  // Main 5.2: NO special swimming idle — uses normal weapon stop animation in water
   if (isMountRiding())
     return m_weaponBmd ? ACTION_STOP_RIDE_WEAPON : ACTION_STOP_RIDE;
 
@@ -1078,8 +1075,8 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       MuMath::IsCrossbow(m_weaponInfo.category, m_weaponInfo.itemIndex);
 
   int combatBone = isCrossbowWep ? BONE_R_HAND : wCat.attachBone;
-  // Main 5.2: weapons move to back during swimming (bBindBack=true)
-  bool isSwimming = (m_mapId == 7 && !m_inSafeZone && m_moving);
+  // Main 5.2: weapons ALWAYS on back in Atlans outside safe zone (bBindBack=true)
+  bool isSwimming = (m_mapId == 7 && !m_inSafeZone);
   bool weaponOnBack = m_inSafeZone || isMountRiding() || isSwimming;
   int attachBone = (weaponOnBack && BONE_BACK < (int)bones.size())
                        ? BONE_BACK

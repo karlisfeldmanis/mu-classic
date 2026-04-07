@@ -995,6 +995,8 @@ void ShowRegionName(const char *name) {
     oztFile = "Data/Local/Eng/ImgsMapName/noria.OZT";
   else if (strncmp(name, "Lost Tower", 10) == 0)
     oztFile = "Data/Local/Eng/ImgsMapName/losttower.OZT";
+  else if (strncmp(name, "Atlans", 6) == 0)
+    oztFile = "Data/Local/Eng/ImgsMapName/atlans.OZT";
 
   if (oztFile) {
     if (TexValid(s_mapNameTexture)) {

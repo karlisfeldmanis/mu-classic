@@ -1030,30 +1030,7 @@ void Terrain::applyDynamicLights() {
     }
   }
 
-  // Smooth dynamic light contributions with a 3x3 box blur to prevent
-  // rectangular cell artifacts visible on dark maps (Atlans, Lost Tower).
-  // Only blur the RGB channels (alpha holds terrain height).
-  static std::vector<float> s_blurred;
-  s_blurred = m_workingLightRGBA; // copy
-  for (int z = 1; z < S - 1; ++z) {
-    for (int x = 1; x < S - 1; ++x) {
-      int i = z * S + x;
-      // Only blur cells that have dynamic light added (brighter than baseline)
-      float diffR = m_workingLightRGBA[i * 4 + 0] - m_baselineLightRGBA[i * 4 + 0];
-      float diffG = m_workingLightRGBA[i * 4 + 1] - m_baselineLightRGBA[i * 4 + 1];
-      float diffB = m_workingLightRGBA[i * 4 + 2] - m_baselineLightRGBA[i * 4 + 2];
-      if (diffR + diffG + diffB < 0.01f) continue; // No dynamic light here
-      for (int c = 0; c < 3; ++c) {
-        float sum = 0.0f;
-        for (int dz = -1; dz <= 1; ++dz)
-          for (int dx = -1; dx <= 1; ++dx)
-            sum += m_workingLightRGBA[((z + dz) * S + (x + dx)) * 4 + c];
-        s_blurred[i * 4 + c] = sum / 9.0f;
-      }
-    }
-  }
-
-  // Recreate lightmap texture with blurred data.
+  // Recreate lightmap texture with updated data.
   // bgfx::updateTexture2D on RGBA32F does not reliably update on Metal backend,
   // so we destroy+recreate instead. Skip every other frame since fire flicker
   // at 30hz is indistinguishable from 60hz, halving the GPU texture churn.
@@ -1061,7 +1038,7 @@ void Terrain::applyDynamicLights() {
   if ((++s_lightmapFrame & 1) == 0 || !bgfx::isValid(lightmapTex)) {
     TexDestroy(lightmapTex);
     const bgfx::Memory *mem = bgfx::copy(
-        s_blurred.data(), s_blurred.size() * sizeof(float));
+        m_workingLightRGBA.data(), m_workingLightRGBA.size() * sizeof(float));
     lightmapTex = bgfx::createTexture2D(
         S, S, false, 1, bgfx::TextureFormat::RGBA32F,
         BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, mem);

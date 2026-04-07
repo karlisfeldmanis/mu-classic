@@ -2443,7 +2443,7 @@ int main(int argc, char **argv) {
             bool inSafe = (gx >= 0 && gz >= 0 && gx < S && gz < S) &&
                           (g_terrainDataPtr->mapping.attributes[gz * S + gx] & 0x01) != 0;
             g_hero.SetInSafeZone(inSafe);
-            bool indoorLoop = (mid == 1 || mid == 4);
+            bool indoorLoop = (mid == 1 || mid == 4 || mid == 7);
             if (GetMapConfig(mid)->ambientLoop &&
                 (indoorLoop || !inSafe) && !GetMapConfig(mid)->hasWind)
               SoundManager::PlayLoop(GetMapConfig(mid)->ambientLoop);
@@ -5522,7 +5522,7 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
     g_hero.SetInSafeZone(inSafeZone);
     const MapConfig &sndCfg = *GetMapConfig(g_currentMapId);
     // Indoor maps (Dungeon, Lost Tower): always play ambient regardless of safe zone
-    bool indoorMap = (g_currentMapId == 1 || g_currentMapId == 4);
+    bool indoorMap = (g_currentMapId == 1 || g_currentMapId == 4 || g_currentMapId == 7);
     if (sndCfg.ambientLoop && (indoorMap || !inSafeZone) && !sndCfg.hasWind)
       SoundManager::PlayLoop(sndCfg.ambientLoop);
     if (inSafeZone && sndCfg.safeMusic)

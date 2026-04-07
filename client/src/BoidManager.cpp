@@ -997,7 +997,12 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       f.lifetime = rand() % 128;
       f.action = 0;
       f.position = spawnPos;
-      f.position.y = getTerrainHeight(spawnPos.x, spawnPos.z);
+      if (m_mapId == 7) {
+        // Atlans: fish swim near hero height, slightly below
+        f.position.y = heroPos.y - (float)(rand() % 60 + 20);
+      } else {
+        f.position.y = getTerrainHeight(spawnPos.x, spawnPos.z);
+      }
       f.angle = glm::vec3(0.0f, 0.0f, 0.0f);
       continue;
     }
@@ -1453,8 +1458,14 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
     m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
     m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
-    m_shader->setVec4("u_fogParams", glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f));
-    m_shader->setVec4("u_fogColor", glm::vec4(0.117f, 0.078f, 0.039f, 0.0f));
+    // Map-aware fog for fish (Atlans=underwater blue, others=brown)
+    if (m_mapId == 7) {
+      m_shader->setVec4("u_fogParams", glm::vec4(600.0f, 2200.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_fogColor", glm::vec4(0.04f, 0.10f, 0.18f, 0.0f));
+    } else {
+      m_shader->setVec4("u_fogParams", glm::vec4(1500.0f, 3500.0f, 1.0f, 0.0f));
+      m_shader->setVec4("u_fogColor", glm::vec4(0.117f, 0.078f, 0.039f, 0.0f));
+    }
     uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A | BGFX_STATE_WRITE_Z
                    | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
                    | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
