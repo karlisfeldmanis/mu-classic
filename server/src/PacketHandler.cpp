@@ -72,6 +72,7 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       case 2: spawnX = 210; spawnY = 40;  break;   // Devias center
       case 3: spawnX = 174; spawnY = 110; break;   // Noria center
       case 4: spawnX = 208; spawnY = 75;  break;   // Lost Tower entrance
+      case 7: spawnX = 24;  spawnY = 22;  break;   // Atlans safe zone
       }
       if (spawnX != 0 || spawnY != 0) {
         server.TransitionMap(session, session.mapId, spawnX, spawnY);

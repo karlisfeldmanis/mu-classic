@@ -1080,8 +1080,9 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
       MuMath::IsCrossbow(m_weaponInfo.category, m_weaponInfo.itemIndex);
 
   int combatBone = isCrossbowWep ? BONE_R_HAND : wCat.attachBone;
-  // Main 5.2: weapons ALWAYS on back in Atlans outside safe zone (bBindBack=true)
-  bool isSwimming = (m_mapId == 7 && !m_inSafeZone);
+  // Main 5.2: weapons on back in Atlans outside safe zone, except during attack
+  bool isSwimming = (m_mapId == 7 && !m_inSafeZone &&
+                     m_attackState == AttackState::NONE);
   bool weaponOnBack = m_inSafeZone || isMountRiding() || isSwimming;
   int attachBone = (weaponOnBack && BONE_BACK < (int)bones.size())
                        ? BONE_BACK
@@ -1714,21 +1715,7 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
     }
   }
 
-  // ── Atlans: underwater bubble emission from head bone ──
-  // Main 5.2: WorldTime%10000<1000 → emit 1 bubble/frame for 1s every 10s
-  if (m_mapId == 7 && !m_inSafeZone && m_vfxManager) {
-    static float bubbleTimer = 0.0f;
-    bubbleTimer += deltaTime;
-    if (bubbleTimer >= 10.0f) bubbleTimer -= 10.0f;
-    // Emit bubbles during first 1 second of each 10-second cycle
-    if (bubbleTimer < 1.0f) {
-      glm::vec3 headPos = m_pos + glm::vec3(0, 160, 0);
-      glm::vec3 off((float)(rand() % 20 - 10), (float)(rand() % 20),
-                    (float)(rand() % 20 - 10));
-      m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, headPos + off,
-                                       glm::vec3(0.5f, 0.7f, 1.0f), 1);
-    }
-  }
+  // Atlans bubbles moved to main.cpp (this code runs too late, after early return)
 
   // ── Twisting Slash: render ghost weapon copies orbiting the hero ──
   if (m_twistingSlashActive && !m_ghostWeaponMeshBuffers.empty()) {

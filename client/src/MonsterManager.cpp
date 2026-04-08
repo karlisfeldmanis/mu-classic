@@ -1070,9 +1070,9 @@ void MonsterManager::InitModels(const std::string &dataPath) {
   // ── Atlans monsters (OpenMU Version075 Atlans.cs) ──
   // Monster32-39.bmd — underwater sea creatures
 
-  // Bahamut (type 45): Monster32.bmd
+  // Bahamut (type 45): Main 5.2 MONSTER_MODEL_BAHAMUT=33 → Monster34.bmd, scale 0.6
   {
-    int idx = loadMonsterModel("Monster32.bmd", "Bahamut", 1.0f, 80.0f, 120.0f);
+    int idx = loadMonsterModel("Monster34.bmd", "Bahamut", 0.6f, 80.0f, 120.0f);
     if (idx >= 0) {
       m_models[idx].defense = 65;
       m_models[idx].defenseRate = 52;
@@ -1080,9 +1080,9 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     }
     m_typeToModel[45] = idx;
   }
-  // Vepar (type 46): Monster33.bmd — ranged attacker
+  // Vepar (type 46): MONSTER_MODEL_VEPAR=34 → Monster35.bmd, scale 1.0
   {
-    int idx = loadMonsterModel("Monster33.bmd", "Vepar", 1.0f, 80.0f, 130.0f);
+    int idx = loadMonsterModel("Monster35.bmd", "Vepar", 1.0f, 80.0f, 130.0f);
     if (idx >= 0) {
       m_models[idx].defense = 70;
       m_models[idx].defenseRate = 58;
@@ -1090,19 +1090,20 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     }
     m_typeToModel[46] = idx;
   }
-  // Valkyrie (type 47): Monster34.bmd — ranged attacker
+  // Valkyrie (type 47): MONSTER_MODEL_VALKYRIE=35 → Monster36.bmd, scale 1.1, BlendMesh=0
   {
-    int idx = loadMonsterModel("Monster34.bmd", "Valkyrie", 1.0f, 80.0f, 130.0f);
+    int idx = loadMonsterModel("Monster36.bmd", "Valkyrie", 1.1f, 80.0f, 130.0f);
     if (idx >= 0) {
       m_models[idx].defense = 75;
       m_models[idx].defenseRate = 64;
       m_models[idx].attackRate = 230;
+      m_models[idx].blendMesh = 0; // Main 5.2: BlendMesh=0, BlendMeshLight=1.0
     }
     m_typeToModel[47] = idx;
   }
-  // Lizard King (type 48): Monster35.bmd — strong melee
+  // Lizard King (type 48): MONSTER_MODEL_LIZARD=36 → Monster37.bmd, scale 1.4
   {
-    int idx = loadMonsterModel("Monster35.bmd", "Lizard King", 1.0f, 100.0f, 160.0f);
+    int idx = loadMonsterModel("Monster37.bmd", "Lizard King", 1.4f, 100.0f, 160.0f);
     if (idx >= 0) {
       m_models[idx].defense = 180;
       m_models[idx].defenseRate = 115;
@@ -1110,19 +1111,20 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     }
     m_typeToModel[48] = idx;
   }
-  // Hydra (type 49): Monster36.bmd — boss
+  // Hydra (type 49): MONSTER_MODEL_HYDRA=37 → Monster38.bmd, scale 1.0, BlendMesh=5
   {
-    int idx = loadMonsterModel("Monster36.bmd", "Hydra", 1.2f, 120.0f, 200.0f);
+    int idx = loadMonsterModel("Monster38.bmd", "Hydra", 1.0f, 120.0f, 200.0f);
     if (idx >= 0) {
       m_models[idx].defense = 200;
       m_models[idx].defenseRate = 125;
       m_models[idx].attackRate = 430;
+      m_models[idx].blendMesh = 5;
     }
     m_typeToModel[49] = idx;
   }
-  // Sea Worm (type 50): Monster37.bmd — boss
+  // Sea Worm (type 50): MONSTER_MODEL_SEA_WORM=38 → Monster39.bmd, scale 1.8
   {
-    int idx = loadMonsterModel("Monster37.bmd", "Sea Worm", 1.2f, 120.0f, 200.0f);
+    int idx = loadMonsterModel("Monster39.bmd", "Sea Worm", 1.8f, 120.0f, 200.0f);
     if (idx >= 0) {
       m_models[idx].defense = 200;
       m_models[idx].defenseRate = 125;
@@ -1130,25 +1132,36 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     }
     m_typeToModel[50] = idx;
   }
-  // Great Bahamut (type 51): Monster38.bmd — stronger variant
+  // Great Bahamut (type 51): reuses Bahamut model (Monster34.bmd), scale 1.0
   {
-    int idx = loadMonsterModel("Monster38.bmd", "Great Bahamut", 1.2f, 100.0f, 150.0f);
-    if (idx >= 0) {
-      m_models[idx].defense = 150;
-      m_models[idx].defenseRate = 98;
-      m_models[idx].attackRate = 330;
+    int bahamutIdx = m_typeToModel.count(45) ? m_typeToModel[45] : -1;
+    if (bahamutIdx >= 0) {
+      // Share model with Bahamut but with different scale
+      m_typeToModel[51] = bahamutIdx;
+    } else {
+      int idx = loadMonsterModel("Monster34.bmd", "Great Bahamut", 1.0f, 100.0f, 150.0f);
+      if (idx >= 0) {
+        m_models[idx].defense = 150;
+        m_models[idx].defenseRate = 98;
+        m_models[idx].attackRate = 330;
+      }
+      m_typeToModel[51] = idx;
     }
-    m_typeToModel[51] = idx;
   }
-  // Silver Valkyrie (type 52): Monster39.bmd — ranged ice attacker
+  // Silver Valkyrie (type 52): reuses Valkyrie model (Monster36.bmd), scale 1.4
   {
-    int idx = loadMonsterModel("Monster39.bmd", "Silver Valkyrie", 1.0f, 90.0f, 140.0f);
-    if (idx >= 0) {
-      m_models[idx].defense = 170;
-      m_models[idx].defenseRate = 110;
-      m_models[idx].attackRate = 340;
+    int valkIdx = m_typeToModel.count(47) ? m_typeToModel[47] : -1;
+    if (valkIdx >= 0) {
+      m_typeToModel[52] = valkIdx;
+    } else {
+      int idx = loadMonsterModel("Monster36.bmd", "Silver Valkyrie", 1.4f, 90.0f, 140.0f);
+      if (idx >= 0) {
+        m_models[idx].defense = 170;
+        m_models[idx].defenseRate = 110;
+        m_models[idx].attackRate = 340;
+      }
+      m_typeToModel[52] = idx;
     }
-    m_typeToModel[52] = idx;
   }
 
   // ── Lost Tower monster weapons (must come AFTER model registration) ──
@@ -1204,6 +1217,16 @@ void MonsterManager::InitModels(const std::string &dataPath) {
     // Death Cow (type 41): MODEL_MACE+3 = Mace04.bmd
     // Monster31.bmd LinkBone: [0]=42 (shares with Bull Fighter model)
     loadMonsterWeapon(41, "Mace04.bmd", 42, noRot, noOff);
+
+    // ── Atlans monster weapons (Main 5.2 ZzzCharacter.cpp) ──
+    // Valkyrie (type 47): MODEL_BLUEWING_CROSSBOW = CrossBow06.bmd, bone 30
+    // Main 5.2: BlendMesh=-2 (whole-object pulsing brightness, sinf*0.3+0.7)
+    loadMonsterWeapon(47, "CrossBow06.bmd", 30, noRot, noOff, -2);
+    // Silver Valkyrie (type 52): same crossbow, bone 30 (shares Valkyrie model)
+    // Note: type 52 maps to same model as 47, so weapon is already there
+    // Lizard King (type 48): MODEL_STAFF_OF_RESURRECTION = Staff07.bmd, bone 52
+    // Main 5.2: BlendMesh=-2 (whole-object pulsing glow, warm orange)
+    loadMonsterWeapon(48, "Staff07.bmd", 52, noRot, noOff, -2);
   }
 
   // Load Debris models (not mapped to server types)
@@ -1265,6 +1288,9 @@ void MonsterManager::AddMonster(uint16_t monsterType, uint8_t gridX,
   MonsterInstance mon;
   mon.modelIdx = modelIdx;
   mon.scale = mdl.scale;
+  // Per-instance scale overrides (Main 5.2: shared models with different scales)
+  if (monsterType == 51) mon.scale = 1.0f;  // Great Bahamut (Bahamut model at 1.0 vs 0.6)
+  if (monsterType == 52) mon.scale = 1.4f;  // Silver Valkyrie (Valkyrie model at 1.4 vs 1.1)
   mon.monsterType = monsterType;
   mon.serverIndex = serverIndex;
 
@@ -1516,15 +1542,14 @@ static float facingFromDir(const glm::vec3 &dir) {
 
 // Play idle sound for a monster transitioning to idle (with cooldown + range check)
 void MonsterManager::playIdleSound(MonsterInstance &mon) {
-  constexpr float COOLDOWN = 12.0f; // Min seconds between idle sounds per monster
+  constexpr float COOLDOWN = 8.0f; // Min seconds between idle sounds per monster
   constexpr float MAX_DIST_SQ = 800.0f * 800.0f; // Only nearby monsters
   // Suppress idle sounds for 5s after map load to prevent burst of growls
   // when all monsters simultaneously transition to IDLE on initial sync
   if (m_worldTime - m_mapLoadTime < 5.0f) return;
-  // Global throttle: max 1 idle sound per 4s to prevent overlapping growls
-  // Lost Tower has many large monsters with long (5-7s) idle sounds
+  // Global throttle: max 1 idle sound per 1.5s to prevent overlapping growls
   static float s_lastGlobalIdleSound = 0.0f;
-  if (m_worldTime - s_lastGlobalIdleSound < 4.0f) return;
+  if (m_worldTime - s_lastGlobalIdleSound < 1.5f) return;
   if (m_worldTime - mon.lastIdleSoundTime < COOLDOWN) return;
   float dx = mon.position.x - m_playerPos.x;
   float dz = mon.position.z - m_playerPos.z;
@@ -1577,17 +1602,18 @@ void MonsterManager::playIdleSound(MonsterInstance &mon) {
     SoundManager::Play3D(SOUND_MONSTER_DARKKNIGHT1 + rand() % 2, px, py, pz); break;
   case 41: // Death Cow — Main 5.2 model 30: mBull1/2.wav idle
     SoundManager::Play3D(SOUND_MONSTER_BULL1 + rand() % 2, px, py, pz); break;
-  // Atlans monsters
-  case 45: case 51: // Bahamut, Great Bahamut
+  // Atlans monsters — Main 5.2 ZzzOpenData.cpp SetMonsterSound exact
+  case 45: case 51: // Bahamut, Great Bahamut: idle=mBahamut1
     SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
-  case 46: // Vepar — uses Bahamut sound
-    SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
-  case 47: case 52: // Valkyrie, Silver Valkyrie
+  case 46: // Vepar: idle=mBepar1/mBepar2
+    SoundManager::Play3D(SOUND_MONSTER_BEPAR1 + rand() % 2, px, py, pz); break;
+  case 47: case 52: // Valkyrie, Silver Valkyrie: idle=mValkyrie1
     SoundManager::Play3D(SOUND_MONSTER_VALKYRIE1, px, py, pz); break;
-  case 48: // Lizard King
+  case 48: // Lizard King: idle=mLizardKing1/mLizardKing2
     SoundManager::Play3D(SOUND_MONSTER_LIZARDKING1 + rand() % 2, px, py, pz); break;
-  case 49: case 50: // Hydra, Sea Worm
+  case 49: // Hydra: idle=mHydra1
     SoundManager::Play3D(SOUND_MONSTER_HYDRA1, px, py, pz); break;
+  // Sea Worm (50): no sound in Main 5.2
   default: break;
   }
 }
@@ -1716,6 +1742,9 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
       mon.position.y += (-std::abs(std::sin(mon.bobTimer)) * 30.0f + 30.0f);
     }
 
+    // Main 5.2: rand_fps_check(16) plays idle sound periodically during IDLE
+    if (rand() % 400 == 0) // ~once every 16 frames at 25fps equivalent
+      playIdleSound(mon);
     mon.stateTimer -= dt;
     break;
   }
@@ -1754,6 +1783,9 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
       mon.bobTimer += dt * 3.75f;
       mon.position.y += (-std::abs(std::sin(mon.bobTimer)) * 30.0f + 30.0f);
     }
+    // Main 5.2: rand_fps_check(16) plays idle sound during walk too
+    if (rand() % 400 == 0)
+      playIdleSound(mon);
     break;
   }
 
@@ -1977,15 +2009,13 @@ void MonsterManager::updateStateMachine(MonsterInstance &mon, float dt) {
     } else {
       mon.corpseAlpha = 0.0f;
     }
-    // Main 5.2: dead monsters on Atlans emit 4 bubbles per frame
-    if (m_mapId == 7 && mon.corpseAlpha > 0.01f && m_vfxManager) {
-      for (int b = 0; b < 4; ++b) {
-        glm::vec3 bp = mon.position + glm::vec3(
-            (float)(rand() % 128 - 64), (float)(rand() % 256),
-            (float)(rand() % 128 - 64));
-        m_vfxManager->SpawnBurstColored(ParticleType::SPELL_WATER, bp,
-                                         glm::vec3(0.5f, 0.7f, 1.0f), 1);
-      }
+    // Main 5.2: dead monsters on Atlans emit bubbles (throttled)
+    if (m_mapId == 7 && mon.corpseAlpha > 0.01f && m_vfxManager &&
+        rand() % 8 == 0) { // ~1 in 8 frames instead of every frame
+      glm::vec3 bp = mon.position + glm::vec3(
+          (float)(rand() % 128 - 64), (float)(rand() % 128),
+          (float)(rand() % 128 - 64));
+      m_vfxManager->SpawnBurst(ParticleType::BUBBLE, bp, 1);
     }
     break;
   }
@@ -2033,6 +2063,82 @@ void MonsterManager::Update(float deltaTime) {
       mon.frozenTimer -= 0.75f * deltaTime;
       if (mon.frozenTimer < 0.0f)
         mon.frozenTimer = 0.0f;
+    }
+
+    // ── Atlans monster ambient VFX (bone-attached sparks/energy) ──
+    // Main 5.2: RenderLight at specific bones every frame
+    if (m_vfxManager && mon.hp > 0 && mon.state != MonsterState::DYING &&
+        mon.state != MonsterState::DEAD) {
+      float dx = mon.position.x - m_playerPos.x;
+      float dz = mon.position.z - m_playerPos.z;
+      bool nearby = (dx * dx + dz * dz) < 600.0f * 600.0f;
+      if (nearby) {
+        mon.ambientVfxTimer += deltaTime;
+        // Throttle to ~4 particles/sec per monster
+        if (mon.ambientVfxTimer >= 0.25f) {
+          mon.ambientVfxTimer = 0.0f;
+          glm::mat4 modelRot = glm::mat4(1.0f);
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+          modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+          modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+          auto getBonePos = [&](int bone) -> glm::vec3 {
+            if (bone < (int)mon.cachedBones.size()) {
+              const auto &bm = mon.cachedBones[bone];
+              glm::vec3 bl(bm[0][3], bm[1][3], bm[2][3]);
+              return glm::vec3(modelRot * glm::vec4(bl, 1.0f)) * mon.scale + mon.position;
+            }
+            return mon.position + glm::vec3(0, 60.0f * mon.scale, 0);
+          };
+
+          switch (mon.monsterType) {
+          case 45: // Bahamut: bone 9 small spark glow + occasional bubble
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(9), glm::vec3(0.6f, 0.7f, 1.0f), 2);
+            if (rand() % 3 == 0)
+              m_vfxManager->SpawnBurst(ParticleType::BUBBLE, getBonePos(2), 1);
+            break;
+          case 51: // Great Bahamut: bone 9 spark + bubble + smoke aura
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(9), glm::vec3(0.6f, 0.7f, 1.0f), 2);
+            if (rand() % 3 == 0)
+              m_vfxManager->SpawnBurst(ParticleType::BUBBLE, getBonePos(2), 1);
+            // Main 5.2: Level=1 → BITMAP_SMOKE+1
+            {
+              glm::vec3 smokePos = mon.position + glm::vec3(
+                (float)(rand() % 64 - 32), (float)(rand() % 32),
+                (float)(rand() % 64 - 32));
+              m_vfxManager->SpawnBurst(ParticleType::SMOKE, smokePos, 1);
+            }
+            break;
+          case 46: // Vepar: bones 30, 39 — small lightning sparks on hands
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(30), glm::vec3(0.4f, 0.5f, 1.0f), 2);
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(39), glm::vec3(0.4f, 0.5f, 1.0f), 2);
+            break;
+          case 48: { // Lizard King: bones 26,31,36,41 + warm orange staff glow
+            int lkBones[] = {26, 31, 36, 41};
+            int b = lkBones[rand() % 4];
+            // Body sparks (blue-white per Main 5.2 RenderLight)
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(b), glm::vec3(0.5f, 0.6f, 1.0f), 2);
+            // Staff glow (warm orange, Main 5.2: R=1.0 G=0.6 B=0.4)
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(52), glm::vec3(1.0f, 0.6f, 0.4f), 2);
+            break;
+          }
+          case 47: case 52: // Valkyrie/Silver Valkyrie: blue glow on crossbow bone 30
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(30), glm::vec3(0.2f, 0.4f, 0.6f), 2);
+            break;
+          case 49: // Hydra: bone 63 small lightning glow
+            m_vfxManager->SpawnBurstColored(ParticleType::PET_SPARKLE,
+                getBonePos(63), glm::vec3(0.3f, 0.6f, 1.0f), 3);
+            break;
+          default: break;
+          }
+        }
+      }
     }
 
     idx++;
@@ -2319,15 +2425,18 @@ void MonsterManager::SetMonsterDying(int index) {
       case 41: // Death Cow — mBullDie (model 30, same sounds as Bull Fighter)
         SoundManager::Play3D(SOUND_MONSTER_BULLDIE, px, py, pz);
         break;
-      // Atlans monsters
-      case 45: case 51: // Bahamut, Great Bahamut
+      // Atlans monsters — Main 5.2 death sounds
+      case 45: case 51: // Bahamut, Great Bahamut: die=mBahamut1
         SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
-      case 47: case 52: // Valkyrie, Silver Valkyrie
+      case 46: // Vepar: die=mBepar2
+        SoundManager::Play3D(SOUND_MONSTER_BEPAR2, px, py, pz); break;
+      case 47: case 52: // Valkyrie, Silver Valkyrie: die=mValkyrieDie
         SoundManager::Play3D(SOUND_MONSTER_VALKYRIEDIE, px, py, pz); break;
-      case 48: // Lizard King
-        SoundManager::Play3D(SOUND_MONSTER_LIZARDKING2, px, py, pz); break;
-      case 49: case 50: // Hydra, Sea Worm
+      case 48: // Lizard King: die=mGorgonDie
+        SoundManager::Play3D(SOUND_MONSTER_GORGONDIE, px, py, pz); break;
+      case 49: // Hydra: die=mHydra1
         SoundManager::Play3D(SOUND_MONSTER_HYDRA1, px, py, pz); break;
+      // Sea Worm (50): no sound in Main 5.2
       default: break;
       }
       }
@@ -2548,17 +2657,18 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     case 41: // Death Cow — mBullAttack (model 30, same sounds as Bull Fighter)
       SoundManager::Play3D(SOUND_MONSTER_BULLATTACK1 + rand() % 2, px, py, pz);
       break;
-    // Atlans monsters
-    case 45: case 51: // Bahamut, Great Bahamut
-      SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
-    case 46: // Vepar
-      SoundManager::Play3D(SOUND_MONSTER_BAHAMUT1, px, py, pz); break;
-    case 47: case 52: // Valkyrie, Silver Valkyrie
-      SoundManager::Play3D(SOUND_MONSTER_VALKYRIE1, px, py, pz); break;
-    case 48: // Lizard King
-      SoundManager::Play3D(SOUND_MONSTER_LIZARDKING1, px, py, pz); break;
-    case 49: case 50: // Hydra, Sea Worm
+    // Atlans monsters — Main 5.2 attack sounds
+    case 45: case 51: // Bahamut, Great Bahamut: attack=mYeti1
+      SoundManager::Play3D(SOUND_MONSTER_YETI1, px, py, pz); break;
+    case 46: // Vepar: attack=lightning bolt sound
+      SoundManager::Play3D(SOUND_THUNDER01, px, py, pz); break;
+    case 47: case 52: // Valkyrie, Silver Valkyrie: attack=mBaliAttack2
+      SoundManager::Play3D(SOUND_MONSTER_BALIATTACK2, px, py, pz); break;
+    case 48: // Lizard King: attack=mLizardKing1/mLizardKing2
+      SoundManager::Play3D(SOUND_MONSTER_LIZARDKING1 + rand() % 2, px, py, pz); break;
+    case 49: // Hydra: attack=mHydraAttack1
       SoundManager::Play3D(SOUND_MONSTER_HYDRAATTACK1, px, py, pz); break;
+    // Sea Worm (50): no sound in Main 5.2
     default: break;
     }
     }
@@ -2666,6 +2776,14 @@ void MonsterManager::TriggerAttackAnimation(int index) {
     SpawnArrow(arrowStart, m_playerPos + glm::vec3(0, 50, 0), 1800.0f);
   }
 
+  // Valkyrie (47) + Silver Valkyrie (52): ArrowWing from monster position
+  // Main 5.2: CreateArrow uses o->Position (not bone), MODEL_ARROW_WING
+  if (mon.monsterType == 47 || mon.monsterType == 52) {
+    glm::vec3 arrowStart = mon.position + glm::vec3(0, 80.0f * mon.scale, 0);
+    SpawnArrow(arrowStart, m_playerPos + glm::vec3(0, 50, 0), 1800.0f,
+               m_arrowModels[ARROW_WING]);
+  }
+
   // Hunter (type 29): ranged monster, fire arrow toward player
   if (mon.monsterType == 29) {
     glm::vec3 arrowStart = mon.position + glm::vec3(0, 80.0f * mon.scale, 0);
@@ -2746,6 +2864,95 @@ void MonsterManager::TriggerAttackAnimation(int index) {
       glm::vec3 ringPos = mon.position + glm::vec3(cosf(angle) * r, 20.0f, sinf(angle) * r);
       m_vfxManager->SpawnBurst(ParticleType::FIRE, ringPos, 2);
     }
+  }
+
+  // ── Bahamut (type 45) + Great Bahamut (51): Bubble + blood spray from bone 2
+  // Main 5.2: 4x BITMAP_BUBBLE + 4x BITMAP_BLOOD+1 from bone 2
+  if ((mon.monsterType == 45 || mon.monsterType == 51) && m_vfxManager) {
+    glm::vec3 startPos = mon.position + glm::vec3(0, 50.0f * mon.scale, 0);
+    if (2 < (int)mon.cachedBones.size()) {
+      glm::mat4 modelRot = glm::mat4(1.0f);
+      modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+      modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+      modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+      const auto &bm = mon.cachedBones[2];
+      glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+      glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+      startPos = boneWorld * mon.scale + mon.position;
+    }
+    m_vfxManager->SpawnBurst(ParticleType::BUBBLE, startPos, 4);
+    m_vfxManager->SpawnBurst(ParticleType::BLOOD, startPos, 4);
+  }
+
+  // ── Vepar (type 46): Energy ball from hands (bones 30, 39)
+  // Main 5.2: BITMAP_BLUR+1 joints from weapon bones, AT_SKILL_ENERGYBALL
+  if (mon.monsterType == 46 && m_vfxManager) {
+    glm::mat4 modelRot = glm::mat4(1.0f);
+    modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+    for (int hand : {30, 39}) {
+      if (hand < (int)mon.cachedBones.size()) {
+        const auto &bm = mon.cachedBones[hand];
+        glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+        glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+        glm::vec3 startPos = boneWorld * mon.scale + mon.position;
+        m_vfxManager->SpawnRibbon(startPos, m_playerPos + glm::vec3(0, 50, 0),
+                                  50.0f, glm::vec3(0.3f, 0.5f, 1.0f), 0.5f);
+        m_vfxManager->SpawnBurst(ParticleType::ENERGY, startPos, 2);
+      }
+    }
+  }
+
+  // ── Lizard King (type 48): Lightning from weapon bones (52, 65) to target
+  // Main 5.2: 6x BITMAP_JOINT_THUNDER type 2 from alternating hands
+  if (mon.monsterType == 48 && m_vfxManager) {
+    glm::mat4 modelRot = glm::mat4(1.0f);
+    modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+    modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+    modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+    for (int hand : {52, 65}) {
+      if (hand < (int)mon.cachedBones.size()) {
+        const auto &bm = mon.cachedBones[hand];
+        glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+        glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+        glm::vec3 startPos = boneWorld * mon.scale + mon.position;
+        glm::vec3 target = m_playerPos + glm::vec3(0, 50, 0);
+        m_vfxManager->SpawnRibbon(startPos, target, 50.0f,
+                                  glm::vec3(0.4f, 0.6f, 1.0f), 0.4f);
+        m_vfxManager->SpawnRibbon(startPos, target, 10.0f,
+                                  glm::vec3(0.6f, 0.8f, 1.0f), 0.4f);
+        m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, startPos, 3);
+      }
+    }
+  }
+
+  // ── Hydra (type 49): Boss laser from bone 63
+  // Main 5.2: BITMAP_BOSS_LASER+1 from bone 63, AT_SKILL_BOSS = 9-laser fan
+  if (mon.monsterType == 49 && m_vfxManager) {
+    glm::vec3 startPos = mon.position + glm::vec3(0, 120.0f * mon.scale, 0);
+    if (63 < (int)mon.cachedBones.size()) {
+      glm::mat4 modelRot = glm::mat4(1.0f);
+      modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 0, 1));
+      modelRot = glm::rotate(modelRot, glm::radians(-90.0f), glm::vec3(0, 1, 0));
+      modelRot = glm::rotate(modelRot, mon.facing, glm::vec3(0, 0, 1));
+      const auto &bm = mon.cachedBones[63];
+      glm::vec3 boneLocal(bm[0][3], bm[1][3], bm[2][3]);
+      glm::vec3 boneWorld = glm::vec3(modelRot * glm::vec4(boneLocal, 1.0f));
+      startPos = boneWorld * mon.scale + mon.position;
+    }
+    // 9-laser fan pattern (Main 5.2: 9x BITMAP_BOSS_LASER at 40° intervals)
+    glm::vec3 toPlayer = m_playerPos - mon.position;
+    float baseFacing = std::atan2(toPlayer.x, toPlayer.z);
+    for (int i = 0; i < 9; ++i) {
+      float angle = baseFacing + glm::radians((float)(i - 4) * 40.0f);
+      glm::vec3 dir(std::sin(angle), 0.0f, std::cos(angle));
+      glm::vec3 target = startPos + dir * 400.0f;
+      target.y = m_playerPos.y;
+      m_vfxManager->SpawnRibbon(startPos, target, 30.0f,
+                                glm::vec3(0.3f, 0.6f, 1.0f), 0.6f);
+    }
+    m_vfxManager->SpawnBurst(ParticleType::SPELL_LIGHTNING, startPos, 6);
   }
 }
 

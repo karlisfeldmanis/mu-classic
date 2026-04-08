@@ -46,6 +46,14 @@ void VFXManager::Init(const std::string &effectDataPath) {
   m_energyTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/JointEnergy01.OZJ");
 
+  // Main 5.2: BITMAP_BUBBLE — underwater bubble (Object8/drop01.OZJ)
+  m_bubbleTexture =
+      TextureLoader::LoadOZJ(effectDataPath + "/Object8/drop01.OZJ");
+  if (!TexValid(m_bubbleTexture))
+    printf("[VFX] WARNING: Failed to load bubble texture drop01.OZJ\n");
+  else
+    printf("[VFX] Loaded bubble texture drop01.OZJ\n");
+
   // Main 5.2: BITMAP_MAGIC+1 — level-up magic circle ground decal
   m_magicGroundTexture =
       TextureLoader::LoadOZJ(effectDataPath + "/Effect/Magic_Ground2.OZJ");
@@ -787,6 +795,17 @@ void VFXManager::SpawnBurst(ParticleType type, const glm::vec3 &position,
       p.alpha = 0.5f;
       break;
     }
+    case ParticleType::BUBBLE: {
+      // Main 5.2 EXACT: SubType 0, additive blend (GL_ONE, GL_ONE)
+      // No initial velocity — movement is random jitter per tick in update
+      p.velocity = glm::vec3(0, 0, 0);
+      p.scale = (float)(rand() % 6 + 4) * 3.0f; // 12-30 world units
+      p.maxLifetime = 2.5f + (float)(rand() % 10) * 0.1f; // Long life for tall rise
+      p.color = glm::vec3(0.7f, 0.8f, 1.0f); // Brighter blue-white
+      p.alpha = 0.25f; // More transparent
+      p.frame = -1.0f;
+      break;
+    }
     case ParticleType::DUNGEON_MIST: {
       // Void edge mist — massive fog billboards covering entire void area
       float drift = 1.0f + (float)(rand() % 2);
@@ -1491,6 +1510,17 @@ void VFXManager::Update(float deltaTime) {
       // Stationary, just gentle scale shrink as it fades
       p.scale *= (1.0f - 1.5f * deltaTime);
       break;
+    case ParticleType::BUBBLE: {
+      // Main 5.2: random drift XZ, steady rise Y
+      float s = p.scale * 0.01f;
+      float tick = deltaTime * 8.0f; // Gentle pace
+      // Gentler XZ drift (reduced from 1.5 to 1.0 multiplier)
+      p.position.x += (float)(rand() % 20 - 10) * 1.0f * s * tick;
+      p.position.z += (float)(rand() % 20 - 10) * 1.0f * s * tick;
+      // Faster upward rise for taller columns
+      p.position.y += (float)(rand() % 15 + 18) * 1.2f * s * tick;
+      break;
+    }
     case ParticleType::IMP_SPARKLE:
       // Embers drift upward, decelerate, shrink
       p.velocity *= (1.0f - 2.0f * deltaTime);
@@ -2018,6 +2048,9 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
                 TexValid(m_sparkTexture) ? m_sparkTexture : m_flareTexture, true);
   drawBatchBgfx(ParticleType::MOUNT_DUST,
                 TexValid(m_smokeTexture) ? m_smokeTexture : m_flareTexture, false);
+  // Bubble: additive blend so they glow against dark underwater background
+  drawBatchBgfx(ParticleType::BUBBLE,
+                TexValid(m_bubbleTexture) ? m_bubbleTexture : m_flareTexture, true);
   drawBatchBgfx(ParticleType::INFERNO_SPARK,
                 TexValid(m_sparkTexture) ? m_sparkTexture : m_hitTexture, true);
   drawBatchBgfx(ParticleType::INFERNO_EXPLOSION,

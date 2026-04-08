@@ -960,50 +960,78 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
 
     // Spawn new fish if slot empty
     if (!f.live) {
-      // Random position near hero
       glm::vec3 spawnPos;
-      spawnPos.x = heroPos.x + (float)(rand() % 1024 - 512);
-      spawnPos.z = heroPos.z + (float)(rand() % 1024 - 512);
-      spawnPos.y = heroPos.y;
-
-      // Atlans: entire map is underwater, skip water tile check
-      // Lorencia: only spawn on water tiles (layer1 == 5)
-      if (m_mapId != 7) {
+      if (m_mapId == 7) {
+        // Spawn in schools: pick a cluster center, then scatter nearby
+        // Find an existing live fish to spawn near (schooling), or pick random spot
+        glm::vec3 clusterCenter = heroPos;
+        bool foundSchool = false;
+        for (int j = 0; j < MAX_FISHS; ++j) {
+          if (m_fishs[j].live && j != i) {
+            clusterCenter = m_fishs[j].position;
+            foundSchool = true;
+            break;
+          }
+        }
+        float angle = (float)(rand() % 360) * 3.14159f / 180.0f;
+        float dist;
+        if (foundSchool) {
+          // Spawn near existing school (30-100 units away for tight groups)
+          dist = 30.0f + (float)(rand() % 70);
+        } else {
+          // No school yet: spawn at edge of visible range (~500-900 units)
+          dist = 500.0f + (float)(rand() % 400);
+          clusterCenter = heroPos;
+        }
+        spawnPos.x = clusterCenter.x + std::cos(angle) * dist;
+        spawnPos.z = clusterCenter.z + std::sin(angle) * dist;
+        // Skip safe zone
+        uint8_t attr = getTerrainAttribute(spawnPos.x, spawnPos.z);
+        if (attr & 0x01) continue;
+        // Main 5.2: height = terrain + 50-200 above ground
+        spawnPos.y = getTerrainHeight(spawnPos.x, spawnPos.z) + (float)(rand() % 150 + 50);
+      } else {
+        // Lorencia: only on water tiles
+        spawnPos.x = heroPos.x + (float)(rand() % 1024 - 512);
+        spawnPos.z = heroPos.z + (float)(rand() % 1024 - 512);
         uint8_t layer1 = getTerrainLayer1(spawnPos.x, spawnPos.z);
-        if (layer1 != 5)
-          continue;
-        // Skip spawn near shore — all 4 neighbors must also be water
+        if (layer1 != 5) continue;
         const float sp = 200.0f;
         if (getTerrainLayer1(spawnPos.x + sp, spawnPos.z) != 5 ||
             getTerrainLayer1(spawnPos.x - sp, spawnPos.z) != 5 ||
             getTerrainLayer1(spawnPos.x, spawnPos.z + sp) != 5 ||
             getTerrainLayer1(spawnPos.x, spawnPos.z - sp) != 5)
           continue;
+        spawnPos.y = getTerrainHeight(spawnPos.x, spawnPos.z);
       }
 
       f = Fish{}; // Reset
       f.live = true;
-      f.alpha = 0.0f;
-      // Atlans fish: bigger and more opaque (underwater sea creatures)
+      f.alpha = 0.0f; // Always fade in smoothly (spawns off-screen)
       if (m_mapId == 7) {
-        f.alphaTarget = (float)(rand() % 3 + 4) * 0.1f; // 0.4-0.6
-        f.scale = (float)(rand() % 5 + 6) * 0.1f;       // 0.6-1.0
+        // Small fish for Atlans — scale 0.2-0.5 (mix of tiny and small)
+        f.scale = (float)(rand() % 4 + 2) * 0.1f; // 0.2-0.5
+        f.alphaTarget = 1.0f;
+        f.velocity = 1.0f / f.scale; // Main 5.2 exact
+        // Color variety: blue, green, gold, silver, purple tints
+        switch (rand() % 6) {
+          case 0: f.tint = glm::vec3(0.6f, 0.8f, 1.0f); break; // Blue
+          case 1: f.tint = glm::vec3(0.5f, 1.0f, 0.7f); break; // Green
+          case 2: f.tint = glm::vec3(1.0f, 0.85f, 0.4f); break; // Gold
+          case 3: f.tint = glm::vec3(0.9f, 0.9f, 1.0f); break; // Silver
+          case 4: f.tint = glm::vec3(0.8f, 0.6f, 1.0f); break; // Purple
+          default: f.tint = glm::vec3(1.0f, 1.0f, 1.0f); break; // Natural
+        }
       } else {
-        f.alphaTarget = (float)(rand() % 2 + 2) * 0.1f; // 0.2 or 0.3
-        f.scale = (float)(rand() % 4 + 4) * 0.1f;       // 0.4-0.7
+        f.alphaTarget = (float)(rand() % 2 + 2) * 0.1f;
+        f.scale = (float)(rand() % 4 + 4) * 0.1f;
+        f.velocity = 0.6f / f.scale;
       }
-      f.velocity = 0.6f / f.scale;
       f.subType = 0;
       f.lifetime = rand() % 128;
       f.action = 0;
       f.position = spawnPos;
-      if (m_mapId == 7) {
-        // Main 5.2: fish spawn 150-350 units above terrain (RequestTerrainHeight+rand%200+150)
-        f.position.y = getTerrainHeight(spawnPos.x, spawnPos.z) + (float)(rand() % 200 + 150);
-      } else {
-        f.position.y = getTerrainHeight(spawnPos.x, spawnPos.z);
-      }
-      f.angle = glm::vec3(0.0f, 0.0f, 0.0f);
+      f.angle = glm::vec3(0.0f, 0.0f, (float)(rand() % 360)); // Random facing
       continue;
     }
 
@@ -1017,29 +1045,98 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       }
     }
 
-    // Move: forward in facing direction, snap to terrain height
-    // Main 5.2: GOBoid.cpp:1803-1808
+    // Boid flocking + hero avoidance (fish flee from player)
+    if (m_mapId == 7) {
+      float turnRate = 2.0f;
+      float targetAngle = f.angle.z;
+      float fleeStrength = 0.0f; // Speed boost when fleeing
+      int neighbors = 0;
+      float avgX = 0, avgZ = 0;
+
+      // Hero avoidance: fish flee from player within 300 units
+      float hdx = f.position.x - heroPos.x;
+      float hdz = f.position.z - heroPos.z;
+      float heroDist = std::sqrt(hdx * hdx + hdz * hdz);
+      if (heroDist < 300.0f && heroDist > 1.0f) {
+        // Strong repulsion — weight 3x vs normal boid forces
+        float w = 3.0f * (1.0f - heroDist / 300.0f); // Stronger when closer
+        avgX += (hdx / heroDist) * w;
+        avgZ += (hdz / heroDist) * w;
+        neighbors++;
+        fleeStrength = (1.0f - heroDist / 300.0f) * 2.0f; // Up to 2x speed boost
+        turnRate = 5.0f; // Turn faster when fleeing
+      }
+
+      for (int j = 0; j < MAX_FISHS; ++j) {
+        if (j == i || !m_fishs[j].live) continue;
+        float dx = m_fishs[j].position.x - f.position.x;
+        float dz = m_fishs[j].position.z - f.position.z;
+        float dist = std::sqrt(dx * dx + dz * dz);
+        if (dist < 400.0f && dist > 1.0f) {
+          if (dist < 80.0f) {
+            avgX -= dx / dist; // Separation: move away
+            avgZ -= dz / dist;
+          } else {
+            avgX += dx / dist; // Cohesion: move toward
+            avgZ += dz / dist;
+          }
+          neighbors++;
+        }
+      }
+      if (neighbors > 0) {
+        avgX /= neighbors; avgZ /= neighbors;
+        targetAngle = std::atan2(avgX, avgZ) * 180.0f / 3.14159f;
+      }
+      // Smooth turn toward target angle
+      float diff = targetAngle - f.angle.z;
+      while (diff > 180.0f) diff -= 360.0f;
+      while (diff < -180.0f) diff += 360.0f;
+      f.angle.z += std::clamp(diff, -turnRate, turnRate) * dt * 25.0f;
+      if (f.angle.z >= 360.0f) f.angle.z -= 360.0f;
+      if (f.angle.z < 0.0f) f.angle.z += 360.0f;
+    }
+
+    // Move forward in facing direction with speed variation
+    // Random small direction wobble for natural swimming (±3° per tick)
+    if (rand() % 4 == 0)
+      f.angle.z += (float)(rand() % 7 - 3);
     float rad = glm::radians(f.angle.z);
     float cosA = std::cos(rad);
     float sinA = std::sin(rad);
-    float speed = f.velocity * (float)(rand() % 4 + 6);
-    // MU: X += cos, Y += sin. GL: X=MU_Y, Z=MU_X → x += sin, z += cos
+    // Speed varies 4-12 per tick, boosted when fleeing from hero
+    float speed = f.velocity * (float)(rand() % 9 + 4);
+    if (m_mapId == 7) {
+      float hdx = f.position.x - heroPos.x;
+      float hdz = f.position.z - heroPos.z;
+      float hd = std::sqrt(hdx * hdx + hdz * hdz);
+      if (hd < 300.0f) speed *= 1.0f + 2.0f * (1.0f - hd / 300.0f); // Up to 3x when close
+    }
     f.position.x += speed * sinA * dt * 25.0f;
     f.position.z += speed * cosA * dt * 25.0f;
+    // Main 5.2: fish Y snaps to terrain height every frame
+    // (spawn height is elevated, but movement resets to ground)
     f.position.y = getTerrainHeight(f.position.x, f.position.z);
 
-    // Check if still on water tile or too close to shore — reverse if so
-    uint8_t layer1 = getTerrainLayer1(f.position.x, f.position.z);
-    bool nearShore = false;
-    if (layer1 == 5) {
-      // Check neighboring cells (100 unit grid) for non-water
-      const float probe = 150.0f;
-      nearShore = getTerrainLayer1(f.position.x + probe, f.position.z) != 5
-               || getTerrainLayer1(f.position.x - probe, f.position.z) != 5
-               || getTerrainLayer1(f.position.x, f.position.z + probe) != 5
-               || getTerrainLayer1(f.position.x, f.position.z - probe) != 5;
+    // Wall/boundary check
+    bool shouldReverse = false;
+    if (m_mapId == 7) {
+      // Atlans: check terrain attribute for walls/noground
+      uint8_t attr = getTerrainAttribute(f.position.x, f.position.z);
+      if ((attr & 0x08) || (attr & 0x01)) // NOGROUND or SAFEZONE
+        shouldReverse = true;
+    } else {
+      uint8_t layer1 = getTerrainLayer1(f.position.x, f.position.z);
+      bool nearShore = false;
+      if (layer1 == 5) {
+        const float probe = 150.0f;
+        nearShore = getTerrainLayer1(f.position.x + probe, f.position.z) != 5
+                 || getTerrainLayer1(f.position.x - probe, f.position.z) != 5
+                 || getTerrainLayer1(f.position.x, f.position.z + probe) != 5
+                 || getTerrainLayer1(f.position.x, f.position.z - probe) != 5;
+      }
+      shouldReverse = (layer1 != 5 || nearShore);
     }
-    if (layer1 != 5 || nearShore) {
+    if (shouldReverse) {
       f.angle.z += 180.0f;
       if (f.angle.z >= 360.0f)
         f.angle.z -= 360.0f;
@@ -1434,10 +1531,14 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
     RetransformMeshWithBones(m_fishBmd->Meshes[mi], bones, m_fishMeshes[mi]);
   }
 
+  // Main 5.2: o->Angle[2] += 90 before render (fish model faces sideways)
+  // Standard MU→GL transform: rotZ(-90) * rotY(-90) * rotZ(facing)
+  // Fish facing = angle.z (degrees), +90 for model correction
+  float fishFacing = glm::radians(f.angle.z + 90.0f);
   glm::mat4 model = glm::translate(glm::mat4(1.0f), f.position);
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 0, 1));
   model = glm::rotate(model, glm::radians(-90.0f), glm::vec3(0, 1, 0));
-  model = glm::rotate(model, glm::radians(-f.angle.z + 45.0f), glm::vec3(0, 0, 1));
+  model = glm::rotate(model, fishFacing, glm::vec3(0, 0, 1));
   model = glm::scale(model, glm::vec3(f.scale));
 
   glm::vec3 tLight = sampleTerrainLight(f.position);
@@ -1456,7 +1557,7 @@ void BoidManager::renderFish(const Fish &f, const glm::mat4 &view,
     m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
     m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
     m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
-    m_shader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+    m_shader->setVec4("u_baseTint", glm::vec4(f.tint, 0.0f));
     m_shader->setVec4("u_texCoordOffset", glm::vec4(0.0f));
     // Map-aware fog for fish (Atlans=underwater blue, others=brown)
     if (m_mapId == 7) {

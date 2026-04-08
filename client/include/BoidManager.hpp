@@ -59,6 +59,7 @@ struct Fish {
   int action = 0;
   int subType = 0; // Wall-hit counter
   int lifetime = 0;
+  glm::vec3 tint{1.0f}; // Color tint variety
 };
 
 // A falling leaf particle (Main 5.2: ZzzEffectFireLeave.cpp)

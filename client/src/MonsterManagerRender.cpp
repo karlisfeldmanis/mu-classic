@@ -528,6 +528,12 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     else if (mon.monsterType == 11) // Ghost: spectral blue tint, darken skin
       monTint = glm::vec3(0.5f, 0.6f, 0.9f);
 
+    // Silver Valkyrie (type 52): golden bright glow (Main 5.2 line 8505)
+    if (mon.monsterType == 52) {
+      monTint = glm::vec3(1.0f, 0.9f, 0.6f); // Warm gold
+      tLight *= 1.5f; // Brighter than normal
+    }
+
     // PVP Murderer2 red glow (Main 5.2 ZzzCharacter.cpp:13327)
     if (mdl.isPvpGlow)
       monTint = glm::vec3(1.0f, 0.4f, 0.4f);
@@ -586,6 +592,18 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
       float phase = m_worldTime * 3.0f + (float)mon.serverIndex * 2.1f;
       blendMeshLightVal = 0.4f + 0.5f * (0.5f + 0.5f * std::sin(phase));
     }
+    // Hydra (type 49): BlendMeshLight pulses up during attack, fades when idle
+    // Main 5.2: +0.1/frame during ATTACK1/ATTACK2, -0.1/frame otherwise
+    if (mon.monsterType == 49) {
+      bool attacking = (mon.state == MonsterState::ATTACKING);
+      // Use smooth sine ramp for attacks, decay otherwise
+      if (attacking) {
+        blendMeshLightVal = std::min(1.0f, mon.stateTimer * 2.0f); // Ramp up
+      } else {
+        blendMeshLightVal = std::max(0.0f,
+            0.3f * (0.5f + 0.5f * std::sin(m_worldTime * 2.0f))); // Gentle pulse
+      }
+    }
 
     // Draw all meshes (BGFX path)
     for (int meshIdx = 0; meshIdx < (int)mon.meshBuffers.size(); ++meshIdx) {
@@ -596,10 +614,13 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
         continue;
 
       bool isBlendMesh = hasBlendMesh && (mb.bmdTextureId == mdl.blendMesh);
-      if (isBlendMesh) {
-        // Reduce additive glow light to prevent overbright near fire sources
+      // Non-blendMesh meshes with alpha (OZT) also render additive on blendMesh models
+      bool isAlphaOnBlendModel = hasBlendMesh && !isBlendMesh && mb.hasAlpha;
+      if (isBlendMesh || isAlphaOnBlendModel) {
+        // Additive glow — blendMesh uses UV scroll, alpha meshes use default
         glm::vec3 blendLight = tLight * 0.4f;
-        monDrawMesh(model, mb, renderAlpha, blendMeshLightVal, blendLight, additiveState, monTint, blendMeshUVOff);
+        glm::vec4 uvOff = isBlendMesh ? blendMeshUVOff : glm::vec4(0.0f);
+        monDrawMesh(model, mb, renderAlpha, blendMeshLightVal, blendLight, additiveState, monTint, uvOff);
       } else if (mb.noneBlend) {
         monDrawMesh(model, mb, renderAlpha, 1.0f, tLight, noneBlendState, monTint);
       } else if (mb.bright) {
@@ -654,7 +675,13 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
           continue;
         // BlendMesh: additive glow mesh (e.g. Death Knight lightning sword)
         bool isWeaponBlend = (wd.blendMesh >= 0 && mb.bmdTextureId == wd.blendMesh);
-        if (isWeaponBlend) {
+        if (wd.blendMesh == -2) {
+          // Whole-object oscillating brightness (Main 5.2: BlendMesh=-2)
+          float phase = model[3][0] * 0.013f;
+          float pulseLight = std::sin(m_worldTime * 4.0f + phase) * 0.3f + 0.7f;
+          // BlendMesh=-2: ALL meshes render additive (black = transparent)
+          monDrawMesh(model, mb, renderAlpha, pulseLight, glm::vec3(1.0f), additiveState);
+        } else if (isWeaponBlend) {
           // Flickering additive glow + UV scroll — Main 5.2 BlendMeshLight + BlendMeshTexCoordV
           float phase = model[3][0] * 0.013f;
           float blendLight = 0.6f + 0.3f * std::sin(m_worldTime * 4.0f + phase);

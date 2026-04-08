@@ -3304,6 +3304,58 @@ int main(int argc, char **argv) {
 
     g_vfxManager.Update(deltaTime);
 
+    // Atlans: underwater bubbles from hero head
+    // Main 5.2 EXACT: 1 bubble/frame for 1 second every 10 seconds
+    // WorldTime%10000 < 1000 → emit during first 1s of 10s cycle
+    if (g_currentMapId == 7 && !g_hero.IsInSafeZone()) {
+      static float bubbleCycle = 0.0f;
+      bubbleCycle += deltaTime;
+      if (bubbleCycle >= 10.0f) bubbleCycle -= 10.0f;
+      // Emit during first 1 second of each 10-second cycle
+      if (bubbleCycle < 1.0f) {
+        // Throttle: 1 bubble every 3 frames (~20/sec instead of 60/sec)
+        static int bubbleFrame = 0;
+        if (++bubbleFrame % 3 == 0) {
+          glm::vec3 hp = g_hero.GetPosition();
+          // Swimming walk tilts character forward — head is lower and offset forward
+          glm::vec3 headPos;
+          if (g_hero.IsMoving()) {
+            float facing = g_hero.GetFacing();
+            float fwd = 80.0f; // Forward offset toward facing direction
+            headPos = hp + glm::vec3(std::sin(facing) * fwd, 150, std::cos(facing) * fwd);
+          } else {
+            headPos = hp + glm::vec3(0, 270, 0);
+          }
+          // Wider spread so bubbles aren't condensed
+          glm::vec3 off((float)(rand() % 40 - 20), (float)(rand() % 30),
+                        (float)(rand() % 40 - 20));
+          g_vfxManager.SpawnBurst(ParticleType::BUBBLE, headPos + off, 1);
+        }
+      }
+    }
+
+    // Atlans: environmental bubbles from type 22 hidden objects
+    // Main 5.2: very occasional bubble (~every 5 frames) at object positions
+    if (g_currentMapId == 7) {
+      static int envBubbleTick = 0;
+      if (++envBubbleTick % 8 == 0) { // Every 8 frames
+        const auto &insts = g_objectRenderer.GetInstances();
+        for (const auto &inst : insts) {
+          if (inst.type != 22) continue;
+          glm::vec3 objPos(inst.modelMatrix[3]);
+          // Distance cull — only spawn near hero
+          float dx = objPos.x - g_hero.GetPosition().x;
+          float dz = objPos.z - g_hero.GetPosition().z;
+          if (dx * dx + dz * dz > 800.0f * 800.0f) continue;
+          // Random skip: ~1 in 3 objects emit per cycle
+          if (rand() % 3 != 0) continue;
+          glm::vec3 off((float)(rand() % 60 - 30), (float)(rand() % 40),
+                        (float)(rand() % 60 - 30));
+          g_vfxManager.SpawnBurst(ParticleType::BUBBLE, objPos + off, 1);
+        }
+      }
+    }
+
     // Twister proximity: apply StormTime spin when tornado VFX reaches a
     // monster
     if (g_vfxManager.HasActiveTwisters()) {

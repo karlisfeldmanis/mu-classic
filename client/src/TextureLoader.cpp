@@ -480,16 +480,11 @@ TextureLoader::ResolveWithInfo(const std::string &directory,
     return {kInvalidTex, false};
   };
 
+  // Main 5.2: always try OZT first — if it exists, it has alpha data that matters
   TextureLoadResult result;
-  if (preferTGA) {
-    result = tryExts(tgaExts, 4);
-    if (!TexValid(result.textureID))
-      result = tryExts(jpgExts, 4);
-  } else {
+  result = tryExts(tgaExts, 4);
+  if (!TexValid(result.textureID))
     result = tryExts(jpgExts, 4);
-    if (!TexValid(result.textureID))
-      result = tryExts(tgaExts, 4);
-  }
   if (TexValid(result.textureID))
     return result;
 
