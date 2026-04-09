@@ -227,7 +227,7 @@ TexHandle TextureLoader::LoadOZT(const std::string &path) {
       rgba[i * 4 + 3] = 255;
     }
     return bgfx::createTexture2D(
-        (uint16_t)parsed.width, (uint16_t)parsed.height, true, 1,
+        (uint16_t)parsed.width, (uint16_t)parsed.height, false, 1,
         bgfx::TextureFormat::RGBA8,
         BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC,
         bgfx::copy(rgba.data(), (uint32_t)rgba.size()));
@@ -438,6 +438,9 @@ TextureLoader::ParseScriptFlags(const std::string &textureName) {
       break;
     case 'N':
       flags.noneBlend = true;
+      break;
+    case 'S':
+      flags.streamMesh = true;
       break;
     }
   }

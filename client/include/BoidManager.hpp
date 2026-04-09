@@ -59,6 +59,7 @@ struct Fish {
   int action = 0;
   int subType = 0; // Wall-hit counter
   int lifetime = 0;
+  float timer = 0.0f;  // Phase offset for sinusoidal swimming patterns
   glm::vec3 tint{1.0f}; // Color tint variety
 };
 

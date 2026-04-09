@@ -73,6 +73,7 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       case 3: spawnX = 174; spawnY = 110; break;   // Noria center
       case 4: spawnX = 208; spawnY = 75;  break;   // Lost Tower entrance
       case 7: spawnX = 24;  spawnY = 22;  break;   // Atlans safe zone
+      case 8: spawnX = 190; spawnY = 64;  break;   // Tarkan spawn (offset from Guard at 195,66)
       }
       if (spawnX != 0 || spawnY != 0) {
         server.TransitionMap(session, session.mapId, spawnX, spawnY);
@@ -153,8 +154,9 @@ void Handle(Session &session, const std::vector<uint8_t> &packet, Database &db,
       else if (mapId == 3) { sx = 174; sy = 110; }   // Noria center
       else if (mapId == 4) { sx = 208; sy = 75; }    // Lost Tower NPC area
       else if (mapId == 7) { sx = 24; sy = 22; }     // Atlans entry (outside return gate)
+      else if (mapId == 8) { sx = 190; sy = 64; }    // Tarkan entry (offset from Guard at 195,66)
     }
-    if (mapId <= 4 || mapId == 7) { // Allow maps 0-4 + Atlans (7)
+    if (mapId <= 4 || mapId == 7 || mapId == 8) { // Allow maps 0-4 + Atlans (7) + Tarkan (8)
       server.TransitionMap(session, mapId, sx, sy);
     }
     break;

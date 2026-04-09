@@ -1009,10 +1009,16 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       f.live = true;
       f.alpha = 0.0f; // Always fade in smoothly (spawns off-screen)
       if (m_mapId == 7) {
-        // Small fish for Atlans — scale 0.2-0.5 (mix of tiny and small)
-        f.scale = (float)(rand() % 4 + 2) * 0.1f; // 0.2-0.5
+        // Varied fish sizes for Atlans: tiny(0.15), small(0.25), medium(0.35), large(0.5)
+        int sizeClass = rand() % 10;
+        if (sizeClass < 3)       f.scale = 0.15f + (float)(rand() % 8) * 0.01f;  // 30% tiny
+        else if (sizeClass < 6)  f.scale = 0.25f + (float)(rand() % 10) * 0.01f; // 30% small
+        else if (sizeClass < 9)  f.scale = 0.35f + (float)(rand() % 10) * 0.01f; // 30% medium
+        else                     f.scale = 0.50f + (float)(rand() % 15) * 0.01f; // 10% large
         f.alphaTarget = 1.0f;
-        f.velocity = 1.0f / f.scale; // Main 5.2 exact
+        // Speed: base inversely proportional to size, plus random personality
+        float speedPersonality = 0.6f + (float)(rand() % 80) * 0.01f; // 0.6-1.4x
+        f.velocity = speedPersonality / f.scale;
         // Color variety: blue, green, gold, silver, purple tints
         switch (rand() % 6) {
           case 0: f.tint = glm::vec3(0.6f, 0.8f, 1.0f); break; // Blue
@@ -1029,6 +1035,7 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       }
       f.subType = 0;
       f.lifetime = rand() % 128;
+      f.timer = (float)(rand() % 628) * 0.01f; // Random phase 0-6.28 so fish don't sync
       f.action = 0;
       f.position = spawnPos;
       f.angle = glm::vec3(0.0f, 0.0f, (float)(rand() % 360)); // Random facing
@@ -1096,26 +1103,51 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
       if (f.angle.z < 0.0f) f.angle.z += 360.0f;
     }
 
-    // Move forward in facing direction with speed variation
-    // Random small direction wobble for natural swimming (±3° per tick)
-    if (rand() % 4 == 0)
-      f.angle.z += (float)(rand() % 7 - 3);
+    // Move forward with natural swimming variation
+    // Use timer as phase for per-fish sinusoidal patterns
+    f.timer += dt;
+
+    // Sinusoidal body weave: gentle S-curve while swimming
+    float weaveFreq = 1.5f + f.scale * 2.0f; // Smaller fish weave faster
+    float weaveAmp = 1.2f / (f.scale + 0.3f); // Smaller fish weave wider (relative)
+    float weave = std::sin(f.timer * weaveFreq * 6.28f) * weaveAmp;
+    f.angle.z += weave * dt * 25.0f;
+
+    // Random direction changes: occasional turn impulse (natural wandering)
+    if (rand() % 80 == 0) {
+      f.angle.z += (float)(rand() % 41 - 20); // ±20° sudden turn
+    } else if (rand() % 8 == 0) {
+      f.angle.z += (float)(rand() % 7 - 3); // ±3° gentle drift
+    }
+
     float rad = glm::radians(f.angle.z);
     float cosA = std::cos(rad);
     float sinA = std::sin(rad);
-    // Speed varies 4-12 per tick, boosted when fleeing from hero
-    float speed = f.velocity * (float)(rand() % 9 + 4);
+
+    // Speed: base + sinusoidal pulse (cruise/burst rhythm)
+    float speedPulse = 0.7f + 0.3f * std::sin(f.timer * 2.5f); // 0.4-1.0 range
+    float speed = f.velocity * (4.0f + 4.0f * speedPulse);
+
+    // Occasional speed dart (quick burst then slow)
+    if (rand() % 200 == 0)
+      f.velocity = std::max(f.velocity, 1.0f / f.scale) * 1.5f; // Burst
+    else
+      f.velocity += ((1.0f / f.scale) - f.velocity) * dt * 2.0f; // Relax to base
+
+    // Flee boost when hero is close
     if (m_mapId == 7) {
       float hdx = f.position.x - heroPos.x;
       float hdz = f.position.z - heroPos.z;
       float hd = std::sqrt(hdx * hdx + hdz * hdz);
-      if (hd < 300.0f) speed *= 1.0f + 2.0f * (1.0f - hd / 300.0f); // Up to 3x when close
+      if (hd < 300.0f) speed *= 1.0f + 2.0f * (1.0f - hd / 300.0f);
     }
     f.position.x += speed * sinA * dt * 25.0f;
     f.position.z += speed * cosA * dt * 25.0f;
-    // Main 5.2: fish Y snaps to terrain height every frame
-    // (spawn height is elevated, but movement resets to ground)
-    f.position.y = getTerrainHeight(f.position.x, f.position.z);
+
+    // Depth oscillation: gentle up/down bob while swimming
+    float baseY = getTerrainHeight(f.position.x, f.position.z);
+    float depthBob = std::sin(f.timer * 1.2f + f.scale * 10.0f) * 15.0f * f.scale;
+    f.position.y = baseY + depthBob;
 
     // Wall/boundary check
     bool shouldReverse = false;
@@ -1146,16 +1178,30 @@ void BoidManager::updateFishs(float dt, const glm::vec3 &heroPos) {
         f.subType--;
     }
 
-    // Despawn if hit wall twice
-    if (f.subType >= 2)
-      f.live = false;
+    // Only despawn when off-screen — never pop while visible
+    bool onScreen = isInCameraView(f.position);
 
-    // Distance despawn
+    // Despawn if hit wall twice — but only fade when not visible
+    if (f.subType >= 2 && !onScreen)
+      f.alphaTarget = 0.0f;
+
+    // Distance despawn — fade out when far AND off-screen
     float distX = f.position.x - heroPos.x;
     float distZ = f.position.z - heroPos.z;
     float range = std::sqrt(distX * distX + distZ * distZ);
-    if (range >= 1500.0f)
+    if (range >= 1500.0f && !onScreen)
+      f.alphaTarget = 0.0f;
+    // Force-kill only at extreme range (well beyond any view)
+    if (range >= 2500.0f) {
       f.live = false;
+      continue;
+    }
+
+    // Kill only after fully faded out
+    if (f.alphaTarget <= 0.0f && f.alpha <= 0.01f) {
+      f.live = false;
+      continue;
+    }
 
     // Lifetime management
     f.lifetime--;

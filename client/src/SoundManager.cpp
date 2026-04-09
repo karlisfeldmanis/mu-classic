@@ -33,6 +33,7 @@ static std::map<int, SoundSlot> s_sounds;
 static std::map<int, std::string> s_soundNames; // ID → filename for logging
 static float s_masterVolume = 1.0f;
 static bool s_initialized = false;
+static bool s_muted = false;
 
 // Per-sound throttle: prevent same sound from stacking when multiple hits land simultaneously
 static constexpr float SOUND_THROTTLE_MS = 100.0f; // 100ms cooldown per sound ID
@@ -258,6 +259,7 @@ void Init(const std::string &dataPath) {
   LoadSound(SOUND_DUNGEON01, sndPath + "aDungeon.wav", 1);
   LoadSound(SOUND_TOWER01, sndPath + "aTower.wav", 1);
   LoadSound(SOUND_WATER01, sndPath + "aWater.wav", 1);
+  LoadSound(SOUND_DESERT01, sndPath + "desert.wav", 1);
   LoadSound(SOUND_SWIM_STEP, sndPath + "pSwim.wav", 2, true);
   // Atlans monster sounds
   LoadSound(SOUND_MONSTER_BAHAMUT1, sndPath + "mBahamut1.wav", 2, true);
@@ -539,8 +541,11 @@ void Shutdown() {
   std::cout << "[Sound] Shutdown" << std::endl;
 }
 
+void SetMuted(bool muted) { s_muted = muted; }
+bool IsMuted() { return s_muted; }
+
 void Play(int soundId, float gain) {
-  if (!s_initialized)
+  if (!s_initialized || s_muted)
     return;
   auto it = s_sounds.find(soundId);
   if (it == s_sounds.end())
@@ -567,7 +572,7 @@ void Play(int soundId, float gain) {
 }
 
 void PlayPitched(int soundId, float minPitch, float maxPitch) {
-  if (!s_initialized)
+  if (!s_initialized || s_muted)
     return;
   auto it = s_sounds.find(soundId);
   if (it == s_sounds.end())
@@ -583,8 +588,8 @@ void PlayPitched(int soundId, float minPitch, float maxPitch) {
   slot.nextCh = (slot.nextCh + 1) % slot.maxCh;
 }
 
-void PlayLoop(int soundId) {
-  if (!s_initialized)
+void PlayLoop(int soundId, float gain) {
+  if (!s_initialized || s_muted)
     return;
   auto it = s_sounds.find(soundId);
   if (it == s_sounds.end())
@@ -593,7 +598,7 @@ void PlayLoop(int soundId) {
   auto &slot = it->second;
   ALuint src = slot.sources[0];
   alSourcei(src, AL_LOOPING, AL_TRUE);
-  alSourcef(src, AL_GAIN, s_masterVolume);
+  alSourcef(src, AL_GAIN, s_masterVolume * gain);
   alSourcePlay(src);
   auto nm = s_soundNames.find(soundId);
   std::cout << "[Sound] PlayLoop: " << (nm != s_soundNames.end() ? nm->second : "?")
@@ -601,7 +606,7 @@ void PlayLoop(int soundId) {
 }
 
 void Play3DLoop(int soundId, float x, float y, float z, float gain) {
-  if (!s_initialized)
+  if (!s_initialized || s_muted)
     return;
   auto it = s_sounds.find(soundId);
   if (it == s_sounds.end())
@@ -662,7 +667,7 @@ bool IsPlaying(int soundId) {
 }
 
 void Play3D(int soundId, float x, float y, float z) {
-  if (!s_initialized)
+  if (!s_initialized || s_muted)
     return;
   auto it = s_sounds.find(soundId);
   if (it == s_sounds.end())

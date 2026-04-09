@@ -16,8 +16,9 @@ struct MeshBuffers {
   // Per-mesh rendering flags (parsed from texture name suffixes)
   bool hasAlpha = false;  // Texture has alpha channel (32-bit TGA / RGBA)
   bool noneBlend = false; // _N suffix: disable blending, render opaque
-  bool hidden = false;    // _H suffix: skip rendering entirely
-  bool bright = false;    // _R suffix: additive blending
+  bool hidden = false;      // _H suffix: skip rendering entirely
+  bool bright = false;      // _R suffix: additive blending
+  bool streamMesh = false;  // _S suffix: UV scroll target (Main 5.2 StreamMesh)
 
   // BlendMesh system: window light / glow mesh identification
   int bmdTextureId = -1;      // Mesh_t::Texture value from BMD

@@ -12,7 +12,7 @@ SAMPLER2D(s_lightMap, 6);
 SAMPLER2D(s_shadowMap, 7);
 SAMPLER2D(s_voidDistMap, 8);
 
-// u_terrainParams: x=uTime, y=debugMode, z=luminosity, w=passType (0=terrain, 1=cliff, -1=minimap)
+// u_terrainParams: x=uTime, y=waterScrollRate, z=luminosity, w=passType (0=terrain, 1=cliff, -1=minimap)
 uniform vec4 u_terrainParams;
 
 // Shadow mapping
@@ -71,6 +71,7 @@ float computeEdgeFog(vec3 worldPos) {
 
 vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     float uTime = u_terrainParams.x;
+    float waterRate = u_terrainParams.y; // Per-map water/lava scroll rate
     float tLod = tileLod(uv); // compute once from continuous UV for all tile samples
     vec2 size = vec2(256.0, 256.0);
     vec2 texelSize = vec2_splat(1.0) / size;
@@ -83,7 +84,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     float centerSrc = texture2D(layerMap, centerCoord).r * 255.0;
     uint centerSym = uint(texture2D(s_symmetryMap, centerCoord).r * 255.0 + 0.5);
 
-    bool centerIsWater = (abs(centerSrc - 5.0) < 0.1);
+    bool centerIsWater = (abs(centerSrc - 5.0) < 0.1) && (waterRate < 0.02);
 
     float src0, src1, src2, src3;
     uint sym0, sym1, sym2, sym3;
@@ -137,8 +138,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.015;
-                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    cUV.x += fract(uTime * waterRate) * 0.25;
+                    cUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 cUV = fract(cUV);
             }
             c0 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
@@ -146,8 +149,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym0);
             if (isWater) {
-                tileUV.x += uTime * 0.015;
-                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    tileUV.x += fract(uTime * waterRate) * 0.25;
+                    tileUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 tileUV = fract(tileUV);
             }
             c0 = sampleTile(tileUV, floor(src0 + 0.5), tLod);
@@ -160,8 +165,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.015;
-                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    cUV.x += fract(uTime * waterRate) * 0.25;
+                    cUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 cUV = fract(cUV);
             }
             c1 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
@@ -169,8 +176,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym1);
             if (isWater) {
-                tileUV.x += uTime * 0.015;
-                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    tileUV.x += fract(uTime * waterRate) * 0.25;
+                    tileUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 tileUV = fract(tileUV);
             }
             c1 = sampleTile(tileUV, floor(src1 + 0.5), tLod);
@@ -183,8 +192,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.015;
-                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    cUV.x += fract(uTime * waterRate) * 0.25;
+                    cUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 cUV = fract(cUV);
             }
             c2 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
@@ -192,8 +203,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym2);
             if (isWater) {
-                tileUV.x += uTime * 0.015;
-                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    tileUV.x += fract(uTime * waterRate) * 0.25;
+                    tileUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 tileUV = fract(tileUV);
             }
             c2 = sampleTile(tileUV, floor(src2 + 0.5), tLod);
@@ -206,8 +219,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 cUV = tileFract(uv);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
-                cUV.x += uTime * 0.015;
-                cUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    cUV.x += fract(uTime * waterRate) * 0.25;
+                    cUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 cUV = fract(cUV);
             }
             c3 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
@@ -215,8 +230,10 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             vec2 tileUV = tileFract(uv);
             tileUV = applySymmetry(tileUV, sym3);
             if (isWater) {
-                tileUV.x += uTime * 0.015;
-                tileUV.y += sin(uTime * 0.2 + (uv.y * 0.25) * 10.0) * 0.008;
+                if (waterRate < 0.02) {
+                    tileUV.x += fract(uTime * waterRate) * 0.25;
+                    tileUV.y += sin(uTime * 2.0 + floor(uv.x) * 5.0) * 0.005;
+                }
                 tileUV = fract(tileUV);
             }
             c3 = sampleTile(tileUV, floor(src3 + 0.5), tLod);

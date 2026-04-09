@@ -27,9 +27,10 @@ struct TextureLoadResult {
 // Rendering flags parsed from MU Online texture name suffixes.
 // Pattern: "basename_FLAGS.ext" where FLAGS is a combination of R, H, N, S.
 struct TextureScriptFlags {
-  bool bright = false;    // _R: additive blending
-  bool hidden = false;    // _H: skip rendering
-  bool noneBlend = false; // _N: disable blending, render opaque
+  bool bright = false;      // _R: additive blending
+  bool hidden = false;      // _H: skip rendering
+  bool noneBlend = false;   // _N: disable blending, render opaque
+  bool streamMesh = false;  // _S: UV scroll target (BlendMeshTexCoord applied here)
 };
 
 class TextureLoader {

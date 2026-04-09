@@ -48,6 +48,7 @@ enum class ParticleType {
   PET_SPARKLE,
   IMP_SPARKLE, // Imp companion — dark red/orange ember motes
   MOUNT_DUST,    // Main 5.2: BITMAP_SMOKE hoofbeat dust while mount is running
+  BUBBLE,        // Main 5.2: BITMAP_BUBBLE — underwater bubble (Object8/drop01.OZJ)
   DUNGEON_MIST,  // Ground-level fog particles in dungeon
   // Main 5.2: BITMAP_WATERFALL_2 SubType 3 — rising columnar stream for armor set bonus
   SET_WATERFALL, // Rising energy column particles (full set +10+)
@@ -700,6 +701,7 @@ private:
   TexHandle m_smokeTexture = kInvalidTex;
   TexHandle m_fireTexture = kInvalidTex;
   TexHandle m_energyTexture = kInvalidTex;
+  TexHandle m_bubbleTexture = kInvalidTex;
   TexHandle m_lightningTexture = kInvalidTex; // JointThunder01.OZJ for ribbons
   TexHandle m_thunderTexture = kInvalidTex;   // Main 5.2: BITMAP_ENERGY (Effect/Thunder01.OZJ)
   TexHandle m_magicGroundTexture =

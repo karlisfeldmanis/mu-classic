@@ -148,6 +148,8 @@ enum SoundId {
   SOUND_MONSTER_LIZARDKING2 = 366,
   SOUND_MONSTER_HYDRA1 = 367,
   SOUND_MONSTER_HYDRAATTACK1 = 368,
+  // Tarkan ambient (Main 5.2: desert.wav — desert wind atmosphere)
+  SOUND_DESERT01 = 370,
   // Dungeon critter: bat screech (Main 5.2: aBat.wav — 3D positional)
   SOUND_BAT01 = 252,
   // Ghost (type 11) — Main 5.2: SOUND_MONSTER + 35..39
@@ -271,13 +273,16 @@ void PlayPitched(int soundId, float minPitch, float maxPitch);
 void Play3D(int soundId, float x, float y, float z);
 void Play3DPitched(int soundId, float x, float y, float z, float minPitch,
                    float maxPitch);
-void PlayLoop(int soundId);
+void PlayLoop(int soundId, float gain = 1.0f);
 void Play3DLoop(int soundId, float x, float y, float z, float gain = 1.0f);
 void UpdateSource3D(int soundId, float x, float y, float z);
 void Stop(int soundId);
 void StopAll();
 bool IsPlaying(int soundId);
 void SetMasterVolume(float vol); // 0.0 - 1.0
+// Mute: suppresses all Play/PlayLoop/Play3D calls. StopAll still works.
+void SetMuted(bool muted);
+bool IsMuted();
 void UpdateListener(float x, float y, float z);
 // Music (MP3) — one track at a time, looping
 void PlayMusic(const std::string &filename, bool loop = false);

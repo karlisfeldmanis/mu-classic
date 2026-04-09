@@ -48,6 +48,7 @@ bool Server::Start(uint16_t port) {
   m_world.LoadTerrainAttributesForMap(3, "Data/World4/EncTerrain4.att");
   m_world.LoadTerrainAttributesForMap(4, "Data/World5/EncTerrain5.att");
   m_world.LoadTerrainAttributesForMap(7, "Data/World8/EncTerrain8.att");
+  m_world.LoadTerrainAttributesForMap(8, "Data/World9/EncTerrain9.att");
   m_world.SetActiveMap(0);
 
   // Load NPC and monster data from database
@@ -1181,6 +1182,15 @@ void Server::CheckGateZones(Session &session) {
   } else if (session.mapId == 7 && gx >= 9 && gx <= 13 && gy >= 9 && gy <= 13) {
     // Atlans → Noria (OpenMU gate 47→48)
     TransitionMap(session, 3, 240, 241);
+  }
+  // ── Atlans ↔ Tarkan gates ──
+  else if (session.mapId == 7 && gx >= 14 && gx <= 17 && gy >= 225 && gy <= 230) {
+    // Atlans → Tarkan (OpenMU gate 53→54, level 80)
+    if (session.level >= 80)
+      TransitionMap(session, 8, 190, 64);
+  } else if (session.mapId == 8 && gx >= 246 && gx <= 251 && gy >= 40 && gy <= 44) {
+    // Tarkan → Atlans (OpenMU gate 55→56)
+    TransitionMap(session, 7, 16, 227);
   }
 }
 

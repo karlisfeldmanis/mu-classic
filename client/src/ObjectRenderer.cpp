@@ -37,7 +37,8 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
   case 3:
     return (mapId == 4) ? 1 : -1; // Lost Tower: fire torch glow mesh (re02.tga)
   case 4:
-    return (mapId == 4) ? 1 : -1; // Lost Tower: fire brazier glow mesh (re02.tga)
+    if (mapId == 4) return 1;  // Lost Tower: fire brazier glow mesh
+    return (mapId == 8) ? 0 : -1; // Tarkan: fire pulsing BlendMesh=0
   case 41:
     if (mapId == 3) return 0; // Noria: flowing additive mesh 0
     return 1; // Dungeon: DungeonGate02 torch — fire glow mesh
@@ -85,6 +86,17 @@ static int GetBlendMeshTexId(int type, int mapId = -1) {
     return (mapId == 7) ? 0 : -1; // Atlans: light object blend
   case 40:
     return (mapId == 7) ? 0 : -1; // Atlans: drifting object blend
+  // Tarkan (mapId=8) — Main 5.2 ZzzObject.cpp WD_8TARKAN MoveObject
+  case 7:
+    return (mapId == 8) ? 0 : -1; // Tarkan: orange fire pulsing BlendMesh=0
+  case 2:
+    return (mapId == 8) ? 0 : -1; // Tarkan: UV scroll lava flow
+  case 61: case 65: case 66:
+    return (mapId == 8) ? 1 : -1; // Tarkan: pulsing glow mesh 1
+  case 72:
+    return (mapId == 8) ? 0 : -1; // Tarkan: V-scroll with mesh 0
+  case 82:
+    return (mapId == 8) ? 0 : -1; // Tarkan: static white light
   default:
     return -1;
   }
@@ -286,6 +298,7 @@ void ObjectRenderer::UploadMesh(const Mesh_t &mesh, const std::string &baseDir,
   mb.noneBlend = scriptFlags.noneBlend;
   mb.hidden = scriptFlags.hidden;
   mb.bright = scriptFlags.bright;
+  mb.streamMesh = scriptFlags.streamMesh;
   mb.bmdTextureId = mesh.Texture;
 
   out.push_back(mb);
@@ -375,6 +388,7 @@ void ObjectRenderer::UploadMeshGPUSkinned(const Mesh_t &mesh,
   mb.noneBlend = scriptFlags.noneBlend;
   mb.hidden = scriptFlags.hidden;
   mb.bright = scriptFlags.bright;
+  mb.streamMesh = scriptFlags.streamMesh;
   mb.bmdTextureId = mesh.Texture;
 
   out.push_back(mb);
@@ -506,6 +520,14 @@ void ObjectRenderer::LoadObjects(const std::vector<ObjectData> &objects,
     // Snap Grass05-08 (types 24-27) to terrain height on Lorencia
     // EncTerrain1.obj has bad Y coords for these grass objects
     if (m_mapId == 0 && obj.type >= 24 && obj.type <= 27) {
+      float terrH = SampleTerrainHeight(objPos.x, objPos.z);
+      objPos.y = terrH;
+    }
+    // Tarkan: snap grass/plant objects to terrain height
+    // EncTerrain9.obj has bad Y coords for small vegetation (same issue as Lorencia)
+    if (m_mapId == 8 && (obj.type == 22 || obj.type == 24 || obj.type == 25 ||
+                         obj.type == 27 || obj.type == 28 || obj.type == 29 ||
+                         obj.type == 31 || obj.type == 40)) {
       float terrH = SampleTerrainHeight(objPos.x, objPos.z);
       objPos.y = terrH;
     }
@@ -874,6 +896,12 @@ void ObjectRenderer::LoadObjectsGeneric(
     std::string dataRoot = objectDir.substr(0, objectDir.rfind('/'));
     m_chromeTexture = TextureLoader::LoadOZJ(dataRoot + "/Effect/Chrome01.OZJ");
   }
+  // Tarkan: sand01.OZJ for chrome rendering on type 81 objects
+  if (m_mapId == 8 && !TexValid(m_chromeTexture)) {
+    m_chromeTexture = TextureLoader::LoadOZJ(objectDir + "/sand01.OZJ");
+    if (TexValid(m_chromeTexture))
+      printf("[ObjectRenderer] Loaded Tarkan chrome texture sand01.OZJ\n");
+  }
   std::cout << "[ObjectRenderer] Generic: Loaded " << instances.size()
             << " instances, " << modelCache.size() << " unique models ("
             << fromFallback << " from fallback), skipped " << skipped
@@ -1119,7 +1147,11 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       continue;
     if (m_mapId == 7 && (inst.type == 22 || inst.type == 39)) {
       // Atlans: HiddenMesh=-2 (invisible objects)
-      // Type 22: very occasional tiny bubble (Main 5.2: every ~5 frames)
+      continue;
+    }
+    if (m_mapId == 8 && (inst.type == 60 || inst.type == 63 || inst.type == 64 ||
+                         inst.type == 70 || inst.type == 76 || inst.type == 83)) {
+      // Tarkan: HiddenMesh=-2 (invisible objects, emit particles/lights)
       continue;
     }
     if (!m_typeFilter.empty()) {
@@ -1186,6 +1218,12 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
     bool isNoriaFlowing = (m_mapId == 3 &&
         (inst.type == 18 || inst.type == 41 || inst.type == 42 || inst.type == 43));
     if (m_mapId == 3 && inst.type == 41) hasUVScroll = true;
+    // Tarkan UV scroll types (Main 5.2 MoveObject WD_8TARKAN)
+    // Type 7: NO scroll — only BlendMeshLight pulsing (sinf-based)
+    if (m_mapId == 8 && (inst.type == 2 || inst.type == 4 ||
+                         inst.type == 61 || inst.type == 65 || inst.type == 66 ||
+                         inst.type == 72))
+      hasUVScroll = true;
     bool isDungeonWater = (m_mapId == 1 && inst.type == 22);
     bool disableCullForObj = (m_mapId == 1 &&
         ((inst.type >= 44 && inst.type <= 46) ||
@@ -1314,6 +1352,11 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
           else // Type 38 etc: steady glow
             intensity = 0.7f;
         }
+        // Tarkan: pulsing warm glow (Main 5.2: sinf(WorldTime*0.002)*0.35+0.65)
+        if (m_mapId == 8) {
+          float phase = inst.modelMatrix[3][0] * 0.013f;
+          intensity = std::sin(currentTime * 2.0f + phase) * 0.35f + 0.65f;
+        }
         // Noria BlendMesh objects: steady glow
         if (m_mapId == 3) intensity = 1.0f;
         blendLight = intensity;
@@ -1322,6 +1365,22 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
             // Noria type 41: slower V scroll (Main 5.2: WorldTime%2000*0.0005)
             int wt = (int)(currentTime * 1000.0f) % 2000;
             texOffset = glm::vec2(0.0f, (float)wt * 0.0005f);
+          } else if (m_mapId == 8) {
+            // Tarkan BlendMesh UV scroll (Main 5.2 MoveObject WD_8TARKAN)
+            int wt;
+            if (inst.type == 2) { // Lava: U-scroll (Main 5.2: -(WorldTime%1000)*0.001f)
+              wt = (int)(currentTime * 1000.0f) % 1000;
+              texOffset = glm::vec2(-(float)wt * 0.001f, 0.0f);
+            } else if (inst.type == 4) { // V-scroll (Main 5.2: -(WorldTime%10000)*0.0001f)
+              wt = (int)(currentTime * 1000.0f) % 10000;
+              texOffset = glm::vec2(0.0f, -(float)wt * 0.0001f);
+            } else if (inst.type == 72) { // V-scroll medium (10s cycle)
+              wt = (int)(currentTime * 1000.0f) % 10000;
+              texOffset = glm::vec2(0.0f, -(float)wt * 0.0002f);
+            } else { // Types 61/65/66: fast V scroll (1s cycle)
+              wt = (int)(currentTime * 1000.0f) % 1000;
+              texOffset = glm::vec2(0.0f, -(float)wt * 0.001f);
+            }
           } else {
             texOffset = glm::vec2(0.0f, uvScroll);
           }
@@ -1358,12 +1417,31 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
         }
       }
 
+      // Tarkan lava flow objects: Main 5.2 sets BlendMeshTexCoordV but forgot
+      // StreamMesh=0 (compare Noria types 42/43 which have it). Apply scroll
+      // to mesh 0 only (sf*.jpg = lava texture), not mesh 1 (e.jpg = rock).
+      if (m_mapId == 8 && !hasBlendMesh && meshIdx == 0) {
+        int wt;
+        switch (inst.type) {
+        case 11: case 13: case 73: case 75: case 79: // V-scroll medium (10s)
+          wt = (int)(currentTime * 1000.0f) % 10000;
+          texOffset = glm::vec2(0.0f, -(float)wt * 0.0002f);
+          break;
+        case 12: // Dual UV scroll (diagonal, 50s)
+          wt = (int)(currentTime * 1000.0f) % 50000;
+          texOffset = glm::vec2(-(float)wt * 0.00005f, -(float)wt * 0.00005f);
+          break;
+        }
+      }
+
       // Set uniforms
       // Main 5.2: Lost Tower fire objects (3,4,19,20) use chrome-mapped StreamMesh
       // rendering for "hot metal" fire glow instead of plain additive
       bool useChromeBlend = isAdditive && mb.isWindowLight && m_mapId == 4 &&
           TexValid(m_chromeTexture) &&
           (inst.type == 3 || inst.type == 4 || inst.type == 19 || inst.type == 20);
+      // Tarkan type 81: chrome overlay (second pass after normal render)
+      bool isTarkanChrome = (m_mapId == 8 && inst.type == 81 && TexValid(m_chromeTexture));
       float chromeMode = useChromeBlend ? 1.0f : 0.0f;
       float chromeTime = useChromeBlend ? currentTime : 0.0f;
       if (useChromeBlend) {
@@ -1420,6 +1498,23 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
 
       bgfx::setState(state);
       bgfx::submit(0, activeShader->program);
+
+      // Tarkan type 81: second chrome overlay pass (Main 5.2: RENDER_CHROME|RENDER_BRIGHT)
+      if (isTarkanChrome && !isAdditive) {
+        if (mb.isDynamic) bgfx::setVertexBuffer(0, mb.dynVbo);
+        else bgfx::setVertexBuffer(0, mb.vbo);
+        bgfx::setIndexBuffer(mb.ebo);
+        bgfx::setTransform(glm::value_ptr(inst.modelMatrix));
+        activeShader->setTexture(0, "s_texColor", m_chromeTexture);
+        activeShader->setVec4("u_params", glm::vec4(instAlpha * 0.5f, 1.0f, 1.0f, currentTime));
+        activeShader->setVec4("u_glowColor", glm::vec4(0.8f, 0.6f, 0.3f, 1.0f)); // Warm sand tint
+        uint64_t chromeState = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A
+                             | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA
+                             | BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE, BGFX_STATE_BLEND_ONE);
+        bgfx::setState(chromeState);
+        bgfx::submit(0, activeShader->program);
+      }
+
       ++meshIdx;
     }
     } // end pass loop

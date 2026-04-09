@@ -278,8 +278,8 @@ static const char *GetFloorDisplayName() {
   static char buf[64];
   static const char *mapNames[] = {
       "Lorencia", "Dungeon", "Devias", "Noria", "Lost Tower",
-      nullptr, nullptr, "Atlans"}; // indices 5,6 unused
-  const char *base = (g_currentMapId >= 0 && g_currentMapId < 8 &&
+      nullptr, nullptr, "Atlans", "Tarkan"}; // indices 5,6 unused
+  const char *base = (g_currentMapId >= 0 && g_currentMapId < 9 &&
                       mapNames[g_currentMapId])
                          ? mapNames[g_currentMapId]
                          : "Unknown";
@@ -315,6 +315,7 @@ struct MapConfig {
 
   // Sound
   int ambientLoop; // SOUND_WIND01, SOUND_DUNGEON01, or 0
+  float ambientGain; // Volume for ambient loop (0.0-1.0)
   const char *safeMusic;
   const char *wildMusic; // nullptr = same as safeMusic everywhere
 
@@ -360,6 +361,7 @@ static const MapConfig MAP_CONFIGS[] = {
         true,
         true,  // sky, grass, doors, leaves, wind
         SOUND_WIND01,
+        1.0f, // ambientGain
         "Music/MuTheme.mp3",
         nullptr, // no music outside safe zone (wind only)
         true, // useNamedObjects
@@ -397,6 +399,7 @@ static const MapConfig MAP_CONFIGS[] = {
         false,
         false, // sky, grass, doors, leaves, wind
         SOUND_DUNGEON01,
+        1.0f, // ambientGain
         "Music/Dungeon.mp3",
         nullptr,
         false, // useNamedObjects
@@ -434,6 +437,7 @@ static const MapConfig MAP_CONFIGS[] = {
         true,
         true,  // sky, grass, doors, leaves, wind
         SOUND_WIND01,
+        1.0f, // ambientGain
         "Music/Devias.mp3",
         nullptr,
         false, // useNamedObjects
@@ -471,6 +475,7 @@ static const MapConfig MAP_CONFIGS[] = {
         true,
         true,  // sky, grass, doors, leaves, wind
         SOUND_WIND01,
+        1.0f, // ambientGain
         "Music/Noria.mp3",
         nullptr, // no combat music
         false, // useNamedObjects (Object4/ numbered)
@@ -508,6 +513,7 @@ static const MapConfig MAP_CONFIGS[] = {
         false,
         false, // sky, grass, doors, leaves, wind
         SOUND_TOWER01, // Main 5.2: aTower.wav (distinct tower ambience)
+        1.0f, // ambientGain
         "Music/lost_tower_a.mp3",
         nullptr,
         false, // useNamedObjects (Object5/ numbered)
@@ -545,9 +551,48 @@ static const MapConfig MAP_CONFIGS[] = {
         false,
         false, // sky, grass, doors, leaves, wind
         SOUND_WATER01,
+        0.15f, // ambientGain — quiet underwater ambient alongside music
         "Music/atlans.mp3",
         nullptr,
         false, // useNamedObjects (Object8/ numbered)
+        {0},
+        0,
+        {0},
+        0,
+        false,
+        0, // roofHiding (none)
+        {0},
+        0, // bridgeTypes (none)
+    },
+    {
+        // Tarkan (mapId=8) — volcanic desert map (Main 5.2: no fog, black bg)
+        8,
+        "Tarkan",
+        0.0f,
+        0.0f,
+        0.0f, // clearColor (Main 5.2: pure black background)
+        0.0f,
+        0.0f,
+        0.0f, // fogColor (Main 5.2: no fog)
+        9000.f,
+        12000.f,
+        1.0f, // fogNear/Far pushed far = effectively no fog, luminosity full
+        0.15f,
+        0.50f,
+        0.10f, // bloom, threshold, vignette
+        1.0f,
+        1.0f,
+        1.0f, // colorTint (neutral — no tint per Main 5.2)
+        false,
+        false,
+        false,
+        false,
+        false, // sky, grass, doors, leaves, wind
+        SOUND_DESERT01,
+        1.0f, // ambientGain
+        "Music/tarkan.mp3",
+        nullptr,
+        false, // useNamedObjects (Object9/ numbered)
         {0},
         0,
         {0},
@@ -1503,8 +1548,11 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
     return &streetLightProps;
   case 30: // Devias fireplace (Stone01) — warm fire glow
     return (mapId == 2) ? &fireLightProps : nullptr;
-  case 66: // Devias wall fire (SteelWall02) — warm fire glow
-    return (mapId == 2) ? &candleProps : nullptr;
+  case 66: { // Devias wall fire / Tarkan glow
+    if (mapId == 2) return &candleProps;
+    static const LightTemplate tarkanGlow66 = {glm::vec3(0.8f, 0.48f, 0.16f), 700.0f, 120.0f};
+    return (mapId == 8) ? &tarkanGlow66 : nullptr;
+  }
   // Noria (mapId=3) mystical light objects (Main 5.2: BITMAP_LIGHT blue sprites)
   case 1:
     return (mapId == 3) ? &noriaLightProps : nullptr;
@@ -1517,8 +1565,13 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
   // Lost Tower (mapId=4) torch/fire objects
   // Main 5.2: types 3,4 = fire torches/braziers, 19 = magic orb, 20 = lightning pillar
   case 3:
-  case 4:
     return (mapId == 4) ? &dungeonTorchProps : nullptr;
+  case 4: {
+    if (mapId == 4) return &dungeonTorchProps; // Lost Tower torch
+    static const LightTemplate tarkanFireProps4 = {glm::vec3(0.9f, 0.54f, 0.18f),
+                                                     900.0f, 150.0f};
+    return (mapId == 8) ? &tarkanFireProps4 : nullptr; // Tarkan fire
+  }
   case 24: // Lost Tower fire column — bright orange, wide range
     return (mapId == 4) ? &fireColumnProps : nullptr;
   case 19:
@@ -1529,6 +1582,23 @@ static const LightTemplate *GetLightProperties(int type, int mapId = -1) {
     return (mapId == 4) ? &candleProps : nullptr;
   case 40: // Lost Tower electrical tower
     return (mapId == 4) ? &noriaLightLargeProps : nullptr;
+  // Tarkan (mapId=8) warm orange fire/lava lights (Main 5.2: R, 0.6R, 0.2R)
+  case 7: {
+    static const LightTemplate tarkanFireProps = {glm::vec3(0.9f, 0.54f, 0.18f),
+                                                   900.0f, 150.0f};
+    return (mapId == 8) ? &tarkanFireProps : nullptr;
+  }
+  case 61: case 65: {
+    static const LightTemplate tarkanGlowProps = {glm::vec3(0.8f, 0.48f, 0.16f),
+                                                    700.0f, 120.0f};
+    return (mapId == 8) ? &tarkanGlowProps : nullptr;
+  }
+  case 82: {
+    // Tarkan: static white light (Main 5.2: Vector(1,1,1))
+    static const LightTemplate tarkanWhiteLight = {glm::vec3(1.0f, 1.0f, 1.0f),
+                                                     800.0f, 150.0f};
+    return (mapId == 8) ? &tarkanWhiteLight : nullptr;
+  }
   default:
     return nullptr;
   }
@@ -2078,6 +2148,8 @@ int main(int argc, char **argv) {
     csCtx.onCharSelected = [&]() {
       // Server will send world data burst after char select — switch to LOADING
       SoundManager::StopMusic();
+      SoundManager::StopAll();
+      SoundManager::SetMuted(true);
       g_loadingFrames = 0;
       g_gameState = GameState::LOADING;
       std::cout << "[State] -> LOADING (waiting for world data)" << std::endl;
@@ -2227,6 +2299,17 @@ int main(int argc, char **argv) {
 
         g_worldInitialized = true;
         std::cout << "[State] -> INGAME" << std::endl;
+
+        // Unmute sounds now that loading is complete
+        SoundManager::SetMuted(false);
+
+        // Play ambient loop (was blocked by mute during InitGameWorld)
+        {
+          const MapConfig *cfg = GetMapConfig(g_currentMapId);
+          bool indoorMap = (g_currentMapId == 1 || g_currentMapId == 4 || g_currentMapId == 7);
+          if (cfg->ambientLoop && (indoorMap || !g_hero.IsInSafeZone()) && !cfg->hasWind)
+            SoundManager::PlayLoop(cfg->ambientLoop, cfg->ambientGain);
+        }
 
         // Play map theme once on first visit
         if (GetMapConfig(g_currentMapId)->safeMusic)
@@ -2385,6 +2468,11 @@ int main(int argc, char **argv) {
           g_mapTransitionPhase = 0; // fade-in
           g_mapTransitionAlpha = 0.0f;
           g_mapTransitionFrames = 0;
+          // Mute all sounds during transition — unmuted after preloader completes
+          SoundManager::StopAll();
+          SoundManager::StopMusic();
+          SoundManager::SetMuted(true);
+          g_windStarted = false;
         }
         // Always update target from server packet (authoritative)
         g_mapTransMapId = mc.mapId;
@@ -2409,7 +2497,11 @@ int main(int argc, char **argv) {
         }
       } else if (g_mapTransitionPhase == 1) {
         // Phase 1: Do the heavy map loading (runs once)
-        ChangeMap(g_mapTransMapId, g_mapTransSpawnX, g_mapTransSpawnY);
+        // Scale LoadWorld progress 0.0-1.0 → display 0.0-0.90
+        ChangeMap(g_mapTransMapId, g_mapTransSpawnX, g_mapTransSpawnY,
+                  [](float p, const char *s) {
+                    RenderLoadingFrame(p * 0.90f, s);
+                  });
         // Tell server we're ready — triggers deferred NPC/monster viewport send
         glm::vec3 hp = g_hero.GetPosition();
         g_server.SendPrecisePosition(hp.x, hp.z);
@@ -2433,6 +2525,8 @@ int main(int argc, char **argv) {
         if (g_mapTransitionAlpha <= 0.0f) {
           g_mapTransitionAlpha = 0.0f;
           g_mapTransitionActive = false;
+          // Unmute sounds now that preloader is done
+          SoundManager::SetMuted(false);
           // Deferred sound: play ambient + music NOW that preloader is gone
           if (g_deferredSoundMapId >= 0) {
             int mid = g_deferredSoundMapId;
@@ -2446,7 +2540,7 @@ int main(int argc, char **argv) {
             bool indoorLoop = (mid == 1 || mid == 4 || mid == 7);
             if (GetMapConfig(mid)->ambientLoop &&
                 (indoorLoop || !inSafe) && !GetMapConfig(mid)->hasWind)
-              SoundManager::PlayLoop(GetMapConfig(mid)->ambientLoop);
+              SoundManager::PlayLoop(GetMapConfig(mid)->ambientLoop, GetMapConfig(mid)->ambientGain);
             if (GetMapConfig(mid)->safeMusic)
               SoundManager::CrossfadeTo(g_dataPath + "/" + GetMapConfig(mid)->safeMusic);
             else if (GetMapConfig(mid)->wildMusic)
@@ -2534,7 +2628,8 @@ int main(int argc, char **argv) {
     }
 
     // Update 3D audio listener to hero position
-    {
+    // No ambient sounds while preloader is active
+    if (!g_mapTransitionActive) {
       glm::vec3 lp = g_hero.GetPosition();
       SoundManager::UpdateListener(lp.x, lp.y, lp.z);
 
@@ -2926,6 +3021,10 @@ int main(int argc, char **argv) {
         g_server.SendWarpCommand(targetMapId, targetGX, targetGZ);
         g_hero.SetAction(1);
         g_hero.SetTeleportCooldown();
+        SoundManager::StopAll();
+        SoundManager::StopMusic();
+        SoundManager::SetMuted(true);
+        g_windStarted = false;
         g_mapTransitionActive = true;
         g_mapTransitionPhase = 0;
         g_mapTransitionAlpha = 0.0f;
@@ -2989,6 +3088,9 @@ int main(int argc, char **argv) {
 
       // Use unified warp path (same as M-key teleport)
       SoundManager::StopAll();
+      SoundManager::StopMusic();
+      SoundManager::SetMuted(true);
+      g_windStarted = false;
       g_server.SendWarpCommand(respawnMapId, respawnGX, respawnGZ);
       g_mapTransitionActive = true;
       g_mapTransitionPhase = 0;
@@ -3352,6 +3454,70 @@ int main(int argc, char **argv) {
           glm::vec3 off((float)(rand() % 60 - 30), (float)(rand() % 40),
                         (float)(rand() % 60 - 30));
           g_vfxManager.SpawnBurst(ParticleType::BUBBLE, objPos + off, 1);
+        }
+      }
+    }
+
+    // Tarkan: smoke/geyser/light effects from hidden object types
+    // Main 5.2: types 60,63,64,70,76,83 are HiddenMesh=-2, emit particles
+    if (g_currentMapId == 8) {
+      static int tarkanVfxTick = 0;
+      if (++tarkanVfxTick % 4 == 0) { // Every 4 frames
+        float wt = (float)glfwGetTime();
+        int worldTimeMs = (int)(wt * 1000.0f);
+        const auto &insts = g_objectRenderer.GetInstances();
+        for (const auto &inst : insts) {
+          int t = inst.type;
+          if (t != 60 && t != 63 && t != 64 && t != 70 && t != 76 && t != 83)
+            continue;
+          glm::vec3 objPos(inst.modelMatrix[3]);
+          float dx = objPos.x - g_hero.GetPosition().x;
+          float dz = objPos.z - g_hero.GetPosition().z;
+          if (dx * dx + dz * dz > 1000.0f * 1000.0f) continue;
+
+          switch (t) {
+          case 60: // Smoke burst (Main 5.2: 20 BITMAP_SMOKE type 6)
+            if (rand() % 4 == 0)
+              g_vfxManager.SpawnBurst(ParticleType::SMOKE, objPos + glm::vec3(
+                  (float)(rand()%80-40), (float)(rand()%60), (float)(rand()%80-40)), 2);
+            break;
+          case 63: { // Pulsing cyan light sprite (Main 5.2: BITMAP_IMPACT)
+            float lum = std::sin(wt * 2.0f + inst.modelMatrix[3][2] * 0.05f) * 0.3f + 0.7f;
+            if (rand() % 3 == 0)
+              g_vfxManager.SpawnBurstColored(ParticleType::FLARE, objPos + glm::vec3(0,40,0),
+                  glm::vec3(lum*0.6f, lum, lum), 1);
+            break;
+          }
+          case 64: { // Pulsing red-orange light sprite (Main 5.2: BITMAP_IMPACT)
+            float lum = std::sin(wt * 2.0f + inst.modelMatrix[3][2] * 0.05f) * 0.3f + 0.7f;
+            if (rand() % 3 == 0)
+              g_vfxManager.SpawnBurstColored(ParticleType::FLARE, objPos + glm::vec3(0,40,0),
+                  glm::vec3(lum, lum*0.32f, lum*0.32f), 1);
+            break;
+          }
+          case 70: // Occasional smoke puff (Main 5.2: rand_fps_check(5))
+            if (rand() % 10 == 0)
+              g_vfxManager.SpawnBurst(ParticleType::SMOKE, objPos + glm::vec3(
+                  (float)(rand()%40-20), (float)(rand()%30), (float)(rand()%40-20)), 1);
+            break;
+          case 76: { // Timed smoke burst (Main 5.2: 5s period, 500ms active)
+            if ((worldTimeMs % 5000) > 4500)
+              g_vfxManager.SpawnBurst(ParticleType::SMOKE, objPos + glm::vec3(
+                  (float)(rand()%60-30), (float)(rand()%50), (float)(rand()%60-30)), 1);
+            break;
+          }
+          case 83: { // Geyser eruption (Main 5.2: 10s period, 500ms burst + stone)
+            int inter = (int)(inst.modelMatrix[3][2] * 0.1f) * 10; // Phase offset
+            int timing = worldTimeMs % 10000;
+            if (timing > 3500 + inter && timing < 4000 + inter) {
+              g_vfxManager.SpawnBurst(ParticleType::SMOKE, objPos + glm::vec3(
+                  (float)(rand()%60-30), (float)(rand()%80), (float)(rand()%60-30)), 2);
+              if (rand() % 6 == 0) // Stone debris (sparse)
+                g_vfxManager.SpawnBurst(ParticleType::HIT_SPARK, objPos + glm::vec3(0,50,0), 3);
+            }
+            break;
+          }
+          }
         }
       }
     }
@@ -5377,14 +5543,17 @@ int main(int argc, char **argv) {
 static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
   std::string data_path = g_dataPath;
 
-  if (onProgress) onProgress(0.10f, "Shutting down char select...");
+  if (onProgress) onProgress(0.02f, "Shutting down char select...");
 
   // Shut down character select scene (free World74 resources)
   CharacterSelect::Shutdown();
 
   // Load the correct map directly from CharInfo (server tells us which map)
-  if (onProgress) onProgress(0.15f, "Loading terrain...");
-  LoadWorld(serverData.spawnMapId);
+  // LoadWorld progress 0.0-0.90 → mapped to display 0.05-0.45
+  if (onProgress) onProgress(0.05f, "Loading terrain...");
+  LoadWorld(serverData.spawnMapId, onProgress ? [&onProgress](float p, const char *s) {
+    onProgress(0.05f + p * 0.40f, s);
+  } : LoadProgressFn(nullptr));
 
   // Re-point all subsystems to freshly loaded terrain (LoadWorld replaces g_terrainDataPtr)
   g_hero.SetTerrainData(g_terrainDataPtr);
@@ -5394,7 +5563,7 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
   g_boidManager.SetTerrainData(g_terrainDataPtr);
   g_clickEffect.SetTerrainData(g_terrainDataPtr);
 
-  if (onProgress) onProgress(0.20f, "Loading NPCs...");
+  if (onProgress) onProgress(0.48f, "Loading NPCs...");
 
   if (serverData.connected && !serverData.npcs.empty()) {
     g_npcManager.InitModels(data_path);
@@ -5410,7 +5579,7 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
     g_npcManager.Init(data_path);
   }
 
-  if (onProgress) onProgress(0.35f, "Loading equipment...");
+  if (onProgress) onProgress(0.55f, "Loading equipment...");
 
   // Reset hero equipment before applying new character's equipment
   {
@@ -5482,7 +5651,7 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
   g_boidManager.SetTerrainLightmap(g_terrainDataPtr->lightmap);
   g_boidManager.SetPointLights(g_pointLights);
 
-  if (onProgress) onProgress(0.55f, "Loading monsters...");
+  if (onProgress) onProgress(0.65f, "Loading monsters...");
 
   // Initialize monster manager and spawn monsters from server data
   g_monsterManager.InitModels(data_path);
@@ -5500,7 +5669,7 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
               << " monsters from server" << std::endl;
   }
 
-  if (onProgress) onProgress(0.75f, "Placing hero...");
+  if (onProgress) onProgress(0.80f, "Placing hero...");
 
   // Spawn at server-provided position (from CharInfo F3:03), fallback to town
   // center
@@ -5576,7 +5745,7 @@ static void InitGameWorld(ServerData &serverData, LoadProgressFn onProgress) {
     // Indoor maps (Dungeon, Lost Tower): always play ambient regardless of safe zone
     bool indoorMap = (g_currentMapId == 1 || g_currentMapId == 4 || g_currentMapId == 7);
     if (sndCfg.ambientLoop && (indoorMap || !inSafeZone) && !sndCfg.hasWind)
-      SoundManager::PlayLoop(sndCfg.ambientLoop);
+      SoundManager::PlayLoop(sndCfg.ambientLoop, sndCfg.ambientGain);
     if (inSafeZone && sndCfg.safeMusic)
       SoundManager::PlayMusic(g_dataPath + "/" + sndCfg.safeMusic);
     else if (!inSafeZone && sndCfg.wildMusic)
@@ -5852,10 +6021,12 @@ static void LoadWorld(int mapId, LoadProgressFn onProgress) {
     // Lost Tower type 19 uses rotating magic sprite, not fire.
     bool isFire = (inst.type == 50 || inst.type == 51 || inst.type == 52 ||
                    (mapId == 1 && (inst.type == 41 || inst.type == 42)) ||
-                   (mapId == 4 && (inst.type == 3 || inst.type == 4 || inst.type == 24)));
+                   (mapId == 4 && (inst.type == 3 || inst.type == 4 || inst.type == 24)) ||
+                   (mapId == 8 && (inst.type == 4 || inst.type == 7)));
     if (isFire) {
       float intensity = (inst.type == 52)  ? 1.2f :   // bonfire
                         (mapId == 4 && inst.type == 24) ? 1.5f : // fire column
+                        (mapId == 8) ? 0.9f :          // Tarkan lava fire
                         0.7f;                          // torch
       g_vfxManager.AddAmbientFire(
           worldPos + glm::vec3(0.0f, props->heightOffset, 0.0f), intensity);

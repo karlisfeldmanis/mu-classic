@@ -1957,7 +1957,9 @@ void VFXManager::Render(const glm::mat4 &view, const glm::mat4 &projection) {
       inst.data[2] = p.position.z; inst.data[3] = p.scale;
       // i_data1: rotation, frame, alpha, radialFalloffStrength
       float radialFalloff = (type == ParticleType::MONSTER_SHINY ||
-                             type == ParticleType::MONSTER_MAGIC) ? 12.0f : 0.0f;
+                             type == ParticleType::MONSTER_MAGIC) ? 12.0f
+                           : (type == ParticleType::BUBBLE) ? 8.0f
+                           : 0.0f;
       inst.data[4] = p.rotation; inst.data[5] = p.frame;
       inst.data[6] = p.alpha; inst.data[7] = radialFalloff;
       // i_data2: color.xyz, 0
