@@ -886,10 +886,11 @@ void Database::SeedNpcSpawns() {
   if (sqlite3_step(stmt) == SQLITE_ROW)
     count = sqlite3_column_int(stmt, 0);
   sqlite3_finalize(stmt);
+  char *err = nullptr;
   if (count > 0) {
     printf("[DB] NPC spawns already seeded (%d entries)\n", count);
-    return;
-  }
+    // Don't return — check other maps independently
+  } else {
 
   // Lorencia (map 0) NPCs from MonsterSetBase.txt + OpenMU Lorencia.cs
   // Direction convention: DB stores MonsterSetBase values + 1.
@@ -911,13 +912,14 @@ void Database::SeedNpcSpawns() {
             (248, 0, 173, 125, 5, 'Lieutenant Kael'),
             (249, 0, 131, 148, 3, 'Captain Marcus');
     )";
-  char *err = nullptr;
+  err = nullptr;
   if (sqlite3_exec(m_db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
     printf("[DB] SeedNpcSpawns error: %s\n", err);
     sqlite3_free(err);
   } else {
     printf("[DB] Seeded 12 Lorencia NPC spawns (7 vendors + 5 guards)\n");
   }
+  } // end Lorencia else
 
   // Seed Devias (map_id=2) NPCs if not already present
   sqlite3_prepare_v2(m_db, "SELECT COUNT(*) FROM npc_spawns WHERE map_id=2",
@@ -1020,6 +1022,22 @@ void Database::SeedNpcSpawns() {
                            "VALUES (240, 7, 23, 17, 2, 'Guard');";
     sqlite3_exec(m_db, guardSql, nullptr, nullptr, nullptr);
     printf("[DB] Seeded 1 Atlans guard NPC\n");
+  }
+
+  // Seed Tarkan (map_id=8) guard NPC
+  sqlite3_prepare_v2(m_db, "SELECT COUNT(*) FROM npc_spawns WHERE map_id=8",
+                     -1, &stmt, nullptr);
+  int tarkanCount = 0;
+  if (sqlite3_step(stmt) == SQLITE_ROW)
+    tarkanCount = sqlite3_column_int(stmt, 0);
+  sqlite3_finalize(stmt);
+  if (tarkanCount > 0) {
+    printf("[DB] Tarkan NPC spawns already seeded (%d entries)\n", tarkanCount);
+  } else {
+    const char *guardSql = "INSERT INTO npc_spawns (type, map_id, pos_x, pos_y, direction, name) "
+                           "VALUES (240, 8, 195, 66, 2, 'Guard');";
+    sqlite3_exec(m_db, guardSql, nullptr, nullptr, nullptr);
+    printf("[DB] Seeded 1 Tarkan guard NPC\n");
   }
 }
 

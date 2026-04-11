@@ -1376,22 +1376,21 @@ void HeroCharacter::Render(const glm::mat4 &view, const glm::mat4 &proj,
           for (int i = 0; i < 4; ++i)
             spawnAt({0, (float)(-i * 25 - 60), 0}, c);
         }
-        // ── Default: BITMAP_LIGHT at weapon tip for all other weapons ──
+        // ── Default: BITMAP_LIGHT at weapon tip for enhanced weapons only ──
+        // Main 5.2: only weapons +3 and above emit the default tip sparkle
         else {
           hasCustom = false;
-          // Main 5.2 default case: CreateSprite(BITMAP_LIGHT, p, 1.4f)
-          // Level-based light color (lines 9812-9827)
-          glm::vec3 c;
           uint8_t wlvl = m_weaponInfo.itemLevel;
-          if (wlvl >= 7)
-            c = glm::vec3(lum * 0.5f, lum * 0.4f, lum * 0.3f);
-          else if (wlvl >= 5)
-            c = glm::vec3(lum * 0.3f, lum * 0.3f, lum * 0.5f);
-          else if (wlvl >= 3)
-            c = glm::vec3(lum * 0.5f, lum * 0.3f, lum * 0.3f);
-          else
-            c = glm::vec3(lum * 0.3f, lum * 0.3f, lum * 0.3f);
-          spawnAt({0, -110, 0}, c); // Default weapon tip position
+          if (wlvl >= 3) {
+            glm::vec3 c;
+            if (wlvl >= 7)
+              c = glm::vec3(lum * 0.5f, lum * 0.4f, lum * 0.3f);
+            else if (wlvl >= 5)
+              c = glm::vec3(lum * 0.3f, lum * 0.3f, lum * 0.5f);
+            else
+              c = glm::vec3(lum * 0.5f, lum * 0.3f, lum * 0.3f);
+            spawnAt({0, -110, 0}, c);
+          }
         }
       }
     }

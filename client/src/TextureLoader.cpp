@@ -61,6 +61,130 @@ std::vector<unsigned char> TextureLoader::LoadOZJRaw(const std::string &path,
   return image_data;
 }
 
+// Generate full mipchain with premultiplied-alpha filtering.
+// This prevents alpha-tested textures (trees, grass) from getting muddy halos
+// at lower mip levels. RGB is weighted by alpha before box-filtering, then
+// divided back out, so transparent pixels don't bleed dark edges into opaque ones.
+// Input: RGBA8 data, width, height. Returns packed mip0+mip1+...+mip_last blob.
+static const bgfx::Memory *GenerateMipmapRGBA8(const unsigned char *mip0,
+                                                 int w, int h) {
+  // Calculate total size for all mip levels
+  uint32_t totalSize = 0;
+  int mW = w, mH = h;
+  while (mW > 0 && mH > 0) {
+    totalSize += mW * mH * 4;
+    if (mW == 1 && mH == 1) break;
+    mW = std::max(1, mW / 2);
+    mH = std::max(1, mH / 2);
+  }
+
+  const bgfx::Memory *mem = bgfx::alloc(totalSize);
+  unsigned char *dst = mem->data;
+
+  // Copy mip 0
+  memcpy(dst, mip0, w * h * 4);
+
+  // Generate subsequent mips via premultiplied-alpha box filter
+  const unsigned char *prev = dst;
+  int prevW = w, prevH = h;
+  dst += w * h * 4;
+
+  while (prevW > 1 || prevH > 1) {
+    int nW = std::max(1, prevW / 2);
+    int nH = std::max(1, prevH / 2);
+    for (int y = 0; y < nH; ++y) {
+      for (int x = 0; x < nW; ++x) {
+        int sx = x * 2, sy = y * 2;
+        int sx1 = std::min(sx + 1, prevW - 1);
+        int sy1 = std::min(sy + 1, prevH - 1);
+        // 4 source texels
+        const unsigned char *p00 = &prev[(sy  * prevW + sx)  * 4];
+        const unsigned char *p10 = &prev[(sy  * prevW + sx1) * 4];
+        const unsigned char *p01 = &prev[(sy1 * prevW + sx)  * 4];
+        const unsigned char *p11 = &prev[(sy1 * prevW + sx1) * 4];
+        // Premultiplied alpha: weight RGB by alpha
+        float a0 = p00[3] / 255.0f, a1 = p10[3] / 255.0f;
+        float a2 = p01[3] / 255.0f, a3 = p11[3] / 255.0f;
+        float aSum = a0 + a1 + a2 + a3;
+        float aAvg = aSum * 0.25f;
+        unsigned char *out = &dst[(y * nW + x) * 4];
+        if (aSum > 0.001f) {
+          // Weighted average: opaque pixels contribute more to RGB
+          float invA = 1.0f / aSum;
+          out[0] = (unsigned char)std::clamp((p00[0]*a0 + p10[0]*a1 + p01[0]*a2 + p11[0]*a3) * invA, 0.0f, 255.0f);
+          out[1] = (unsigned char)std::clamp((p00[1]*a0 + p10[1]*a1 + p01[1]*a2 + p11[1]*a3) * invA, 0.0f, 255.0f);
+          out[2] = (unsigned char)std::clamp((p00[2]*a0 + p10[2]*a1 + p01[2]*a2 + p11[2]*a3) * invA, 0.0f, 255.0f);
+        } else {
+          out[0] = out[1] = out[2] = 0;
+        }
+        out[3] = (unsigned char)std::clamp(aAvg * 255.0f, 0.0f, 255.0f);
+      }
+    }
+    prev = dst;
+    dst += nW * nH * 4;
+    prevW = nW;
+    prevH = nH;
+  }
+  return mem;
+}
+
+// Same for BGRA8 (OZT 32-bit) — swizzle is B,G,R,A instead of R,G,B,A
+static const bgfx::Memory *GenerateMipmapBGRA8(const unsigned char *mip0,
+                                                 int w, int h) {
+  uint32_t totalSize = 0;
+  int mW = w, mH = h;
+  while (mW > 0 && mH > 0) {
+    totalSize += mW * mH * 4;
+    if (mW == 1 && mH == 1) break;
+    mW = std::max(1, mW / 2);
+    mH = std::max(1, mH / 2);
+  }
+
+  const bgfx::Memory *mem = bgfx::alloc(totalSize);
+  unsigned char *dst = mem->data;
+  memcpy(dst, mip0, w * h * 4);
+
+  const unsigned char *prev = dst;
+  int prevW = w, prevH = h;
+  dst += w * h * 4;
+
+  while (prevW > 1 || prevH > 1) {
+    int nW = std::max(1, prevW / 2);
+    int nH = std::max(1, prevH / 2);
+    for (int y = 0; y < nH; ++y) {
+      for (int x = 0; x < nW; ++x) {
+        int sx = x * 2, sy = y * 2;
+        int sx1 = std::min(sx + 1, prevW - 1);
+        int sy1 = std::min(sy + 1, prevH - 1);
+        const unsigned char *p00 = &prev[(sy  * prevW + sx)  * 4];
+        const unsigned char *p10 = &prev[(sy  * prevW + sx1) * 4];
+        const unsigned char *p01 = &prev[(sy1 * prevW + sx)  * 4];
+        const unsigned char *p11 = &prev[(sy1 * prevW + sx1) * 4];
+        // BGRA: alpha is [3], same position
+        float a0 = p00[3] / 255.0f, a1 = p10[3] / 255.0f;
+        float a2 = p01[3] / 255.0f, a3 = p11[3] / 255.0f;
+        float aSum = a0 + a1 + a2 + a3;
+        float aAvg = aSum * 0.25f;
+        unsigned char *out = &dst[(y * nW + x) * 4];
+        if (aSum > 0.001f) {
+          float invA = 1.0f / aSum;
+          out[0] = (unsigned char)std::clamp((p00[0]*a0 + p10[0]*a1 + p01[0]*a2 + p11[0]*a3) * invA, 0.0f, 255.0f);
+          out[1] = (unsigned char)std::clamp((p00[1]*a0 + p10[1]*a1 + p01[1]*a2 + p11[1]*a3) * invA, 0.0f, 255.0f);
+          out[2] = (unsigned char)std::clamp((p00[2]*a0 + p10[2]*a1 + p01[2]*a2 + p11[2]*a3) * invA, 0.0f, 255.0f);
+        } else {
+          out[0] = out[1] = out[2] = 0;
+        }
+        out[3] = (unsigned char)std::clamp(aAvg * 255.0f, 0.0f, 255.0f);
+      }
+    }
+    prev = dst;
+    dst += nW * nH * 4;
+    prevW = nW;
+    prevH = nH;
+  }
+  return mem;
+}
+
 TexHandle TextureLoader::LoadOZJ(const std::string &path) {
   int w, h;
   auto data = LoadOZJRaw(path, w, h);
@@ -76,10 +200,10 @@ TexHandle TextureLoader::LoadOZJ(const std::string &path) {
     rgba[i * 4 + 3] = 255;
   }
   return bgfx::createTexture2D(
-      (uint16_t)w, (uint16_t)h, false, 1,
+      (uint16_t)w, (uint16_t)h, true, 1,
       bgfx::TextureFormat::RGBA8,
       BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC,
-      bgfx::copy(rgba.data(), (uint32_t)rgba.size()));
+      GenerateMipmapRGBA8(rgba.data(), w, h));
 }
 
 // OZT/TGA parsing and decompression (shared between LoadOZT and LoadOZTRaw)
@@ -210,13 +334,12 @@ TexHandle TextureLoader::LoadOZT(const std::string &path) {
   int bytesPerPixel = parsed.bpp / 8;
 
   if (parsed.bpp == 32) {
-    // Data is BGRA — upload directly as BGRA8
+    // Data is BGRA — upload with CPU-generated mipmaps
     return bgfx::createTexture2D(
-        (uint16_t)parsed.width, (uint16_t)parsed.height, false, 1,
+        (uint16_t)parsed.width, (uint16_t)parsed.height, true, 1,
         bgfx::TextureFormat::BGRA8,
         BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC,
-        bgfx::copy(parsed.pixels.data(),
-                   (uint32_t)(parsed.width * parsed.height * 4)));
+        GenerateMipmapBGRA8(parsed.pixels.data(), parsed.width, parsed.height));
   } else {
     // 24-bit BGR — convert to RGBA8
     std::vector<unsigned char> rgba(parsed.width * parsed.height * 4);
@@ -227,10 +350,10 @@ TexHandle TextureLoader::LoadOZT(const std::string &path) {
       rgba[i * 4 + 3] = 255;
     }
     return bgfx::createTexture2D(
-        (uint16_t)parsed.width, (uint16_t)parsed.height, false, 1,
+        (uint16_t)parsed.width, (uint16_t)parsed.height, true, 1,
         bgfx::TextureFormat::RGBA8,
         BGFX_SAMPLER_MIN_ANISOTROPIC | BGFX_SAMPLER_MAG_ANISOTROPIC,
-        bgfx::copy(rgba.data(), (uint32_t)rgba.size()));
+        GenerateMipmapRGBA8(rgba.data(), parsed.width, parsed.height));
   }
 }
 
