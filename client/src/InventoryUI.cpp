@@ -341,7 +341,7 @@ void DrawOrb(ImDrawList *dl, float cx, float cy, float radius, float frac,
                      ImVec2(cx + radius, clipBot + 1), true);
 
     // Draw circle fill as triangle fan with per-vertex gradient colors
-    constexpr int NSEG = 64;
+    constexpr int NSEG = 32;
     float r = radius - 3.0f;
     ImU32 centerCol = colorFromY(cy);
     ImVec2 center(cx, cy);
@@ -375,8 +375,8 @@ void DrawOrb(ImDrawList *dl, float cx, float cy, float radius, float frac,
     // Edge darkening on fill (radial vignette for spherical depth)
     dl->PushClipRect(ImVec2(cx - radius, clipTop),
                      ImVec2(cx + radius, clipBot + 1), true);
-    dl->AddCircle(ImVec2(cx, cy), radius - 4, IM_COL32(0, 0, 0, 60), 64, 10.0f);
-    dl->AddCircle(ImVec2(cx, cy), radius - 6, IM_COL32(0, 0, 0, 30), 64, 6.0f);
+    dl->AddCircle(ImVec2(cx, cy), radius - 4, IM_COL32(0, 0, 0, 60), 32, 10.0f);
+    dl->AddCircle(ImVec2(cx, cy), radius - 6, IM_COL32(0, 0, 0, 30), 32, 6.0f);
     dl->PopClipRect();
 
     // Specular highlight — bright arc near top of fill (wider, softer)
@@ -384,35 +384,35 @@ void DrawOrb(ImDrawList *dl, float cx, float cy, float radius, float frac,
     dl->PushClipRect(ImVec2(cx - radius * 0.6f, hlY),
                      ImVec2(cx + radius * 0.6f, hlY + 14.0f), true);
     dl->AddCircleFilled(ImVec2(cx, cy), radius - 6, IM_COL32(255, 255, 255, 35),
-                        64);
+                        32);
     dl->PopClipRect();
     // Secondary highlight (smaller, brighter)
     dl->PushClipRect(ImVec2(cx - radius * 0.3f, hlY + 1.0f),
                      ImVec2(cx + radius * 0.3f, hlY + 8.0f), true);
     dl->AddCircleFilled(ImVec2(cx, cy), radius - 8, IM_COL32(255, 255, 255, 45),
-                        64);
+                        32);
     dl->PopClipRect();
   }
 
   // 3. Multi-layer ornate frame
   // Outermost dark shadow ring
-  dl->AddCircle(ImVec2(cx, cy), radius + 3, IM_COL32(8, 6, 4, 200), 64, 3.0f);
+  dl->AddCircle(ImVec2(cx, cy), radius + 3, IM_COL32(8, 6, 4, 200), 32, 3.0f);
   // Main gold band (thick)
-  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(140, 115, 55, 255), 64, 5.0f);
+  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(140, 115, 55, 255), 32, 5.0f);
   // Bright highlight edge on top half of frame (metallic sheen)
   dl->PushClipRect(ImVec2(cx - radius - 6, cy - radius - 6),
                    ImVec2(cx + radius + 6, cy), true);
-  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(220, 195, 110, 100), 64, 2.0f);
+  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(220, 195, 110, 100), 32, 2.0f);
   dl->PopClipRect();
   // Dark shadow on bottom half of frame
   dl->PushClipRect(ImVec2(cx - radius - 6, cy),
                    ImVec2(cx + radius + 6, cy + radius + 6), true);
-  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(60, 45, 20, 180), 64, 2.0f);
+  dl->AddCircle(ImVec2(cx, cy), radius + 0.5f, IM_COL32(60, 45, 20, 180), 32, 2.0f);
   dl->PopClipRect();
   // Inner highlight edge
-  dl->AddCircle(ImVec2(cx, cy), radius - 2, IM_COL32(200, 175, 90, 80), 64, 1.0f);
+  dl->AddCircle(ImVec2(cx, cy), radius - 2, IM_COL32(200, 175, 90, 80), 32, 1.0f);
   // Inner dark border
-  dl->AddCircle(ImVec2(cx, cy), radius - 3.5f, IM_COL32(0, 0, 0, 100), 64, 1.5f);
+  dl->AddCircle(ImVec2(cx, cy), radius - 3.5f, IM_COL32(0, 0, 0, 100), 32, 1.5f);
 
   // 4. Rivet dots around the frame
   constexpr int RIVET_COUNT = 8;
@@ -997,6 +997,8 @@ void ShowRegionName(const char *name) {
     oztFile = "Data/Local/Eng/ImgsMapName/losttower.OZT";
   else if (strncmp(name, "Atlans", 6) == 0)
     oztFile = "Data/Local/Eng/ImgsMapName/atlans.OZT";
+  else if (strncmp(name, "Tarkan", 6) == 0)
+    oztFile = "Data/Local/Eng/ImgsMapName/tarcan.OZT"; // Original asset spelling
 
   if (oztFile) {
     if (TexValid(s_mapNameTexture)) {
@@ -1575,8 +1577,9 @@ static const MapEntry s_maps[] = {
     {4, "Lost Tower 6", "Lv 57+",  48,  56, false, {0,0,0,0}},
     {4, "Lost Tower 7", "Lv 60+",  12,  88, false, {0,0,0,0}},
     {7, "Atlans",       "Lv 60+",  24,  22, false, {0,0,0,0}},
+    {8, "Tarkan",       "Lv 80+", 195,  66, false, {0,0,0,0}},
 };
-static constexpr int MAP_COUNT = 14;
+static constexpr int MAP_COUNT = 15;
 
 float GetMapPanelX() {
   return -260.0f; // Far left side of screen (past virtual 0 into left margin)

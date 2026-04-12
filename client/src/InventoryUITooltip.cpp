@@ -669,31 +669,47 @@ static float DrawWrappedText(ImDrawList *dl, ImVec2 pos, ImU32 color,
     DrawShadowText(dl, pos, color, text);
     return lineH;
   }
-  // Simple word wrap
-  std::string str(text);
+  // Word wrap: binary search for line breaks instead of char-by-char
+  const char *str = text;
+  size_t len = strlen(str);
   float curY = 0.0f;
   size_t start = 0;
-  while (start < str.size()) {
-    // Find how many chars fit on this line
-    size_t bestBreak = str.size();
-    for (size_t i = start + 1; i <= str.size(); i++) {
-      std::string sub = str.substr(start, i - start);
-      if (ImGui::CalcTextSize(sub.c_str()).x > maxW) {
-        // Back up to last space
-        size_t spacePos = str.rfind(' ', i - 1);
-        if (spacePos != std::string::npos && spacePos > start)
-          bestBreak = spacePos;
-        else
-          bestBreak = i - 1; // force break mid-word
-        break;
+  char buf[512];
+  while (start < len) {
+    size_t remaining = len - start;
+    // Binary search for max chars that fit
+    size_t lo = 1, hi = remaining, bestFit = remaining;
+    // Quick check: does the whole remaining text fit?
+    size_t copyLen = std::min(remaining, sizeof(buf) - 1);
+    memcpy(buf, str + start, copyLen);
+    buf[copyLen] = '\0';
+    if (ImGui::CalcTextSize(buf).x > maxW) {
+      bestFit = 0;
+      while (lo <= hi) {
+        size_t mid = (lo + hi) / 2;
+        size_t n = std::min(mid, sizeof(buf) - 1);
+        memcpy(buf, str + start, n);
+        buf[n] = '\0';
+        if (ImGui::CalcTextSize(buf).x <= maxW) {
+          bestFit = mid;
+          lo = mid + 1;
+        } else {
+          hi = mid - 1;
+        }
       }
+      // Back up to last space for word boundary
+      size_t spacePos = bestFit;
+      while (spacePos > 0 && str[start + spacePos - 1] != ' ') spacePos--;
+      if (spacePos > 0) bestFit = spacePos;
     }
-    std::string line = str.substr(start, bestBreak - start);
-    DrawShadowText(dl, ImVec2(pos.x, pos.y + curY), color, line.c_str());
+    if (bestFit == 0) bestFit = 1; // at least 1 char
+    size_t n = std::min(bestFit, sizeof(buf) - 1);
+    memcpy(buf, str + start, n);
+    buf[n] = '\0';
+    DrawShadowText(dl, ImVec2(pos.x, pos.y + curY), color, buf);
     curY += lineH;
-    start = bestBreak;
-    // Skip space at break point
-    if (start < str.size() && str[start] == ' ') start++;
+    start += bestFit;
+    if (start < len && str[start] == ' ') start++;
   }
   return curY;
 }

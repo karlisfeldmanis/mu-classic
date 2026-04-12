@@ -594,6 +594,23 @@ void HandleItemUse(Session &session, const std::vector<uint8_t> &packet,
         printf("[Inventory] Item used fd=%d: Restored %d Mana. Mana: %d/%d\n",
                session.GetFd(), restoreAmount, session.mana, session.maxMana);
       }
+    } else if (item.itemIndex == 8) {
+      // Antidote: cure poison debuff
+      if (!session.poisoned) {
+        printf("[Inventory] Rejecting antidote fd=%d: not poisoned\n", session.GetFd());
+        return;
+      }
+      session.poisoned = false;
+      session.poisonTickTimer = 0.0f;
+      session.poisonDuration = 0.0f;
+      // Notify client to clear poison visual
+      PMSG_DEBUFF_EFFECT_SEND dpkt{};
+      dpkt.h = MakeC1Header(sizeof(dpkt), Opcode::DEBUFF_EFFECT);
+      dpkt.debuffType = 1; // poison
+      dpkt.active = 0;
+      dpkt.duration = 0;
+      session.Send(&dpkt, sizeof(dpkt));
+      printf("[Inventory] Antidote used fd=%d: poison cured\n", session.GetFd());
     } else {
       return; // Unknown potion type
     }

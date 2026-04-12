@@ -1,5 +1,6 @@
 #include "Terrain.hpp"
 #include "TextureLoader.hpp"
+#include <cstdio>
 #include <fstream>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
@@ -30,6 +31,26 @@ Terrain::~Terrain() {
   // bgfx::shutdown() via __cxa_finalize_ranges, so BGFX context is gone.
   // All BGFX resources are cleaned up via explicit Cleanup() in main.cpp
   // shutdown path before bgfx::shutdown().
+}
+
+void Terrain::ExportLightmap(const std::string &path) const {
+  int S = 256;
+  if ((int)m_workingLightRGBA.size() < S * S * 4) {
+    printf("[Debug] No dynamic lightmap data available\n");
+    return;
+  }
+  FILE *f = fopen(path.c_str(), "wb");
+  if (!f) { printf("[Debug] Failed to open %s\n", path.c_str()); return; }
+  fprintf(f, "P6\n%d %d\n255\n", S, S);
+  for (int i = 0; i < S * S; i++) {
+    uint8_t r = (uint8_t)(std::min(std::max(m_workingLightRGBA[i * 4 + 0], 0.0f), 1.0f) * 255);
+    uint8_t g = (uint8_t)(std::min(std::max(m_workingLightRGBA[i * 4 + 1], 0.0f), 1.0f) * 255);
+    uint8_t b = (uint8_t)(std::min(std::max(m_workingLightRGBA[i * 4 + 2], 0.0f), 1.0f) * 255);
+    fwrite(&r, 1, 1, f);
+    fwrite(&g, 1, 1, f);
+    fwrite(&b, 1, 1, f);
+  }
+  fclose(f);
 }
 
 void Terrain::Cleanup() {
@@ -65,6 +86,8 @@ void Terrain::Load(const TerrainData &data, int worldID,
                    const std::vector<uint8_t> &rawAttributes,
                    const std::vector<bool> &bridgeMask) {
   this->worldID = worldID;
+  // Main 5.2: Tarkan lava = 40s cycle (0.025/s), others = 20s cycle (0.015/s default)
+  m_waterScrollRate = (worldID == 9) ? 0.025f : 0.015f;
   const auto &meshAttrs =
       rawAttributes.empty() ? data.mapping.attributes : rawAttributes;
   const int S = TerrainParser::TERRAIN_SIZE;
@@ -175,7 +198,64 @@ void Terrain::Load(const TerrainData &data, int worldID,
 
   setupMesh(data.heightmap, data.lightmap, meshAttrs, bridgeMask, voidDist, terrainDist, bridgeDist);
   std::string worldDir = data_path + "/World" + std::to_string(worldID);
-  setupTextures(data, worldDir);
+
+  // Tarkan: unify terrain tiles near void boundaries.
+  // The walkable platform uses bright sandy tiles, surrounding terrain uses
+  // cracked-earth tiles. This creates a visible boundary.
+  // Fix: find the dominant (most common) tile and replace minority tiles
+  // near void edges, then propagate into void cells too.
+  TerrainData patchedData = data;
+  if (worldID == 9) {
+    auto &l1 = patchedData.mapping.layer1;
+    auto &l2 = patchedData.mapping.layer2;
+
+    // Log all tile usage to identify the right background tile
+    int tileCounts[256] = {};
+    for (int i = 0; i < S * S; i++) {
+      if (meshAttrs[i] & 0x08) continue;
+      tileCounts[l1[i]]++;
+    }
+    printf("[Terrain] Tarkan tile usage:\n");
+    for (int t = 0; t < 256; t++) {
+      if (tileCounts[t] > 0)
+        printf("  tile %d: %d cells\n", t, tileCounts[t]);
+    }
+
+    // Find the 2nd most common tile — the broad terrain background.
+    // The most common is often the platform/walkable path tile.
+    // Sort by count descending, pick 2nd.
+    int sorted[256];
+    for (int t = 0; t < 256; t++) sorted[t] = t;
+    for (int i = 0; i < 255; i++)
+      for (int j = i+1; j < 256; j++)
+        if (tileCounts[sorted[j]] > tileCounts[sorted[i]])
+          std::swap(sorted[i], sorted[j]);
+
+    int dominantTile = sorted[0];
+    // If top tile has way more cells, it's the background — use it.
+    // If top two are close, the 2nd might be background.
+    printf("[Terrain] Tarkan: top tiles: %d(%d), %d(%d), %d(%d)\n",
+           sorted[0], tileCounts[sorted[0]],
+           sorted[1], tileCounts[sorted[1]],
+           sorted[2], tileCounts[sorted[2]]);
+
+    // Unify ALL non-void cells: layer1 + layer2 to dominant tile,
+    // and zero alpha to eliminate any secondary-tile bleed-through.
+    auto &al = patchedData.mapping.alpha;
+    int patched = 0;
+    for (int i = 0; i < S * S; i++) {
+      if (meshAttrs[i] & 0x08) continue;
+      if (l1[i] != (uint8_t)dominantTile) {
+        l1[i] = (uint8_t)dominantTile;
+        patched++;
+      }
+      l2[i] = (uint8_t)dominantTile;
+      al[i] = 0.0f;
+    }
+    printf("[Terrain] Tarkan: unified %d cells to tile %d\n", patched, dominantTile);
+  }
+
+  setupTextures(patchedData, worldDir);
 
   // Lightmap alpha: -1.0 for terrain cells (disables height fade in shader),
   // nearTerrainH for void cells (cliff-top height for vertical fade gradient).
@@ -251,24 +331,27 @@ void Terrain::Load(const TerrainData &data, int worldID,
     }
 
     // Lightmap floor: prevent pitch-black walkable terrain at steep edges.
+    float lightFloor = 0.30f;
     for (int i = 0; i < S * S; i++) {
       if (meshAttrs[i] & 0x08) continue;
       if (hasBridge && bridgeMask[i]) continue;
       for (int c = 0; c < 3; c++)
-        m_baselineLightRGBA[i * 4 + c] = std::max(m_baselineLightRGBA[i * 4 + c], 0.30f);
+        m_baselineLightRGBA[i * 4 + c] = std::max(m_baselineLightRGBA[i * 4 + c], lightFloor);
     }
 
-    // Subtle terrain-side darkening near void edges (voidDist 1-2).
+    // Subtle terrain-side darkening near void edges.
     // Creates a smooth transition from bright terrain to dark cliff face.
+    // Tarkan: very gentle darkening — canyon edges should stay visible.
+    float edgeRange = 2.0f;
+    float edgeBase  = 0.80f;
     for (int i = 0; i < S * S; i++) {
       if (meshAttrs[i] & 0x08) continue;
       if (hasBridge && bridgeMask[i]) continue;
       if (bridgeDist[i] < BRIDGE_PROTECT) continue;
 
       float vd = voidDist[i];
-      if (vd > 2.0f) continue;
-      // vd=1 → 90%, vd=2 → 95% (softer edge, less harsh band)
-      float darken = 0.85f + 0.075f * vd;
+      if (vd > edgeRange) continue;
+      float darken = edgeBase + (1.0f - edgeBase) * (vd / edgeRange);
       darken = std::min(darken, 1.0f);
       for (int c = 0; c < 3; c++)
         m_baselineLightRGBA[i * 4 + c] *= darken;
@@ -305,12 +388,17 @@ void Terrain::Load(const TerrainData &data, int worldID,
         if (foundTerr) break;
       }
 
-      // XZ distance fade: dim near terrain edge, very dark deeper in void
-      float t = std::min(td / 1.5f, 1.0f); // Immediate fade (1.5 cells to black)
-      float brightness = nearBright * (1.0f - t); // Linear to black
-
-      for (int c = 0; c < 3; c++)
-        m_baselineLightRGBA[i * 4 + c] = brightness;
+      // XZ distance fade: gradual transition from terrain brightness into void.
+      // Tarkan: void cells at terrainDist<=2 inherit neighbor brightness so
+      // GPU linear lightmap sampling doesn't create a visible dark gradient
+      // at the walkable-terrain-to-void edge.
+      {
+        float fadeDist = 1.5f;
+        float t = std::min(td / fadeDist, 1.0f);
+        float brightness = nearBright * (1.0f - t);
+        for (int c = 0; c < 3; c++)
+          m_baselineLightRGBA[i * 4 + c] = brightness;
+      }
     }
 
     // Map-edge brightness floor: JPEG lightmap has pre-baked dark values
@@ -331,6 +419,24 @@ void Terrain::Load(const TerrainData &data, int worldID,
             m_baselineLightRGBA[i * 4 + c] = std::max(m_baselineLightRGBA[i * 4 + c], floor);
         }
       }
+    }
+
+    // Tarkan: the baked TerrainLight.OZJ has large brightness variation that
+    // makes tile texture boundaries very visible (bright walkable vs dark edges).
+    // Main 5.2 uses dot(normal,sun)+0.5 giving 50% ambient minimum.
+    // Compress the lightmap dynamic range: raise darks, lower brights.
+    if (worldID == 9) {
+      // Compress lightmap range: raise darks, clamp brights.
+      const float floorR = 0.65f, floorG = 0.58f, floorB = 0.48f;
+      const float capR = 0.85f, capG = 0.78f, capB = 0.65f;
+      for (int i = 0; i < S * S; i++) {
+        if (meshAttrs[i] & 0x08) continue;
+        m_baselineLightRGBA[i * 4 + 0] = std::clamp(m_baselineLightRGBA[i * 4 + 0], floorR, capR);
+        m_baselineLightRGBA[i * 4 + 1] = std::clamp(m_baselineLightRGBA[i * 4 + 1], floorG, capG);
+        m_baselineLightRGBA[i * 4 + 2] = std::clamp(m_baselineLightRGBA[i * 4 + 2], floorB, capB);
+      }
+      printf("[Terrain] Tarkan lightmap: clamped (%.2f-%.2f, %.2f-%.2f, %.2f-%.2f)\n",
+             floorR, capR, floorG, capG, floorB, capB);
     }
 
     // Re-upload lightmap texture with modified void edges
@@ -395,7 +501,7 @@ void Terrain::Render(const glm::mat4 &view, const glm::mat4 &projection,
 
   // Packed uniforms
   shader->setVec4("u_terrainParams",
-                  glm::vec4(time, (float)debugMode, m_luminosity, 0.0f));
+                  glm::vec4(time, m_waterScrollRate, m_luminosity, 0.0f));
   shader->setVec4("u_fogParams",
                   glm::vec4(m_fogNear, m_fogFar, m_fogHeightBase, m_fogHeightFade));
   shader->setVec3("u_fogColor", m_fogColor);
@@ -439,11 +545,11 @@ void Terrain::Render(const glm::mat4 &view, const glm::mat4 &projection,
   bgfx::setIndexBuffer(ebo);
   bgfx::submit(0, shader->program);
 
-  // Dark ground plane behind terrain edges (Lorencia only — other maps use
-  // clear color + void gradient which this plane would obscure)
+  // Dark ground plane behind terrain edges (fills void gaps below terrain mesh)
+  // Lorencia: dark green-brown. Tarkan: dark warm brown (lava canyon floor).
   if (worldID == 0 && bgfx::isValid(groundVbo)) {
     shader->setVec4("u_terrainParams",
-                    glm::vec4(time, (float)debugMode, m_luminosity, 2.0f)); // w=2: flat dark
+                    glm::vec4(time, m_waterScrollRate, m_luminosity, 2.0f)); // w=2: flat dark
     shader->setVec4("u_fogParams",
                     glm::vec4(m_fogNear, m_fogFar, m_fogHeightBase, m_fogHeightFade));
     shader->setVec3("u_fogColor", m_fogColor);
@@ -460,7 +566,7 @@ void Terrain::Render(const glm::mat4 &view, const glm::mat4 &projection,
   if (voidIndexCount > 0 && bgfx::isValid(voidVbo)) {
     // Re-set all uniforms/textures for this draw call (BGFX requires per-submit)
     shader->setVec4("u_terrainParams",
-                    glm::vec4(time, (float)debugMode, m_luminosity, 1.0f)); // w=1 enables void fade
+                    glm::vec4(time, m_waterScrollRate, m_luminosity, 1.0f)); // w=1 enables void fade
     shader->setVec4("u_fogParams",
                     glm::vec4(m_fogNear, m_fogFar, m_fogHeightBase, m_fogHeightFade));
     shader->setVec3("u_fogColor", m_fogColor);
@@ -622,6 +728,7 @@ void Terrain::setupMesh(const std::vector<float> &heightmap,
     }
     float planeY = minH - 20.0f;
 
+    // Tarkan: match clear color for seamless void floor. Others: near-black.
     glm::vec3 dark(0.02f, 0.02f, 0.02f);
     Vertex gv[4] = {
       {{-PAD,   planeY, -PAD},   {0,0}, dark},
@@ -724,8 +831,8 @@ void Terrain::setupTextures(const TerrainData &data,
         mem);
   }
 
-  // Tile texture array (256x256 x 32 layers, RGBA8, with mipmaps for anisotropic)
-  const int tile_res = 256;
+  // Tile texture array (1024x1024 x 32 layers, RGBA8, with mipmaps for anisotropic)
+  const int tile_res = 1024;
   const int max_tiles = 32;
 
   tileTextureArray = bgfx::createTexture2D(
@@ -881,18 +988,17 @@ void Terrain::setupTextures(const TerrainData &data,
 
     if (w == tile_res && h == tile_res) {
       uploadTileWithMips(i, uploadData, w, h);
-    } else if (w == 128 && h == 128) {
-      // 128x128 tiles: tile 2x2 to fill 256x256
-      std::vector<unsigned char> tiled(256 * 256 * 4);
-      for (int y = 0; y < 256; ++y) {
-        int sy = y % 128;
-        for (int x = 0; x < 256; ++x) {
-          int sx = x % 128;
-          memcpy(&tiled[(y * 256 + x) * 4], &uploadData[(sy * 128 + sx) * 4],
-                 4);
+    } else if (w > 0 && h > 0 && w < tile_res) {
+      // Tile smaller textures to fill tile_res x tile_res
+      std::vector<unsigned char> tiled(tile_res * tile_res * 4);
+      for (int y = 0; y < tile_res; ++y) {
+        int sy = y % h;
+        for (int x = 0; x < tile_res; ++x) {
+          int sx = x % w;
+          memcpy(&tiled[(y * tile_res + x) * 4], &uploadData[(sy * w + sx) * 4], 4);
         }
       }
-      uploadTileWithMips(i, tiled.data(), 256, 256);
+      uploadTileWithMips(i, tiled.data(), tile_res, tile_res);
     } else if (w > 0 && h > 0) {
       int upload_w = std::min(w, tile_res);
       int upload_h = std::min(h, tile_res);
@@ -903,6 +1009,7 @@ void Terrain::setupTextures(const TerrainData &data,
       uploadTileWithMips(i, sub.data(), upload_w, upload_h);
     }
   }
+
 }
 
 void Terrain::applyDynamicLights() {

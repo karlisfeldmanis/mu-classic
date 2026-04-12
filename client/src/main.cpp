@@ -35,6 +35,7 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_bgfx.h"
+#include <map>
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
 #include <bx/math.h>
@@ -570,13 +571,13 @@ static const MapConfig MAP_CONFIGS[] = {
         "Tarkan",
         0.0f,
         0.0f,
-        0.0f, // clearColor (Main 5.2: pure black background)
+        0.0f, // clearColor: pure black (Main 5.2)
         0.0f,
         0.0f,
-        0.0f, // fogColor (Main 5.2: no fog)
+        0.0f, // fogColor: none
         9000.f,
         12000.f,
-        1.0f, // fogNear/Far pushed far = effectively no fog, luminosity full
+        1.2f, // slight brightness boost + shader desaturation for whiter terrain
         0.15f,
         0.50f,
         0.10f, // bloom, threshold, vignette
@@ -584,10 +585,10 @@ static const MapConfig MAP_CONFIGS[] = {
         1.0f,
         1.0f, // colorTint (neutral — no tint per Main 5.2)
         false,
+        true,
         false,
         false,
-        false,
-        false, // sky, grass, doors, leaves, wind
+        true, // sky=no, grass=yes, doors=no, leaves=no, wind=yes
         SOUND_DESERT01,
         1.0f, // ambientGain
         "Music/tarkan.mp3",
@@ -1303,6 +1304,69 @@ static void GenerateMinimapTexture() {
       BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP, mem);
 }
 
+// ── Runtime profiler (F3 toggle + log to file) ──
+struct RenderProfiler {
+  static constexpr int NUM_SECTIONS = 14;
+  static constexpr int HISTORY = 60; // frames to average
+  const char* names[NUM_SECTIONS] = {
+    "Shadow Map", "Terrain", "Grass", "Objects", "Fire/Sprites",
+    "Boids", "NPCs", "Monsters", "Hero", "VFX",
+    "PostProcess", "ImGui", "Ground Items", "Frame Total"
+  };
+  double accum[NUM_SECTIONS] = {};    // accumulated ms this averaging window
+  double display[NUM_SECTIONS] = {};  // displayed ms (smoothed)
+  int frameCount = 0;
+  bool visible = false;
+  bool logging = false;
+  FILE* logFile = nullptr;
+  int logSamples = 0;
+  static constexpr int MAX_LOG_SAMPLES = 300; // ~5 seconds at 60fps
+  std::chrono::high_resolution_clock::time_point sectionStart;
+
+  void Begin() { sectionStart = std::chrono::high_resolution_clock::now(); }
+  void End(int section) {
+    auto now = std::chrono::high_resolution_clock::now();
+    double ms = std::chrono::duration<double, std::milli>(now - sectionStart).count();
+    accum[section] += ms;
+  }
+  void StartLogging() {
+    logFile = fopen("profiler_log.csv", "w");
+    if (!logFile) return;
+    logging = true;
+    logSamples = 0;
+    // CSV header
+    for (int i = 0; i < NUM_SECTIONS; i++) {
+      fprintf(logFile, "%s%s", names[i], i < NUM_SECTIONS - 1 ? "," : "\n");
+    }
+    std::cout << "[Profiler] Recording started (profiler_log.csv)\n";
+  }
+  void StopLogging() {
+    if (logFile) { fclose(logFile); logFile = nullptr; }
+    logging = false;
+    std::cout << "[Profiler] Recording stopped (" << logSamples << " samples)\n";
+  }
+  void EndFrame() {
+    frameCount++;
+    if (frameCount >= HISTORY) {
+      for (int i = 0; i < NUM_SECTIONS; i++) {
+        display[i] = accum[i] / frameCount;
+        accum[i] = 0.0;
+      }
+      // Log averaged sample
+      if (logging && logFile) {
+        for (int i = 0; i < NUM_SECTIONS; i++) {
+          fprintf(logFile, "%.3f%s", display[i], i < NUM_SECTIONS - 1 ? "," : "\n");
+        }
+        fflush(logFile);
+        logSamples++;
+        if (logSamples >= MAX_LOG_SAMPLES) StopLogging();
+      }
+      frameCount = 0;
+    }
+  }
+};
+static RenderProfiler g_profiler;
+
 // ── Post-processing (bloom + vignette + color grading) ──
 struct PostProcessState {
   bool enabled = false;
@@ -1320,11 +1384,42 @@ struct PostProcessState {
   float vignetteStrength = 0.1f;
   glm::vec3 colorTint = glm::vec3(1.02f, 1.0f, 0.96f);
   float bloomThreshold = 0.35f;
-  float gradingStrength = 0.3f; // 0=no color grading, 1=full grading
+  float gradingStrength = 0.85f; // 0=no color grading, 1=full grading
   float sharpStrength = 0.25f;  // 0=no sharpening, ~0.2-0.4=subtle, 1.0=strong
   bgfx::VertexBufferHandle screenTriVBO = BGFX_INVALID_HANDLE;
 };
 static PostProcessState g_postProcess;
+
+// ── Sand/dust viewport overlay (Tarkan, Main 5.2 RenderOutSides) ──
+static constexpr bgfx::ViewId PP_VIEW_SAND = 10;
+struct SandOverlayState {
+  bool active = false;
+  std::unique_ptr<Shader> shader;
+  TexHandle sandTex1 = kInvalidTex;
+  TexHandle sandTex2 = kInvalidTex;
+};
+static SandOverlayState g_sandOverlay;
+
+static void RenderSandOverlay(int fbW, int fbH, float time) {
+  auto &so = g_sandOverlay;
+  if (!so.active || !so.shader || !TexValid(so.sandTex1) || !TexValid(so.sandTex2))
+    return;
+  auto &pp = g_postProcess;
+  if (!bgfx::isValid(pp.screenTriVBO)) return;
+
+  bgfx::setViewName(PP_VIEW_SAND, "SandOverlay");
+  bgfx::setViewRect(PP_VIEW_SAND, 0, 0, uint16_t(fbW), uint16_t(fbH));
+  bgfx::setViewFrameBuffer(PP_VIEW_SAND, BGFX_INVALID_HANDLE); // backbuffer
+  bgfx::touch(PP_VIEW_SAND);
+
+  so.shader->setTexture(0, "s_sand1", so.sandTex1);
+  so.shader->setTexture(1, "s_sand2", so.sandTex2);
+  so.shader->setVec4("u_sandParams", glm::vec4(time, 0.0f, 0.0f, 0.0f));
+  bgfx::setVertexBuffer(0, pp.screenTriVBO);
+  bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_BLEND_FUNC(
+      BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA));
+  bgfx::submit(PP_VIEW_SAND, so.shader->program);
+}
 
 static void InitPostProcess() {
   auto &pp = g_postProcess;
@@ -2370,7 +2465,7 @@ int main(int argc, char **argv) {
         g_postProcess.bloomThreshold = 0.5f;
         g_postProcess.vignetteStrength = 0.08f;
         g_postProcess.colorTint = glm::vec3(1.0f, 1.0f, 0.98f);
-        g_postProcess.gradingStrength = 0.2f;
+        g_postProcess.gradingStrength = 0.85f;
         if (bgfx::isValid(g_postProcess.sceneFB))
           bgfx::setViewFrameBuffer(0, g_postProcess.sceneFB);
         else
@@ -2404,6 +2499,7 @@ int main(int argc, char **argv) {
       // Post-processing: bloom + vignette + composite (reads scene FBO → backbuffer)
       if (g_postProcess.enabled)
         RenderPostProcess(fbW, fbH);
+      RenderSandOverlay(fbW, fbH, currentFrame);
 
       // Draw ImGui UI on top of post-processed scene (sharp, unaffected by
       // bloom)
@@ -3282,7 +3378,25 @@ int main(int argc, char **argv) {
       view = glm::translate(view, shakeOffset);
     }
 
+    // F3 profiler toggle: first press = show + start logging, second = stop + hide
+    {
+      static bool f3WasDown = false;
+      bool f3Down = glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS;
+      if (f3Down && !f3WasDown) {
+        if (!g_profiler.visible) {
+          g_profiler.visible = true;
+          g_profiler.StartLogging();
+        } else {
+          g_profiler.StopLogging();
+          g_profiler.visible = false;
+        }
+      }
+      f3WasDown = f3Down;
+    }
+    auto frameStartTime = std::chrono::high_resolution_clock::now();
+
     // ── Shadow map pass: render depth from directional light ──
+    g_profiler.Begin();
     if (g_shadowMap.depthShader && bgfx::isValid(g_shadowMap.fb)) {
       glm::vec3 heroPos = g_hero.GetPosition();
       // Directional light: nearly overhead sun with subtle side tilt
@@ -3294,9 +3408,23 @@ int main(int argc, char **argv) {
         up = glm::vec3(1.0f, 0.0f, 0.0f);
       glm::mat4 lightView = glm::lookAt(lightPos, heroPos, up);
       // Metal uses [0,1] Z clip range; OpenGL uses [-1,1]
+      constexpr float shadowHalf = 1500.0f; // tighter frustum = sharper character shadows
       glm::mat4 lightProj = bgfx::getCaps()->homogeneousDepth
-        ? glm::ortho(-3500.0f, 3500.0f, -3500.0f, 3500.0f, 100.0f, 8000.0f)
-        : glm::orthoRH_ZO(-3500.0f, 3500.0f, -3500.0f, 3500.0f, 100.0f, 8000.0f);
+        ? glm::ortho(-shadowHalf, shadowHalf, -shadowHalf, shadowHalf, 100.0f, 8000.0f)
+        : glm::orthoRH_ZO(-shadowHalf, shadowHalf, -shadowHalf, shadowHalf, 100.0f, 8000.0f);
+
+      // Snap shadow map to texel grid to prevent shimmer on camera movement
+      {
+        glm::mat4 shadowMtx = lightProj * lightView;
+        float texelSize = (2.0f * shadowHalf) / static_cast<float>(SHADOW_MAP_SIZE);
+        // Find where origin maps to in shadow space and snap it
+        glm::vec4 originShadow = shadowMtx * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        float snapX = fmodf(originShadow.x, texelSize);
+        float snapY = fmodf(originShadow.y, texelSize);
+        lightProj[3][0] -= snapX;
+        lightProj[3][1] -= snapY;
+      }
+
       glm::mat4 lightMtx = lightProj * lightView;
 
       // Setup shadow view
@@ -3311,7 +3439,8 @@ int main(int argc, char **argv) {
       // View 8 renders before view 0 via setViewOrder (set above).
 
       // Submit shadow casters
-      g_hero.RenderToShadowMap(SHADOW_VIEW, g_shadowMap.depthShader->program);
+      // Hero uses stencil shadow (crisp mesh projection), not shadow map
+      // g_hero.RenderToShadowMap(SHADOW_VIEW, g_shadowMap.depthShader->program);
       g_monsterManager.RenderToShadowMap(SHADOW_VIEW, g_shadowMap.depthShader->program);
       g_npcManager.RenderToShadowMap(SHADOW_VIEW, g_shadowMap.depthShader->program);
 
@@ -3320,6 +3449,7 @@ int main(int argc, char **argv) {
       g_monsterManager.SetShadowMap(g_shadowMap.colorTex, lightMtx);
       g_npcManager.SetShadowMap(g_shadowMap.colorTex, lightMtx);
       g_terrain.SetShadowMap(g_shadowMap.colorTex, lightMtx);
+      g_objectRenderer.SetShadowMap(g_shadowMap.colorTex, lightMtx);
     }
 
     // Sky renders first (behind everything, no depth write)
@@ -3374,8 +3504,12 @@ int main(int argc, char **argv) {
       g_boidManager.SetPointLights(mergedLights);
     }
 
+    g_profiler.End(0); // Shadow Map
+    g_profiler.Begin();
     g_terrain.Render(view, projection, currentFrame, camPos);
 
+    g_profiler.End(1); // Terrain
+    g_profiler.Begin();
     // Main 5.2: grass renders WITH terrain (before objects).
     // Rocks/structures render after and occlude grass via depth buffer.
     if (g_mapCfg->hasGrass) {
@@ -3384,11 +3518,20 @@ int main(int argc, char **argv) {
       g_grass.Render(view, projection, currentFrame, camPos, pushSources);
     }
 
+    g_profiler.End(2); // Grass
+    g_profiler.Begin();
     // Lightmap texture is destroyed+recreated each frame by Terrain, so refresh handle
     g_objectRenderer.SetLightmapTexture(g_terrain.GetLightmapTexture());
+    g_monsterManager.SetLightmapTexture(g_terrain.GetLightmapTexture());
+    g_boidManager.SetLightmapTexture(g_terrain.GetLightmapTexture());
+    // Pass terrain tile textures for bridge rendering (Tarkan)
+    g_objectRenderer.SetTerrainTiles(g_terrain.GetTileTextureArray(), g_terrain.GetLayer1InfoMap(),
+                                     g_terrain.GetLayer2InfoMap(), g_terrain.GetAlphaMap());
     g_objectRenderer.Render(view, projection, g_camera.GetPosition(),
                             currentFrame);
 
+    g_profiler.End(3); // Objects
+    g_profiler.Begin();
     // Main 5.2 level-up VFX: 15 BITMAP_FLARE joints in a ring
     if (g_hero.LeveledUpThisFrame()) {
       g_vfxManager.SpawnLevelUpEffect(g_hero.GetPosition());
@@ -3548,6 +3691,8 @@ int main(int argc, char **argv) {
       }
     }
 
+    g_profiler.End(4); // Fire/Sprites
+    g_profiler.Begin();
     // Boids — birds in Lorencia, bats in Dungeon (BoidManager handles map
     // logic)
     g_boidManager.SetCameraView(projection * view);
@@ -3564,6 +3709,8 @@ int main(int argc, char **argv) {
     if (g_mapCfg->hasLeaves)
       g_boidManager.RenderLeaves(view, projection, camPos);
 
+    g_profiler.End(5); // Boids
+    g_profiler.Begin();
     // Update NPC interaction state (guard faces player only when quest dialog
     // is open)
     g_npcManager.SetPlayerPosition(g_hero.GetPosition());
@@ -3621,6 +3768,8 @@ int main(int argc, char **argv) {
     if (!hasShadowMap) g_npcManager.RenderShadows(view, projection);
     g_npcManager.Render(view, projection, camPos, deltaTime);
 
+    g_profiler.End(6); // NPCs
+    g_profiler.Begin();
     // Render monster stencil shadows + models
     if (!hasShadowMap) g_monsterManager.RenderShadows(view, projection);
     g_monsterManager.Render(view, projection, camPos, deltaTime);
@@ -3630,14 +3779,18 @@ int main(int argc, char **argv) {
       g_monsterManager.RenderSilhouetteOutline(g_hoveredMonster, view,
                                                projection);
 
+    g_profiler.End(7); // Monsters
+    g_profiler.Begin();
     // Render ground item shadows (before hero so items don't shadow-over hero)
     GroundItemRenderer::RenderShadows(g_groundItems, MAX_GROUND_ITEMS, view,
                                       projection);
 
-    // Render hero stencil shadow + model (skip stencil when shadow map active)
+    g_profiler.End(12); // Ground Items
+    g_profiler.Begin();
+    // Render hero stencil shadow + model (always use stencil for crisp character shadow)
     g_clickEffect.Update(deltaTime);
     g_clickEffect.Render(view, projection, deltaTime, g_hero.GetShader());
-    if (!hasShadowMap) g_hero.RenderShadow(view, projection);
+    g_hero.RenderShadow(view, projection);
     g_hero.Render(view, projection, camPos, deltaTime);
 
     // Compute hero bone world positions for VFX bone-attached particles
@@ -3670,11 +3823,17 @@ int main(int argc, char **argv) {
                                        g_hero.GetWeaponTrailBase());
     }
 
+    g_profiler.End(8); // Hero
+    g_profiler.Begin();
     // Render VFX (after all characters so particles layer on top)
     g_vfxManager.Render(view, projection);
 
+    g_profiler.End(9); // VFX
+    g_profiler.Begin();
     // Post-processing: bloom + vignette + composite (reads scene FBO → backbuffer)
     RenderPostProcess(fbW, fbH);
+    RenderSandOverlay(fbW, fbH, currentFrame);
+    g_profiler.End(10); // PostProcess
 
     // Auto-GIF: capture with warmup for fire particle buildup
     // Capture BEFORE ImGui rendering so debug overlay is not in the output
@@ -3697,6 +3856,7 @@ int main(int argc, char **argv) {
     // HUD)
     bool captureScreenshot = (autoScreenshot && diagFrame == 60);
 
+    g_profiler.Begin(); // ImGui section start
     // Start the Dear ImGui frame
     InventoryUI::ClearRenderQueue();
     InventoryUI::ResetPendingTooltip(); // Reset deferred tooltip each frame
@@ -3734,6 +3894,39 @@ int main(int argc, char **argv) {
         float px = 8.0f * uiS, py = 6.0f * uiS;
         dl->AddText(g_fontDefault, fSize, ImVec2(px + 1, py + 1), IM_COL32(0, 0, 0, 100), fpsBuf);
         dl->AddText(g_fontDefault, fSize, ImVec2(px, py), IM_COL32(200, 200, 200, 180), fpsBuf);
+      }
+
+      // ── Profiler overlay (F3) ──
+      if (g_profiler.visible) {
+        float uiS = ImGui::GetIO().FontGlobalScale;
+        float fSize = 14.0f * uiS;
+        float px = 8.0f * uiS, py = 28.0f * uiS;
+        float lineH = 16.0f * uiS;
+        float barMaxW = 120.0f * uiS;
+        // Background
+        float bgW = 280.0f * uiS;
+        float bgH = (RenderProfiler::NUM_SECTIONS + 1) * lineH + 8.0f * uiS;
+        dl->AddRectFilled(ImVec2(px - 4, py - 2), ImVec2(px + bgW, py + bgH),
+                          IM_COL32(0, 0, 0, 180));
+        for (int i = 0; i < RenderProfiler::NUM_SECTIONS; i++) {
+          char buf[64];
+          snprintf(buf, sizeof(buf), "%-14s %5.2f ms", g_profiler.names[i], g_profiler.display[i]);
+          dl->AddText(g_fontDefault, fSize, ImVec2(px + 1, py + 1), IM_COL32(0, 0, 0, 150), buf);
+          dl->AddText(g_fontDefault, fSize, ImVec2(px, py),
+                      i == RenderProfiler::NUM_SECTIONS - 1
+                        ? IM_COL32(255, 200, 100, 230)  // gold for total
+                        : IM_COL32(180, 220, 255, 220),  // blue-white for sections
+                      buf);
+          // Bar graph
+          float barW = (float)(g_profiler.display[i] / 16.67) * barMaxW; // normalized to 60fps
+          if (barW > barMaxW) barW = barMaxW;
+          ImU32 barCol = barW > barMaxW * 0.5f ? IM_COL32(255, 80, 80, 180)
+                       : barW > barMaxW * 0.25f ? IM_COL32(255, 200, 80, 180)
+                       : IM_COL32(80, 200, 120, 180);
+          float barX = px + 190.0f * uiS;
+          dl->AddRectFilled(ImVec2(barX, py + 2), ImVec2(barX + barW, py + lineH - 2), barCol);
+          py += lineH;
+        }
       }
 
       // ── Map name + coordinates + time (top-right) ──
@@ -5256,7 +5449,169 @@ int main(int argc, char **argv) {
         for (auto &c : cmdLower)
           c = (char)std::tolower((unsigned char)c);
 
-        {
+        bool handled = false;
+
+        // ── Debug commands ──
+        if (cmdLower == "/debug lights") {
+          handled = true;
+          printf("\n=== POINT LIGHTS (%zu total) ===\n", g_pointLights.size());
+          for (size_t i = 0; i < g_pointLights.size(); i++) {
+            auto &pl = g_pointLights[i];
+            printf("  [%zu] type=%d pos=(%.0f, %.0f, %.0f) color=(%.2f, %.2f, %.2f) range=%.0f\n",
+                   i, pl.objectType, pl.position.x, pl.position.y, pl.position.z,
+                   pl.color.r, pl.color.g, pl.color.b, pl.range);
+          }
+          printf("=== END POINT LIGHTS ===\n\n");
+          SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
+                                "Dumped %zu point lights to console", g_pointLights.size());
+        }
+        else if (cmdLower == "/debug terrain") {
+          handled = true;
+          printf("\n=== TERRAIN INFO ===\n");
+          printf("  Map ID: %d (%s)\n", g_currentMapId, g_mapCfg ? g_mapCfg->regionName : "?");
+          printf("  Luminosity: %.2f\n", g_luminosity);
+          if (g_mapCfg) {
+            printf("  Clear color: (%.2f, %.2f, %.2f)\n",
+                   g_mapCfg->clearR, g_mapCfg->clearG, g_mapCfg->clearB);
+            printf("  Fog color: (%.2f, %.2f, %.2f) near=%.0f far=%.0f\n",
+                   g_mapCfg->fogR, g_mapCfg->fogG, g_mapCfg->fogB,
+                   g_mapCfg->fogNear, g_mapCfg->fogFar);
+            printf("  Bloom: %.2f threshold: %.2f vignette: %.2f\n",
+                   g_mapCfg->bloomIntensity, g_mapCfg->bloomThreshold, g_mapCfg->vignetteStrength);
+            printf("  Color tint: (%.2f, %.2f, %.2f)\n",
+                   g_mapCfg->tintR, g_mapCfg->tintG, g_mapCfg->tintB);
+            printf("  Features: sky=%d grass=%d doors=%d leaves=%d wind=%d\n",
+                   g_mapCfg->hasSky, g_mapCfg->hasGrass, g_mapCfg->hasDoors,
+                   g_mapCfg->hasLeaves, g_mapCfg->hasWind);
+          }
+          printf("  Shadow: enabled=%d debug=%d\n",
+                 g_terrain.GetDebugMode() != 0, false);
+          printf("=== END TERRAIN INFO ===\n\n");
+          SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
+                                "Terrain info dumped to console");
+        }
+        else if (cmdLower == "/debug attrs" || cmdLower.rfind("/debug attrs ", 0) == 0) {
+          handled = true;
+          int cx, cy;
+          if (cmdLower == "/debug attrs") {
+            // Use player position
+            glm::vec3 hPos = g_hero.GetPosition();
+            cx = (int)(hPos.x / 100.0f);
+            cy = (int)(hPos.z / 100.0f);
+          } else {
+            sscanf(cmd.c_str() + 13, "%d %d", &cx, &cy);
+          }
+          printf("\n=== TERRAIN ATTRIBUTES around (%d, %d) ===\n", cx, cy);
+          if (g_terrainDataPtr) {
+            const auto &attrs = g_terrainDataPtr->mapping.attributes;
+            const auto &layer1 = g_terrainDataPtr->mapping.layer1;
+            const auto &heightmap = g_terrainDataPtr->heightmap;
+            const auto &lightmap = g_terrainDataPtr->lightmap;
+            int S = 256;
+            for (int dy = -3; dy <= 3; dy++) {
+              for (int dx = -3; dx <= 3; dx++) {
+                int x = cx + dx, y = cy + dy;
+                if (x < 0 || x >= S || y < 0 || y >= S) continue;
+                int idx = y * S + x;
+                uint8_t attr = attrs[idx];
+                uint8_t tile = layer1[idx];
+                float h = heightmap[idx];
+                glm::vec3 lm = lightmap[idx];
+                const char *mark = (dx == 0 && dy == 0) ? " <-- HERE" : "";
+                printf("  (%3d,%3d) attr=0x%02X tile=%3d h=%6.1f light=(%.2f,%.2f,%.2f)%s",
+                       x, y, attr, tile, h, lm.r, lm.g, lm.b, mark);
+                // Decode flags
+                if (attr & 0x01) printf(" SAFE");
+                if (attr & 0x02) printf(" NOMOVE");
+                if (attr & 0x04) printf(" CHAR");
+                if (attr & 0x08) printf(" NOGROUND");
+                if (attr & 0x20) printf(" BRIDGE");
+                printf("\n");
+              }
+            }
+            printf("=== END ATTRIBUTES ===\n\n");
+          }
+          SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
+                                "Attrs around (%d,%d) dumped to console", cx, cy);
+        }
+        else if (cmdLower == "/debug lightmap") {
+          handled = true;
+          if (g_terrainDataPtr) {
+            const auto &lightmap = g_terrainDataPtr->lightmap;
+            int S = 256;
+            std::string path = "debug_lightmap.ppm";
+            FILE *f = fopen(path.c_str(), "wb");
+            if (f) {
+              fprintf(f, "P6\n%d %d\n255\n", S, S);
+              for (int i = 0; i < S * S; i++) {
+                uint8_t r = (uint8_t)(std::min(lightmap[i].r, 1.0f) * 255);
+                uint8_t g = (uint8_t)(std::min(lightmap[i].g, 1.0f) * 255);
+                uint8_t b = (uint8_t)(std::min(lightmap[i].b, 1.0f) * 255);
+                fwrite(&r, 1, 1, f);
+                fwrite(&g, 1, 1, f);
+                fwrite(&b, 1, 1, f);
+              }
+              fclose(f);
+              printf("[Debug] Lightmap exported to %s (256x256 PPM)\n", path.c_str());
+              SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
+                                    "Lightmap exported to %s", path.c_str());
+            }
+            // Also export the dynamic (working) lightmap from Terrain
+            std::string path2 = "debug_lightmap_dynamic.ppm";
+            g_terrain.ExportLightmap(path2);
+            printf("[Debug] Dynamic lightmap exported to %s\n", path2.c_str());
+          }
+        }
+        else if (cmdLower == "/debug shadow") {
+          handled = true;
+          static bool shadowDbg = false;
+          shadowDbg = !shadowDbg;
+          g_terrain.SetShadowDebug(shadowDbg);
+          printf("[Debug] Shadow debug: %s\n", shadowDbg ? "ON" : "OFF");
+          SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
+                                "Shadow debug: %s", shadowDbg ? "ON" : "OFF");
+        }
+        else if (cmdLower == "/debug objects") {
+          handled = true;
+          if (g_terrainDataPtr) {
+            printf("\n=== WORLD OBJECTS (%zu total) ===\n", g_terrainDataPtr->objects.size());
+            // Count by type
+            std::map<int, int> typeCounts;
+            for (auto &obj : g_terrainDataPtr->objects)
+              typeCounts[obj.type]++;
+            printf("  Type counts:\n");
+            for (auto &[t, c] : typeCounts)
+              printf("    type %3d: %d instances\n", t, c);
+            // Detail for light-emitting types
+            printf("\n  Light-emitting objects (types 4,7,61,65,66,82):\n");
+            for (auto &obj : g_terrainDataPtr->objects) {
+              if (obj.type == 4 || obj.type == 7 || obj.type == 61 ||
+                  obj.type == 65 || obj.type == 66 || obj.type == 82) {
+                printf("    type=%d pos=(%.0f, %.0f, %.0f) scale=%.2f\n",
+                       obj.type, obj.position.x, obj.position.y, obj.position.z, obj.scale);
+              }
+            }
+            printf("=== END OBJECTS ===\n\n");
+          }
+          SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
+                                "World objects dumped to console");
+        }
+        else if (cmdLower == "/debug help") {
+          handled = true;
+          printf("\n=== DEBUG COMMANDS ===\n");
+          printf("  /debug lights    — Dump all point lights (position, color, range, type)\n");
+          printf("  /debug terrain   — Dump terrain/map settings (fog, luminosity, features)\n");
+          printf("  /debug attrs     — Dump terrain attributes around player (7x7 grid)\n");
+          printf("  /debug attrs X Y — Dump terrain attributes around (X,Y)\n");
+          printf("  /debug lightmap  — Export lightmap as PPM images (base + dynamic)\n");
+          printf("  /debug shadow    — Toggle shadow map debug view\n");
+          printf("  /debug objects   — Dump world object type counts and light emitters\n");
+          printf("=== END DEBUG HELP ===\n\n");
+          SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(100, 255, 100, 255),
+                                "Debug help printed to console");
+        }
+
+        if (!handled) {
           SystemMessageLog::Log(MSG_SYSTEM, IM_COL32(255, 200, 100, 255),
                                 "Unknown command: %s", cmd.c_str());
         }
@@ -5449,6 +5804,8 @@ int main(int argc, char **argv) {
       g_mouseOverUIPanel = over;
     }
 
+    g_profiler.End(11); // ImGui
+
     // Map transition overlay (fullscreen black fade) — highest view layer.
     if (g_mapTransitionActive && g_mapTransitionAlpha > 0.0f) {
       ImGui_BackendSetViewId(IMGUI_VIEW_TRANSITION);
@@ -5480,6 +5837,14 @@ int main(int argc, char **argv) {
         checkGLError(("frame " + std::to_string(frameNum)).c_str());
       frameNum++;
     }
+
+    // Frame total timing
+    {
+      auto frameEnd = std::chrono::high_resolution_clock::now();
+      double frameMs = std::chrono::duration<double, std::milli>(frameEnd - frameStartTime).count();
+      g_profiler.accum[13] += frameMs;
+    }
+    g_profiler.EndFrame();
 
     ImGui_BackendSetViewId(IMGUI_VIEW_MAIN); // Reset for next frame
     bgfx::frame();
@@ -5783,8 +6148,15 @@ static void ApplyMapAtmosphere(const MapConfig &cfg) {
   g_npcManager.SetLuminosity(g_luminosity);
   g_monsterManager.SetLuminosity(g_luminosity);
   g_boidManager.SetLuminosity(g_luminosity);
-  if (cfg.hasGrass)
+  if (cfg.hasGrass) {
     g_grass.SetLuminosity(g_luminosity);
+    // Tarkan: enhanced wind (Main 5.2 InitTerrainGrassWind WindScale=10, xf*50)
+    // Toned down from reference for shorter desert scrub grass
+    if (cfg.mapId == 8)
+      g_grass.SetWindParams(25.0f, 20.0f);
+    else
+      g_grass.SetWindParams(10.0f, 5.0f);
+  }
 
 
   // Post-processing: apply per-map bloom/vignette/tint
@@ -5792,7 +6164,7 @@ static void ApplyMapAtmosphere(const MapConfig &cfg) {
   g_postProcess.bloomThreshold = cfg.bloomThreshold;
   g_postProcess.vignetteStrength = cfg.vignetteStrength;
   g_postProcess.colorTint = glm::vec3(cfg.tintR, cfg.tintG, cfg.tintB);
-  g_postProcess.gradingStrength = 0.3f;
+  g_postProcess.gradingStrength = 0.85f;
 
   // Rebuild roof hiding maps for this map only (no cross-map bleed)
   g_typeAlpha.clear();
@@ -5800,6 +6172,19 @@ static void ApplyMapAtmosphere(const MapConfig &cfg) {
   for (int i = 0; i < cfg.roofTypeCount; ++i) {
     g_typeAlpha[cfg.roofTypes[i]] = 1.0f;
     g_typeAlphaTarget[cfg.roofTypes[i]] = 1.0f;
+  }
+
+  // Sand/dust overlay: Tarkan only (Main 5.2 RenderOutSides)
+  if (cfg.mapId == 8) {
+    if (!g_sandOverlay.shader)
+      g_sandOverlay.shader = Shader::Load("vs_postprocess.bin", "fs_sand_overlay.bin");
+    if (!TexValid(g_sandOverlay.sandTex1))
+      g_sandOverlay.sandTex1 = TextureLoader::LoadOZJ(g_dataPath + "/Object9/sand01.OZJ");
+    if (!TexValid(g_sandOverlay.sandTex2))
+      g_sandOverlay.sandTex2 = TextureLoader::LoadOZJ(g_dataPath + "/Object9/sand02.OZJ");
+    g_sandOverlay.active = false; // Disabled: washes out terrain tile detail
+  } else {
+    g_sandOverlay.active = false;
   }
 
   // Set map ID on all subsystems

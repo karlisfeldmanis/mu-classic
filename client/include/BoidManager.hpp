@@ -95,6 +95,7 @@ public:
   void SetPointLights(const std::vector<PointLight> &lights) {
     m_pointLights = lights;
   }
+  void SetLightmapTexture(bgfx::TextureHandle tex) { m_lightmapTex = tex; }
   void SetLuminosity(float l) { m_luminosity = l; }
   void SetCameraFadeStart(float dist) { m_cameraFadeStart = dist; }
   void SetCameraView(const glm::mat4 &viewProj) {
@@ -171,6 +172,7 @@ private:
   const TerrainData *m_terrainData = nullptr;
   std::vector<glm::vec3> m_terrainLightmap;
   std::vector<PointLight> m_pointLights;
+  bgfx::TextureHandle m_lightmapTex = BGFX_INVALID_HANDLE;
   float m_luminosity = 1.0f;
   float m_cameraFadeStart = 350.0f; // Distance at which boids start fading (default 350)
   glm::mat4 m_viewProj{1.0f};

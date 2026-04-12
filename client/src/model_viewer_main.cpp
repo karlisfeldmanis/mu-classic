@@ -149,9 +149,29 @@ struct CatDef {
 };
 
 static const SubDef OBJECT_SUBS[] = {
-    {"Lorencia", "Data/Object1/"}, {"Dungeon", "Data/Object2/"},
-    {"Devias",   "Data/Object3/"}, {"Noria",   "Data/Object4/"},
-    {"Lost Tower","Data/Object5/"},
+    {"Lorencia",   "Data/Object1/"},  {"Dungeon",    "Data/Object2/"},
+    {"Devias",     "Data/Object3/"},  {"Noria",      "Data/Object4/"},
+    {"Lost Tower", "Data/Object5/"},  {"Stadium",    "Data/Object7/"},
+    {"Atlans",     "Data/Object8/"},  {"Tarkan",     "Data/Object9/"},
+    {"Object10",   "Data/Object10/"}, {"Object11",   "Data/Object11/"},
+    {"Object12",   "Data/Object12/"}, {"Object19",   "Data/Object19/"},
+    {"Object25",   "Data/Object25/"}, {"Object31",   "Data/Object31/"},
+    {"Object32",   "Data/Object32/"}, {"Object34",   "Data/Object34/"},
+    {"Object35",   "Data/Object35/"}, {"Object38",   "Data/Object38/"},
+    {"Object39",   "Data/Object39/"}, {"Object40",   "Data/Object40/"},
+    {"Object41",   "Data/Object41/"}, {"Object42",   "Data/Object42/"},
+    {"Object43",   "Data/Object43/"}, {"Object47",   "Data/Object47/"},
+    {"Object52",   "Data/Object52/"}, {"Object57",   "Data/Object57/"},
+    {"Object58",   "Data/Object58/"}, {"Object59",   "Data/Object59/"},
+    {"Object63",   "Data/Object63/"}, {"Object64",   "Data/Object64/"},
+    {"Object65",   "Data/Object65/"}, {"Object66",   "Data/Object66/"},
+    {"Object67",   "Data/Object67/"}, {"Object68",   "Data/Object68/"},
+    {"Object69",   "Data/Object69/"}, {"Object70",   "Data/Object70/"},
+    {"Object71",   "Data/Object71/"}, {"Object72",   "Data/Object72/"},
+    {"Object73",   "Data/Object73/"}, {"Object74",   "Data/Object74/"},
+    {"Object75",   "Data/Object75/"}, {"Object78",   "Data/Object78/"},
+    {"Object79",   "Data/Object79/"}, {"Object80",   "Data/Object80/"},
+    {"Object81",   "Data/Object81/"}, {"Object82",   "Data/Object82/"},
 };
 static const SubDef MONSTER_SUBS[] = {{"All Monsters", "Data/Monster/"}};
 static const SubDef ITEM_SUBS[]    = {{"All Items", "Data/Item/"}};
@@ -159,8 +179,9 @@ static const SubDef PLAYER_SUBS[]  = {{"Player Models", "Data/Player/"}};
 static const SubDef SKILL_SUBS[]   = {{"Skill Effects", "Data/Skill/"}};
 static const SubDef NPC_SUBS[]     = {{"NPC Models", "Data/NPC/"}};
 
+static const int NUM_OBJECT_SUBS = sizeof(OBJECT_SUBS) / sizeof(OBJECT_SUBS[0]);
 static const CatDef CATEGORIES[] = {
-    {"Objects",  OBJECT_SUBS,  5},
+    {"Objects",  OBJECT_SUBS,  NUM_OBJECT_SUBS},
     {"Monsters", MONSTER_SUBS, 1},
     {"Items",    ITEM_SUBS,    1},
     {"Player",   PLAYER_SUBS,  1},
@@ -274,6 +295,11 @@ private:
 
   // Animation state
   bool currentIsAnimated = false;
+  int currentActionIndex = 0;
+  int currentNumActions = 0;
+  bool forceAdditive = false;
+  bool forceUVScroll = false;
+  bool forcePulsing = false;
   int currentNumKeys = 0;
   float currentAnimFrame = 0.0f;
   bool animationEnabled = true;
@@ -420,7 +446,9 @@ private:
     currentIsAnimated = false;
     currentNumKeys = 0;
     currentAnimFrame = 0.0f;
-    if (!currentBMD->Actions.empty() &&
+    currentActionIndex = 0;
+    currentNumActions = (int)currentBMD->Actions.size();
+    if (currentNumActions > 0 &&
         currentBMD->Actions[0].NumAnimationKeys > 1) {
       currentIsAnimated = true;
       currentNumKeys = currentBMD->Actions[0].NumAnimationKeys;
@@ -557,7 +585,7 @@ private:
         currentAnimFrame = std::fmod(currentAnimFrame, (float)currentNumKeys);
 
       auto bones =
-          ComputeBoneMatricesInterpolated(currentBMD.get(), 0, currentAnimFrame);
+          ComputeBoneMatricesInterpolated(currentBMD.get(), currentActionIndex, currentAnimFrame);
       for (int mi = 0;
            mi < (int)meshBuffers.size() && mi < (int)currentBMD->Meshes.size();
            ++mi) {
@@ -625,7 +653,7 @@ private:
           // Fountain water: additive blue glow, bypass scene lighting
           // glowColor = blue-dominant, multiplied by dark blue texture = blue result
           SetModelUniforms(eye, 1.0f, 1.0f, uvOff, 1.0f);
-          shader->setVec4("u_glowColor", glm::vec4(1.5f, 1.7f, 2.5f, 0.0f));
+          shader->setVec4("u_glowColor", glm::vec4(0.7f, 0.75f, 0.95f, 0.0f));
           uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
                            BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
                            BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
@@ -666,20 +694,37 @@ private:
         bgfx::submit(0, shader->program);
 
       } else if (mb.hasAlpha) {
-        // Alpha mesh: blend, no depth write, no backface cull
+        // Alpha mesh: alpha blend + depth write for correct z-ordering
         SetModelUniforms(eye, 1.0f, 1.0f, glm::vec2(0.0f), 1.0f);
 
         uint64_t state =
             BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
-            BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
+            BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
             BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA,
                                   BGFX_STATE_BLEND_INV_SRC_ALPHA);
         bgfx::setState(state);
         bgfx::submit(0, shader->program);
 
+      } else if (forceAdditive) {
+        // Force additive: black = transparent (lava, glow effects)
+        glm::vec2 uvOff = forceUVScroll ? glm::vec2(0.0f, uvScroll) : glm::vec2(0.0f);
+        // Pulsing: Main 5.2 sinf-based BlendMeshLight
+        float pulseLight = 1.0f;
+        if (forcePulsing) {
+          pulseLight = 0.3f + 0.7f * (0.5f + 0.5f * std::sin(currentTime * 3.0f));
+        }
+        SetModelUniforms(eye, pulseLight, 1.0f, uvOff, 1.0f);
+
+        uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+                         BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
+                         BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
+                                               BGFX_STATE_BLEND_ONE);
+        bgfx::setState(state);
+        bgfx::submit(0, shader->program);
       } else {
         // Opaque mesh: depth write, backface cull, no blend
-        SetModelUniforms(eye, 1.0f, 1.0f, glm::vec2(0.0f), 1.0f);
+        glm::vec2 uvOff = forceUVScroll ? glm::vec2(0.0f, uvScroll) : glm::vec2(0.0f);
+        SetModelUniforms(eye, 1.0f, 1.0f, uvOff, 1.0f);
 
         uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
                          BGFX_STATE_WRITE_Z | BGFX_STATE_DEPTH_TEST_LESS |
@@ -787,16 +832,42 @@ private:
     }
 
     // Animation controls
-    if (currentIsAnimated) {
+    if (currentNumActions > 0) {
       ImGui::Separator();
-      ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Animated");
-      ImGui::Text("Keyframes: %d", currentNumKeys);
-      ImGui::Checkbox("Play", &animationEnabled);
-      ImGui::SliderFloat("Speed", &animSpeed, 0.5f, 20.0f, "%.1f k/s");
-      float frameVal = currentAnimFrame;
-      if (ImGui::SliderFloat("Frame", &frameVal, 0.0f,
-                              (float)(currentNumKeys - 1), "%.1f")) {
-        currentAnimFrame = frameVal;
+      if (currentIsAnimated)
+        ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Animated");
+      ImGui::Text("Actions: %d  Keyframes: %d", currentNumActions, currentNumKeys);
+
+      // Action selector
+      if (currentNumActions > 1) {
+        int actionIdx = currentActionIndex;
+        if (ImGui::SliderInt("Action", &actionIdx, 0, currentNumActions - 1)) {
+          currentActionIndex = actionIdx;
+          currentAnimFrame = 0.0f;
+          // Update keyframe count for new action
+          currentNumKeys = currentBMD->Actions[currentActionIndex].NumAnimationKeys;
+          currentIsAnimated = currentNumKeys > 1;
+          // Re-transform meshes with new action's bones
+          if (currentBMD) {
+            auto bones = ComputeBoneMatricesInterpolated(
+                currentBMD.get(), currentActionIndex, 0.0f);
+            for (int mi = 0;
+                 mi < (int)meshBuffers.size() && mi < (int)currentBMD->Meshes.size();
+                 ++mi) {
+              RetransformMeshWithBones(currentBMD->Meshes[mi], bones, meshBuffers[mi]);
+            }
+          }
+        }
+      }
+
+      if (currentIsAnimated) {
+        ImGui::Checkbox("Play", &animationEnabled);
+        ImGui::SliderFloat("Speed", &animSpeed, 0.5f, 20.0f, "%.1f k/s");
+        float frameVal = currentAnimFrame;
+        if (ImGui::SliderFloat("Frame", &frameVal, 0.0f,
+                                (float)(currentNumKeys - 1), "%.1f")) {
+          currentAnimFrame = frameVal;
+        }
       }
     }
 
@@ -820,6 +891,13 @@ private:
                                    gifScaleSetting, gifSkipSetting - 1);
       }
     }
+
+    // Render mode overrides
+    ImGui::Separator();
+    ImGui::Text("Render Overrides:");
+    ImGui::Checkbox("Additive Blend", &forceAdditive);
+    ImGui::Checkbox("UV Scroll", &forceUVScroll);
+    ImGui::Checkbox("Pulse/Glow", &forcePulsing);
 
     ImGui::Separator();
     ImGui::TextWrapped("LMB drag: Rotate\nScroll: Zoom\nArrows: Prev/Next");

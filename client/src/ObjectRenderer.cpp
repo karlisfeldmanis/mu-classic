@@ -1497,7 +1497,7 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       // Fountain water: bypass scene lighting with blue glow color
       bool isFountainWater = (inst.type == 105 && mb.isWindowLight);
       if (isFountainWater)
-        activeShader->setVec4("u_glowColor", glm::vec4(1.5f, 1.7f, 2.5f, 0.0f));
+        activeShader->setVec4("u_glowColor", glm::vec4(0.7f, 0.75f, 0.95f, 0.0f));
       else if (!useChromeBlend)
         activeShader->setVec4("u_glowColor", glm::vec4(0.0f));
       // Tarkan: warm tint on world objects to match sandy terrain palette

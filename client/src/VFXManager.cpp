@@ -936,9 +936,13 @@ void VFXManager::SpawnSkillCast(uint8_t skillId, const glm::vec3 &heroPos,
     SpawnBurst(ParticleType::FLARE, castPos, 2);
     SpawnBurst(ParticleType::HIT_SPARK, castPos, 8);
     break;
-  case 22: // Cyclone
-    SpawnBurst(ParticleType::SKILL_CYCLONE, heroPos + glm::vec3(0, 30, 0), 20);
+  case 22: { // Cyclone — spawn at weapon hand (bone 18 = right hand)
+    glm::vec3 handPos = heroPos + glm::vec3(0, 100, 0); // fallback: chest height
+    if (m_heroBoneWorldPositions.size() > 18)
+      handPos = m_heroBoneWorldPositions[18];
+    SpawnBurst(ParticleType::SKILL_CYCLONE, handPos, 20);
     break;
+  }
   case 41: // Twisting Slash — ghost weapons handled by HeroCharacter
     SpawnBurst(ParticleType::FLARE, castPos, 3);
     break;
@@ -2159,7 +2163,8 @@ void VFXManager::UpdateBuffAuraCenter(int type, const glm::vec3 &center) {
 
 void VFXManager::SpawnWeaponSparkle(const glm::vec3 &bonePos, const glm::vec3 &color) {
   // Main 5.2: BITMAP_SHINY+1 at weapon bone — small bright sparkle
-  SpawnBurstColored(ParticleType::BUFF_AURA, bonePos, color, 1);
+  // Use HIT_SPARK — small, short-lived, stays near weapon (not BUFF_AURA which drifts up)
+  SpawnBurstColored(ParticleType::HIT_SPARK, bonePos, color, 1);
 }
 
 void VFXManager::updateBuffAuras(float deltaTime) {

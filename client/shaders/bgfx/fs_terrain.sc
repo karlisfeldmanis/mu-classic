@@ -26,18 +26,18 @@ uniform vec4 u_fogColor;
 uniform vec4 u_viewPos;
 
 // Tile UV from grid: fract + half-texel inset to avoid seam artifacts at tile boundaries
-vec2 tileFract(vec2 uv) {
-    vec2 t = fract(uv * 0.25);
-    float pad = 0.5 / 256.0; // half texel for 256x256 tile textures
+vec2 tileFract(vec2 uv, float scale) {
+    vec2 t = fract(uv * scale);
+    float pad = 0.5 / 1024.0; // half texel for 1024x1024 tile textures
     return clamp(t, vec2_splat(pad), vec2_splat(1.0 - pad));
 }
 
 // Compute mip level from continuous (pre-fract) UV to avoid derivative discontinuity at tile seams
 // LOD bias -1.0: forces sharper mip selection for crisper textures at native tile size
-float tileLod(vec2 uv) {
-    vec2 contUV = uv * 0.25;            // continuous UV (no fract)
-    vec2 dx = dFdx(contUV) * 256.0;     // 256 = tile texture resolution
-    vec2 dy = dFdy(contUV) * 256.0;
+float tileLod(vec2 uv, float scale) {
+    vec2 contUV = uv * scale;           // continuous UV (no fract)
+    vec2 dx = dFdx(contUV) * 1024.0;    // 1024 = tile texture resolution
+    vec2 dy = dFdy(contUV) * 1024.0;
     float d = max(dot(dx, dx), dot(dy, dy));
     return max(0.5 * log2(d) - 1.0, 0.0); // -1.0 LOD bias for sharper textures
 }
@@ -72,7 +72,8 @@ float computeEdgeFog(vec3 worldPos) {
 vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     float uTime = u_terrainParams.x;
     float waterRate = u_terrainParams.y; // Per-map water/lava scroll rate
-    float tLod = tileLod(uv); // compute once from continuous UV for all tile samples
+    float tileScale = 0.25;
+    float tLod = tileLod(uv, tileScale); // compute once from continuous UV for all tile samples
     vec2 size = vec2(256.0, 256.0);
     vec2 texelSize = vec2_splat(1.0) / size;
     vec2 gridPos = uvBase - vec2_splat(0.5);
@@ -135,7 +136,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     {
         bool isWater = (abs(src0 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = tileFract(uv);
+            vec2 cUV = tileFract(uv, tileScale);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
                 if (waterRate < 0.02) {
@@ -146,7 +147,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             }
             c0 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = tileFract(uv);
+            vec2 tileUV = tileFract(uv, tileScale);
             tileUV = applySymmetry(tileUV, sym0);
             if (isWater) {
                 if (waterRate < 0.02) {
@@ -162,7 +163,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     {
         bool isWater = (abs(src1 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = tileFract(uv);
+            vec2 cUV = tileFract(uv, tileScale);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
                 if (waterRate < 0.02) {
@@ -173,7 +174,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             }
             c1 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = tileFract(uv);
+            vec2 tileUV = tileFract(uv, tileScale);
             tileUV = applySymmetry(tileUV, sym1);
             if (isWater) {
                 if (waterRate < 0.02) {
@@ -189,7 +190,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     {
         bool isWater = (abs(src2 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = tileFract(uv);
+            vec2 cUV = tileFract(uv, tileScale);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
                 if (waterRate < 0.02) {
@@ -200,7 +201,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             }
             c2 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = tileFract(uv);
+            vec2 tileUV = tileFract(uv, tileScale);
             tileUV = applySymmetry(tileUV, sym2);
             if (isWater) {
                 if (waterRate < 0.02) {
@@ -216,7 +217,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
     {
         bool isWater = (abs(src3 - 5.0) < 0.1);
         if (isWater != centerIsWater && anyNoGround) {
-            vec2 cUV = tileFract(uv);
+            vec2 cUV = tileFract(uv, tileScale);
             cUV = applySymmetry(cUV, centerSym);
             if (centerIsWater) {
                 if (waterRate < 0.02) {
@@ -227,7 +228,7 @@ vec4 sampleLayerSmooth(sampler2D layerMap, vec2 uv, vec2 uvBase) {
             }
             c3 = sampleTile(cUV, floor(centerSrc + 0.5), tLod);
         } else {
-            vec2 tileUV = tileFract(uv);
+            vec2 tileUV = tileFract(uv, tileScale);
             tileUV = applySymmetry(tileUV, sym3);
             if (isWater) {
                 if (waterRate < 0.02) {
@@ -298,6 +299,10 @@ void main()
     vec3 lightColor = lmVal.rgb;
     finalColor *= lightColor * v_color0.rgb * luminosity;
 
+    // Desaturate toward white for lighter terrain
+    float luma = dot(finalColor, vec3(0.299, 0.587, 0.114));
+    finalColor = mix(finalColor, vec3(luma), 0.45);
+
     // Shadow map: darken terrain in shadowed areas
     if (u_shadowParams.x > 0.5) {
         vec4 sc = mul(u_lightMtx, vec4(v_fragpos, 1.0));
@@ -311,14 +316,20 @@ void main()
             gl_FragColor = vec4(dbgDepth, dbgDepth, dbgDepth, 1.0);
             return;
         } else {
-            // 4-tap PCF for softer shadow edges
-            float texel = 1.0 / 2048.0;
+            // 9-tap PCF for smooth shadow edges (slope-scaled bias)
+            float texel = 1.0 / 4096.0;
+            float bias = 0.015;
             float shadow = 0.0;
-            shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2(-texel, -texel)).r);
-            shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2( texel, -texel)).r);
-            shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2(-texel,  texel)).r);
-            shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2( texel,  texel)).r);
-            shadow *= 0.25;
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2(-texel, -texel)).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2(   0.0, -texel)).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2( texel, -texel)).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2(-texel,    0.0)).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2( texel,    0.0)).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2(-texel,  texel)).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2(   0.0,  texel)).r);
+            shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2( texel,  texel)).r);
+            shadow *= 0.111; // 1/9
             finalColor *= mix(0.65, 1.0, shadow);
         }
     }

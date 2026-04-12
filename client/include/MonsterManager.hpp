@@ -77,6 +77,7 @@ public:
   void RenderShadows(const glm::mat4 &view, const glm::mat4 &proj);
   void RenderToShadowMap(uint8_t viewId, bgfx::ProgramHandle depthProgram);
   void SetShadowMap(bgfx::TextureHandle tex, const glm::mat4 &lightMtx);
+  void SetLightmapTexture(bgfx::TextureHandle tex) { m_lightmapTex = tex; }
   void RenderSilhouetteOutline(int monsterIndex, const glm::mat4 &view,
                                const glm::mat4 &proj);
   void RenderNameplates(ImDrawList *dl, ImFont *font, const glm::mat4 &view,
@@ -364,6 +365,8 @@ private:
   // Shadow map state
   bgfx::TextureHandle m_shadowMapTex = BGFX_INVALID_HANDLE;
   glm::mat4 m_lightMtx{1.0f};
+  // Lightmap texture for per-pixel terrain lighting
+  bgfx::TextureHandle m_lightmapTex = BGFX_INVALID_HANDLE;
 
   std::string m_monsterTexPath;
   std::string m_dataPath; // Root data path for loading Player.bmd etc.

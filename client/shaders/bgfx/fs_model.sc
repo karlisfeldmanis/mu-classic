@@ -90,13 +90,14 @@ void main()
         // XY: NDC [-1,1] → UV [0,1]; Z already [0,1] from ZO projection
         sn.xy = sn.xy * 0.5 + 0.5;
         sn.y = 1.0 - sn.y; // Metal Y-flip for render targets
-        // 4-tap PCF for softer shadow edges
+        // 4-tap PCF for softer shadow edges (slope-scaled bias)
         float texel = 1.0 / 2048.0;
+        float bias = 0.015;
         float shadow = 0.0;
-        shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2(-texel, -texel)).r);
-        shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2( texel, -texel)).r);
-        shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2(-texel,  texel)).r);
-        shadow += step(sn.z - 0.005, texture2D(s_shadowMap, sn.xy + vec2( texel,  texel)).r);
+        shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2(-texel, -texel)).r);
+        shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2( texel, -texel)).r);
+        shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2(-texel,  texel)).r);
+        shadow += step(sn.z - bias, texture2D(s_shadowMap, sn.xy + vec2( texel,  texel)).r);
         shadow *= 0.25;
         sunLit *= mix(0.55, 1.0, shadow);
     }
@@ -145,7 +146,7 @@ void main()
     }
 
     vec4 texColor = texture2D(s_texColor, finalUV);
-    float alphaRef = max(u_params2.y, 0.01);
+    float alphaRef = max(u_params2.y, 0.5);
     if (texColor.a < alphaRef) discard;
 
     // Item glow: additive enhancement pass

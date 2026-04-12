@@ -55,7 +55,7 @@ void HeroCharacter::renderPetCompanion(const glm::mat4 &view, const glm::mat4 &p
       if (m_mountEquippedIndex == 3) mountMul = 2.5f;       // Dinorant — fast
       else if (m_mountEquippedIndex == 2) mountMul = 2.0f;   // Uniria
     }
-    float followRate = 1.0f - expf((charMoving ? -1.2f * mountMul : -3.0f) * deltaTime);
+    float followRate = 1.0f - expf((charMoving ? -6.0f * mountMul : -3.0f) * deltaTime);
     m_pet.orbitCenter.x += (m_pos.x - m_pet.orbitCenter.x) * followRate;
     m_pet.orbitCenter.z += (m_pos.z - m_pet.orbitCenter.z) * followRate;
     m_pet.orbitCenter.y += (m_pos.y - m_pet.orbitCenter.y) * followRate;

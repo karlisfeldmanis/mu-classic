@@ -63,7 +63,13 @@ void MonsterManager::Render(const glm::mat4 &view, const glm::mat4 &proj,
     m_shader->setVec4("u_viewPos", glm::vec4(eye, 0.0f));
     m_shader->setVec4("u_lightPos", glm::vec4(eye + glm::vec3(0, 500, 0), 0.0f));
     m_shader->setVec4("u_lightColor", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
-    m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    // Per-pixel lightmap if available, otherwise per-object uniform
+    if (bgfx::isValid(m_lightmapTex)) {
+      m_shader->setVec4("u_terrainLight", glm::vec4(0.0f, 0.0f, 0.0f, 1.0f));
+      m_shader->setTexture(2, "s_lightMap", m_lightmapTex);
+    } else {
+      m_shader->setVec4("u_terrainLight", glm::vec4(tLight, 0.0f));
+    }
     m_shader->setVec4("u_glowColor", glm::vec4(0.0f));
     m_shader->setVec4("u_baseTint", glm::vec4(baseTint, 0.0f));
     m_shader->setVec4("u_fogParams", fogParams);
