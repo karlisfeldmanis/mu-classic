@@ -618,18 +618,31 @@ private:
       shader->setTexture(0, "s_texColor", mb.texture);
 
       if (mb.isWindowLight && blendMeshTexId >= 0) {
-        // BlendMesh: additive blend, no depth write
         glm::vec2 uvOff = hasUVScroll ? glm::vec2(0.0f, uvScroll)
                                       : glm::vec2(0.0f);
-        SetModelUniforms(eye, flickerBase, 1.0f, uvOff, 1.0f);
-
-        uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
-                         BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
-                         BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
-                                               BGFX_STATE_BLEND_ONE);
-        // No BGFX_STATE_WRITE_Z = no depth write
-        bgfx::setState(state);
-        bgfx::submit(0, shader->program);
+        bool isWS = (bmdFiles[currentIndex].find("Waterspout") != std::string::npos);
+        if (isWS) {
+          // Fountain water: additive blue glow, bypass scene lighting
+          // glowColor = blue-dominant, multiplied by dark blue texture = blue result
+          SetModelUniforms(eye, 1.0f, 1.0f, uvOff, 1.0f);
+          shader->setVec4("u_glowColor", glm::vec4(1.5f, 1.7f, 2.5f, 0.0f));
+          uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+                           BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
+                           BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
+                                                 BGFX_STATE_BLEND_ONE);
+          bgfx::setState(state);
+          bgfx::submit(0, shader->program);
+          shader->setVec4("u_glowColor", glm::vec4(0.0f));
+        } else {
+          // Other BlendMesh: additive blend
+          SetModelUniforms(eye, flickerBase, 1.0f, uvOff, 1.0f);
+          uint64_t state = BGFX_STATE_WRITE_RGB | BGFX_STATE_WRITE_A |
+                           BGFX_STATE_DEPTH_TEST_LESS | BGFX_STATE_MSAA |
+                           BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
+                                                 BGFX_STATE_BLEND_ONE);
+          bgfx::setState(state);
+          bgfx::submit(0, shader->program);
+        }
 
       } else if (mb.noneBlend) {
         // Opaque: no blending

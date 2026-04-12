@@ -782,6 +782,12 @@ void ObjectRenderer::LoadObjectsGeneric(
     }
     int instIdx = (int)instances.size();
     instances.push_back({obj.type, model, tLight, phaseOff2});
+    // DEBUG: log objects near grid (160,57) on Tarkan
+    if (m_mapId == 8) {
+      float gx = worldPos.z / 100.0f, gy = worldPos.x / 100.0f;
+      if (gx > 150 && gx < 170 && gy > 47 && gy < 67)
+        std::cout << "[TBridge] t=" << obj.type << " g=(" << (int)gx << "," << (int)gy << ")" << std::endl;
+    }
 
     // Collect interactive objects for sit/pose system (Devias types)
     // Main 5.2: types 22,25,40,45,55,73 use CreateOperate
@@ -1488,9 +1494,17 @@ void ObjectRenderer::Render(const glm::mat4 &view, const glm::mat4 &projection,
       } else {
         activeShader->setVec4("u_terrainLight", glm::vec4(inst.terrainLight, 0.0f));
       }
-      if (!useChromeBlend)
+      // Fountain water: bypass scene lighting with blue glow color
+      bool isFountainWater = (inst.type == 105 && mb.isWindowLight);
+      if (isFountainWater)
+        activeShader->setVec4("u_glowColor", glm::vec4(1.5f, 1.7f, 2.5f, 0.0f));
+      else if (!useChromeBlend)
         activeShader->setVec4("u_glowColor", glm::vec4(0.0f));
-      activeShader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+      // Tarkan: warm tint on world objects to match sandy terrain palette
+      if (m_mapId == 8)
+        activeShader->setVec4("u_baseTint", glm::vec4(1.08f, 1.02f, 0.92f, 0.0f));
+      else
+        activeShader->setVec4("u_baseTint", glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
       activeShader->setVec4("u_fogParams", glm::vec4(m_fogNear, m_fogFar, useFog, 0.0f));
       activeShader->setVec4("u_fogColor", glm::vec4(m_fogColor, 0.0f));
       activeShader->setVec4("u_texCoordOffset", glm::vec4(texOffset, 0.0f, 0.0f));
